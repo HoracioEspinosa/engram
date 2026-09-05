@@ -29,3 +29,7 @@ Thumbs.db
 engram-dev
 .atl/
 .release-notes-beta.md
+
+# The locally built binary the MCP config points at. It is 28 MB and it is
+# rebuilt from source, so it never belongs in the history.
+bin/
