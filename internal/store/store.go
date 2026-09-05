@@ -232,6 +232,15 @@ const (
 	SyncEntityPrompt      = "prompt"
 	SyncEntityRelation    = "relation"
 
+	// engram-projects entities (RFC section 10.2). project_card carries its
+	// own project in the payload, so enqueueSyncMutationTx routes them to the
+	// project target without a session_id to resolve.
+	SyncEntityProjectCard    = "project_card"
+	SyncEntityTask           = "task"
+	SyncEntityEvidence       = "evidence"
+	SyncEntityTaskLink       = "task_link"
+	SyncEntityObservationRef = "observation_ref"
+
 	SyncOpUpsert = "upsert"
 	SyncOpDelete = "delete"
 
@@ -1520,7 +1529,8 @@ func (s *Store) evaluateCloudUpgradeLegacyMutationTx(tx *sql.Tx, mutation SyncMu
 
 	supported := (entity == SyncEntitySession && (op == SyncOpUpsert || op == SyncOpDelete)) ||
 		((entity == SyncEntityObservation || entity == SyncEntityPrompt) && (op == SyncOpUpsert || op == SyncOpDelete)) ||
-		(entity == SyncEntityRelation && op == SyncOpUpsert)
+		(entity == SyncEntityRelation && op == SyncOpUpsert) ||
+		isProjectsMutation(entity, op)
 	if !supported {
 		return blocked(UpgradeReasonBlockedLegacyMutationManual, fmt.Sprintf("unsupported legacy mutation %q/%q", entity, op)), nil
 	}
@@ -4219,9 +4229,21 @@ func (s *Store) ApplyPulledMutation(targetKey string, mutation SyncMutation) err
 			// Phase E: per-entity skip+log policy (design §9).
 			// For relation FK misses, write to sync_apply_deferred and ACK the seq
 			// so the cursor can advance. All other errors propagate and halt the pull.
-			if mutation.Entity == SyncEntityRelation && errors.Is(applyErr, ErrRelationFKMissing) {
-				log.Printf("[store] ApplyPulledMutation: relation FK miss seq=%d entity_key=%s — deferring",
-					mutation.Seq, mutation.EntityKey)
+			// engram-projects mutations are parked by the projects layer,
+			// which keys the deferred row by payload rather than by entity:
+			// several distinct payloads for one task can be in flight, and
+			// keying them by entity alone would let one overwrite another
+			// before it ever applied.
+			parked, parkErr := s.parkProjectsMutationTx(tx, mutation, applyErr)
+			if parkErr != nil {
+				return parkErr
+			}
+			if parked {
+				log.Printf("[store] ApplyPulledMutation: %s parked seq=%d entity_key=%s err=%v",
+					mutation.Entity, mutation.Seq, mutation.EntityKey, applyErr)
+			} else if mutation.Entity == SyncEntityRelation && errors.Is(applyErr, ErrRelationFKMissing) {
+				log.Printf("[store] ApplyPulledMutation: %s FK miss seq=%d entity_key=%s — deferring",
+					mutation.Entity, mutation.Seq, mutation.EntityKey)
 				if _, deferErr := s.execHook(tx, `
 					INSERT INTO sync_apply_deferred
 						(sync_id, entity, payload, apply_status, retry_count, first_seen_at)
@@ -4236,8 +4258,8 @@ func (s *Store) ApplyPulledMutation(targetKey string, mutation SyncMutation) err
 			} else if mutation.Entity == SyncEntityRelation && errors.Is(applyErr, ErrApplyDead) {
 				// Payload is permanently undecodable — write directly as dead and ACK.
 				// There is no point retrying; a malformed payload will never become valid.
-				log.Printf("[store] ApplyPulledMutation: relation payload dead seq=%d entity_key=%s err=%v — marking dead",
-					mutation.Seq, mutation.EntityKey, applyErr)
+				log.Printf("[store] ApplyPulledMutation: %s payload dead seq=%d entity_key=%s err=%v — marking dead",
+					mutation.Entity, mutation.Seq, mutation.EntityKey, applyErr)
 				if _, deferErr := s.execHook(tx, `
 					INSERT INTO sync_apply_deferred
 						(sync_id, entity, payload, apply_status, retry_count, first_seen_at)
@@ -4301,7 +4323,18 @@ func (s *Store) ApplyPulledChunk(targetKey, chunkID string, mutations []SyncMuta
 			mutation.TargetKey = targetKey
 			mutation.Source = SyncSourceRemote
 			if err := s.applyPulledMutationTx(tx, mutation); err != nil {
-				return fmt.Errorf("apply chunk mutation %d: %w", i, err)
+				// engram-projects rows can legitimately arrive before the row
+				// they reference (an evidence row ahead of its task, a
+				// task_link ahead of either side). RFC section 10.3 requires
+				// those to be parked in sync_apply_deferred and retried by
+				// `engram conflicts replay`, never discarded and never left to
+				// fail the whole chunk. Upstream entities keep the strict
+				// behavior: a relation FK miss inside a chunk still fails it.
+				if parked, parkErr := s.parkProjectsMutationTx(tx, mutation, err); parkErr != nil {
+					return fmt.Errorf("apply chunk mutation %d: %w", i, parkErr)
+				} else if !parked {
+					return fmt.Errorf("apply chunk mutation %d: %w", i, err)
+				}
 			}
 		}
 
@@ -5639,6 +5672,9 @@ func (s *Store) applyPulledMutationTx(tx *sql.Tx, mutation SyncMutation) error {
 		}
 		return s.applyPromptUpsertTx(tx, payload)
 	default:
+		if isProjectsEntity(mutation.Entity) {
+			return s.applyProjectsMutationTx(tx, mutation)
+		}
 		return fmt.Errorf("unknown sync entity %q", mutation.Entity)
 	}
 }

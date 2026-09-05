@@ -1,4 +1,4 @@
-package tui
+package memory
 
 import (
 	"errors"
@@ -7,13 +7,17 @@ import (
 
 	"github.com/Gentleman-Programming/engram/internal/setup"
 	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/engram/internal/tui/shared"
+	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // ─── Update ──────────────────────────────────────────────────────────────────
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update advances the Memory tab. Key messages arrive only while the tab is
+// active; ctrl+c is consumed by the root before it gets here.
+func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
@@ -22,10 +26,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// Global quit — always works
-		if msg.String() == "ctrl+c" {
-			return m, tea.Quit
-		}
 		// If search input is focused, let it handle most keys
 		if m.Screen == ScreenSearch && m.SearchInput.Focused() {
 			return m.handleSearchInputKeys(msg)
@@ -123,7 +123,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.ErrorMsg = ""
-		return m, loadRecentSessions(m.store)
+		return m, loadRecentSessions(m.reader)
 
 	case setupInstallMsg:
 		m.SetupInstalling = false
@@ -142,16 +142,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.SetupDone = true
 		return m, nil
 
-	case clipboardCopiedMsg:
+	case shared.CopiedMsg:
 		// Emit the OSC 52 sequence to stdout so the terminal copies the content,
 		// set the feedback label, and schedule its removal after 2 seconds.
 		m.CopyFeedback = "✓ Copied!"
 		return m, tea.Batch(
-			tea.Println(msg.sequence),
-			clearFeedbackAfter(2*time.Second),
+			tea.Println(msg.Sequence),
+			shared.ClearFeedbackAfter(2*time.Second),
 		)
 
-	case clipboardClearMsg:
+	case shared.ClearFeedbackMsg:
 		m.CopyFeedback = ""
 		return m, nil
 
@@ -170,7 +170,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // ─── Key Press Router ────────────────────────────────────────────────────────
 
-func (m Model) handleKeyPress(key string) (tea.Model, tea.Cmd) {
+func (m Model) handleKeyPress(key string) (tabs.Tab, tea.Cmd) {
 	// Clear error on any keypress
 	m.ErrorMsg = ""
 
@@ -193,8 +193,6 @@ func (m Model) handleKeyPress(key string) (tea.Model, tea.Cmd) {
 		return m.handleSessionDetailKeys(key)
 	case ScreenSetup:
 		return m.handleSetupKeys(key)
-	case ScreenCloudSettings:
-		return m.handleCloudSettingsKeys(key)
 	}
 	return m, nil
 }
@@ -210,14 +208,7 @@ var dashboardMenuItems = []string{
 	"Quit",
 }
 
-var cloudSettingsMenuItems = []string{
-	"Configure server",
-	"View status",
-	"Enroll projects",
-	"Back",
-}
-
-func (m Model) handleDashboardKeys(key string) (tea.Model, tea.Cmd) {
+func (m Model) handleDashboardKeys(key string) (tabs.Tab, tea.Cmd) {
 	switch key {
 	case "up", "k":
 		if m.Cursor > 0 {
@@ -242,7 +233,7 @@ func (m Model) handleDashboardKeys(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleDashboardSelection() (tea.Model, tea.Cmd) {
+func (m Model) handleDashboardSelection() (tabs.Tab, tea.Cmd) {
 	switch m.Cursor {
 	case 0: // Search
 		m.PrevScreen = ScreenDashboard
@@ -256,13 +247,13 @@ func (m Model) handleDashboardSelection() (tea.Model, tea.Cmd) {
 		m.Screen = ScreenRecent
 		m.Cursor = 0
 		m.Scroll = 0
-		return m, loadRecentObservations(m.store)
+		return m, loadRecentObservations(m.reader)
 	case 2: // Sessions
 		m.PrevScreen = ScreenDashboard
 		m.Screen = ScreenSessions
 		m.Cursor = 0
 		m.Scroll = 0
-		return m, loadRecentSessions(m.store)
+		return m, loadRecentSessions(m.reader)
 	case 3: // Setup
 		m.PrevScreen = ScreenDashboard
 		m.Screen = ScreenSetup
@@ -275,10 +266,12 @@ func (m Model) handleDashboardSelection() (tea.Model, tea.Cmd) {
 		m.SetupInstallingName = ""
 		return m, nil
 	case 4: // Cloud sync settings
+		// Cloud lives in its own tab; ask the root to activate it. The cursor
+		// is reset here so returning to the dashboard lands on the first item,
+		// exactly as leaving any other screen does.
 		m.PrevScreen = ScreenDashboard
-		m.Screen = ScreenCloudSettings
 		m.Cursor = 0
-		return m, nil
+		return m, tabs.Navigate(tabs.Cloud)
 	case 5: // Quit
 		return m, tea.Quit
 	}
@@ -287,13 +280,13 @@ func (m Model) handleDashboardSelection() (tea.Model, tea.Cmd) {
 
 // ─── Search Input ────────────────────────────────────────────────────────────
 
-func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		query := m.SearchInput.Value()
 		if query != "" {
 			m.SearchInput.Blur()
-			return m, searchMemories(m.store, query)
+			return m, searchMemories(m.reader, query)
 		}
 		return m, nil
 	case "esc":
@@ -309,7 +302,7 @@ func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) handleSearchKeys(key string) (tea.Model, tea.Cmd) {
+func (m Model) handleSearchKeys(key string) (tabs.Tab, tea.Cmd) {
 	switch key {
 	case "esc", "q":
 		m.Screen = ScreenDashboard
@@ -324,11 +317,8 @@ func (m Model) handleSearchKeys(key string) (tea.Model, tea.Cmd) {
 
 // ─── Search Results ──────────────────────────────────────────────────────────
 
-func (m Model) handleSearchResultsKeys(key string) (tea.Model, tea.Cmd) {
-	visibleItems := (m.Height - 10) / 2 // 2 lines per observation item
-	if visibleItems < 3 {
-		visibleItems = 3
-	}
+func (m Model) handleSearchResultsKeys(key string) (tabs.Tab, tea.Cmd) {
+	visibleItems := shared.VisibleItems(m.Height, searchResultsChrome, observationItemLines, minVisibleItems)
 
 	switch key {
 	case "up", "k":
@@ -351,18 +341,18 @@ func (m Model) handleSearchResultsKeys(key string) (tea.Model, tea.Cmd) {
 		if len(m.SearchResults) > 0 && m.Cursor < len(m.SearchResults) {
 			obsID := m.SearchResults[m.Cursor].ID
 			m.PrevScreen = ScreenSearchResults
-			return m, loadObservationDetail(m.store, obsID)
+			return m, loadObservationDetail(m.reader, obsID)
 		}
 	case "c":
 		if len(m.SearchResults) > 0 && m.Cursor < len(m.SearchResults) {
-			return m, copyToClipboard(m.SearchResults[m.Cursor].Content)
+			return m, shared.Copy(m.SearchResults[m.Cursor].Content)
 		}
 	case "t":
 		// Timeline for selected result
 		if len(m.SearchResults) > 0 && m.Cursor < len(m.SearchResults) {
 			obsID := m.SearchResults[m.Cursor].ID
 			m.PrevScreen = ScreenSearchResults
-			return m, loadTimeline(m.store, obsID)
+			return m, loadTimeline(m.reader, obsID)
 		}
 	case "/", "s":
 		m.PrevScreen = ScreenSearchResults
@@ -382,11 +372,8 @@ func (m Model) handleSearchResultsKeys(key string) (tea.Model, tea.Cmd) {
 
 // ─── Recent Observations ─────────────────────────────────────────────────────
 
-func (m Model) handleRecentKeys(key string) (tea.Model, tea.Cmd) {
-	visibleItems := (m.Height - 8) / 2 // 2 lines per observation item
-	if visibleItems < 3 {
-		visibleItems = 3
-	}
+func (m Model) handleRecentKeys(key string) (tabs.Tab, tea.Cmd) {
+	visibleItems := shared.VisibleItems(m.Height, recentChrome, observationItemLines, minVisibleItems)
 
 	switch key {
 	case "up", "k":
@@ -407,30 +394,30 @@ func (m Model) handleRecentKeys(key string) (tea.Model, tea.Cmd) {
 		if len(m.RecentObservations) > 0 && m.Cursor < len(m.RecentObservations) {
 			obsID := m.RecentObservations[m.Cursor].ID
 			m.PrevScreen = ScreenRecent
-			return m, loadObservationDetail(m.store, obsID)
+			return m, loadObservationDetail(m.reader, obsID)
 		}
 	case "c":
 		if len(m.RecentObservations) > 0 && m.Cursor < len(m.RecentObservations) {
-			return m, copyToClipboard(m.RecentObservations[m.Cursor].Content)
+			return m, shared.Copy(m.RecentObservations[m.Cursor].Content)
 		}
 	case "t":
 		if len(m.RecentObservations) > 0 && m.Cursor < len(m.RecentObservations) {
 			obsID := m.RecentObservations[m.Cursor].ID
 			m.PrevScreen = ScreenRecent
-			return m, loadTimeline(m.store, obsID)
+			return m, loadTimeline(m.reader, obsID)
 		}
 	case "esc", "q":
 		m.Screen = ScreenDashboard
 		m.Cursor = 0
 		m.Scroll = 0
-		return m, loadStats(m.store)
+		return m, loadStats(m.reader)
 	}
 	return m, nil
 }
 
 // ─── Observation Detail ──────────────────────────────────────────────────────
 
-func (m Model) handleObservationDetailKeys(key string) (tea.Model, tea.Cmd) {
+func (m Model) handleObservationDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 	switch key {
 	case "up", "k":
 		if m.DetailScroll > 0 {
@@ -440,12 +427,12 @@ func (m Model) handleObservationDetailKeys(key string) (tea.Model, tea.Cmd) {
 		m.DetailScroll++
 	case "c":
 		if m.SelectedObservation != nil {
-			return m, copyToClipboard(m.SelectedObservation.Content)
+			return m, shared.Copy(m.SelectedObservation.Content)
 		}
 	case "t":
 		// View timeline for this observation
 		if m.SelectedObservation != nil {
-			return m, loadTimeline(m.store, m.SelectedObservation.ID)
+			return m, loadTimeline(m.reader, m.SelectedObservation.ID)
 		}
 	case "esc", "q":
 		m.Screen = m.PrevScreen
@@ -458,7 +445,7 @@ func (m Model) handleObservationDetailKeys(key string) (tea.Model, tea.Cmd) {
 
 // ─── Timeline ────────────────────────────────────────────────────────────────
 
-func (m Model) handleTimelineKeys(key string) (tea.Model, tea.Cmd) {
+func (m Model) handleTimelineKeys(key string) (tabs.Tab, tea.Cmd) {
 	switch key {
 	case "up", "k":
 		if m.Scroll > 0 {
@@ -477,7 +464,7 @@ func (m Model) handleTimelineKeys(key string) (tea.Model, tea.Cmd) {
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
 
-func (m Model) handleSessionsKeys(key string) (tea.Model, tea.Cmd) {
+func (m Model) handleSessionsKeys(key string) (tabs.Tab, tea.Cmd) {
 	switch m.SessionDeleteState {
 	case SessionDeleteStateDeleting:
 		return m, nil
@@ -490,7 +477,7 @@ func (m Model) handleSessionsKeys(key string) (tea.Model, tea.Cmd) {
 			}
 			sessionID := m.SessionDeleteID
 			m.SessionDeleteState = SessionDeleteStateDeleting
-			return m, deleteSession(m.store, sessionID)
+			return m, deleteSession(m.reader, sessionID)
 		case "n", "N", "esc":
 			m = m.resetSessionDeleteState()
 			return m, nil
@@ -498,10 +485,7 @@ func (m Model) handleSessionsKeys(key string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	visibleItems := m.Height - 8
-	if visibleItems < 5 {
-		visibleItems = 5
-	}
+	visibleItems := shared.VisibleItems(m.Height, sessionsChrome, sessionItemLines, minVisibleSessions)
 
 	switch key {
 	case "up", "k":
@@ -523,7 +507,7 @@ func (m Model) handleSessionsKeys(key string) (tea.Model, tea.Cmd) {
 			m.SelectedSessionIdx = m.Cursor
 			m.PrevScreen = ScreenSessions
 			sessionID := m.Sessions[m.Cursor].ID
-			return m, loadSessionObservations(m.store, sessionID)
+			return m, loadSessionObservations(m.reader, sessionID)
 		}
 	case "d", "D":
 		if len(m.Sessions) > 0 && m.Cursor < len(m.Sessions) {
@@ -537,18 +521,15 @@ func (m Model) handleSessionsKeys(key string) (tea.Model, tea.Cmd) {
 		m.Cursor = 0
 		m.Scroll = 0
 		m = m.resetSessionDeleteState()
-		return m, loadStats(m.store)
+		return m, loadStats(m.reader)
 	}
 	return m, nil
 }
 
 // ─── Session Detail ──────────────────────────────────────────────────────────
 
-func (m Model) handleSessionDetailKeys(key string) (tea.Model, tea.Cmd) {
-	visibleItems := (m.Height - 12) / 2 // 2 lines per observation item
-	if visibleItems < 3 {
-		visibleItems = 3
-	}
+func (m Model) handleSessionDetailKeys(key string) (tabs.Tab, tea.Cmd) {
+	visibleItems := shared.VisibleItems(m.Height, sessionDetailChrome, observationItemLines, minVisibleItems)
 
 	switch key {
 	case "up", "k":
@@ -569,30 +550,30 @@ func (m Model) handleSessionDetailKeys(key string) (tea.Model, tea.Cmd) {
 		if len(m.SessionObservations) > 0 && m.Cursor < len(m.SessionObservations) {
 			obsID := m.SessionObservations[m.Cursor].ID
 			m.PrevScreen = ScreenSessionDetail
-			return m, loadObservationDetail(m.store, obsID)
+			return m, loadObservationDetail(m.reader, obsID)
 		}
 	case "c":
 		if len(m.SessionObservations) > 0 && m.Cursor < len(m.SessionObservations) {
-			return m, copyToClipboard(m.SessionObservations[m.Cursor].Content)
+			return m, shared.Copy(m.SessionObservations[m.Cursor].Content)
 		}
 	case "t":
 		if len(m.SessionObservations) > 0 && m.Cursor < len(m.SessionObservations) {
 			obsID := m.SessionObservations[m.Cursor].ID
 			m.PrevScreen = ScreenSessionDetail
-			return m, loadTimeline(m.store, obsID)
+			return m, loadTimeline(m.reader, obsID)
 		}
 	case "esc", "q":
 		m.Screen = ScreenSessions
 		m.Cursor = m.SelectedSessionIdx
 		m.SessionDetailScroll = 0
-		return m, loadRecentSessions(m.store)
+		return m, loadRecentSessions(m.reader)
 	}
 	return m, nil
 }
 
 // ─── Setup ───────────────────────────────────────────────────────────────────
 
-func (m Model) handleSetupKeys(key string) (tea.Model, tea.Cmd) {
+func (m Model) handleSetupKeys(key string) (tabs.Tab, tea.Cmd) {
 	// While installing, block all keys
 	if m.SetupInstalling {
 		return m, nil
@@ -629,7 +610,7 @@ func (m Model) handleSetupKeys(key string) (tea.Model, tea.Cmd) {
 			m.SetupError = ""
 			m.SetupAllowlistApplied = false
 			m.SetupAllowlistError = ""
-			return m, loadStats(m.store)
+			return m, loadStats(m.reader)
 		}
 		return m, nil
 	}
@@ -653,33 +634,7 @@ func (m Model) handleSetupKeys(key string) (tea.Model, tea.Cmd) {
 	case "esc", "q":
 		m.Screen = ScreenDashboard
 		m.Cursor = 0
-		return m, loadStats(m.store)
-	}
-	return m, nil
-}
-
-// ─── Cloud Settings ──────────────────────────────────────────────────────────
-
-func (m Model) handleCloudSettingsKeys(key string) (tea.Model, tea.Cmd) {
-	switch key {
-	case "up", "k":
-		if m.Cursor > 0 {
-			m.Cursor--
-		}
-	case "down", "j":
-		if m.Cursor < len(cloudSettingsMenuItems)-1 {
-			m.Cursor++
-		}
-	case "enter", " ":
-		if m.Cursor == len(cloudSettingsMenuItems)-1 { // Back
-			m.Screen = ScreenDashboard
-			m.Cursor = 0
-			return m, loadStats(m.store)
-		}
-	case "esc", "q":
-		m.Screen = ScreenDashboard
-		m.Cursor = 0
-		return m, loadStats(m.store)
+		return m, loadStats(m.reader)
 	}
 	return m, nil
 }
@@ -708,11 +663,11 @@ func sessionDeleteErrorMessage(sessionID string, err error) string {
 func (m Model) refreshScreen(screen Screen) tea.Cmd {
 	switch screen {
 	case ScreenDashboard:
-		return loadStats(m.store)
+		return loadStats(m.reader)
 	case ScreenRecent:
-		return loadRecentObservations(m.store)
+		return loadRecentObservations(m.reader)
 	case ScreenSessions:
-		return loadRecentSessions(m.store)
+		return loadRecentSessions(m.reader)
 	default:
 		return nil
 	}

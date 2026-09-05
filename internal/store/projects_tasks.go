@@ -106,6 +106,15 @@ func strVal(v *string) string {
 // UpsertTask creates or updates a task using the precedence documented in
 // RFC §5.3: sync_id -> jira_key -> (project, sdd_change) -> new row.
 func (s *Store) UpsertTask(p UpsertTaskParams) (UpsertTaskResult, error) {
+	// The knowledge pointer is normalized before any lookup so a malformed
+	// one never reaches the row: a task that already exists must not end up
+	// updated on every other column and rejected on this one.
+	normalizedRef, err := normalizeKnowledgeRefPtr(p.KnowledgeRef)
+	if err != nil {
+		return UpsertTaskResult{}, err
+	}
+	p.KnowledgeRef = normalizedRef
+
 	var existingID int64
 	var existingProject string
 	found := false
@@ -183,22 +192,28 @@ func (s *Store) UpsertTask(p UpsertTaskParams) (UpsertTaskResult, error) {
 			closedAt = now
 		}
 		syncID := newSyncID("task")
-		res, err := s.db.Exec(`
-			INSERT INTO tasks (sync_id, project, jira_key, sdd_change, title, kind, state, jira_status,
-				jira_status_category, state_synced_at, branch, pr_url, knowledge_ref, assignee,
-				created_at, updated_at, closed_at)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			syncID, p.Project, nullableStr(p.JiraKey), nullableStr(p.SDDChange), *p.Title, *p.Kind, state,
-			nullableStr(p.JiraStatus), nullableStr(p.JiraStatusCategory), stateSyncedAt, nullableStr(p.Branch),
-			nullableStr(p.PRUrl), nullableStr(p.KnowledgeRef), nullableStr(p.Assignee), now, now, closedAt)
-		if err != nil {
-			return UpsertTaskResult{}, fmt.Errorf("engram-projects: insert task: %w", err)
-		}
-		id, err := res.LastInsertId()
-		if err != nil {
+		var insertedID int64
+		if err := s.withTx(func(tx *sql.Tx) error {
+			res, err := s.execHook(tx, `
+				INSERT INTO tasks (sync_id, project, jira_key, sdd_change, title, kind, state, jira_status,
+					jira_status_category, state_synced_at, branch, pr_url, knowledge_ref, assignee,
+					created_at, updated_at, closed_at)
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				syncID, p.Project, nullableStr(p.JiraKey), nullableStr(p.SDDChange), *p.Title, *p.Kind, state,
+				nullableStr(p.JiraStatus), nullableStr(p.JiraStatusCategory), stateSyncedAt, nullableStr(p.Branch),
+				nullableStr(p.PRUrl), nullableStr(p.KnowledgeRef), nullableStr(p.Assignee), now, now, closedAt)
+			if err != nil {
+				return fmt.Errorf("engram-projects: insert task: %w", err)
+			}
+			insertedID, err = res.LastInsertId()
+			if err != nil {
+				return err
+			}
+			return s.enqueueTaskTx(tx, insertedID)
+		}); err != nil {
 			return UpsertTaskResult{}, err
 		}
-		existingID = id
+		existingID = insertedID
 	} else {
 		sets := []string{"updated_at = ?"}
 		args := []any{now}
@@ -254,8 +269,13 @@ func (s *Store) UpsertTask(p UpsertTaskParams) (UpsertTaskResult, error) {
 			args = append(args, *p.Assignee)
 		}
 		args = append(args, existingID)
-		if _, err := s.db.Exec(`UPDATE tasks SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...); err != nil {
-			return UpsertTaskResult{}, fmt.Errorf("engram-projects: update task: %w", err)
+		if err := s.withTx(func(tx *sql.Tx) error {
+			if _, err := s.execHook(tx, `UPDATE tasks SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...); err != nil {
+				return fmt.Errorf("engram-projects: update task: %w", err)
+			}
+			return s.enqueueTaskTx(tx, existingID)
+		}); err != nil {
+			return UpsertTaskResult{}, err
 		}
 	}
 
@@ -491,23 +511,11 @@ func (s *Store) LinkTaskObservation(p LinkTaskObservationParams) (LinkTaskObserv
 		}
 	}
 
-	now := s.nowUTC()
-	res, err := s.db.Exec(`
-		INSERT OR IGNORE INTO task_observations (task_id, observation_id, task_sync_id, observation_sync_id, role, linked_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		p.Task.ID, p.ObservationID, p.Task.SyncID, obs.SyncID, role, now)
-	if err != nil {
-		return LinkTaskObservationResult{}, fmt.Errorf("engram-projects: link task observation: %w", err)
-	}
-	affected, _ := res.RowsAffected()
-
-	result := LinkTaskObservationResult{
-		Linked:            affected > 0,
-		TaskSyncID:        p.Task.SyncID,
-		ObservationSyncID: obs.SyncID,
-		Role:              role,
-	}
-
+	// Every rejection has to happen before the first INSERT. A graph_ref
+	// without its commit used to be caught after the link row was already
+	// written, so the caller got the error while the link existed with the
+	// default role — and a corrected retry hit INSERT OR IGNORE and kept
+	// that wrong role forever.
 	type refCandidate struct {
 		kind        string
 		ref         string
@@ -515,7 +523,11 @@ func (s *Store) LinkTaskObservation(p LinkTaskObservationParams) (LinkTaskObserv
 	}
 	var candidates []refCandidate
 	if p.KnowledgeRef != nil && strings.TrimSpace(*p.KnowledgeRef) != "" {
-		candidates = append(candidates, refCandidate{"knowledge", *p.KnowledgeRef, nil})
+		knowledgeRef, err := NormalizeKnowledgeRef(*p.KnowledgeRef)
+		if err != nil {
+			return LinkTaskObservationResult{}, err
+		}
+		candidates = append(candidates, refCandidate{"knowledge", knowledgeRef, nil})
 	}
 	if p.GraphRef != nil && strings.TrimSpace(*p.GraphRef) != "" {
 		if p.GraphCommit == nil || strings.TrimSpace(*p.GraphCommit) == "" {
@@ -530,19 +542,88 @@ func (s *Store) LinkTaskObservation(p LinkTaskObservationParams) (LinkTaskObserv
 		candidates = append(candidates, refCandidate{"jira", *p.JiraRef, nil})
 	}
 
-	for _, c := range candidates {
-		res, err := s.db.Exec(`
-			INSERT OR IGNORE INTO observation_refs (observation_sync_id, ref_kind, ref, graph_commit, created_at)
-			VALUES (?, ?, ?, ?, ?)`,
-			obs.SyncID, c.kind, c.ref, nullableStr(c.graphCommit), now)
+	now := s.nowUTC()
+	result := LinkTaskObservationResult{
+		TaskSyncID:        p.Task.SyncID,
+		ObservationSyncID: obs.SyncID,
+		Role:              role,
+	}
+
+	// The link, its references, and the mutations that replicate them all
+	// commit together: a partially replicated link would be indistinguishable
+	// from a lost one on the other side.
+	if err := s.withTx(func(tx *sql.Tx) error {
+		result.RefsAdded = 0
+		result.Refs = nil
+		res, err := s.execHook(tx, `
+			INSERT OR IGNORE INTO task_observations (task_id, observation_id, task_sync_id, observation_sync_id, role, linked_at)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			p.Task.ID, p.ObservationID, p.Task.SyncID, obs.SyncID, role, now)
 		if err != nil {
-			return LinkTaskObservationResult{}, fmt.Errorf("engram-projects: add observation ref: %w", err)
+			return fmt.Errorf("engram-projects: link task observation: %w", err)
 		}
-		if affected, _ := res.RowsAffected(); affected > 0 {
-			result.RefsAdded++
-			result.Refs = append(result.Refs, ObservationRefOut{RefKind: c.kind, Ref: c.ref, GraphCommit: c.graphCommit})
+		affected, _ := res.RowsAffected()
+		result.Linked = affected > 0
+		if affected > 0 {
+			if err := s.enqueueTaskLinkTx(tx, taskProject, p.Task.SyncID, obs.SyncID); err != nil {
+				return err
+			}
 		}
+
+		for _, c := range candidates {
+			res, err := s.execHook(tx, `
+				INSERT OR IGNORE INTO observation_refs (observation_sync_id, ref_kind, ref, graph_commit, created_at)
+				VALUES (?, ?, ?, ?, ?)`,
+				obs.SyncID, c.kind, c.ref, nullableStr(c.graphCommit), now)
+			if err != nil {
+				return fmt.Errorf("engram-projects: add observation ref: %w", err)
+			}
+			if affected, _ := res.RowsAffected(); affected > 0 {
+				result.RefsAdded++
+				result.Refs = append(result.Refs, ObservationRefOut{RefKind: c.kind, Ref: c.ref, GraphCommit: c.graphCommit})
+				if err := s.enqueueObservationRefTx(tx, taskProject, obs.SyncID, c.kind, c.ref); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return LinkTaskObservationResult{}, err
 	}
 
 	return result, nil
+}
+
+// TaskCounts holds the per-task counters returned alongside a single task
+// (backs GET /projects/{slug}/tasks/{task}). ListTasks computes the same two
+// numbers per row; this is the single-task equivalent.
+type TaskCounts struct {
+	Observations int `json:"observations"`
+	Evidence     int `json:"evidence"`
+}
+
+// TaskCounts counts the observations linked to a task and the evidence
+// registered against it.
+func (s *Store) TaskCounts(taskID int64) (TaskCounts, error) {
+	var c TaskCounts
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM task_observations WHERE task_id = ?`, taskID,
+	).Scan(&c.Observations); err != nil {
+		return c, fmt.Errorf("engram-projects: count task observations: %w", err)
+	}
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM evidence WHERE task_id = ? AND deleted_at IS NULL`, taskID,
+	).Scan(&c.Evidence); err != nil {
+		return c, fmt.Errorf("engram-projects: count task evidence: %w", err)
+	}
+	return c, nil
+}
+
+// TaskStateStale reports whether a task's Jira mirror is older than
+// staleAfterHours, using the same rule ListTasks applies to every row.
+func TaskStateStale(stateSyncedAt *string, staleAfterHours int) bool {
+	if staleAfterHours <= 0 {
+		staleAfterHours = 24
+	}
+	return isTaskStateStale(stateSyncedAt, staleAfterHours)
 }

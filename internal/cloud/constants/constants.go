@@ -11,6 +11,7 @@ const (
 	ReasonAuthRequired                = "auth_required"
 	ReasonPolicyForbidden             = "policy_forbidden"
 	ReasonTransportFailed             = "transport_failed"
+	ReasonUnsupportedEntity           = "unsupported_entity"
 	ReasonCloudConfigError            = "cloud_config_error"
 
 	UpgradeStatusReady   = "ready"
@@ -45,5 +46,6 @@ var DeterministicReasons = []string{
 	ReasonAuthRequired,
 	ReasonPolicyForbidden,
 	ReasonTransportFailed,
+	ReasonUnsupportedEntity,
 	ReasonCloudConfigError,
 }

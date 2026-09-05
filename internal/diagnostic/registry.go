@@ -40,6 +40,9 @@ func DefaultRegistry() Registry {
 		SyncMutationRequiredFieldsCheck{},
 		SQLiteLockContentionCheck{},
 		ProjectsSchemaCheck{},
+		ProjectsSyncCheck{},
+		RunbookIndexAgeCheck{},
+		KnowledgeRefDanglingCheck{},
 	)
 }
 

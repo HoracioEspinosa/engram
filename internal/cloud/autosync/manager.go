@@ -416,6 +416,13 @@ func (m *Manager) cycle(ctx context.Context) {
 			m.recordBlocked(err.Error(), constants.ReasonNonEnrolledPendingMutations)
 			return
 		}
+		var unsupported *unsupportedEntityError
+		if errors.As(err, &unsupported) {
+			m.recordFailureWithReason(
+				autosyncFailureMessage(m.cfg.TargetKey, fmt.Sprintf("push: %v", err), err),
+				constants.ReasonUnsupportedEntity)
+			return
+		}
 		reasonCode := classifyTransportError(err)
 		m.recordFailureWithReason(autosyncFailureMessage(m.cfg.TargetKey, fmt.Sprintf("push: %v", err), err), reasonCode)
 		return
@@ -508,36 +515,113 @@ func (m *Manager) push(ctx context.Context) error {
 	}
 
 	for _, project := range order {
-		batch := groups[project]
-		entries := make([]MutationEntry, len(batch))
-		seqs := make([]int64, len(batch))
-		for i, mut := range batch {
-			entries[i] = MutationEntry{
-				Project:   mut.Project,
-				Entity:    mut.Entity,
-				EntityKey: mut.EntityKey,
-				Op:        mut.Op,
-				Payload:   json.RawMessage(mut.Payload),
-			}
-			seqs[i] = mut.Seq
-		}
+		upstream, projects := splitProjectsMutations(groups[project])
 
-		result, err := m.transport.PushMutations(entries)
-		if err != nil {
-			return fmt.Errorf("transport push project %q: %w", project, err)
+		// Two chunks, upstream first (RFC section 10.2). A server older than
+		// the engram-projects release rejects the second one; splitting them
+		// is what keeps that rejection from also blocking the sessions,
+		// observations, prompts and relations already waiting behind it.
+		if err := m.pushChunk(project, upstream); err != nil {
+			return err
 		}
-		if result == nil {
-			return fmt.Errorf("transport push project %q: missing accepted seqs for %d mutations", project, len(entries))
-		}
-		if len(result.AcceptedSeqs) != len(entries) {
-			return fmt.Errorf("transport push project %q: cloud accepted %d of %d mutations; refusing to ack local seqs", project, len(result.AcceptedSeqs), len(entries))
-		}
-		if err := m.store.AckSyncMutationSeqs(m.cfg.TargetKey, seqs); err != nil {
-			return fmt.Errorf("ack project %q: %w", project, err)
+		if err := m.pushChunk(project, projects); err != nil {
+			if isUnsupportedEntityRejection(err) {
+				return &unsupportedEntityError{project: project, pending: len(projects), cause: err}
+			}
+			return err
 		}
 	}
 
 	return nil
+}
+
+// splitProjectsMutations partitions one project's pending batch into the
+// upstream entities and the engram-projects ones, preserving journal order
+// inside each half so causally ordered rows still arrive in order.
+func splitProjectsMutations(batch []store.SyncMutation) (upstream, projects []store.SyncMutation) {
+	for _, mut := range batch {
+		switch mut.Entity {
+		case store.SyncEntityProjectCard, store.SyncEntityTask, store.SyncEntityEvidence,
+			store.SyncEntityTaskLink, store.SyncEntityObservationRef:
+			projects = append(projects, mut)
+		default:
+			upstream = append(upstream, mut)
+		}
+	}
+	return upstream, projects
+}
+
+// pushChunk sends one batch and acks its sequences only when the cloud
+// accepted every entry. An empty batch is a no-op, so a project with nothing
+// new on one side never produces an empty request.
+func (m *Manager) pushChunk(project string, batch []store.SyncMutation) error {
+	if len(batch) == 0 {
+		return nil
+	}
+	entries := make([]MutationEntry, len(batch))
+	seqs := make([]int64, len(batch))
+	for i, mut := range batch {
+		entries[i] = MutationEntry{
+			Project:   mut.Project,
+			Entity:    mut.Entity,
+			EntityKey: mut.EntityKey,
+			Op:        mut.Op,
+			Payload:   json.RawMessage(mut.Payload),
+		}
+		seqs[i] = mut.Seq
+	}
+
+	result, err := m.transport.PushMutations(entries)
+	if err != nil {
+		return fmt.Errorf("transport push project %q: %w", project, err)
+	}
+	if result == nil {
+		return fmt.Errorf("transport push project %q: missing accepted seqs for %d mutations", project, len(entries))
+	}
+	if len(result.AcceptedSeqs) != len(entries) {
+		return fmt.Errorf("transport push project %q: cloud accepted %d of %d mutations; refusing to ack local seqs", project, len(result.AcceptedSeqs), len(entries))
+	}
+	if err := m.store.AckSyncMutationSeqs(m.cfg.TargetKey, seqs); err != nil {
+		return fmt.Errorf("ack project %q: %w", project, err)
+	}
+	return nil
+}
+
+// unsupportedEntityStatusError is the optional interface a transport error
+// implements when the cloud refused an entity it does not know.
+type unsupportedEntityStatusError interface {
+	IsUnsupportedEntity() bool
+}
+
+// unsupportedEntityError marks a cycle whose engram-projects chunk was
+// refused while its upstream chunk went through. It carries the project and
+// the number of mutations left pending so `engram cloud status` can say what
+// is waiting and for whom.
+type unsupportedEntityError struct {
+	project string
+	pending int
+	cause   error
+}
+
+func (e *unsupportedEntityError) Error() string {
+	return fmt.Sprintf(
+		"cloud rejected %d engram-projects mutation(s) for project %q as an unsupported entity; "+
+			"they stay pending until the cloud image that understands them is deployed: %v",
+		e.pending, e.project, e.cause)
+}
+
+func (e *unsupportedEntityError) Unwrap() error { return e.cause }
+
+// isUnsupportedEntityRejection walks the error chain for a transport error
+// that reports an unknown mutation entity.
+func isUnsupportedEntityRejection(err error) bool {
+	for err != nil {
+		if ue, ok := err.(unsupportedEntityStatusError); ok && ue.IsUnsupportedEntity() {
+			return true
+		}
+		err = errors.Unwrap(err)
+	}
+	return false
 }
 
 // ─── Pull ────────────────────────────────────────────────────────────────────

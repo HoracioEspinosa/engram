@@ -375,6 +375,7 @@ Your production engram is fully untouched throughout.
 | `engram doctor`                            | Run read-only operational diagnostics                           |
 | `engram cloud <subcommand>`                | Opt-in cloud config/status/enrollment + cloud runtime (`serve`) |
 | `engram projects list\|consolidate\|prune` | Manage project names                                            |
+| `engram project [<slug>] <sub>`            | engram-projects operations for one project: `card`, `upsert`, `graph sync`, `tasks list\|upsert\|link`, `evidence add\|list`, `runbooks sync\|find`, `context <task>` — all with `--json` |
 | `engram obsidian-export`                   | Export to Obsidian vault (beta)                                 |
 | `engram version`                           | Show version                                                    |
 
@@ -404,6 +405,7 @@ Full environment variable reference → [DOCS.md#environment-variables](DOCS.md#
 | [Agent Setup](docs/AGENT-SETUP.md)            | Per-agent configuration + Memory Protocol                              |
 | [Codebase Guide](docs/CODEBASE-GUIDE.md)      | Guide to the repository structure, flows, and implementation landmarks |
 | [Architecture](docs/ARCHITECTURE.md)          | How it works + MCP tools + project structure                           |
+| [engram-projects CLI](docs/ENGRAM-PROJECTS-CLI.md) | `engram project …`: cards, tasks, evidence, runbooks, code graph, context packs |
 | [Plugins](docs/PLUGINS.md)                    | OpenCode & Claude Code plugin details                                  |
 | [Comparison](docs/COMPARISON.md)              | Why Engram vs claude-mem                                               |
 | [Intended Usage](docs/intended-usage.md)      | Mental model — how Engram is meant to be used                          |

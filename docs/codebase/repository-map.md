@@ -20,7 +20,9 @@
 | Change cloud/dashboard auth | `internal/cloud/auth/auth.go` | `cmd/engram/cloud.go`, `internal/cloud/cloudserver/cloudserver.go` |
 | Change agent setup | `internal/setup/registry.go`, `internal/setup/agents.go`, `internal/setup/setup.go` | `plugin/`, `docs/AGENT-SETUP.md`, `docs/PLUGINS.md` |
 | Change project detection | `internal/project/detect.go` | `internal/project/similar.go`, `docs/AGENT-SETUP.md` |
-| Change the TUI | `internal/tui/model.go` | `internal/tui/update.go`, `internal/tui/view.go`, `internal/tui/styles.go` |
+| Change a TUI screen | `internal/tui/tabs/<tab>/` | `internal/tui/shared/`, `internal/tui/theme/` |
+| Change TUI navigation or the frame | `internal/tui/app/` | `internal/tui/tabs/tab.go`, `internal/tui/tui.go` |
+| Change what the TUI reads | `internal/tui/data/` | `internal/store/` |
 | Change Obsidian | `internal/obsidian/` | `plugin/obsidian/`, `docs/beta/obsidian-brain.md` |
 | Prepare a large feature | `openspec/changes/*` | `openspec/specs/*`, `CONTRIBUTING.md` |
 

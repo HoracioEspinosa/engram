@@ -1,126 +1,45 @@
-package tui
+package memory
 
 import (
 	"encoding/base64"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/engram/internal/tui/shared"
 )
 
-// ─── OSC 52 sequence generation ──────────────────────────────────────────────
-
-func TestOSC52SequenceForContent(t *testing.T) {
-	content := "hello world"
-	seq := osc52Sequence(content)
-
-	wantPrefix := "\x1b]52;c;"
-	wantSuffix := "\x07"
-	wantB64 := base64.StdEncoding.EncodeToString([]byte(content))
-
-	if !strings.HasPrefix(seq, wantPrefix) {
-		t.Fatalf("sequence does not start with OSC 52 prefix: %q", seq)
-	}
-	if !strings.HasSuffix(seq, wantSuffix) {
-		t.Fatalf("sequence does not end with BEL: %q", seq)
-	}
-	middle := strings.TrimPrefix(strings.TrimSuffix(seq, wantSuffix), wantPrefix)
-	if middle != wantB64 {
-		t.Fatalf("base64 payload = %q, want %q", middle, wantB64)
-	}
-}
-
-func TestOSC52SequenceEmptyContent(t *testing.T) {
-	seq := osc52Sequence("")
-	wantB64 := base64.StdEncoding.EncodeToString([]byte(""))
-	if !strings.Contains(seq, wantB64) {
-		t.Fatalf("empty content sequence should still contain valid base64: %q", seq)
-	}
-}
-
-func TestOSC52SequenceUnicodeContent(t *testing.T) {
-	content := "Decisión de arquitectura 🐘"
-	seq := osc52Sequence(content)
-	wantB64 := base64.StdEncoding.EncodeToString([]byte(content))
-	if !strings.Contains(seq, wantB64) {
-		t.Fatalf("unicode content not properly encoded: %q", seq)
-	}
-}
-
-// ─── copyToClipboard command ─────────────────────────────────────────────────
-
-func TestCopyToClipboardReturnsClipboardCopiedMsg(t *testing.T) {
-	cmd := copyToClipboard("test content")
-	if cmd == nil {
-		t.Fatal("copyToClipboard should return a non-nil command")
-	}
-	msg := cmd()
-	_, ok := msg.(clipboardCopiedMsg)
-	if !ok {
-		t.Fatalf("command returned %T, want clipboardCopiedMsg", msg)
-	}
-}
-
-func TestCopyToClipboardMsgContainsSequence(t *testing.T) {
-	content := "observation content"
-	cmd := copyToClipboard(content)
-	msg := cmd()
-	cm, ok := msg.(clipboardCopiedMsg)
-	if !ok {
-		t.Fatalf("message type = %T", msg)
-	}
-	wantB64 := base64.StdEncoding.EncodeToString([]byte(content))
-	if !strings.Contains(cm.sequence, wantB64) {
-		t.Fatalf("clipboardCopiedMsg.sequence does not contain encoded content: %q", cm.sequence)
-	}
-}
-
-// ─── clipboardClearMsg timer ─────────────────────────────────────────────────
-
-func TestClearFeedbackAfterReturnsCmd(t *testing.T) {
-	cmd := clearFeedbackAfter(1 * time.Millisecond)
-	if cmd == nil {
-		t.Fatal("clearFeedbackAfter should return a non-nil command")
-	}
-	msg := cmd()
-	_, ok := msg.(clipboardClearMsg)
-	if !ok {
-		t.Fatalf("message type = %T, want clipboardClearMsg", msg)
-	}
-}
-
-// ─── Update: clipboardCopiedMsg sets CopyFeedback ────────────────────────────
+// ─── Update: shared.CopiedMsg sets CopyFeedback ────────────────────────────
 
 func TestUpdateClipboardCopiedMsgSetsFeedback(t *testing.T) {
 	m := New(nil, "")
 	m.CopyFeedback = ""
 
-	updatedModel, cmd := m.Update(clipboardCopiedMsg{sequence: "\x1b]52;c;aGVsbG8=\x07"})
+	updatedModel, cmd := m.Update(shared.CopiedMsg{Sequence: "\x1b]52;c;aGVsbG8=\x07"})
 	updated := updatedModel.(Model)
 
 	if updated.CopyFeedback != "✓ Copied!" {
 		t.Fatalf("CopyFeedback = %q, want %q", updated.CopyFeedback, "✓ Copied!")
 	}
 	if cmd == nil {
-		t.Fatal("clipboardCopiedMsg should return a clear-feedback command")
+		t.Fatal("shared.CopiedMsg should return a clear-feedback command")
 	}
 }
 
-// ─── Update: clipboardClearMsg clears CopyFeedback ───────────────────────────
+// ─── Update: shared.ClearFeedbackMsg clears CopyFeedback ───────────────────────────
 
 func TestUpdateClipboardClearMsgClearsFeedback(t *testing.T) {
 	m := New(nil, "")
 	m.CopyFeedback = "✓ Copied!"
 
-	updatedModel, cmd := m.Update(clipboardClearMsg{})
+	updatedModel, cmd := m.Update(shared.ClearFeedbackMsg{})
 	updated := updatedModel.(Model)
 
 	if updated.CopyFeedback != "" {
 		t.Fatalf("CopyFeedback = %q, want empty string after clear", updated.CopyFeedback)
 	}
 	if cmd != nil {
-		t.Fatal("clipboardClearMsg should not return a command")
+		t.Fatal("shared.ClearFeedbackMsg should not return a command")
 	}
 }
 
@@ -143,12 +62,12 @@ func TestRecentScreenCKeyCopiesToClipboard(t *testing.T) {
 		t.Fatal("'c' on recent screen should return a clipboard command")
 	}
 	msg := cmd()
-	cm, ok := msg.(clipboardCopiedMsg)
+	cm, ok := msg.(shared.CopiedMsg)
 	if !ok {
-		t.Fatalf("command returned %T, want clipboardCopiedMsg", msg)
+		t.Fatalf("command returned %T, want shared.CopiedMsg", msg)
 	}
 	wantB64 := base64.StdEncoding.EncodeToString([]byte("second observation content"))
-	if !strings.Contains(cm.sequence, wantB64) {
+	if !strings.Contains(cm.Sequence, wantB64) {
 		t.Fatalf("sequence does not contain expected content encoding")
 	}
 }
@@ -180,12 +99,12 @@ func TestSearchResultsScreenCKeyCopiesToClipboard(t *testing.T) {
 		t.Fatal("'c' on search results screen should return a clipboard command")
 	}
 	msg := cmd()
-	cm, ok := msg.(clipboardCopiedMsg)
+	cm, ok := msg.(shared.CopiedMsg)
 	if !ok {
-		t.Fatalf("command returned %T, want clipboardCopiedMsg", msg)
+		t.Fatalf("command returned %T, want shared.CopiedMsg", msg)
 	}
 	wantB64 := base64.StdEncoding.EncodeToString([]byte("search result one"))
-	if !strings.Contains(cm.sequence, wantB64) {
+	if !strings.Contains(cm.Sequence, wantB64) {
 		t.Fatalf("sequence does not contain expected content encoding")
 	}
 }
@@ -216,12 +135,12 @@ func TestObservationDetailScreenCKeyCopiesToClipboard(t *testing.T) {
 		t.Fatal("'c' on observation detail screen should return a clipboard command")
 	}
 	msg := cmd()
-	cm, ok := msg.(clipboardCopiedMsg)
+	cm, ok := msg.(shared.CopiedMsg)
 	if !ok {
-		t.Fatalf("command returned %T, want clipboardCopiedMsg", msg)
+		t.Fatalf("command returned %T, want shared.CopiedMsg", msg)
 	}
 	wantB64 := base64.StdEncoding.EncodeToString([]byte("full observation content for copy"))
-	if !strings.Contains(cm.sequence, wantB64) {
+	if !strings.Contains(cm.Sequence, wantB64) {
 		t.Fatalf("sequence does not contain expected content encoding")
 	}
 }
@@ -253,12 +172,12 @@ func TestSessionDetailScreenCKeyCopiesToClipboard(t *testing.T) {
 		t.Fatal("'c' on session detail screen should return a clipboard command")
 	}
 	msg := cmd()
-	cm, ok := msg.(clipboardCopiedMsg)
+	cm, ok := msg.(shared.CopiedMsg)
 	if !ok {
-		t.Fatalf("command returned %T, want clipboardCopiedMsg", msg)
+		t.Fatalf("command returned %T, want shared.CopiedMsg", msg)
 	}
 	wantB64 := base64.StdEncoding.EncodeToString([]byte("session obs two"))
-	if !strings.Contains(cm.sequence, wantB64) {
+	if !strings.Contains(cm.Sequence, wantB64) {
 		t.Fatalf("sequence does not contain expected content encoding")
 	}
 }

@@ -658,6 +658,8 @@ func main() {
 		cmdObsidianExport(cfg)
 	case "projects":
 		cmdProjects(cfg)
+	case "project":
+		cmdProject(cfg)
 	case "setup":
 		cmdSetup(cfg)
 	case "protocol-mode":
@@ -1652,6 +1654,18 @@ func (a *storeAdapter) Stats() *store.Stats {
 	st, _ := a.s.Stats()
 	return st
 }
+
+// ObservationExportRefs forwards the optional engram-projects capability of
+// the exporter (RFC §9.5). The adapter has to declare it explicitly: the
+// exporter type-asserts on what it is handed, so an adapter that forwards
+// only Export/Stats silently exports notes without their knowledge_ref,
+// jira_key, runbook_id and graph_commit — and nothing fails while it does.
+func (a *storeAdapter) ObservationExportRefs(project string) (map[string]store.ObservationExportRefs, error) {
+	return a.s.ObservationExportRefs(project)
+}
+
+// Compile-time guard for the paragraph above.
+var _ obsidian.ProjectRefReader = (*storeAdapter)(nil)
 
 func cmdObsidianExport(cfg store.Config) {
 	// Parse flags
@@ -2679,6 +2693,17 @@ Commands:
                      Merge similar project names into one canonical name
                        --all      Scan ALL projects for similar name groups
                        --dry-run  Preview what would be merged (no changes)
+  project [<slug>] <sub>
+                     engram-projects operations for one project (all accept --json)
+                       card                     Pointers, counters and cloud sync status
+                       upsert                   Create/update the project card
+                       graph sync               Stamp graph_commit/graph_built_at/graph_summary
+                       tasks list|upsert|link   Tasks and their linked observations
+                       evidence add|list        Captured evidence files
+                       runbooks sync|find       Runbook index and symptom search
+                       context <task>           Compose a task's context pack
+                     <slug> is optional: ENGRAM_PROJECT, then cwd detection.
+                     Run "engram project help" for the full flag list.
   setup [agent]      Install/setup agent integration (opencode, pi, claude-code,
                      gemini-cli, codex, antigravity-cli, windsurf, qwen, kiro,
                      cursor, vscode-copilot, kilocode)
@@ -2727,6 +2752,12 @@ Environment:
                      ENGRAM_CLOUD_TOKEN and ENGRAM_CLOUD_SERVER
   ENGRAM_CLOUD_SERVER
                      Cloud server URL used by autosync and engram sync --cloud
+  ENGRAM_PROJECTS_SYNC
+                     Set to 1 to replicate the engram-projects rows (project cards,
+                     tasks, evidence, task links, observation refs). Default 0:
+                     leave it off until the cloud image and every teammate's binary
+                     understand the new entities, otherwise their pull stops.
+                     Applying what arrives is never gated by this flag.
   ENGRAM_DATABASE_URL
                      Postgres DSN for engram cloud serve
   ENGRAM_CLOUD_HOST  Bind host for engram cloud serve (default: 127.0.0.1)

@@ -11,6 +11,14 @@ import (
 // markdown string with YAML frontmatter, an H1 title, the content body,
 // and a wikilinks footer section.
 func ObservationToMarkdown(obs store.Observation) string {
+	return ObservationToMarkdownWithRefs(obs, store.ObservationExportRefs{})
+}
+
+// ObservationToMarkdownWithRefs is ObservationToMarkdown plus the
+// engram-projects pointers of RFC §9.5. Each one is emitted only when it
+// exists, so a store without the projects schema produces byte-identical
+// notes to the ones the bridge has always written.
+func ObservationToMarkdownWithRefs(obs store.Observation, refs store.ObservationExportRefs) string {
 	var sb strings.Builder
 
 	topicKey := ""
@@ -37,6 +45,21 @@ func ObservationToMarkdown(obs store.Observation) string {
 	fmt.Fprintf(&sb, "created_at: %q\n", obs.CreatedAt)
 	fmt.Fprintf(&sb, "updated_at: %q\n", obs.UpdatedAt)
 	fmt.Fprintf(&sb, "revision_count: %d\n", obs.RevisionCount)
+	// engram-projects pointers (RFC §9.5). knowledge_ref doubles as the
+	// promotion mark the bridge filters on, so it is quoted like every other
+	// free-form value: a vault path carries spaces and a `#Anchor`.
+	if refs.KnowledgeRef != "" {
+		fmt.Fprintf(&sb, "knowledge_ref: %q\n", refs.KnowledgeRef)
+	}
+	if refs.JiraKey != "" {
+		fmt.Fprintf(&sb, "jira_key: %s\n", refs.JiraKey)
+	}
+	if refs.RunbookID != "" {
+		fmt.Fprintf(&sb, "runbook_id: %s\n", refs.RunbookID)
+	}
+	if refs.GraphCommit != "" {
+		fmt.Fprintf(&sb, "graph_commit: %s\n", refs.GraphCommit)
+	}
 	fmt.Fprintf(&sb, "tags:\n  - %s\n", project)
 	if obs.Type != "" {
 		fmt.Fprintf(&sb, "  - %s\n", obs.Type)

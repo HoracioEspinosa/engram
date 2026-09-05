@@ -75,7 +75,7 @@ func TestSQLiteLockContentionBranches(t *testing.T) {
 
 func TestRegistryLookupAndOrdering(t *testing.T) {
 	codes := RegisteredCodes()
-	want := []string{CheckManualSessionNameProjectMismatch, CheckProjectsSchema, CheckSessionProjectDirectoryMismatch, CheckSQLiteLockContention, CheckSyncMutationRequiredFields}
+	want := []string{CheckKnowledgeRefDangling, CheckManualSessionNameProjectMismatch, CheckProjectsSchema, CheckProjectsSync, CheckRunbookIndexAge, CheckSessionProjectDirectoryMismatch, CheckSQLiteLockContention, CheckSyncMutationRequiredFields}
 	if strings.Join(codes, ",") != strings.Join(want, ",") {
 		t.Fatalf("RegisteredCodes = %v, want %v", codes, want)
 	}
@@ -173,7 +173,7 @@ func TestRunnerRunAllHealthyEvaluatesEveryMVPCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunAll: %v", err)
 	}
-	if report.Status != StatusOK || report.Summary.OK != 5 || len(report.Checks) != 5 {
+	if report.Status != StatusOK || report.Summary.OK != 8 || len(report.Checks) != 8 {
 		t.Fatalf("report=%+v", report)
 	}
 	for _, check := range report.Checks {

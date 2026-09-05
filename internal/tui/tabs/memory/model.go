@@ -1,25 +1,27 @@
-// Package tui implements the Bubbletea terminal UI for Engram.
+// Package memory is the Memory workspace tab: the dashboard, search, recent
+// observations, observation detail, timeline, sessions, session detail and the
+// agent setup screens.
 //
-// Following the Gentleman Bubbletea patterns:
-// - Screen constants as iota
-// - Single Model struct holds ALL state
-// - Update() with type switch
-// - Per-screen key handlers returning (tea.Model, tea.Cmd)
-// - Vim keys (j/k) for navigation
-// - PrevScreen for back navigation
-package tui
+// It is an isolated Elm sub-model:
+//   - screen constants are a local iota; the root does not know them
+//   - one Model struct holds all of the tab's state
+//   - Update type-switches, per-screen key handlers return (tabs.Tab, tea.Cmd)
+//   - vim keys (j/k) navigate, PrevScreen walks back
+//
+// Data reaches the tab through data.MemoryReader, never through *store.Store,
+// and styling through theme.Styles.
+package memory
 
 import (
-	"errors"
-
 	"github.com/Gentleman-Programming/engram/internal/setup"
 	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/engram/internal/tui/data"
+	"github.com/Gentleman-Programming/engram/internal/tui/theme"
 	"github.com/Gentleman-Programming/engram/internal/version"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // ─── Screens ─────────────────────────────────────────────────────────────────
@@ -36,7 +38,6 @@ const (
 	ScreenSessions
 	ScreenSessionDetail
 	ScreenSetup
-	ScreenCloudSettings
 )
 
 type SessionDeleteState int
@@ -102,7 +103,8 @@ type setupInstallMsg struct {
 // ─── Model ───────────────────────────────────────────────────────────────────
 
 type Model struct {
-	store      *store.Store
+	reader     data.MemoryReader
+	styles     theme.Styles
 	Version    string
 	Screen     Screen
 	PrevScreen Screen
@@ -161,8 +163,10 @@ type Model struct {
 	SetupSpinner          spinner.Model
 }
 
-// New creates a new TUI model connected to the given store.
-func New(s *store.Store, version string) Model {
+// New creates the Memory tab bound to the given reader.
+func New(r data.MemoryReader, version string) Model {
+	styles := theme.Default()
+
 	ti := textinput.New()
 	ti.Placeholder = "Search memories..."
 	ti.CharLimit = 256
@@ -170,10 +174,11 @@ func New(s *store.Store, version string) Model {
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(colorLavender)
+	sp.Style = styles.Spinner
 
 	return Model{
-		store:        s,
+		reader:       r,
+		styles:       styles,
 		Version:      version,
 		Screen:       ScreenDashboard,
 		SearchInput:  ti,
@@ -181,13 +186,22 @@ func New(s *store.Store, version string) Model {
 	}
 }
 
-// Init loads initial data (stats for the dashboard).
+// Title is the label the tab bar shows for this tab.
+func (Model) Title() string { return "Memory" }
+
+// Init loads the dashboard: the counters and the update check behind its
+// banner.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
-		loadStats(m.store),
+		loadStats(m.reader),
 		checkForUpdate(m.Version),
-		tea.EnterAltScreen,
 	)
+}
+
+// Refresh reloads the data behind the current screen. Screens that hold no
+// list — search, detail, timeline, setup — have nothing to reload.
+func (m Model) Refresh() tea.Cmd {
+	return m.refreshScreen(m.Screen)
 }
 
 // ─── Commands (data loading) ─────────────────────────────────────────────────
@@ -198,61 +212,61 @@ func checkForUpdate(v string) tea.Cmd {
 	}
 }
 
-func loadStats(s *store.Store) tea.Cmd {
+func loadStats(r data.MemoryReader) tea.Cmd {
 	return func() tea.Msg {
-		stats, err := s.Stats()
+		stats, err := r.Stats()
 		return statsLoadedMsg{stats: stats, err: err}
 	}
 }
 
-func searchMemories(s *store.Store, query string) tea.Cmd {
+func searchMemories(r data.MemoryReader, query string) tea.Cmd {
 	return func() tea.Msg {
-		results, err := s.Search(query, store.SearchOptions{Limit: 50})
+		results, err := r.Search(query, store.SearchOptions{Limit: 50})
 		return searchResultsMsg{results: results, query: query, err: err}
 	}
 }
 
-func loadRecentObservations(s *store.Store) tea.Cmd {
+func loadRecentObservations(r data.MemoryReader) tea.Cmd {
 	return func() tea.Msg {
-		obs, err := s.AllObservations("", "", 50)
+		obs, err := r.RecentObservations(50)
 		return recentObservationsMsg{observations: obs, err: err}
 	}
 }
 
-func loadObservationDetail(s *store.Store, id int64) tea.Cmd {
+func loadObservationDetail(r data.MemoryReader, id int64) tea.Cmd {
 	return func() tea.Msg {
-		obs, err := s.GetObservation(id)
+		obs, err := r.Observation(id)
 		return observationDetailMsg{observation: obs, err: err}
 	}
 }
 
-func loadTimeline(s *store.Store, obsID int64) tea.Cmd {
+func loadTimeline(r data.MemoryReader, obsID int64) tea.Cmd {
 	return func() tea.Msg {
-		tl, err := s.Timeline(obsID, 10, 10)
+		tl, err := r.Timeline(obsID, 10, 10)
 		return timelineMsg{timeline: tl, err: err}
 	}
 }
 
-func loadRecentSessions(s *store.Store) tea.Cmd {
+func loadRecentSessions(r data.MemoryReader) tea.Cmd {
 	return func() tea.Msg {
-		sessions, err := s.AllSessions("", 50)
+		sessions, err := r.RecentSessions(50)
 		return recentSessionsMsg{sessions: sessions, err: err}
 	}
 }
 
-func loadSessionObservations(s *store.Store, sessionID string) tea.Cmd {
+func loadSessionObservations(r data.MemoryReader, sessionID string) tea.Cmd {
 	return func() tea.Msg {
-		obs, err := s.SessionObservations(sessionID, 200)
+		obs, err := r.SessionObservations(sessionID, 200)
 		return sessionObservationsMsg{observations: obs, err: err}
 	}
 }
 
-func deleteSession(s *store.Store, sessionID string) tea.Cmd {
+func deleteSession(r data.MemoryReader, sessionID string) tea.Cmd {
 	return func() tea.Msg {
-		if s == nil {
-			return sessionDeletedMsg{sessionID: sessionID, err: errors.New("store is unavailable")}
+		if r == nil {
+			return sessionDeletedMsg{sessionID: sessionID, err: data.ErrStoreUnavailable}
 		}
-		err := s.DeleteSession(sessionID)
+		err := r.DeleteSession(sessionID)
 		return sessionDeletedMsg{sessionID: sessionID, err: err}
 	}
 }

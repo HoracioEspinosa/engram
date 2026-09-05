@@ -39,6 +39,17 @@ type RunbookIndexSyncParams struct {
 	Source       string // "knowledge-mcp" | "vault-fs"
 	PruneMissing bool
 	Entries      []RunbookIndexEntryInput
+
+	// ResolveService maps a vault `service:` value to the project slug the
+	// index is keyed by, rejecting anything outside the canonical list. The
+	// map itself lives in internal/runbooks, which imports this package, so
+	// it is injected rather than imported; runbooks.SyncIndex is the entry
+	// point that wires it for every caller (RFC §9.3).
+	//
+	// A nil resolver keeps the lenient fallback: the value is normalized as
+	// a project name and only a blank one is rejected, with reason
+	// `missing_service`.
+	ResolveService func(raw string) (slug string, ok bool)
 }
 
 // RunbookSkipped is one row of mem_runbook_index_sync's `skipped` array.
@@ -80,9 +91,9 @@ func (s *Store) SyncRunbookIndex(p RunbookIndexSyncParams) (RunbookSyncResult, e
 			continue
 		}
 
-		project, _ := NormalizeProject(e.Service)
-		if project == "" {
-			result.Skipped = append(result.Skipped, RunbookSkipped{ID: e.ID, VaultPath: e.VaultPath, Reason: "missing_service"})
+		project, reason := resolveRunbookService(e.Service, p.ResolveService)
+		if reason != "" {
+			result.Skipped = append(result.Skipped, RunbookSkipped{ID: e.ID, VaultPath: e.VaultPath, Reason: reason})
 			continue
 		}
 		if _, err := s.ensureMinimalProjectCard(project); err != nil {
@@ -161,6 +172,26 @@ func (s *Store) SyncRunbookIndex(p RunbookIndexSyncParams) (RunbookSyncResult, e
 	}
 
 	return result, nil
+}
+
+// resolveRunbookService turns an entry's `service` into the project slug its
+// index row is keyed by, returning the skip reason instead when it cannot.
+func resolveRunbookService(raw string, resolve func(string) (string, bool)) (project, reason string) {
+	if resolve != nil {
+		slug, ok := resolve(raw)
+		if !ok {
+			if strings.TrimSpace(raw) == "" {
+				return "", "missing_service"
+			}
+			return "", "unknown_service"
+		}
+		return slug, ""
+	}
+	slug, _ := NormalizeProject(raw)
+	if slug == "" {
+		return "", "missing_service"
+	}
+	return slug, ""
 }
 
 func hasTemplateTag(tags []string) bool {
@@ -375,4 +406,106 @@ func ftsMatchQuery(query, matchMode string) string {
 		sep = " AND "
 	}
 	return strings.Join(quoted, sep)
+}
+
+// ─── Index listing (backs GET /projects/{slug}/runbooks) ─────────────────────
+
+// RunbookListFilter holds the filters of the runbook index listing. Unlike
+// FindRunbooks it takes no query: this is the browsable index, not the BM25
+// ranking.
+type RunbookListFilter struct {
+	Stale    *bool
+	Category string
+	Pattern  string
+	Status   string
+	Limit    int
+	Offset   int
+}
+
+// RunbookIndexRow is one full row of runbook_index.
+type RunbookIndexRow struct {
+	ID              string   `json:"id"`
+	Project         string   `json:"project"`
+	VaultPath       string   `json:"vault_path"`
+	Title           string   `json:"title"`
+	Category        string   `json:"category"`
+	Pattern         *string  `json:"pattern,omitempty"`
+	Severity        *string  `json:"severity,omitempty"`
+	Status          string   `json:"status"`
+	Symptoms        []string `json:"symptoms"`
+	Owner           *string  `json:"owner,omitempty"`
+	AutomationLevel *string  `json:"automation_level,omitempty"`
+	LastUpdated     *string  `json:"last_updated,omitempty"`
+	LastVerified    *string  `json:"last_verified,omitempty"`
+	Stale           bool     `json:"stale"`
+	AgeDays         *int     `json:"age_days,omitempty"`
+	ExecCount       int      `json:"exec_count"`
+	LastExecAt      *string  `json:"last_exec_at,omitempty"`
+	SyncedAt        string   `json:"synced_at"`
+}
+
+// ListRunbookIndex pages through the runbook index of one project.
+func (s *Store) ListRunbookIndex(project string, f RunbookListFilter) ([]RunbookIndexRow, int, error) {
+	where := []string{"project = ?"}
+	args := []any{project}
+	if f.Stale != nil {
+		v := 0
+		if *f.Stale {
+			v = 1
+		}
+		where = append(where, "stale = ?")
+		args = append(args, v)
+	}
+	if f.Category != "" {
+		where = append(where, "category = ?")
+		args = append(args, f.Category)
+	}
+	if f.Pattern != "" {
+		where = append(where, "pattern = ?")
+		args = append(args, f.Pattern)
+	}
+	if f.Status != "" {
+		where = append(where, "status = ?")
+		args = append(args, f.Status)
+	}
+	whereSQL := strings.Join(where, " AND ")
+
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM runbook_index WHERE `+whereSQL, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("engram-projects: count runbook index: %w", err)
+	}
+
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	listArgs := append(append([]any{}, args...), limit, f.Offset)
+	rows, err := s.db.Query(`
+		SELECT id, project, vault_path, title, category, pattern, severity, status, symptoms,
+		       owner, automation_level, last_updated, last_verified, stale, age_days,
+		       exec_count, last_exec_at, synced_at
+		FROM runbook_index WHERE `+whereSQL+`
+		ORDER BY stale DESC, id ASC LIMIT ? OFFSET ?`, listArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("engram-projects: list runbook index: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]RunbookIndexRow, 0)
+	for rows.Next() {
+		var r RunbookIndexRow
+		var symptoms string
+		var stale int
+		if err := rows.Scan(&r.ID, &r.Project, &r.VaultPath, &r.Title, &r.Category, &r.Pattern,
+			&r.Severity, &r.Status, &symptoms, &r.Owner, &r.AutomationLevel, &r.LastUpdated,
+			&r.LastVerified, &stale, &r.AgeDays, &r.ExecCount, &r.LastExecAt, &r.SyncedAt); err != nil {
+			return nil, 0, fmt.Errorf("engram-projects: scan runbook index row: %w", err)
+		}
+		r.Stale = stale == 1
+		if strings.TrimSpace(symptoms) != "" {
+			r.Symptoms = strings.Split(symptoms, "\n")
+		}
+		items = append(items, r)
+	}
+	return items, total, rows.Err()
 }

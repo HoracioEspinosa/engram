@@ -98,18 +98,24 @@ func (s *Store) AddEvidence(p AddEvidenceParams) (Evidence, bool, EvidenceLimits
 	if p.AttachedJira {
 		attachedJira = 1
 	}
-	res, err := s.db.Exec(`
-		INSERT INTO evidence (sync_id, project, task_id, task_sync_id, path, sha256, kind, proves,
-			config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes, manifest_path, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		syncID, p.Task.Project, p.Task.ID, p.Task.SyncID, p.Path, p.SHA256, p.Kind, p.Proves,
-		nullableStr(p.ConfigStamp), captured, attachedJira, nullableStr(p.AttachedConfluenceURL),
-		nullableInt64(p.SizeBytes), nullableStr(p.ManifestPath), now)
-	if err != nil {
-		return Evidence{}, false, EvidenceLimits{}, fmt.Errorf("engram-projects: insert evidence: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
+	var id int64
+	if err := s.withTx(func(tx *sql.Tx) error {
+		res, err := s.execHook(tx, `
+			INSERT INTO evidence (sync_id, project, task_id, task_sync_id, path, sha256, kind, proves,
+				config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes, manifest_path, created_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			syncID, p.Task.Project, p.Task.ID, p.Task.SyncID, p.Path, p.SHA256, p.Kind, p.Proves,
+			nullableStr(p.ConfigStamp), captured, attachedJira, nullableStr(p.AttachedConfluenceURL),
+			nullableInt64(p.SizeBytes), nullableStr(p.ManifestPath), now)
+		if err != nil {
+			return fmt.Errorf("engram-projects: insert evidence: %w", err)
+		}
+		id, err = res.LastInsertId()
+		if err != nil {
+			return err
+		}
+		return s.enqueueEvidenceTx(tx, id)
+	}); err != nil {
 		return Evidence{}, false, EvidenceLimits{}, err
 	}
 

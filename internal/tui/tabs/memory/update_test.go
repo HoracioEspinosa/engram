@@ -1,4 +1,4 @@
-package tui
+package memory
 
 import (
 	"errors"
@@ -7,12 +7,13 @@ import (
 
 	"github.com/Gentleman-Programming/engram/internal/setup"
 	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
 	"github.com/Gentleman-Programming/engram/internal/version"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func TestUpdateHandlesWindowSizeAndCtrlC(t *testing.T) {
+func TestUpdateHandlesWindowSize(t *testing.T) {
 	m := New(nil, "")
 
 	updatedModel, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -23,16 +24,11 @@ func TestUpdateHandlesWindowSizeAndCtrlC(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("window size update should not return command")
 	}
-
-	_, quitCmd := updated.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
-	if quitCmd == nil {
-		t.Fatal("ctrl+c should return quit command")
-	}
 }
 
 func TestUpdateSearchInputFocusedHandlesEscAndEnter(t *testing.T) {
 	fx := newTestFixture(t)
-	m := New(fx.store, "")
+	m := New(fx.reader(), "")
 	m.Screen = ScreenSearch
 	m.PrevScreen = ScreenDashboard
 	m.SearchInput.Focus()
@@ -49,7 +45,7 @@ func TestUpdateSearchInputFocusedHandlesEscAndEnter(t *testing.T) {
 		t.Fatal("esc should not return command")
 	}
 
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Screen = ScreenSearch
 	m.PrevScreen = ScreenDashboard
 	m.SearchInput.Focus()
@@ -99,7 +95,7 @@ func TestUpdateSearchResultsAndDetailScreenTransitions(t *testing.T) {
 
 func TestUpdateObservationDetailEscRefreshesPrevScreen(t *testing.T) {
 	fx := newTestFixture(t)
-	m := New(fx.store, "")
+	m := New(fx.reader(), "")
 	m.Screen = ScreenObservationDetail
 	m.PrevScreen = ScreenRecent
 	m.DetailScroll = 3
@@ -119,7 +115,7 @@ func TestUpdateObservationDetailEscRefreshesPrevScreen(t *testing.T) {
 
 func TestUpdateSetupFlowAndSpinnerTick(t *testing.T) {
 	fx := newTestFixture(t)
-	m := New(fx.store, "")
+	m := New(fx.reader(), "")
 	m.Screen = ScreenSetup
 	m.SetupAgents = []setup.Agent{{Name: "opencode", Description: "OpenCode", InstallDir: "/tmp"}}
 	m.SetupDone = true
@@ -152,7 +148,7 @@ func TestUpdateSetupFlowAndSpinnerTick(t *testing.T) {
 
 func TestHandleDashboardAndSearchKeyPaths(t *testing.T) {
 	fx := newTestFixture(t)
-	m := New(fx.store, "")
+	m := New(fx.reader(), "")
 
 	updatedModel, _ := m.handleDashboardKeys("s")
 	updated := updatedModel.(Model)
@@ -160,7 +156,7 @@ func TestHandleDashboardAndSearchKeyPaths(t *testing.T) {
 		t.Fatal("dashboard shortcut should open focused search")
 	}
 
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Cursor = 1
 	updatedModel, cmd := m.handleDashboardSelection()
 	updated = updatedModel.(Model)
@@ -171,7 +167,7 @@ func TestHandleDashboardAndSearchKeyPaths(t *testing.T) {
 		t.Fatal("recent selection should load observations")
 	}
 
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Cursor = 2
 	updatedModel, cmd = m.handleDashboardSelection()
 	updated = updatedModel.(Model)
@@ -182,7 +178,7 @@ func TestHandleDashboardAndSearchKeyPaths(t *testing.T) {
 		t.Fatal("sessions selection should load sessions")
 	}
 
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Cursor = 3
 	updatedModel, cmd = m.handleDashboardSelection()
 	updated = updatedModel.(Model)
@@ -236,94 +232,25 @@ func TestCloudSettingsNavigation(t *testing.T) {
 	m := New(nil, "")
 	m.Cursor = 4 // Cloud sync settings
 
-	updatedModel, _ := m.handleDashboardSelection()
+	updatedModel, cmd := m.handleDashboardSelection()
 	updated := updatedModel.(Model)
-	if updated.Screen != ScreenCloudSettings {
-		t.Fatalf("enter on Cloud sync settings should open ScreenCloudSettings, got %v", updated.Screen)
+	if cmd == nil {
+		t.Fatal("enter on Cloud sync settings should ask the root to switch tabs")
+	}
+	if nav, ok := cmd().(tabs.NavigateMsg); !ok || nav.Target != tabs.Cloud {
+		t.Fatalf("enter on Cloud sync settings should emit NavigateMsg{Cloud}, got %#v", cmd())
+	}
+	if updated.Screen != ScreenDashboard {
+		t.Fatalf("the memory tab should stay on the dashboard, got %v", updated.Screen)
 	}
 	if updated.Cursor != 0 {
 		t.Fatalf("cursor should reset to 0 on entering cloud settings, got %d", updated.Cursor)
-	}
-
-	updatedModel, _ = updated.handleCloudSettingsKeys("esc")
-	updated = updatedModel.(Model)
-	if updated.Screen != ScreenDashboard {
-		t.Fatalf("esc from cloud settings should return to dashboard, got %v", updated.Screen)
-	}
-
-	m = New(nil, "")
-	m.Screen = ScreenCloudSettings
-	updatedModel, _ = m.handleCloudSettingsKeys("q")
-	updated = updatedModel.(Model)
-	if updated.Screen != ScreenDashboard {
-		t.Fatalf("q from cloud settings should return to dashboard, got %v", updated.Screen)
-	}
-}
-
-func TestCloudSettingsMenuNavigation(t *testing.T) {
-	m := New(nil, "")
-	m.Screen = ScreenCloudSettings
-
-	updatedModel, _ := m.handleCloudSettingsKeys("down")
-	updated := updatedModel.(Model)
-	if updated.Cursor != 1 {
-		t.Fatalf("down should move cursor to 1, got %d", updated.Cursor)
-	}
-
-	updatedModel, _ = updated.handleCloudSettingsKeys("j")
-	updated = updatedModel.(Model)
-	if updated.Cursor != 2 {
-		t.Fatalf("j should move cursor to 2, got %d", updated.Cursor)
-	}
-
-	updatedModel, _ = updated.handleCloudSettingsKeys("down")
-	updated = updatedModel.(Model)
-	if updated.Cursor != 3 {
-		t.Fatalf("down should move cursor to 3, got %d", updated.Cursor)
-	}
-
-	updatedModel, _ = updated.handleCloudSettingsKeys("down")
-	updated = updatedModel.(Model)
-	if updated.Cursor != 3 {
-		t.Fatalf("down at bottom should stay at 3, got %d", updated.Cursor)
-	}
-
-	updatedModel, _ = updated.handleCloudSettingsKeys("up")
-	updated = updatedModel.(Model)
-	if updated.Cursor != 2 {
-		t.Fatalf("up should move cursor to 2, got %d", updated.Cursor)
-	}
-
-	updatedModel, _ = updated.handleCloudSettingsKeys("k")
-	updated = updatedModel.(Model)
-	if updated.Cursor != 1 {
-		t.Fatalf("k should move cursor to 1, got %d", updated.Cursor)
-	}
-
-	m = New(nil, "")
-	m.Screen = ScreenCloudSettings
-	updatedModel, _ = m.handleCloudSettingsKeys("up")
-	updated = updatedModel.(Model)
-	if updated.Cursor != 0 {
-		t.Fatalf("up at top should stay at 0, got %d", updated.Cursor)
-	}
-
-	m = New(nil, "")
-	m.Screen = ScreenCloudSettings
-	m.Cursor = 3 // Back
-	updatedModel, cmd := m.handleCloudSettingsKeys("enter")
-	updated = updatedModel.(Model)
-	if updated.Screen != ScreenDashboard {
-		t.Fatalf("enter on Back should return to dashboard, got %v", updated.Screen)
-	}
-	if cmd == nil {
-		t.Fatal("enter on Back should refresh stats")
 	}
 }
 
 func TestHandleRecentTimelineSessionsAndDetailKeyPaths(t *testing.T) {
 	fx := newTestFixture(t)
-	m := New(fx.store, "")
+	m := New(fx.reader(), "")
 	m.Height = 14
 	m.Screen = ScreenRecent
 	m.RecentObservations = []store.Observation{{ID: fx.obsID}, {ID: fx.secondObs}, {ID: 33}, {ID: 44}}
@@ -353,7 +280,7 @@ func TestHandleRecentTimelineSessionsAndDetailKeyPaths(t *testing.T) {
 		t.Fatal("recent esc should return dashboard and refresh stats")
 	}
 
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Screen = ScreenTimeline
 	m.PrevScreen = ScreenDashboard
 	m.Scroll = 2
@@ -368,7 +295,7 @@ func TestHandleRecentTimelineSessionsAndDetailKeyPaths(t *testing.T) {
 		t.Fatal("timeline esc should return previous screen and refresh")
 	}
 
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Height = 12
 	m.Screen = ScreenSessions
 	m.Sessions = []store.SessionSummary{{ID: fx.sessionID}, {ID: fx.otherSession}, {ID: "s3"}, {ID: "s4"}, {ID: "s5"}, {ID: "s6"}}
@@ -385,7 +312,7 @@ func TestHandleRecentTimelineSessionsAndDetailKeyPaths(t *testing.T) {
 		t.Fatal("sessions enter should load selected session observations")
 	}
 
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Height = 18
 	m.Screen = ScreenSessionDetail
 	m.SelectedSessionIdx = 0
@@ -416,7 +343,7 @@ func TestHandleRecentTimelineSessionsAndDetailKeyPaths(t *testing.T) {
 func TestSessionDeletePromptFlow(t *testing.T) {
 	t.Run("opens and cancels prompt", func(t *testing.T) {
 		fx := newTestFixture(t)
-		m := New(fx.store, "")
+		m := New(fx.reader(), "")
 		m.Screen = ScreenSessions
 		m.Sessions = []store.SessionSummary{{ID: fx.sessionID, Project: "engram"}, {ID: fx.otherSession, Project: "engram"}}
 		m.Cursor = 1
@@ -453,7 +380,7 @@ func TestSessionDeletePromptFlow(t *testing.T) {
 
 	t.Run("confirm deletes empty session and refreshes", func(t *testing.T) {
 		fx := newTestFixture(t)
-		m := New(fx.store, "")
+		m := New(fx.reader(), "")
 		m.Screen = ScreenSessions
 		m.Sessions = []store.SessionSummary{{ID: fx.sessionID, Project: "engram"}, {ID: fx.otherSession, Project: "engram"}}
 		m.Cursor = 1
@@ -495,7 +422,7 @@ func TestSessionDeletePromptFlow(t *testing.T) {
 
 	t.Run("blocked delete shows store error", func(t *testing.T) {
 		fx := newTestFixture(t)
-		m := New(fx.store, "")
+		m := New(fx.reader(), "")
 		m.Screen = ScreenSessions
 		m.Sessions = []store.SessionSummary{{ID: fx.sessionID, Project: "engram"}}
 
@@ -556,7 +483,7 @@ func TestSessionDeletePromptFlow(t *testing.T) {
 }
 
 func TestRefreshScreen(t *testing.T) {
-	m := New(newTestFixture(t).store, "")
+	m := New(newTestFixture(t).reader(), "")
 
 	if cmd := m.refreshScreen(ScreenDashboard); cmd == nil {
 		t.Fatal("dashboard refresh should return stats command")
@@ -727,7 +654,6 @@ func TestHandleKeyPressRouterAndClearsError(t *testing.T) {
 		ScreenSessions,
 		ScreenSessionDetail,
 		ScreenSetup,
-		ScreenCloudSettings,
 	} {
 		m.Screen = screen
 		m.ErrorMsg = "old error"
@@ -927,7 +853,7 @@ func TestSearchInputClearedOnEnterFromDashboard(t *testing.T) {
 
 func TestHandleSessionsAndSetupRemainingBranches(t *testing.T) {
 	fx := newTestFixture(t)
-	m := New(fx.store, "")
+	m := New(fx.reader(), "")
 	m.Height = 12
 	m.Sessions = []store.SessionSummary{{ID: "s1"}, {ID: "s2"}, {ID: "s3"}, {ID: "s4"}, {ID: "s5"}, {ID: "s6"}}
 
@@ -949,7 +875,7 @@ func TestHandleSessionsAndSetupRemainingBranches(t *testing.T) {
 		t.Fatal("sessions enter with no sessions should not return command")
 	}
 
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Screen = ScreenSetup
 	m.SetupInstalling = true
 	updatedModel, cmd = m.handleSetupKeys("esc")
@@ -1005,7 +931,7 @@ func TestHandleSessionsAndSetupRemainingBranches(t *testing.T) {
 
 func TestAdditionalKeyAliasAndBoundaryBranches(t *testing.T) {
 	fx := newTestFixture(t)
-	m := New(fx.store, "")
+	m := New(fx.reader(), "")
 
 	// handleKeyPress default branch (unknown screen)
 	m.Screen = Screen(999)
@@ -1015,7 +941,7 @@ func TestAdditionalKeyAliasAndBoundaryBranches(t *testing.T) {
 	}
 
 	// Search input remaining branches
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Screen = ScreenSearch
 	m.PrevScreen = ScreenDashboard
 	m.SearchInput.Focus()
@@ -1036,7 +962,7 @@ func TestAdditionalKeyAliasAndBoundaryBranches(t *testing.T) {
 	}
 
 	// Search results aliases and boundaries
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Height = 14
 	m.SearchResults = []store.SearchResult{{Observation: store.Observation{ID: 1}}, {Observation: store.Observation{ID: 2}}, {Observation: store.Observation{ID: 3}}, {Observation: store.Observation{ID: 4}}}
 	m.Cursor = 0
@@ -1055,7 +981,7 @@ func TestAdditionalKeyAliasAndBoundaryBranches(t *testing.T) {
 	}
 
 	// Recent aliases/boundaries
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Height = 14
 	m.RecentObservations = []store.Observation{{ID: 1}}
 	m.Cursor = 0
@@ -1077,7 +1003,7 @@ func TestAdditionalKeyAliasAndBoundaryBranches(t *testing.T) {
 	}
 
 	// Sessions esc/q branches
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Screen = ScreenSessions
 	updatedModel, cmd = m.handleSessionsKeys("q")
 	if updatedModel.(Model).Screen != ScreenDashboard || cmd == nil {
@@ -1085,7 +1011,7 @@ func TestAdditionalKeyAliasAndBoundaryBranches(t *testing.T) {
 	}
 
 	// Session detail boundary and q branch
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Height = 16
 	m.Screen = ScreenSessionDetail
 	m.SelectedSessionIdx = 0
@@ -1100,7 +1026,7 @@ func TestAdditionalKeyAliasAndBoundaryBranches(t *testing.T) {
 	}
 
 	// Setup q/esc branch with no install state
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Screen = ScreenSetup
 	updatedModel, cmd = m.handleSetupKeys("q")
 	if updatedModel.(Model).Screen != ScreenDashboard || cmd == nil {
@@ -1112,7 +1038,7 @@ func TestNavigationScrollAndSelectionBranches(t *testing.T) {
 	fx := newTestFixture(t)
 
 	// Dashboard increment/decrement and enter path
-	m := New(fx.store, "")
+	m := New(fx.reader(), "")
 	m.Cursor = 1
 	updatedModel, _ := m.handleDashboardKeys("up")
 	if updatedModel.(Model).Cursor != 0 {
@@ -1128,7 +1054,7 @@ func TestNavigationScrollAndSelectionBranches(t *testing.T) {
 	}
 
 	// Search results scroll-up branch
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Height = 14
 	m.SearchResults = []store.SearchResult{{Observation: store.Observation{ID: 1}}, {Observation: store.Observation{ID: 2}}, {Observation: store.Observation{ID: 3}}}
 	m.Cursor = 2
@@ -1140,7 +1066,7 @@ func TestNavigationScrollAndSelectionBranches(t *testing.T) {
 	}
 
 	// Recent scroll-up branch
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Height = 14
 	m.RecentObservations = []store.Observation{{ID: 1}, {ID: 2}, {ID: 3}}
 	m.Cursor = 2
@@ -1152,7 +1078,7 @@ func TestNavigationScrollAndSelectionBranches(t *testing.T) {
 	}
 
 	// Sessions scroll-up branch
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Height = 12
 	m.Sessions = []store.SessionSummary{{ID: "s1"}, {ID: "s2"}, {ID: "s3"}}
 	m.Cursor = 2
@@ -1164,7 +1090,7 @@ func TestNavigationScrollAndSelectionBranches(t *testing.T) {
 	}
 
 	// Session detail scroll-up branch
-	m = New(fx.store, "")
+	m = New(fx.reader(), "")
 	m.Height = 16
 	m.SessionObservations = []store.Observation{{ID: 1}, {ID: 2}, {ID: 3}}
 	m.Cursor = 2
@@ -1179,7 +1105,7 @@ func TestNavigationScrollAndSelectionBranches(t *testing.T) {
 func TestSetupAllowlistPromptFlow(t *testing.T) {
 	t.Run("claude-code install shows allowlist prompt", func(t *testing.T) {
 		fx := newTestFixture(t)
-		m := New(fx.store, "")
+		m := New(fx.reader(), "")
 		m.Screen = ScreenSetup
 		m.SetupInstalling = true
 
@@ -1200,7 +1126,7 @@ func TestSetupAllowlistPromptFlow(t *testing.T) {
 
 	t.Run("non-claude-code install skips allowlist prompt", func(t *testing.T) {
 		fx := newTestFixture(t)
-		m := New(fx.store, "")
+		m := New(fx.reader(), "")
 		m.Screen = ScreenSetup
 		m.SetupInstalling = true
 

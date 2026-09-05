@@ -39,14 +39,31 @@ For exact local routes, use [DOCS.md — HTTP API Endpoints](../../DOCS.md#http-
 
 ## TUI: `internal/tui`
 
-The TUI uses Bubbletea and reads from the local store. The separation is classic:
+The TUI uses Bubbletea and reads from the local store. It is a workspace: a
+root model owns which tab is active, and each tab is an isolated Elm sub-model
+with its own screens, cursor and messages.
 
-| File | Role |
+| Package | Role |
 |---|---|
-| `internal/tui/model.go` | State, screens, initialization. |
-| `internal/tui/update.go` | Input/transitions handling. |
-| `internal/tui/view.go` | Screen rendering. |
-| `internal/tui/styles.go` | Lipgloss styles. |
+| `internal/tui` | Entry point. `New(store, version)` and the `Model` alias `cmd/engram` depends on. |
+| `internal/tui/app` | Root model: active tab, global key bindings, message fan-out, application frame. |
+| `internal/tui/tabs` | The `Tab` contract, the tab ids, and `NavigateMsg` for cross-tab navigation. |
+| `internal/tui/tabs/memory` | Memory workspace: dashboard, search, recent, observation detail, timeline, sessions, session detail, setup. |
+| `internal/tui/tabs/cloud` | Cloud sync settings. |
+| `internal/tui/theme` | Semantic palette and the lipgloss styles built from it. |
+| `internal/tui/shared` | Widgets every tab reuses: two-line observation row, menu, range indicator, text helpers, OSC 52 clipboard. |
+| `internal/tui/data` | The only package that talks to `internal/store`; tabs depend on its reader interfaces and its in-memory fake. |
+
+Dependency direction is one-way: `app` knows the tabs, no tab knows `app`, and
+no tab knows another tab.
+
+The ASCII rendering of every screen is frozen in `internal/tui/app/testdata/`
+at 120x40 and 80x24. A change that alters what the terminal shows must be
+accompanied by regenerated golden files:
+
+```sh
+go test ./internal/tui/... -run TestGoldenScreens -update
+```
 
 ## Interface change checklists
 

@@ -380,3 +380,88 @@ func unmarshalToolText(t *testing.T, res *mcppkg.CallToolResult, out any) error 
 	t.Helper()
 	return json.Unmarshal([]byte(callResultText(t, res)), out)
 }
+
+func TestRunbookIndexSync_UnknownServiceIsSkipped(t *testing.T) {
+	// The knowledge-mcp route feeds `service` straight from the vault's own
+	// frontmatter, so a value outside the canonical list has to come back as
+	// a skip a vault PR can fix — not as a new project card keyed by a typo.
+	s := newMCPTestStore(t)
+	res := callProjectTool(t, handleRunbookIndexSync(s), map[string]any{
+		"entries": []any{
+			map[string]any{
+				"id": "RB-003", "vault_path": "Runbooks/Performance/RB-003 Preview.md", "title": "Preview",
+				"service": "nextcloud", "category": "performance", "status": "verified",
+			},
+			map[string]any{
+				"id": "RB-900", "vault_path": "Runbooks/RB-900 Ghost.md", "title": "Ghost",
+				"service": "nextcluod", "category": "auth", "status": "verified",
+			},
+		},
+	})
+	if res.IsError {
+		t.Fatalf("unexpected error: %v", callResultJSON(t, res))
+	}
+	var out map[string]any
+	if err := unmarshalToolText(t, res, &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if upserted, _ := out["upserted"].(float64); upserted != 1 {
+		t.Fatalf("upserted = %v, want 1: %v", out["upserted"], out)
+	}
+	skipped, _ := out["skipped"].([]any)
+	if len(skipped) != 1 {
+		t.Fatalf("expected 1 skipped entry, got %v", out)
+	}
+	entry, _ := skipped[0].(map[string]any)
+	if entry["reason"] != "unknown_service" || entry["id"] != "RB-900" {
+		t.Fatalf("skipped entry = %v, want unknown_service for RB-900", entry)
+	}
+}
+
+func TestTaskLink_KnowledgeRefShapeRule(t *testing.T) {
+	s := newMCPTestStore(t)
+	jiraKey, title, kind := "PROJ-1", "t", "incident"
+	if _, err := s.UpsertTask(store.UpsertTaskParams{
+		Project: "engram", JiraKey: &jiraKey, Title: &title, Kind: &kind,
+	}); err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+	if err := s.CreateSession("s1", "engram", ""); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	obsID, err := s.AddObservation(store.AddObservationParams{
+		SessionID: "s1", Type: "bugfix", Title: "root cause", Content: "c", Project: "engram",
+	})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		ref  string
+		code string
+	}{
+		{"memory folder", "90 - Engram/engram/engram/decision/1.md", "knowledge_ref_not_curated"},
+		{"absolute path", "/vault/Services/Doc.md", "absolute_path_rejected"},
+		{"not markdown", "Services/Doc.png", "invalid_knowledge_ref"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := callProjectTool(t, handleTaskLink(s, MCPConfig{DefaultProject: "engram"}), map[string]any{
+				"task": "PROJ-1", "observation_id": float64(obsID), "knowledge_ref": tc.ref,
+			})
+			body := callResultJSON(t, res)
+			if !res.IsError || body["code"] != tc.code {
+				t.Fatalf("knowledge_ref %q = %v, want code %s", tc.ref, body, tc.code)
+			}
+		})
+	}
+
+	// The tool form is accepted and stored normalized.
+	res := callProjectTool(t, handleTaskLink(s, MCPConfig{DefaultProject: "engram"}), map[string]any{
+		"task": "PROJ-1", "observation_id": float64(obsID),
+		"knowledge_ref": "[[Work/Claro drive/Services/Nextcloud/Architecture.md#Object Store]]",
+	})
+	if res.IsError {
+		t.Fatalf("unexpected error: %v", callResultJSON(t, res))
+	}
+}

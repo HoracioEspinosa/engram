@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	projectpkg "github.com/Gentleman-Programming/engram/internal/project"
+	"github.com/Gentleman-Programming/engram/internal/runbooks"
 	"github.com/Gentleman-Programming/engram/internal/store"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -160,6 +161,24 @@ func projectToolError(code, message string, fields map[string]any) *mcp.CallTool
 	result := mcp.NewToolResultText(string(out))
 	result.IsError = true
 	return result
+}
+
+// knowledgeRefToolError maps the knowledge_ref shape rule (RFC §9.1/§9.2)
+// onto the tool error vocabulary, and returns nil for any other error so the
+// caller can go on with its own mapping.
+func knowledgeRefToolError(err error) *mcp.CallToolResult {
+	switch {
+	case errors.Is(err, store.ErrKnowledgeRefNotCurated):
+		return projectToolError("knowledge_ref_not_curated", err.Error(),
+			map[string]any{"hint": "point knowledge_ref at a curated document; 90 - Engram/ holds engram's own export"})
+	case errors.Is(err, store.ErrKnowledgeRefAbsolute):
+		return projectToolError("absolute_path_rejected", err.Error(),
+			map[string]any{"hint": "use the vault-relative form the knowledge tools return, e.g. Services/Nextcloud/Architecture.md"})
+	case errors.Is(err, store.ErrKnowledgeRefInvalid):
+		return projectToolError("invalid_knowledge_ref", err.Error(),
+			map[string]any{"hint": "a knowledge_ref is a vault-relative .md path with an optional #Anchor"})
+	}
+	return nil
 }
 
 // resolveProjectsToolReadProject resolves the project for a read-only
@@ -645,6 +664,9 @@ func handleTaskUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 		}
 		result, err := s.UpsertTask(params)
 		if err != nil {
+			if refErr := knowledgeRefToolError(err); refErr != nil {
+				return refErr, nil
+			}
 			var missing *store.MissingFieldError
 			if errors.As(err, &missing) {
 				return projectToolError("missing_field", missing.Error(), map[string]any{"field": missing.Field}), nil
@@ -762,6 +784,9 @@ func handleTaskLink(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 		case errors.Is(err, store.ErrGraphCommitRequired):
 			return projectToolError("graph_commit_required", "graph_ref requires graph_commit", nil), nil
 		case err != nil:
+			if refErr := knowledgeRefToolError(err); refErr != nil {
+				return refErr, nil
+			}
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -894,7 +919,7 @@ func handleRunbookIndexSync(s *store.Store) server.ToolHandlerFunc {
 
 		entries, rejected := parseRunbookEntries(rawEntries)
 
-		result, err := s.SyncRunbookIndex(store.RunbookIndexSyncParams{
+		result, err := runbooks.SyncIndex(s, store.RunbookIndexSyncParams{
 			Project:      optString(req, "project"),
 			Source:       source,
 			PruneMissing: optBoolDefault(req, "prune_missing", false),

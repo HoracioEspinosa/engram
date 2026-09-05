@@ -564,3 +564,60 @@ func TestDefaultJiraProject(t *testing.T) {
 		t.Fatalf("blank: expected the default, got %q", got)
 	}
 }
+
+// TestLinkTaskObservation_GraphCommitRejectionPersistsNothing pins the rule
+// that a rejected link leaves no trace. Before the ref candidates were built
+// ahead of the INSERT, a graph_ref without its commit returned the error with
+// the link row already written under the default role, and the corrected
+// retry silently kept that role because of INSERT OR IGNORE.
+func TestLinkTaskObservation_GraphCommitRejectionPersistsNothing(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	if _, _, err := s.UpsertProjectCard(UpsertProjectCardParams{Slug: "nextcloud"}); err != nil {
+		t.Fatalf("UpsertProjectCard: %v", err)
+	}
+	if err := s.CreateSession("sess-link-reject", "nextcloud", t.TempDir()); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	obsID, err := s.AddObservation(AddObservationParams{
+		SessionID: "sess-link-reject", Type: "discovery", Title: "t", Content: "c", Project: "nextcloud",
+	})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+	upserted, err := s.UpsertTask(UpsertTaskParams{
+		Project: "nextcloud", JiraKey: strp("CDBS-10336"), Title: strp("previews"), Kind: strp("incident"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+
+	_, err = s.LinkTaskObservation(LinkTaskObservationParams{
+		Task: upserted.Task, ObservationID: obsID, Role: "root_cause",
+		GraphRef: strp(`OC\Files\Storage\Wrapper`),
+	})
+	if !errors.Is(err, ErrGraphCommitRequired) {
+		t.Fatalf("err = %v, want ErrGraphCommitRequired", err)
+	}
+
+	var links int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM task_observations WHERE task_id = ?`, upserted.Task.ID).
+		Scan(&links); err != nil {
+		t.Fatalf("count links: %v", err)
+	}
+	if links != 0 {
+		t.Fatalf("a rejected link left %d rows behind", links)
+	}
+
+	// The corrected retry now lands the role the caller asked for.
+	result, err := s.LinkTaskObservation(LinkTaskObservationParams{
+		Task: upserted.Task, ObservationID: obsID, Role: "root_cause",
+		GraphRef:    strp(`OC\Files\Storage\Wrapper`),
+		GraphCommit: strp("7a79ef43a9570000000000000000000000000000"),
+	})
+	if err != nil {
+		t.Fatalf("LinkTaskObservation: %v", err)
+	}
+	if !result.Linked || result.Role != "root_cause" {
+		t.Fatalf("retry produced linked=%v role=%q, want true/root_cause", result.Linked, result.Role)
+	}
+}

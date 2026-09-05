@@ -1,4 +1,4 @@
-package tui
+package memory
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/Gentleman-Programming/engram/internal/setup"
 	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/engram/internal/tui/data"
 	"github.com/Gentleman-Programming/engram/internal/version"
 )
 
@@ -66,6 +67,11 @@ func newTestFixture(t *testing.T) testFixture {
 	return testFixture{store: s, sessionID: "session-1", obsID: obsID, secondObs: secondObs, otherSession: "session-2"}
 }
 
+// reader wraps the fixture store in the interface the tab consumes.
+func (f testFixture) reader() data.MemoryReader {
+	return data.NewMemoryReader(f.store)
+}
+
 func TestNewInitializesModelDefaults(t *testing.T) {
 	m := New(nil, "")
 
@@ -86,11 +92,7 @@ func TestNewInitializesModelDefaults(t *testing.T) {
 	}
 }
 
-func TestScreenCloudSettingsConstant(t *testing.T) {
-	if ScreenCloudSettings != ScreenSetup+1 {
-		t.Fatalf("ScreenCloudSettings = %d, want %d (ScreenSetup+1)", ScreenCloudSettings, ScreenSetup+1)
-	}
-
+func TestScreenConstantsAreDistinct(t *testing.T) {
 	seen := map[Screen]bool{}
 	for _, s := range []Screen{
 		ScreenDashboard,
@@ -102,7 +104,6 @@ func TestScreenCloudSettingsConstant(t *testing.T) {
 		ScreenSessions,
 		ScreenSessionDetail,
 		ScreenSetup,
-		ScreenCloudSettings,
 	} {
 		if seen[s] {
 			t.Fatalf("screen constant %d is duplicated", s)
@@ -112,7 +113,7 @@ func TestScreenCloudSettingsConstant(t *testing.T) {
 }
 
 func TestInitReturnsCommand(t *testing.T) {
-	m := New(newTestFixture(t).store, "")
+	m := New(newTestFixture(t).reader(), "")
 	if cmd := m.Init(); cmd == nil {
 		t.Fatal("init should return a startup command")
 	}
@@ -133,7 +134,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("loadStats", func(t *testing.T) {
-		msg := loadStats(fx.store)()
+		msg := loadStats(fx.reader())()
 		loaded, ok := msg.(statsLoadedMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -147,7 +148,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("searchMemories", func(t *testing.T) {
-		msg := searchMemories(fx.store, "needle")()
+		msg := searchMemories(fx.reader(), "needle")()
 		loaded, ok := msg.(searchResultsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -164,7 +165,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("loadRecentObservations", func(t *testing.T) {
-		msg := loadRecentObservations(fx.store)()
+		msg := loadRecentObservations(fx.reader())()
 		loaded, ok := msg.(recentObservationsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -178,7 +179,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("loadObservationDetail", func(t *testing.T) {
-		msg := loadObservationDetail(fx.store, fx.obsID)()
+		msg := loadObservationDetail(fx.reader(), fx.obsID)()
 		loaded, ok := msg.(observationDetailMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -192,7 +193,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("loadTimeline", func(t *testing.T) {
-		msg := loadTimeline(fx.store, fx.secondObs)()
+		msg := loadTimeline(fx.reader(), fx.secondObs)()
 		loaded, ok := msg.(timelineMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -206,7 +207,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("loadRecentSessions", func(t *testing.T) {
-		msg := loadRecentSessions(fx.store)()
+		msg := loadRecentSessions(fx.reader())()
 		loaded, ok := msg.(recentSessionsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -220,7 +221,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("loadSessionObservations", func(t *testing.T) {
-		msg := loadSessionObservations(fx.store, fx.sessionID)()
+		msg := loadSessionObservations(fx.reader(), fx.sessionID)()
 		loaded, ok := msg.(sessionObservationsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)

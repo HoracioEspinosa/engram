@@ -1,0 +1,696 @@
+═══ dashboard-loading ═══
+                                                                        
+  ╔══════════════════════════════════════════════════════════════════╗  
+  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
+  ║                                                                  ║  
+  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
+  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
+  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
+  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
+  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
+  ║                                                                  ║  
+  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
+  ╚══════════════════════════════════════════════════════════════════╝  
+                                                                        
+                                                                        
+  ┌────────────────────┐                                                
+  │                    │                                                
+  │  Loading stats...  │                                                
+  │                    │                                                
+  └────────────────────┘                                                
+                                                                        
+    Actions                                                             
+                                                                        
+   ▸ Search memories                                                    
+      Recent observations                                               
+      Browse sessions                                                   
+      Setup agent plugin                                                
+      Cloud sync settings                                               
+      Quit                                                              
+                                                                        
+                                                                        
+    j/k navigate • enter select • s search • q quit                     
+                                                                        
+═══ dashboard ═══
+                                                                        
+  ╔══════════════════════════════════════════════════════════════════╗  
+  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
+  ║                                                                  ║  
+  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
+  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
+  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
+  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
+  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
+  ║                                                                  ║  
+  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
+  ╚══════════════════════════════════════════════════════════════════╝  
+                                                                        
+                                                                        
+  ┌───────────────────────────┐                                         
+  │                           │                                         
+  │        12   sessions      │                                         
+  │       348   observations  │                                         
+  │        57   prompts       │                                         
+  │         6   projects      │                                         
+  │                           │                                         
+  └───────────────────────────┘                                         
+                                                                        
+    Projects                                                            
+                                                                        
+    • engram                                                            
+    • clarodrive                                                        
+    • middleware                                                        
+    • portal                                                            
+    • lookup                                                            
+      ...and 1 more projects                                            
+                                                                        
+    Actions                                                             
+                                                                        
+      Search memories                                                   
+   ▸ Recent observations                                                
+      Browse sessions                                                   
+      Setup agent plugin                                                
+      Cloud sync settings                                               
+      Quit                                                              
+                                                                        
+                                                                        
+    j/k navigate • enter select • s search • q quit                     
+                                                                        
+═══ dashboard-update-available ═══
+                                                                        
+  ╔══════════════════════════════════════════════════════════════════╗  
+  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
+  ║                                                                  ║  
+  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
+  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
+  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
+  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
+  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
+  ║                                                                  ║  
+  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
+  ╚══════════════════════════════════════════════════════════════════╝  
+                                                                        
+                                                                        
+   Update available: 1.20.1 -> 1.21.0                                   
+                                                                        
+  ┌───────────────────────────┐                                         
+  │                           │                                         
+  │        12   sessions      │                                         
+  │       348   observations  │                                         
+  │        57   prompts       │                                         
+  │         6   projects      │                                         
+  │                           │                                         
+  └───────────────────────────┘                                         
+                                                                        
+    Projects                                                            
+                                                                        
+    • engram                                                            
+    • clarodrive                                                        
+    • middleware                                                        
+    • portal                                                            
+    • lookup                                                            
+      ...and 1 more projects                                            
+                                                                        
+    Actions                                                             
+                                                                        
+   ▸ Search memories                                                    
+      Recent observations                                               
+      Browse sessions                                                   
+      Setup agent plugin                                                
+      Cloud sync settings                                               
+      Quit                                                              
+                                                                        
+                                                                        
+    j/k navigate • enter select • s search • q quit                     
+                                                                        
+═══ dashboard-update-failed ═══
+                                                                        
+  ╔══════════════════════════════════════════════════════════════════╗  
+  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
+  ║                                                                  ║  
+  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
+  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
+  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
+  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
+  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
+  ║                                                                  ║  
+  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
+  ╚══════════════════════════════════════════════════════════════════╝  
+                                                                        
+                                                                        
+   Could not check for updates: GitHub took too long to respond.        
+                                                                        
+  ┌───────────────────────────┐                                         
+  │                           │                                         
+  │        12   sessions      │                                         
+  │       348   observations  │                                         
+  │        57   prompts       │                                         
+  │         6   projects      │                                         
+  │                           │                                         
+  └───────────────────────────┘                                         
+                                                                        
+    Projects                                                            
+                                                                        
+    • engram                                                            
+    • clarodrive                                                        
+    • middleware                                                        
+    • portal                                                            
+    • lookup                                                            
+      ...and 1 more projects                                            
+                                                                        
+    Actions                                                             
+                                                                        
+   ▸ Search memories                                                    
+      Recent observations                                               
+      Browse sessions                                                   
+      Setup agent plugin                                                
+      Cloud sync settings                                               
+      Quit                                                              
+                                                                        
+                                                                        
+    j/k navigate • enter select • s search • q quit                     
+                                                                        
+═══ dashboard-with-error ═══
+                                                                        
+  ╔══════════════════════════════════════════════════════════════════╗  
+  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
+  ║                                                                  ║  
+  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
+  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
+  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
+  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
+  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
+  ║                                                                  ║  
+  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
+  ╚══════════════════════════════════════════════════════════════════╝  
+                                                                        
+                                                                        
+  ┌───────────────────────────┐                                         
+  │                           │                                         
+  │        12   sessions      │                                         
+  │       348   observations  │                                         
+  │        57   prompts       │                                         
+  │         6   projects      │                                         
+  │                           │                                         
+  └───────────────────────────┘                                         
+                                                                        
+    Projects                                                            
+                                                                        
+    • engram                                                            
+    • clarodrive                                                        
+    • middleware                                                        
+    • portal                                                            
+    • lookup                                                            
+      ...and 1 more projects                                            
+                                                                        
+    Actions                                                             
+                                                                        
+   ▸ Search memories                                                    
+      Recent observations                                               
+      Browse sessions                                                   
+      Setup agent plugin                                                
+      Cloud sync settings                                               
+      Quit                                                              
+                                                                        
+                                                                        
+    j/k navigate • enter select • s search • q quit                     
+   Error: database is locked                                            
+                                                                        
+═══ search-empty-input ═══
+                                                                    
+    Search Memories                                                 
+                                                                    
+  ─────────────────                                                 
+                                                                    
+                                                                    
+  ┌──────────────────────────────────────────────────────────────┐  
+  │ > Search memories...                                         │  
+  └──────────────────────────────────────────────────────────────┘  
+                                                                    
+                                                                    
+                                                                    
+    Type a query and press enter • esc go back                      
+                                                                    
+═══ search-typed-query ═══
+                                                                       
+    Search Memories                                                    
+                                                                       
+  ─────────────────                                                    
+                                                                       
+                                                                       
+  ┌─────────────────────────────────────────────────────────────────┐  
+  │ > wal mode                                                      │  
+  └─────────────────────────────────────────────────────────────────┘  
+                                                                       
+                                                                       
+                                                                       
+    Type a query and press enter • esc go back                         
+                                                                       
+═══ search-results ═══
+                                                                                                                        
+    Search: "wal" — 4 results                                                                                           
+                                                                                                                        
+  ───────────────────────────                                                                                           
+                                                                                                                        
+    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                             
+      SQLite WAL keeps readers unblocked while the MCP server writes.                                                   
+  ▸ #102   [bugfix      ] [needs_review]  Session delete refused when observations remain  engram  2026-01-15 10:05:00  
+      Guard the delete path so orphan observations cannot appear.                                                       
+    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                
+      Header line carries id, type and badges; preview carries content.                                                 
+    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                   
+      Rendered bytes must survive a package move untouched.                                                             
+                                                                                                                        
+                                                                                                                        
+    j/k navigate • enter detail • c copy • t timeline • / search • esc back                                             
+                                                                                                                        
+═══ search-results-scrolled ═══
+                                                                                                                         
+    Search: "wal" — 4 results                                                                                            
+                                                                                                                         
+  ───────────────────────────                                                                                            
+                                                                                                                         
+    #102   [bugfix      ] [needs_review]   Session delete refused when observations remain  engram  2026-01-15 10:05:00  
+      Guard the delete path so orphan observations cannot appear.                                                        
+    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                 
+      Header line carries id, type and badges; preview carries content.                                                  
+  ▸ #104   [note        ]  Golden files are the refactor oracle  2026-01-16 08:00:00                                     
+      Rendered bytes must survive a package move untouched.                                                              
+                                                                                                                         
+                                                                                                                         
+    j/k navigate • enter detail • c copy • t timeline • / search • esc back                                              
+                                                                                                                         
+═══ search-results-empty ═══
+                                               
+    Search: "no-such-thing" — 0 results        
+                                               
+  ─────────────────────────────────────        
+                                               
+                                               
+    No memories found. Try a different query.  
+                                               
+                                               
+    / new search • esc back                    
+                                               
+═══ recent ═══
+                                                                                                                         
+    Recent Observations — 4 total                                                                                        
+                                                                                                                         
+  ───────────────────────────────                                                                                        
+                                                                                                                         
+    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                              
+      SQLite WAL keeps readers unblocked while the MCP server writes.                                                    
+    #102   [bugfix      ] [needs_review]   Session delete refused when observations remain  engram  2026-01-15 10:05:00  
+      Guard the delete path so orphan observations cannot appear.                                                        
+  ▸ #103   [pattern     ] [pinned]  Two-line list item  clarodrive  2026-01-15 11:45:00                                  
+      Header line carries id, type and badges; preview carries content.                                                  
+    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                    
+      Rendered bytes must survive a package move untouched.                                                              
+                                                                                                                         
+                                                                                                                         
+    j/k navigate • enter detail • c copy • t timeline • esc back                                                         
+                                                                                                                         
+═══ recent-empty ═══
+                                   
+    Recent Observations — 0 total  
+                                   
+  ───────────────────────────────  
+                                   
+                                   
+    No observations yet.           
+                                   
+                                   
+    esc back                       
+                                   
+═══ recent-copy-feedback ═══
+                                                                                                                         
+    Recent Observations — 4 total                                                                                        
+                                                                                                                         
+  ───────────────────────────────                                                                                        
+                                                                                                                         
+  ▸ #101   [decision    ]  Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                               
+      SQLite WAL keeps readers unblocked while the MCP server writes.                                                    
+    #102   [bugfix      ] [needs_review]   Session delete refused when observations remain  engram  2026-01-15 10:05:00  
+      Guard the delete path so orphan observations cannot appear.                                                        
+    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                 
+      Header line carries id, type and badges; preview carries content.                                                  
+    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                    
+      Rendered bytes must survive a package move untouched.                                                              
+                                                                                                                         
+                                                                                                                         
+    j/k navigate • enter detail • c copy • t timeline • esc back                                                         
+   ✓ Copied!                                                                                                             
+                                                                                                                         
+═══ observation-detail-loading ═══
+                        
+    Observation Detail  
+                        
+  ────────────────────  
+                        
+                        
+    Loading...          
+                        
+═══ observation-detail ═══
+                                                                                                                      
+    Observation #102                                                                                                  
+                                                                                                                      
+  ──────────────────                                                                                                  
+                                                                                                                      
+          Type:  bugfix                                                                                               
+         Title:  Session delete refused when observations remain                                                      
+       Session:  session-alpha                                                                                        
+       Created:  2026-01-15 10:05:00                                                                                  
+         State:  needs_review                                                                                         
+        Pinned:  false                                                                                                
+        Review:  2026-03-01                                                                                           
+          Tool:  Bash                                                                                                 
+       Project:  engram                                                                                               
+                                                                                                                      
+                                                                                                                      
+    Content                                                                                                           
+                                                                                                                      
+    Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan observations cannot   
+    appear. Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan observations  
+    cannot appear. Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan        
+    observations cannot appear.                                                                                       
+                                                                                                                      
+                                                                                                                      
+    j/k scroll • c copy • t timeline • esc back                                                                       
+                                                                                                                      
+═══ observation-detail-scrolled ═══
+                                                                                                                      
+    Observation #102                                                                                                  
+                                                                                                                      
+  ──────────────────                                                                                                  
+                                                                                                                      
+          Type:  bugfix                                                                                               
+         Title:  Session delete refused when observations remain                                                      
+       Session:  session-alpha                                                                                        
+       Created:  2026-01-15 10:05:00                                                                                  
+         State:  needs_review                                                                                         
+        Pinned:  false                                                                                                
+        Review:  2026-03-01                                                                                           
+       Project:  engram                                                                                               
+                                                                                                                      
+                                                                                                                      
+    Content                                                                                                           
+                                                                                                                      
+    Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan observations cannot   
+    appear. Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan observations  
+    cannot appear. Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan        
+    observations cannot appear.                                                                                       
+                                                                                                                      
+                                                                                                                      
+    j/k scroll • c copy • t timeline • esc back                                                                       
+                                                                                                                      
+═══ timeline-loading ═══
+                
+    Timeline    
+                
+  ──────────    
+                
+                
+    Loading...  
+                
+═══ timeline ═══
+                                                                                    
+    Timeline — Observation #102 (3 total in session)                                
+                                                                                    
+  ──────────────────────────────────────────────────                                
+                                                                                    
+         Session:  session-alpha       Project:  engram                             
+                                                                                    
+                                                                                    
+    Before                                                                          
+                                                                                    
+    │ #101  [decision    ]    Adopt WAL mode for the local store                    
+    │                                                                               
+  ┌──────────────────────────────────────────────────────────────────────────────┐  
+  │   #102 [bugfix]  Session delete refused when observations remain             │  
+  │     Guard the delete path so orphan observations cannot appear in the store. │  
+  └──────────────────────────────────────────────────────────────────────────────┘  
+    │                                                                               
+                                                                                    
+    After                                                                           
+                                                                                    
+    │ #103  [pattern     ]    Two-line list item                                    
+                                                                                    
+                                                                                    
+    j/k scroll • esc back                                                           
+                                                                                    
+═══ sessions ═══
+                                                                                                     
+    Sessions — 4 total                                                                               
+                                                                                                     
+  ────────────────────                                                                               
+                                                                                                     
+    engram                2026-01-15 09:00:00         8 obs    Refactored the TUI into tab packages  
+  ▸ clarodrive            2026-01-16 07:40:00         3 obs                                          
+    middleware            2026-01-17 12:15:00        11 obs    Traced the recovery lookup            
+    portal                2026-01-18 16:20:00         1 obs                                          
+                                                                                                     
+                                                                                                     
+    j/k navigate • enter view session • d delete • esc back                                          
+                                                                                                     
+═══ sessions-empty ═══
+                        
+    Sessions — 0 total  
+                        
+  ────────────────────  
+                        
+                        
+    No sessions yet.    
+                        
+                        
+    esc back            
+                        
+═══ sessions-delete-prompt ═══
+                                                                                      
+    Sessions — 4 total                                                                
+                                                                                      
+  ────────────────────                                                                
+                                                                                      
+                                                                                      
+                                                                                      
+    Confirm Session Delete                                                            
+                                                                                      
+                                                                                      
+      Delete session "session-beta" from project "clarodrive"?                        
+    Sessions with observations cannot be deleted; Engram will refuse unsafe deletes.  
+                                                                                      
+                                                                                      
+    [y] Delete  [n] Cancel  [esc] Cancel                                              
+                                                                                      
+═══ sessions-deleting ═══
+                                          
+    Sessions — 4 total                    
+                                          
+  ────────────────────                    
+                                          
+                                          
+                                          
+    Deleting Session                      
+                                          
+                                          
+      Deleting session "session-beta"...  
+                                          
+                                          
+═══ session-detail ═══
+                                                                                                                        
+    Session: engram — 2026-01-15 09:00:00                                                                               
+                                                                                                                        
+  ───────────────────────────────────────                                                                               
+                                                                                                                        
+         Summary:  Refactored the TUI into tab packages                                                                 
+                                                                                                                        
+                                                                                                                        
+    Observations (4)                                                                                                    
+                                                                                                                        
+    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                             
+      SQLite WAL keeps readers unblocked while the MCP server writes.                                                   
+  ▸ #102   [bugfix      ] [needs_review]  Session delete refused when observations remain  engram  2026-01-15 10:05:00  
+      Guard the delete path so orphan observations cannot appear.                                                       
+    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                
+      Header line carries id, type and badges; preview carries content.                                                 
+    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                   
+      Rendered bytes must survive a package move untouched.                                                             
+                                                                                                                        
+                                                                                                                        
+    j/k navigate • enter detail • c copy • t timeline • esc back                                                        
+                                                                                                                        
+═══ session-detail-empty ═══
+                                               
+    Session: clarodrive — 2026-01-16 07:40:00  
+                                               
+  ───────────────────────────────────────────  
+                                               
+                                               
+    Observations (0)                           
+                                               
+                                               
+    No observations in this session.           
+                                               
+                                               
+    esc back                                   
+                                               
+═══ session-detail-not-found ═══
+                        
+    Session Detail      
+                        
+  ────────────────      
+                        
+                        
+    Session not found.  
+                        
+═══ setup-select ═══
+                                                            
+    Setup — Install Agent Plugin                            
+                                                            
+  ──────────────────────────────                            
+                                                            
+                                                            
+    Select an agent to set up                               
+                                                            
+                                                            
+   ▸ Claude Code                                            
+          Install to:  /Users/dev/.claude/plugins           
+                                                            
+      OpenCode                                              
+          Install to:  /Users/dev/.config/opencode/plugins  
+                                                            
+                                                            
+                                                            
+    j/k navigate • enter install • esc back                 
+                                                            
+═══ setup-installing-opencode ═══
+                                              
+    Setup — Install Agent Plugin              
+                                              
+  ──────────────────────────────              
+                                              
+                                              
+    ⣾  Installing opencode plugin...          
+                                              
+    Copying plugin file to plugins directory  
+                                              
+                                              
+═══ setup-installing-claude-code ═══
+                                                     
+    Setup — Install Agent Plugin                     
+                                                     
+  ──────────────────────────────                     
+                                                     
+                                                     
+    ⣾  Installing claude-code plugin...              
+                                                     
+    Running claude plugin marketplace add + install  
+                                                     
+                                                     
+═══ setup-allowlist-prompt ═══
+                                                                          
+    Setup — Install Agent Plugin                                          
+                                                                          
+  ──────────────────────────────                                          
+                                                                          
+                                                                          
+    ✓ Installed claude-code plugin                                        
+                                                                          
+                                                                          
+    Permissions Allowlist                                                 
+                                                                          
+                                                                          
+      Add engram tools to ~/.claude/settings.json allowlist?              
+    This prevents Claude Code from asking permission on every tool call.  
+                                                                          
+                                                                          
+    [y] Yes  [n] No                                                       
+                                                                          
+═══ setup-done-opencode ═══
+                                                                 
+    Setup — Install Agent Plugin                                 
+                                                                 
+  ──────────────────────────────                                 
+                                                                 
+    ✓ Installed opencode plugin (2 files)                        
+        Location:  /Users/dev/.config/opencode/plugins           
+                                                                 
+                                                                 
+    Next Steps                                                   
+                                                                 
+    1. Restart OpenCode                                          
+    2. Plugin is auto-loaded from ~/.config/opencode/plugins/    
+    3. Make sure 'engram' is in your MCP config (opencode.json)  
+                                                                 
+                                                                 
+    enter/esc back to dashboard                                  
+                                                                 
+═══ setup-done-claude-allowlisted ═══
+                                                               
+    Setup — Install Agent Plugin                               
+                                                               
+  ──────────────────────────────                               
+                                                               
+    ✓ Installed claude-code plugin                             
+        Location:  claude plugin system                        
+                                                               
+                                                               
+    Next Steps                                                 
+                                                               
+    ✓   Engram tools added to allowlist                        
+    1. Restart Claude Code — the plugin is active immediately  
+    2. Verify with: claude plugin list                         
+                                                               
+                                                               
+    enter/esc back to dashboard                                
+                                                               
+═══ setup-done-claude-allowlist-error ═══
+                                                                    
+    Setup — Install Agent Plugin                                    
+                                                                    
+  ──────────────────────────────                                    
+                                                                    
+    ✓ Installed claude-code plugin                                  
+        Location:  claude plugin system                             
+                                                                    
+                                                                    
+    Next Steps                                                      
+                                                                    
+    ✗   Allowlist update failed: permission denied                  
+      Add manually to permissions.allow in ~/.claude/settings.json  
+    1. Restart Claude Code — the plugin is active immediately       
+    2. Verify with: claude plugin list                              
+                                                                    
+                                                                    
+    enter/esc back to dashboard                                     
+                                                                    
+═══ setup-failed ═══
+                                                  
+    Setup — Install Agent Plugin                  
+                                                  
+  ──────────────────────────────                  
+                                                  
+     ✗ Installation failed: network unreachable   
+                                                  
+                                                  
+                                                  
+    enter/esc back to dashboard                   
+                                                  
+═══ cloud-settings ═══
+                                              
+    Cloud sync settings                       
+                                              
+  ─────────────────────                       
+                                              
+                                              
+      Configure server                        
+      View status                             
+   ▸ Enroll projects                          
+      Back                                    
+                                              
+                                              
+    j/k navigate • enter select • esc/q back  
+                                              
+═══ unknown-screen ═══
+                  
+  Unknown screen  
+                  

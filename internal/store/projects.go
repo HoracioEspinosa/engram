@@ -144,16 +144,24 @@ func (s *Store) UpsertProjectCard(p UpsertProjectCardParams) (ProjectCard, bool,
 		if p.GraphPath != nil {
 			graphPath = *p.GraphPath
 		}
-		_, err := s.db.Exec(`
-			INSERT INTO project_cards
-				(slug, sync_id, display_name, repo_url, default_branch, jira_project,
-				 jira_component, knowledge_hub_path, graph_path, owner, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			p.Slug, newSyncID("proj"), displayName, nullableStr(p.RepoURL), defaultBranch, jiraProject,
-			nullableStr(p.JiraComponent), nullableStr(p.KnowledgeHubPath), graphPath, nullableStr(p.Owner), now, now,
-		)
-		if err != nil {
-			return ProjectCard{}, false, fmt.Errorf("engram-projects: insert project card: %w", err)
+		// The row and its sync mutation are written in one transaction, so a
+		// card can never exist locally without the mutation that replicates it
+		// (nor the other way round). This is the same atomicity contract
+		// mem_save already gives observations.
+		if err := s.withTx(func(tx *sql.Tx) error {
+			if _, err := s.execHook(tx, `
+				INSERT INTO project_cards
+					(slug, sync_id, display_name, repo_url, default_branch, jira_project,
+					 jira_component, knowledge_hub_path, graph_path, owner, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				p.Slug, newSyncID("proj"), displayName, nullableStr(p.RepoURL), defaultBranch, jiraProject,
+				nullableStr(p.JiraComponent), nullableStr(p.KnowledgeHubPath), graphPath, nullableStr(p.Owner), now, now,
+			); err != nil {
+				return fmt.Errorf("engram-projects: insert project card: %w", err)
+			}
+			return s.enqueueProjectCardTx(tx, p.Slug)
+		}); err != nil {
+			return ProjectCard{}, false, err
 		}
 	} else {
 		sets := []string{"updated_at = ?"}
@@ -174,9 +182,15 @@ func (s *Store) UpsertProjectCard(p UpsertProjectCardParams) (ProjectCard, bool,
 		addSet("graph_path", p.GraphPath)
 		addSet("owner", p.Owner)
 		args = append(args, p.Slug)
-		_, err := s.db.Exec(`UPDATE project_cards SET `+strings.Join(sets, ", ")+` WHERE slug = ?`, args...)
-		if err != nil {
-			return ProjectCard{}, false, fmt.Errorf("engram-projects: update project card: %w", err)
+		if err := s.withTx(func(tx *sql.Tx) error {
+			if _, err := s.execHook(tx,
+				`UPDATE project_cards SET `+strings.Join(sets, ", ")+` WHERE slug = ?`, args...,
+			); err != nil {
+				return fmt.Errorf("engram-projects: update project card: %w", err)
+			}
+			return s.enqueueProjectCardTx(tx, p.Slug)
+		}); err != nil {
+			return ProjectCard{}, false, err
 		}
 	}
 	_ = existing
@@ -355,13 +369,15 @@ type GraphSyncResult struct {
 // computed from (D-02); this method's signature makes that pairing the only
 // thing you can call it with in the first place.
 func (s *Store) StampProjectGraph(slug, graphCommit, graphBuiltAt string, graphSummary *string) error {
-	if _, err := s.db.Exec(
-		`UPDATE project_cards SET graph_commit = ?, graph_built_at = ?, graph_summary = ?, updated_at = ? WHERE slug = ?`,
-		graphCommit, graphBuiltAt, nullableStr(graphSummary), s.nowUTC(), slug,
-	); err != nil {
-		return fmt.Errorf("engram-projects: stamp graph commit: %w", err)
-	}
-	return nil
+	return s.withTx(func(tx *sql.Tx) error {
+		if _, err := s.execHook(tx,
+			`UPDATE project_cards SET graph_commit = ?, graph_built_at = ?, graph_summary = ?, updated_at = ? WHERE slug = ?`,
+			graphCommit, graphBuiltAt, nullableStr(graphSummary), s.nowUTC(), slug,
+		); err != nil {
+			return fmt.Errorf("engram-projects: stamp graph commit: %w", err)
+		}
+		return s.enqueueProjectCardTx(tx, slug)
+	})
 }
 
 // nowUTC returns the current UTC time formatted like SQLite's datetime('now'),
@@ -375,4 +391,61 @@ func nullableStr(v *string) any {
 		return nil
 	}
 	return *v
+}
+
+// ─── Card listing (backs GET /projects) ──────────────────────────────────────
+
+// ProjectCardListItem is one row of the project-card listing, optionally
+// carrying the same counters mem_project_card reports for a single card.
+type ProjectCardListItem struct {
+	ProjectCard
+	Counts *ProjectCardCounts `json:"counts,omitempty"`
+}
+
+// ListProjectCards returns every live project card, most recently updated
+// first. Counters are computed only when includeCounts is set: they cost
+// eight aggregate queries per card, which the TUI selector wants and a plain
+// pointer lookup does not.
+func (s *Store) ListProjectCards(includeCounts bool) ([]ProjectCardListItem, int, error) {
+	rows, err := s.db.Query(`
+		SELECT slug, display_name, repo_url, default_branch, jira_project, jira_component,
+		       knowledge_hub_path, graph_path, graph_commit, graph_built_at, graph_summary,
+		       owner, created_at, updated_at
+		FROM project_cards WHERE deleted_at IS NULL ORDER BY updated_at DESC, slug ASC`)
+	if err != nil {
+		return nil, 0, fmt.Errorf("engram-projects: list project cards: %w", err)
+	}
+	// The store pool is capped at one connection (Store.New), so this cursor
+	// must be drained and closed before the per-card count queries below run:
+	// otherwise they block forever waiting for the connection it holds.
+	var cards []ProjectCard
+	for rows.Next() {
+		var c ProjectCard
+		if err := rows.Scan(&c.Slug, &c.DisplayName, &c.RepoURL, &c.DefaultBranch, &c.JiraProject,
+			&c.JiraComponent, &c.KnowledgeHubPath, &c.GraphPath, &c.GraphCommit, &c.GraphBuiltAt,
+			&c.GraphSummary, &c.Owner, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			rows.Close()
+			return nil, 0, fmt.Errorf("engram-projects: scan project card: %w", err)
+		}
+		cards = append(cards, c)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, 0, fmt.Errorf("engram-projects: list project cards: %w", err)
+	}
+	rows.Close()
+
+	items := make([]ProjectCardListItem, 0, len(cards))
+	for _, c := range cards {
+		item := ProjectCardListItem{ProjectCard: c}
+		if includeCounts {
+			counts, err := s.ProjectCardCounts(c.Slug)
+			if err != nil {
+				return nil, 0, err
+			}
+			item.Counts = &counts
+		}
+		items = append(items, item)
+	}
+	return items, len(items), nil
 }

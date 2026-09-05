@@ -229,6 +229,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /project/current", s.handleCurrentProject)
 	s.mux.HandleFunc("POST /projects/migrate", requireAuth(s.handleMigrateProject))
 
+	// engram-projects: cards, tasks, evidence, runbooks and context packs
+	// (internal/server/projects_routes.go).
+	s.registerProjectRoutes()
+
 	// Sync status (degraded-state visibility for autosync)
 	s.mux.HandleFunc("GET /sync/status", s.handleSyncStatus)
 

@@ -27,6 +27,15 @@ type StoreReader interface {
 	Stats() *store.Stats
 }
 
+// ProjectRefReader is the optional engram-projects capability of a store: the
+// knowledge_ref / jira_key / runbook_id / graph_commit pointers the bridge
+// stamps on an exported note (RFC §9.5). It is kept apart from StoreReader on
+// purpose — the exporter has to keep working against a store that never
+// created the projects schema, and against the fakes the tests pass in.
+type ProjectRefReader interface {
+	ObservationExportRefs(project string) (map[string]store.ObservationExportRefs, error)
+}
+
 // Exporter reads from the store and writes markdown files to a vault.
 type Exporter struct {
 	store  StoreReader
@@ -146,6 +155,18 @@ func (e *Exporter) Export() (*ExportResult, error) {
 		return nil, fmt.Errorf("obsidian: store export: %w", err)
 	}
 
+	// engram-projects pointers (RFC §9.5). The capability is optional: a
+	// StoreReader that does not implement it, or a database without the
+	// projects schema, simply exports notes without those keys.
+	exportRefs := map[string]store.ObservationExportRefs{}
+	if reader, ok := e.store.(ProjectRefReader); ok {
+		refs, err := reader.ObservationExportRefs(e.config.Project)
+		if err != nil {
+			return nil, fmt.Errorf("obsidian: read engram-projects refs: %w", err)
+		}
+		exportRefs = refs
+	}
+
 	result := &ExportResult{}
 
 	// ── Handle deleted observations: clean up files ───────────────────────────
@@ -243,7 +264,7 @@ func (e *Exporter) Export() (*ExportResult, error) {
 		}
 
 		// Generate markdown content
-		content := ObservationToMarkdown(obs)
+		content := ObservationToMarkdownWithRefs(obs, exportRefs[obs.SyncID])
 
 		// Check idempotency: if file exists and content unchanged, skip
 		if existing, err := os.ReadFile(absPath); err == nil {

@@ -12,7 +12,7 @@ import (
 // anything else, so this pragma is reserved exclusively for this
 // extension and is safe to read from outside the store package (see
 // ProjectsSchemaStatus).
-const ProjectsSchemaVersion = 1
+const ProjectsSchemaVersion = 2
 
 // projectsSchemaTriggers lists every FTS5 sync trigger created by
 // projectsSchemaDDL. migrateProjects verifies each one exists after
@@ -23,11 +23,11 @@ var projectsSchemaTriggers = []string{
 	"runbook_fts_insert", "runbook_fts_delete", "runbook_fts_update",
 }
 
-// projectsSchemaDDL creates the engram-projects v1 (EP-001) extension
-// schema: the five contract tables (project_cards, tasks, evidence,
-// runbook_index, task_observations), the observation_refs auxiliary table,
-// and the tasks_fts / runbook_index_fts external-content FTS5 tables with
-// their sync triggers. Every statement is idempotent (IF NOT EXISTS,
+// projectsSchemaDDL creates the engram-projects extension schema: the five
+// contract tables (project_cards, tasks, evidence, runbook_index,
+// task_observations), the observation_refs and task_link_tombstones
+// auxiliary tables, and the tasks_fts / runbook_index_fts external-content
+// FTS5 tables with their sync triggers. Every statement is idempotent (IF NOT EXISTS,
 // including on triggers), so re-running it against an already-migrated
 // database creates nothing and touches no existing row. No upstream table
 // is modified.
@@ -184,6 +184,20 @@ CREATE TABLE IF NOT EXISTS observation_refs (
 CREATE INDEX IF NOT EXISTS idx_obs_refs_kind_ref ON observation_refs(ref_kind, ref);
 CREATE INDEX IF NOT EXISTS idx_obs_refs_obs      ON observation_refs(observation_sync_id);
 
+-- 6b. Tombstones for replicated task<->observation unlinks. task_observations
+--     carries no deleted_at, so a pulled task_link delete has nowhere to
+--     record that the pair was removed; without that record a concurrent
+--     upsert that arrives afterwards silently resurrects the link and two
+--     replicas that saw the same mutations in different orders end up with
+--     different rows. The tombstone keeps the delete clock so the apply rule
+--     stays a convergent LWW-element-set (delete wins on an exact tie).
+CREATE TABLE IF NOT EXISTS task_link_tombstones (
+    task_sync_id        TEXT NOT NULL,
+    observation_sync_id TEXT NOT NULL,
+    deleted_at          TEXT NOT NULL,
+    PRIMARY KEY (task_sync_id, observation_sync_id)
+);
+
 -- 7. FTS5 over tasks (external content, same pattern as observations_fts).
 CREATE VIRTUAL TABLE IF NOT EXISTS tasks_fts USING fts5(
     title, jira_key, sdd_change, branch, project,
@@ -225,7 +239,7 @@ CREATE TRIGGER IF NOT EXISTS runbook_fts_update AFTER UPDATE ON runbook_index BE
 END;
 `
 
-// migrateProjects applies the engram-projects v1 schema (EP-001). It is
+// migrateProjects applies the engram-projects schema (EP-001). It is
 // invoked once from Store.migrate() and is safe to run on every startup:
 // every statement in projectsSchemaDDL is idempotent, so re-running it
 // against an already-migrated database creates nothing and touches no
@@ -268,7 +282,7 @@ func (s *Store) migrateProjects() error {
 
 // projectsSchemaDropDDL removes every engram-projects object in dependency
 // order: FTS5 sync triggers first, then the FTS5 virtual tables, then the
-// six contract/auxiliary tables (children before parents so foreign keys
+// contract and auxiliary tables (children before parents so foreign keys
 // never block the drop). No upstream table is touched.
 const projectsSchemaDropDDL = `
 DROP TRIGGER IF EXISTS runbook_fts_update;
@@ -279,6 +293,7 @@ DROP TRIGGER IF EXISTS tasks_fts_delete;
 DROP TRIGGER IF EXISTS tasks_fts_insert;
 DROP TABLE IF EXISTS runbook_index_fts;
 DROP TABLE IF EXISTS tasks_fts;
+DROP TABLE IF EXISTS task_link_tombstones;
 DROP TABLE IF EXISTS observation_refs;
 DROP TABLE IF EXISTS task_observations;
 DROP TABLE IF EXISTS evidence;

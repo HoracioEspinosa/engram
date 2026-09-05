@@ -345,6 +345,9 @@ func validateSupportedMutation(entity, op string) error {
 		}
 		return nil
 	default:
+		if isProjectsEntity(entity) {
+			return validateSupportedProjectsMutation(entity, op)
+		}
 		return fmt.Errorf("unsupported mutation %q/%q", entity, op)
 	}
 }
@@ -494,6 +497,9 @@ func normalizeMutationPayload(entity, op, payload, project string) (normalizedPa
 		}
 		return string(encoded), body.SyncID, nil
 	default:
+		if isProjectsEntity(entity) {
+			return normalizeProjectsMutationPayload(entity, op, payload, project)
+		}
 		return "", "", fmt.Errorf("unsupported mutation %q/%q", entity, op)
 	}
 }

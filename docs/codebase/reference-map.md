@@ -58,7 +58,7 @@
 | `internal/project/detect.go` | Project detection. |
 | `internal/project/similar.go` | Name similarity/consolidation. |
 | `internal/setup/setup.go` | Integration installation. |
-| `internal/tui/` | Bubbletea TUI. |
+| `internal/tui/` | Bubbletea TUI: `app/` root, `tabs/*` workspaces, `theme/`, `shared/`, `data/`. |
 | `internal/diagnostic/` | Operational checks/repair. |
 | `internal/llm/` | Runners for semantic scanning with agent CLIs. |
 | `internal/obsidian/` | Obsidian beta export/watch/hub. |

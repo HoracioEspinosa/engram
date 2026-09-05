@@ -207,6 +207,48 @@ func ValidateSyncMutationPayload(entity, op, payload, entityKey string) SyncMuta
 			require("marked_by_kind")
 			require("project")
 		}
+	case SyncEntityProjectCard:
+		require("slug")
+		require("sync_id")
+		require("project")
+		if op == SyncOpUpsert {
+			require("display_name")
+			require("updated_at")
+		}
+	case SyncEntityTask:
+		require("sync_id")
+		require("project")
+		if op == SyncOpUpsert {
+			require("title")
+			require("kind")
+			require("state")
+			require("created_at")
+			require("updated_at")
+		}
+	case SyncEntityEvidence:
+		require("sync_id")
+		require("project")
+		require("task_sync_id")
+		if op == SyncOpUpsert {
+			require("path")
+			require("sha256")
+			require("kind")
+			require("proves")
+			require("captured_at")
+		}
+	case SyncEntityTaskLink:
+		require("task_sync_id")
+		require("observation_sync_id")
+		require("project")
+		require("linked_at")
+		if op == SyncOpUpsert {
+			require("role")
+		}
+	case SyncEntityObservationRef:
+		require("observation_sync_id")
+		require("ref_kind")
+		require("ref")
+		require("project")
 	default:
 		result.ReasonCode = UpgradeReasonBlockedLegacyMutationManual
 		result.Message = fmt.Sprintf("unsupported sync mutation %q/%q", entity, op)

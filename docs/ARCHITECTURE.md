@@ -289,6 +289,23 @@ engram cloud bootstrap admin --username <name> [--email <email>]
 engram projects list      Show all projects with obs/session/prompt counts
 engram projects consolidate  Interactive merge of similar project names [--all] [--dry-run]
 engram projects prune     Remove projects with 0 observations [--dry-run]
+engram project [<slug>] card
+                          Project card: pointers, counters, cloud sync status [--graph-summary]
+engram project [<slug>] upsert
+                          Create/update the project card (idempotent; omitted flags untouched)
+engram project [<slug>] graph sync
+                          Stamp graph_commit/graph_built_at/graph_summary [--repo-dir] [--graph-path]
+engram project [<slug>] tasks list|upsert|link <task>
+                          Tasks and their linked observations
+engram project [<slug>] evidence add <task>|list [<task>]
+                          Captured evidence files (--file hashes and derives the path)
+engram project [<slug>] runbooks sync|find <symptom>
+                          Runbook index (--vault-dir | --entries-file) and symptom search
+engram project [<slug>] context <task>
+                          Compose a task's context pack [--max-chars] [--format] [--copy]
+                          <slug> is optional: ENGRAM_PROJECT, then cwd detection.
+                          Every subcommand accepts --json. Full reference:
+                          docs/ENGRAM-PROJECTS-CLI.md
 engram obsidian-export    Export memories to Obsidian vault (beta)
 engram version            Show version
 ```

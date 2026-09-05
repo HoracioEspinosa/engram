@@ -44,6 +44,25 @@ func (e *HTTPStatusError) IsPolicyFailure() bool {
 	return e != nil && e.StatusCode == http.StatusForbidden
 }
 
+// IsUnsupportedEntity reports whether the cloud refused the push because it
+// does not know one of the mutation entities it was sent. That is the expected
+// answer from a server older than the engram-projects release (RFC section
+// 10.2): the client keeps those mutations pending under
+// reason_code=unsupported_entity and retries on the autosync backoff, while
+// the upstream entities it already pushed stay acked.
+func (e *HTTPStatusError) IsUnsupportedEntity() bool {
+	if e == nil {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(e.ErrorCode), "server_unsupported") {
+		return true
+	}
+	if e.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	return strings.Contains(strings.ToLower(e.Body), "unsupported mutation")
+}
+
 func (e *HTTPStatusError) IsRepairableMigrationFailure() bool {
 	return e != nil && strings.TrimSpace(strings.ToLower(e.ErrorClass)) == "repairable"
 }
