@@ -223,6 +223,36 @@ func TestEvidenceAdd_AbsolutePathRejected(t *testing.T) {
 	}
 }
 
+func TestEvidenceAdd_TraversalPathRejected(t *testing.T) {
+	s := newMCPTestStore(t)
+	cfg := MCPConfig{DefaultProject: "nextcloud"}
+	callProjectTool(t, handleTaskUpsert(s, cfg), map[string]any{"jira_key": "PROJ-1", "title": "t", "kind": "incident"})
+
+	// A leading-"/" check alone lets these through, which is exactly the gap
+	// the HTTP endpoint closed and this tool did not.
+	for _, path := range []string{"../../etc/passwd", "..", "middleware/../../../etc/passwd"} {
+		res := callProjectTool(t, handleEvidenceAdd(s, cfg), map[string]any{
+			"task": "PROJ-1", "path": path,
+			"sha256": "9f2b1c0a7e4d5b6c8a1f3e2d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c3b",
+			"kind":   "png", "proves": "p",
+		})
+		if !res.IsError || callResultJSON(t, res)["code"] != "path_escapes_evidence_dir" {
+			t.Fatalf("path %q: expected path_escapes_evidence_dir, got %v", path, callResultJSON(t, res))
+		}
+	}
+
+	// The legitimate nested path the capture-evidence skill emits
+	// (<repo>/<KEY>/<file>) must still be accepted.
+	ok := callProjectTool(t, handleEvidenceAdd(s, cfg), map[string]any{
+		"task": "PROJ-1", "path": "middleware/PROJ-1/PROJ-1-01-login-401.png",
+		"sha256": "9f2b1c0a7e4d5b6c8a1f3e2d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c3b",
+		"kind":   "png", "proves": "p",
+	})
+	if ok.IsError {
+		t.Fatalf("nested evidence path must be accepted, got %v", callResultJSON(t, ok))
+	}
+}
+
 func TestEvidenceAddAndList_Duplicate(t *testing.T) {
 	s := newMCPTestStore(t)
 	cfg := MCPConfig{DefaultProject: "nextcloud"}

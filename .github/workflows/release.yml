@@ -11,6 +11,11 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    # This job publishes to Gentleman-Programming/homebrew-tap. A fork that
+    # pushes a v* tag would run it too and attempt a write into a repository it
+    # does not own, so it is fenced to the upstream repository. The ClaroDrive
+    # fork releases from release-custom.yml on v*-cd.* tags instead.
+    if: github.repository == 'Gentleman-Programming/engram'
     steps:
       - name: Checkout
         uses: actions/checkout@v6

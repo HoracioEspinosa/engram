@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -816,8 +817,19 @@ func handleEvidenceAdd(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 		if !enumContains(evidenceKindEnum, kind) {
 			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), nil), nil
 		}
+		// An evidence path names a file inside the evidence directory, so it is
+		// checked for what it RESOLVES to, not for how it starts. Rejecting a
+		// leading "/" or "~" stops the obvious absolute path and lets
+		// "../../etc/passwd" straight through; filepath.Clean is what collapses
+		// the traversal so it can be seen. POST /projects/{slug}/tasks/{task}/evidence
+		// already did both checks — this tool is the same write behind a
+		// different transport and must not be the weaker door.
 		if strings.HasPrefix(path, "/") || strings.HasPrefix(path, "~") {
 			return projectToolError("absolute_path_rejected", fmt.Sprintf("path %q must be relative to the evidence directory", path), nil), nil
+		}
+		if cleaned := filepath.Clean(path); cleaned == ".." ||
+			strings.HasPrefix(cleaned, "../") || filepath.IsAbs(cleaned) {
+			return projectToolError("path_escapes_evidence_dir", fmt.Sprintf("path %q escapes the evidence directory", path), nil), nil
 		}
 
 		detRes, errResult := resolveProjectsToolReadProject(s, cfg, "")

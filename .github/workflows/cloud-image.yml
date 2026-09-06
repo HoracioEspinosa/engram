@@ -13,6 +13,10 @@ permissions:
 jobs:
   publish-ghcr:
     runs-on: ubuntu-latest
+    # Pushes to ghcr.io/gentleman-programming/engram, which a fork's token
+    # cannot write. Fenced to the upstream repository so a v* tag on a fork
+    # fails fast instead of producing a red run on every release.
+    if: github.repository == 'Gentleman-Programming/engram'
     steps:
       - name: Checkout
         uses: actions/checkout@v6

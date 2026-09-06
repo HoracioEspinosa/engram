@@ -271,12 +271,69 @@ engram project nextcloud context CDBS-10336 --max-chars 6000 --copy
 
 `--copy` writes the escape sequence to the controlling terminal, never to stdout, so `engram project nextcloud context CDBS-10336 --copy > pack.md` both saves a clean file and fills the clipboard. The confirmation line goes to stderr for the same reason.
 
+### `promote list` / `promote stamp`
+
+The engram half of the engram -> vault promotion bridge: a pinned observation
+becomes a curated document in the knowledge vault through a pull request.
+
+engram never writes to the vault. `promote list` says which observations are
+eligible; the knowledge repository's bridge renders the candidate documents and
+opens the pull request; `promote stamp` records the merged document back on the
+observation. `mem_task_link` can already stamp a `knowledge_ref`, but only on an
+observation linked to a task, and a pinned decision often has no ticket at all.
+
+```
+$ engram project nextcloud promote list
+pinned inspected: 12 · candidates: 3 · already promoted: 8 · type-excluded: 1
+allowlist: decision, discovery
+ID   SYNC_ID          TYPE       CREATED     JIRA         TITLE
+417  obs-d1e4e54bff…  discovery  2026-08-31  -            Unique .part files avoid write collisions
+402  obs-15e9889557…  decision   2026-08-24  CDBS-10336   Coalesce preview requests by fileId
+```
+
+The counters are the point. An empty candidate list has four distinct causes —
+nothing pinned, nothing pinned of an allowed type, everything eligible already
+promoted, or an eligible observation that cannot carry the stamp — and a bridge
+that reports "0 candidates" without naming the cause reads as success in all
+four. `pinned_inspected` is how many units the scan actually judged; zero of
+them is never a pass.
+
+| Flag (`promote list`) | Effect |
+| --- | --- |
+| `--types` | Comma-separated subset of the allowlist. It can only narrow: naming a type outside `decision,discovery` is `type_not_promotable`, never a widening |
+| `--limit` | Caps the candidate list without falsifying the counters |
+| `--json` | The full scan, counters included |
+
+```bash
+engram project nextcloud promote stamp obs-15e9889557f2d845 \
+  --knowledge-ref "Services/Nextcloud/Previews.md"
+```
+
+`--knowledge-ref` goes through the same shape rule as everywhere else (RFC
+§9.1/§9.2), so a pasted `[[Work/Claro drive/…]]` wikilink is accepted and a
+pointer into `90 - Engram/` is refused. Re-running over an already merged batch
+is a success that reports `stamped: false`; a *different* second reference is
+`knowledge_ref_conflict`, because the export path keeps the earliest one and
+would silently ignore the newcomer.
+
+Order matters: the stamp belongs **after** the pull request is merged. Stamped
+earlier it points at a document no checkout has, which is exactly what
+`engram doctor --check knowledge_ref_dangling` reports as a defect.
+
+| Flag (`promote stamp`) | Effect |
+| --- | --- |
+| `--knowledge-ref` | Required. Vault-relative path of the merged document |
+| `--allow-unpinned` | Repair case: the observation was unpinned after the document merged |
+| `--allow-any-type` | Repair case: give an existing document its backlink even when the observation's type would not have started a promotion |
+
 ## Relationship to the other surfaces
 
-| Surface | Use it when |
-| --- | --- |
-| CLI `engram project …` | Shell, hooks, scripts, and anything that wants aligned columns or `--json` |
-| MCP `--tools=projects` | An agent inside a session; identical semantics, identical error codes |
-| HTTP `/projects/{slug}/…` | Another service reading the same data |
+| Surface | Use it when | Subcommands |
+| --- | --- | --- |
+| CLI `engram project …` | Shell, hooks, scripts, and anything that wants aligned columns or `--json` | All (including `promote list` / `promote stamp`) |
+| MCP `--tools=projects` | An agent inside a session | `card`, `upsert`, `graph sync`, `tasks …`, `evidence …`, `runbooks …`, `context` |
+| HTTP `/projects/{slug}/…` | Another service reading the same data | `card`, `upsert`, `graph sync`, `tasks …`, `evidence …`, `runbooks …`, `context` |
 
-All three go through the same functions in `internal/store` and `internal/project`; none of them owns behavior the other two lack.
+All three go through the same functions in `internal/store` and `internal/project` for their shared subcommands.
+
+**Exception: `promote list` / `promote stamp`** are CLI-only and have no MCP or HTTP equivalents. The `promote` commands are part of the engram → vault bridge workflow described in the knowledge-mcp documentation, where `promote-memories.py` orchestrates the pull request and file generation. The engram side provides observation inspection and stamping; the knowledge repository owns file rendering and PR management.

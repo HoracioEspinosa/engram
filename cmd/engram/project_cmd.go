@@ -55,7 +55,7 @@ var (
 	projContextPackSectionEnum  = []string{"header", "card", "pointers", "pinned", "observations", "evidence", "runbooks", "refs", "footer"}
 	projContextPackFormatEnum   = []string{"markdown", "json"}
 	projReservedProjectSlugSet  = map[string]bool{"migrate": true, "current": true}
-	projSubcommands             = map[string]bool{"card": true, "upsert": true, "graph": true, "tasks": true, "evidence": true, "runbooks": true, "context": true}
+	projSubcommands             = map[string]bool{"card": true, "upsert": true, "graph": true, "tasks": true, "evidence": true, "runbooks": true, "context": true, "promote": true}
 	projDefaultEvidenceDirEnv   = "CD_EVIDENCE_DIR"
 	projDefaultEvidenceRelative = filepath.Join(".clarodrive", "evidence")
 )
@@ -509,6 +509,8 @@ func cmdProject(cfg store.Config) {
 		cmdProjectRunbooks(cfg, slug, rest)
 	case "context":
 		cmdProjectContext(cfg, slug, rest)
+	case "promote":
+		cmdProjectPromote(cfg, slug, rest)
 	case "help", "--help", "-h":
 		printProjectUsage()
 	default:
@@ -562,11 +564,17 @@ Subcommands:
                                 [--max-chars] [--format markdown|json] [--sections]
                                 [--observations-limit] [--observation-chars]
                                 [--include-runbooks=false] [--repo-dir] [--copy]
+  promote list                Pinned observations eligible to become a vault document
+                                [--types decision,discovery] [--limit]
+  promote stamp <obs>         Record the merged vault document on the observation
+                                --knowledge-ref <path> [--allow-unpinned] [--allow-any-type]
 
 Examples:
   engram project nextcloud card --graph-summary
   engram project nextcloud graph sync --repo-dir .
   engram project nextcloud tasks list --state active --stale-after 24h
   engram project nextcloud context CDBS-10336 --max-chars 6000 --copy
+  engram project nextcloud promote list --json
+  engram project nextcloud promote stamp obs-1a2b3c --knowledge-ref "Services/Nextcloud/Previews.md"
 `)
 }

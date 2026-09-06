@@ -1,0 +1,131 @@
+# GoReleaser configuration for the ClaroDrive fork release (branch custom/main).
+#
+# It is a SEPARATE file from .goreleaser.yaml on purpose. The upstream config
+# publishes to Gentleman-Programming/homebrew-tap; running it from this fork
+# would attempt a write into a repository this team does not own. Every target
+# below is pinned to the fork, so a misfire cannot reach upstream.
+#
+# Invoked by .github/workflows/release-custom.yml on tags matching v*-cd.*
+# (for example v1.20.0-cd.1: upstream base version, custom revision).
+#
+# Local dry run (never inside the working checkout, it writes dist/):
+#   scripts/release/build-release.sh
+# (or with --tag v1.20.0-cd.1 to test a specific version)
+version: 2
+
+project_name: engram
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/engram
+    binary: engram
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # main.version is the single source of `engram --version`. Without this
+    # ldflag the binary reports "dev" and the release is indistinguishable from
+    # a local build, which is exactly what the rollout has to be able to tell
+    # apart.
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    hooks:
+      post:
+        - cmd: sh -c 'if [ "{{ .Os }}" = "darwin" ] && command -v codesign >/dev/null 2>&1; then codesign --force --sign - "{{ .Path }}"; fi'
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+# Pinning owner and name is the guard that matters: with them, an accidental
+# run from a checkout whose origin points elsewhere still publishes here.
+release:
+  github:
+    owner: HoracioEspinosa
+    name: engram
+  prerelease: auto
+  name_template: "engram {{ .Version }} (ClaroDrive fork)"
+  header: |
+    Fork release of engram for the ClaroDrive platform, built from `custom/main`.
+
+    Container image for the cloud runtime:
+    `ghcr.io/horacioespinosa/engram:{{ .Version }}`
+
+# A cask, not a formula: GoReleaser deprecated `brews` for pre-compiled
+# binaries, and `goreleaser check` fails on the deprecated section, so the
+# formula path cannot be gated in CI. The generated cask does carry linux URLs,
+# but Homebrew only supports casks on macOS, so Linux and Windows machines
+# install the release tarball directly and the cloud runtime takes the
+# container image instead. docs/RELEASE-FORK.md carries both routes.
+homebrew_casks:
+  # The cask is named engram-custom, not engram, so `brew upgrade engram` can
+  # never swap a team machine back onto the upstream build behind its owner's
+  # back. The binary it installs is still called engram.
+  - name: engram-custom
+    binaries:
+      - engram
+    repository:
+      owner: HoracioEspinosa
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/HoracioEspinosa/engram"
+    description: "Engram (ClaroDrive fork): persistent memory for AI coding agents, with engram-projects"
+    commit_author:
+      name: github-actions[bot]
+      email: 41898282+github-actions[bot]@users.noreply.github.com
+    commit_msg_template: "chore: update engram-custom cask to {{ .Tag }}"
+    # No `conflicts:` block on purpose. Homebrew removed cask-vs-formula
+    # conflicts, so declaring one is a no-op that `goreleaser check` now
+    # rejects. The collision still surfaces: a machine that already has the
+    # upstream formula owns $(brew --prefix)/bin/engram, and the cask install
+    # refuses rather than overwriting it. The caveats below say what to do.
+    #
+    # The binaries are ad-hoc signed, not notarized. Homebrew quarantines
+    # anything a cask downloads, and macOS then refuses to run it with a
+    # message that names no cause. Clearing the attribute at install time is
+    # what keeps `engram --version` from dying on a Gatekeeper prompt.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/engram"]
+          end
+    caveats: |
+      This build replaces the upstream engram binary. If Homebrew refuses to
+      link it, uninstall the upstream formula first:
+
+        brew uninstall engram
+
+      After installing, confirm the version and the schema:
+
+        engram --version
+        engram doctor

@@ -42,7 +42,7 @@ func TestNormalizeKnowledgeRef(t *testing.T) {
 		in   string
 		want error
 	}{
-		{"absolute posix path", "/Users/horacio/vault/Services/Doc.md", ErrKnowledgeRefAbsolute},
+		{"absolute posix path", "/absolute/vault/Services/Doc.md", ErrKnowledgeRefAbsolute},
 		{"home-relative path", "~/vault/Services/Doc.md", ErrKnowledgeRefAbsolute},
 		{"absolute path inside a wikilink", "[[/vault/Services/Doc.md]]", ErrKnowledgeRefAbsolute},
 		{"bridge export folder", "90 - Engram/engram/nextcloud/decision/42.md", ErrKnowledgeRefNotCurated},

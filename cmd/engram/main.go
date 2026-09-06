@@ -2702,6 +2702,7 @@ Commands:
                        evidence add|list        Captured evidence files
                        runbooks sync|find       Runbook index and symptom search
                        context <task>           Compose a task's context pack
+                       promote list|stamp       engram -> vault promotion candidates and knowledge_ref stamp
                      <slug> is optional: ENGRAM_PROJECT, then cwd detection.
                      Run "engram project help" for the full flag list.
   setup [agent]      Install/setup agent integration (opencode, pi, claude-code,

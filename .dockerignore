@@ -1,0 +1,13 @@
+# Keep the build context to what `go build` actually reads. Without this the
+# context ships .git and the locally built binary in bin/, tens of megabytes
+# that are re-uploaded to the daemon on every build and end up in no layer.
+.git
+.github
+dist/
+bin/
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+node_modules/
+graphify-out/

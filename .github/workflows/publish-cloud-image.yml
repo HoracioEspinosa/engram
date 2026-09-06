@@ -1,5 +1,12 @@
 name: publish-cloud-image
 
+# Edge channel for the ClaroDrive fork: every push to custom/main gets an image
+# so the branch can be exercised before it is tagged.
+#
+# It deliberately does NOT write :custom. That tag is the released one and
+# belongs to release-custom.yml; if both workflows wrote it, the cloud runtime
+# would silently follow whatever landed last on the branch instead of the
+# version the team agreed to ship.
 on:
   push:
     branches: [custom/main]
@@ -9,9 +16,13 @@ permissions:
   contents: read
   packages: write
 
+env:
+  IMAGE: ghcr.io/horacioespinosa/engram
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    if: github.repository == 'HoracioEspinosa/engram'
     steps:
       - uses: actions/checkout@v4
 
@@ -23,12 +34,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Stamped like a release so an edge container can still be identified
+      # from `engram --version`, and identified as edge rather than released.
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/cloud/Dockerfile
+          file: docker/custom/Dockerfile
           platforms: linux/amd64
           push: true
+          provenance: false
+          build-args: |
+            ENGRAM_VERSION=0.0.0-edge.${{ github.sha }}
+            ENGRAM_REVISION=${{ github.sha }}
           tags: |
-            ghcr.io/horacioespinosa/engram:custom
-            ghcr.io/horacioespinosa/engram:custom-${{ github.sha }}
+            ${{ env.IMAGE }}:edge
+            ${{ env.IMAGE }}:edge-${{ github.sha }}

@@ -61,12 +61,12 @@ type RunbookSkipped struct {
 
 // RunbookSyncResult is the outcome of SyncRunbookIndex.
 type RunbookSyncResult struct {
-	Upserted       int               `json:"upserted"`
-	Unchanged      int               `json:"unchanged"`
-	Pruned         int               `json:"pruned"`
-	Skipped        []RunbookSkipped  `json:"skipped"`
-	StaleCount     int               `json:"stale_count"`
-	ExecRecomputed int               `json:"exec_recomputed"`
+	Upserted       int              `json:"upserted"`
+	Unchanged      int              `json:"unchanged"`
+	Pruned         int              `json:"pruned"`
+	Skipped        []RunbookSkipped `json:"skipped"`
+	StaleCount     int              `json:"stale_count"`
+	ExecRecomputed int              `json:"exec_recomputed"`
 }
 
 // SyncRunbookIndex rebuilds the runbook index from entries obtained
@@ -209,9 +209,9 @@ func hasTemplateTag(tags []string) bool {
 func (s *Store) upsertRunbookIndexRow(e RunbookIndexEntryInput, project, symptoms string, stale int) (bool, error) {
 	var existing struct {
 		vaultPath, title, category, pattern, severity, status, symptoms, owner, automationLevel string
-		lastUpdated, lastVerified                                                                string
-		stale                                                                                     int
-		ageDays                                                                                   sql.NullInt64
+		lastUpdated, lastVerified                                                               string
+		stale                                                                                   int
+		ageDays                                                                                 sql.NullInt64
 	}
 	err := s.db.QueryRow(`
 		SELECT vault_path, title, category, COALESCE(pattern, ''), COALESCE(severity, ''), status, symptoms,
