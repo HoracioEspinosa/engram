@@ -24,6 +24,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tabs.NavigateMsg:
 		return m.activate(msg.Target)
 
+	case tabs.HomeMsg:
+		if m.project != "" {
+			// A project is active: go to the dashboard.
+			m.screen = screenDashboard
+			return m, loadDashboard(m.projects, m.project)
+		}
+		// No project active: go to the Memory tab.
+		m.screen = screenTab
+		return m.activate(tabs.Memory)
+
+	case dashboardLoadedMsg:
+		m.dashboard = m.dashboard.applyLoaded(msg)
+		return m, nil
+
+	case selectorLoadedMsg:
+		m.selector = m.selector.applyLoaded(msg)
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -33,14 +51,125 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.broadcast(msg)
 }
 
-// updateActive forwards a message to the active tab only.
+// updateActive forwards a message to the active tab only, or to the dashboard/
+// selector if one of those screens is active.
 func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
+	keyMsg, isKey := msg.(tea.KeyMsg)
+	if isKey {
+		switch m.screen {
+		case screenDashboard:
+			return m.updateDashboard(keyMsg)
+		case screenSelector:
+			return m.updateSelector(keyMsg)
+		default:
+			// Handle global keys from tabs (p = projects, 0 = dashboard)
+			if keyMsg.String() == "p" {
+				m.screen = screenSelector
+				return m, loadSelector(m.projects)
+			}
+			if keyMsg.String() == "0" && m.project != "" {
+				m.screen = screenDashboard
+				return m, loadDashboard(m.projects, m.project)
+			}
+		}
+	}
+
 	tab := m.tab(m.active)
 	if tab == nil {
 		return m, nil
 	}
 	updated, cmd := tab.Update(msg)
 	return m.withTab(m.active, updated), cmd
+}
+
+// updateDashboard handles key presses while the dashboard is active.
+func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "j":
+		m.dashboard = m.dashboard.moveCursor(1)
+		return m, nil
+	case "k":
+		m.dashboard = m.dashboard.moveCursor(-1)
+		return m, nil
+	case "enter":
+		target := m.dashboard.cursor.target()
+		if target != tabs.Memory {
+			return m, tabs.Navigate(target)
+		}
+		return m, nil
+	case "0":
+		return m, loadDashboard(m.projects, m.project)
+	case "p":
+		m.screen = screenSelector
+		return m, loadSelector(m.projects)
+	case "r":
+		return m, loadDashboard(m.projects, m.project)
+	case "q":
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+// updateSelector handles key presses while the selector is active.
+func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If the filter input is focused, only handle enter, esc, and pass everything else to the input
+	if m.selector.filterInput.Focused() {
+		switch msg.Type {
+		case tea.KeyEnter:
+			m.selector.filterInput.Blur()
+			return m, nil
+		case tea.KeyEsc:
+			m.selector.filterInput.Blur()
+			m.selector.filterInput.SetValue("")
+			m.selector = m.selector.applyFilter()
+			return m, nil
+		default:
+			// Pass all other keys to the filter input
+			updated, cmd := m.selector.filterInput.Update(msg)
+			m.selector.filterInput = updated
+			m.selector = m.selector.applyFilter()
+			return m, cmd
+		}
+	}
+
+	switch msg.String() {
+	case "j":
+		m.selector = m.selector.moveCursor(1)
+		return m, nil
+	case "k":
+		m.selector = m.selector.moveCursor(-1)
+		return m, nil
+	case "enter":
+		selected := m.selector.selected()
+		if selected != nil {
+			m.project = selected.Slug
+			m.screen = screenDashboard
+			m.dashboard = newDashboardModel(m.projects, selected.Slug)
+			return m, loadDashboard(m.projects, selected.Slug)
+		}
+		return m, nil
+	case "/":
+		m.selector.filterInput.Focus()
+		// Don't return here; fall through to pass "/" to the input
+	case "esc":
+		if m.selector.filterInput.Focused() {
+			m.selector.filterInput.Blur()
+			m.selector.filterInput.SetValue("")
+			m.selector = m.selector.applyFilter()
+			return m, nil
+		}
+		if m.project != "" {
+			m.screen = screenDashboard
+			return m, nil
+		}
+		return m, nil
+	case "r":
+		return m, loadSelector(m.projects)
+	case "q":
+		return m, tea.Quit
+	}
+
+	return m, nil
 }
 
 // broadcast forwards a message to every registered tab.

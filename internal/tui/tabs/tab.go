@@ -79,3 +79,14 @@ func Navigate(target ID) tea.Cmd {
 		return NavigateMsg{Target: target}
 	}
 }
+
+// HomeMsg asks the root to go home: to the dashboard if a project is active,
+// or to the Memory tab otherwise.
+type HomeMsg struct{}
+
+// Home returns the command that emits a HomeMsg.
+func Home() tea.Cmd {
+	return func() tea.Msg {
+		return HomeMsg{}
+	}
+}

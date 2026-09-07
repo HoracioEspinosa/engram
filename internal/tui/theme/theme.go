@@ -86,6 +86,41 @@ func Elephant() Palette {
 	}
 }
 
+// CatppuccinMocha is the Catppuccin Mocha colour scheme.
+func CatppuccinMocha() Palette {
+	var (
+		base      = lipgloss.Color("#1e1e2e")
+		surface   = lipgloss.Color("#313244")
+		overlay   = lipgloss.Color("#585b70")
+		text      = lipgloss.Color("#cdd6f4")
+		subtext   = lipgloss.Color("#a6adc8")
+		primary   = lipgloss.Color("#89b4fa")
+		accent    = lipgloss.Color("#f38ba8")
+		highlight = lipgloss.Color("#f9e2af")
+		success   = lipgloss.Color("#a6e3a1")
+		warning   = lipgloss.Color("#f9e2af")
+		danger    = lipgloss.Color("#f38ba8")
+		info      = lipgloss.Color("#89dceb")
+	)
+
+	return Palette{
+		Name:         "catppuccin-mocha",
+		Base:         base,
+		Surface:      surface,
+		Overlay:      overlay,
+		Text:         text,
+		Subtext:      subtext,
+		Primary:      primary,
+		Accent:       accent,
+		Highlight:    highlight,
+		Success:      success,
+		Warning:      warning,
+		Danger:       danger,
+		Info:         info,
+		LogoGradient: [logoRows]lipgloss.Color{accent, primary, info, success, success},
+	}
+}
+
 // Styles is every style the TUI renders with, built once from a Palette and
 // then copied by value into each tab.
 //
@@ -117,6 +152,8 @@ type Styles struct {
 	ListSelected      lipgloss.Style
 	TypeBadge         lipgloss.Style
 	StateWarningBadge lipgloss.Style
+	StaleBadge        lipgloss.Style
+	AttachedBadge     lipgloss.Style
 	ID                lipgloss.Style
 	Timestamp         lipgloss.Style
 	Project           lipgloss.Style
@@ -234,6 +271,14 @@ func New(p Palette) Styles {
 
 	s.StateWarningBadge = lipgloss.NewStyle().
 		Foreground(p.Warning).
+		Bold(true)
+
+	s.StaleBadge = lipgloss.NewStyle().
+		Foreground(p.Warning).
+		Bold(true)
+
+	s.AttachedBadge = lipgloss.NewStyle().
+		Foreground(p.Success).
 		Bold(true)
 
 	s.ID = lipgloss.NewStyle().

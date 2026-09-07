@@ -7,6 +7,7 @@ import (
 	"github.com/Gentleman-Programming/engram/internal/tui/shared"
 	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
 	"github.com/Gentleman-Programming/engram/internal/tui/tabs/memory"
+	"github.com/Gentleman-Programming/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -24,7 +25,7 @@ func step(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func TestNewStartsOnTheMemoryTab(t *testing.T) {
-	m := New(nil, "1.0.0-test")
+	m := New(nil, "1.0.0-test", theme.New(theme.CatppuccinMocha()), "")
 
 	if m.active != tabs.Memory {
 		t.Fatalf("active tab = %v, want %v", m.active, tabs.Memory)
@@ -38,14 +39,14 @@ func TestNewStartsOnTheMemoryTab(t *testing.T) {
 }
 
 func TestInitLoadsEveryTab(t *testing.T) {
-	if cmd := New(nil, "").Init(); cmd == nil {
+	if cmd := New(nil, "", theme.New(theme.CatppuccinMocha()), "").Init(); cmd == nil {
 		t.Fatal("Init should return the startup batch")
 	}
 }
 
 func TestCtrlCQuitsFromAnyTab(t *testing.T) {
 	for _, active := range registered {
-		m := New(nil, "")
+		m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 		m.active = active
 
 		if _, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyCtrlC}); cmd == nil {
@@ -55,7 +56,7 @@ func TestCtrlCQuitsFromAnyTab(t *testing.T) {
 }
 
 func TestCtrlCQuitsEvenWithTheSearchInputFocused(t *testing.T) {
-	m := New(nil, "")
+	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.memory.Screen = memory.ScreenSearch
 	m.memory.SearchInput.Focus()
 
@@ -65,7 +66,7 @@ func TestCtrlCQuitsEvenWithTheSearchInputFocused(t *testing.T) {
 }
 
 func TestWindowSizeReachesEveryTab(t *testing.T) {
-	m, cmd := step(t, New(nil, ""), tea.WindowSizeMsg{Width: 120, Height: 40})
+	m, cmd := step(t, New(nil, "", theme.New(theme.CatppuccinMocha()), ""), tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	if cmd != nil {
 		t.Fatal("a window resize should not produce a command")
@@ -79,7 +80,7 @@ func TestWindowSizeReachesEveryTab(t *testing.T) {
 }
 
 func TestKeysReachOnlyTheActiveTab(t *testing.T) {
-	m := New(nil, "")
+	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Cloud
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyDown})
@@ -93,7 +94,7 @@ func TestKeysReachOnlyTheActiveTab(t *testing.T) {
 }
 
 func TestBroadcastReachesAnInactiveTab(t *testing.T) {
-	m := New(nil, "")
+	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.memory.CopyFeedback = "✓ Copied!"
 	m.active = tabs.Cloud
 
@@ -105,7 +106,7 @@ func TestBroadcastReachesAnInactiveTab(t *testing.T) {
 }
 
 func TestNavigateSwitchesTabsAndRefreshesTheTarget(t *testing.T) {
-	m := New(nil, "")
+	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	m, cmd := step(t, m, tabs.NavigateMsg{Target: tabs.Cloud})
 	if m.active != tabs.Cloud {
@@ -126,7 +127,7 @@ func TestNavigateSwitchesTabsAndRefreshesTheTarget(t *testing.T) {
 
 func TestNavigateToAnUnimplementedTabIsANoOp(t *testing.T) {
 	for _, target := range []tabs.ID{tabs.Tasks, tabs.Evidence, tabs.Runbooks, tabs.ID(99)} {
-		m, cmd := step(t, New(nil, ""), tabs.NavigateMsg{Target: target})
+		m, cmd := step(t, New(nil, "", theme.New(theme.CatppuccinMocha()), ""), tabs.NavigateMsg{Target: target})
 
 		if m.active != tabs.Memory {
 			t.Errorf("navigating to %v moved the workspace to %v", target, m.active)
@@ -138,7 +139,7 @@ func TestNavigateToAnUnimplementedTabIsANoOp(t *testing.T) {
 }
 
 func TestCloudRoundTripFromTheDashboard(t *testing.T) {
-	m := New(nil, "")
+	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	// Walk the dashboard menu down to "Cloud sync settings".
 	for i := 0; i < 4; i++ {
@@ -180,7 +181,7 @@ func TestCloudRoundTripFromTheDashboard(t *testing.T) {
 }
 
 func TestViewWrapsTheActiveTabInTheApplicationFrame(t *testing.T) {
-	m := New(nil, "")
+	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	framed := m.View()
 	body := m.memory.View()
@@ -218,7 +219,7 @@ func assertFramedBody(t *testing.T, framed, body string) {
 }
 
 func TestViewSurvivesAnUnregisteredActiveTab(t *testing.T) {
-	m := New(nil, "")
+	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.ID(99)
 
 	if !strings.Contains(m.View(), "Unknown tab") {
@@ -227,7 +228,7 @@ func TestViewSurvivesAnUnregisteredActiveTab(t *testing.T) {
 }
 
 func TestUpdateWithAnUnregisteredActiveTabIsANoOp(t *testing.T) {
-	m := New(nil, "")
+	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.ID(99)
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyDown})
@@ -240,7 +241,7 @@ func TestUpdateWithAnUnregisteredActiveTabIsANoOp(t *testing.T) {
 }
 
 func TestRegisteredTabsAreDistinctAndTitled(t *testing.T) {
-	m := New(nil, "")
+	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	seen := map[string]bool{}
 	for _, id := range registered {
@@ -260,7 +261,7 @@ func TestRegisteredTabsAreDistinctAndTitled(t *testing.T) {
 }
 
 func TestWithTabIgnoresAMismatchedSubModel(t *testing.T) {
-	m := New(nil, "")
+	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.memory.Cursor = 3
 
 	// Storing the cloud sub-model under the memory id must be refused rather

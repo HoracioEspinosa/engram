@@ -9,7 +9,6 @@
 package app
 
 import (
-	"github.com/Gentleman-Programming/engram/internal/store"
 	"github.com/Gentleman-Programming/engram/internal/tui/data"
 	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
 	"github.com/Gentleman-Programming/engram/internal/tui/tabs/cloud"
@@ -23,6 +22,16 @@ import (
 // tabs declares but that no sub-model implements yet are simply absent.
 var registered = []tabs.ID{tabs.Memory, tabs.Cloud}
 
+// screen is the active screen: either a tab from the bar, the project selector,
+// or the dashboard for the active project.
+type screen int
+
+const (
+	screenTab screen = iota
+	screenSelector
+	screenDashboard
+)
+
 // Model is the root workspace model.
 //
 // Sub-models are typed fields rather than a map so the whole model stays a
@@ -35,30 +44,54 @@ type Model struct {
 	width  int
 	height int
 
-	active tabs.ID
-	memory memory.Model
-	cloud  cloud.Model
+	active   tabs.ID
+	screen   screen
+	memory   memory.Model
+	cloud    cloud.Model
+	projects data.ProjectReader
+
+	project   string
+	selector  selectorModel
+	dashboard dashboardModel
 }
 
-// New builds the TUI bound to the engram store.
-func New(s *store.Store, version string) Model {
-	return Model{
-		styles:  theme.Default(),
-		version: version,
-		active:  tabs.Memory,
-		memory:  memory.New(data.NewMemoryReader(s), version),
-		cloud:   cloud.New(),
+// New builds the TUI bound to the engram store with an optional initial project.
+func New(projects data.ProjectReader, version string, styles theme.Styles, initialProject string) Model {
+	m := Model{
+		styles:    styles,
+		version:   version,
+		active:    tabs.Memory,
+		projects:  projects,
+		project:   initialProject,
+		memory:    memory.New(data.NewMemoryReader(nil), version),
+		cloud:     cloud.New(),
+		selector:  newSelectorModel(projects),
+		dashboard: newDashboardModel(projects, initialProject),
 	}
+
+	// If an initial project was provided, start on the dashboard;
+	// otherwise start on the selector.
+	if initialProject != "" {
+		m.screen = screenDashboard
+	} else {
+		m.screen = screenTab
+	}
+
+	return m
 }
 
 // Init loads every tab's first screen and switches the terminal to the
 // alternate screen buffer.
 func (m Model) Init() tea.Cmd {
-	cmds := make([]tea.Cmd, 0, len(registered)+1)
+	cmds := make([]tea.Cmd, 0, len(registered)+2)
 	for _, id := range registered {
 		if tab := m.tab(id); tab != nil {
 			cmds = append(cmds, tab.Init())
 		}
+	}
+	// If starting on the dashboard, load it.
+	if m.screen == screenDashboard && m.project != "" {
+		cmds = append(cmds, loadDashboard(m.projects, m.project))
 	}
 	cmds = append(cmds, tea.EnterAltScreen)
 	return tea.Batch(cmds...)
@@ -91,4 +124,16 @@ func (m Model) withTab(id tabs.ID, t tabs.Tab) Model {
 		}
 	}
 	return m
+}
+
+// statusText returns the status line text for the active project's sync state,
+// or an empty string if no project is active or syncing is not enabled.
+func (m Model) statusText() string {
+	if m.screen != screenDashboard || m.project == "" {
+		return ""
+	}
+	if m.dashboard.health.Sync.Enrolled {
+		return "sync: " + m.dashboard.health.Sync.Lifecycle
+	}
+	return ""
 }

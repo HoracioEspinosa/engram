@@ -15,6 +15,33 @@ import (
 // happens when the TUI is constructed for a render-only test.
 var ErrStoreUnavailable = errors.New("store is unavailable")
 
+// ProjectHealth carries the counters and sync status for a project card.
+type ProjectHealth struct {
+	store.ProjectCardCounts
+	Sync store.ProjectSyncSummary `json:"sync"`
+}
+
+// ProjectReader is the surface that the Selector and Dashboard screens need:
+// the project list, individual cards, health counters, and the four blocks
+// of data that make up the Dashboard (recent tasks, stale runbooks, latest
+// evidence).
+type ProjectReader interface {
+	// ListCards returns every project card for the selector's list.
+	ListCards() ([]store.ProjectCardListItem, error)
+	// Card returns one project card by slug.
+	Card(slug string) (store.ProjectCard, error)
+	// Health returns the health counters and sync status for one project.
+	Health(slug string) (ProjectHealth, error)
+	// RecentTasks returns the most recent active tasks for the given project,
+	// up to limit.
+	RecentTasks(slug string, limit int) ([]store.TaskListItem, error)
+	// StaleRunbooks returns the stale runbooks for the given project, up to limit.
+	StaleRunbooks(slug string, limit int) ([]store.RunbookIndexRow, error)
+	// LatestEvidence returns the most recent evidence entries for the given
+	// project, up to limit.
+	LatestEvidence(slug string, limit int) ([]store.EvidenceListItem, error)
+}
+
 // MemoryReader is the surface the Memory tab needs: the observation, session
 // and timeline queries behind engram's memory screens, plus the one destructive
 // operation those screens expose.

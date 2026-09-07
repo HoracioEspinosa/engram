@@ -1,6 +1,10 @@
 package data
 
-import "github.com/Gentleman-Programming/engram/internal/store"
+import (
+	"errors"
+
+	"github.com/Gentleman-Programming/engram/internal/store"
+)
 
 // FakeMemory is an in-memory MemoryReader for tests: set the fields you care
 // about, leave the rest zero.
@@ -93,4 +97,85 @@ func capObservations(obs []store.Observation, limit int) []store.Observation {
 		return obs[:limit]
 	}
 	return obs
+}
+
+// FakeProject is an in-memory ProjectReader for tests: set the fields you care
+// about, leave the rest zero.
+//
+// Err short-circuits every method, which is how a test drives the error banner
+// without a broken database.
+type FakeProject struct {
+	Cards             []store.ProjectCardListItem
+	CardBySlug        map[string]store.ProjectCard
+	HealthBySlug      map[string]ProjectHealth
+	TasksBySlug       map[string][]store.TaskListItem
+	StaleRunbooksSlug map[string][]store.RunbookIndexRow
+	EvidenceBySlug    map[string][]store.EvidenceListItem
+
+	// Err is returned by every method when set.
+	Err error
+}
+
+var _ ProjectReader = (*FakeProject)(nil)
+
+func (f *FakeProject) ListCards() ([]store.ProjectCardListItem, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	return f.Cards, nil
+}
+
+func (f *FakeProject) Card(slug string) (store.ProjectCard, error) {
+	if f.Err != nil {
+		return store.ProjectCard{}, f.Err
+	}
+	card, ok := f.CardBySlug[slug]
+	if !ok {
+		return store.ProjectCard{}, errors.New("no such project")
+	}
+	return card, nil
+}
+
+func (f *FakeProject) Health(slug string) (ProjectHealth, error) {
+	if f.Err != nil {
+		return ProjectHealth{}, f.Err
+	}
+	health, ok := f.HealthBySlug[slug]
+	if !ok {
+		return ProjectHealth{}, errors.New("no such project")
+	}
+	return health, nil
+}
+
+func (f *FakeProject) RecentTasks(slug string, limit int) ([]store.TaskListItem, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	tasks := f.TasksBySlug[slug]
+	if limit > 0 && len(tasks) > limit {
+		return tasks[:limit], nil
+	}
+	return tasks, nil
+}
+
+func (f *FakeProject) StaleRunbooks(slug string, limit int) ([]store.RunbookIndexRow, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	runbooks := f.StaleRunbooksSlug[slug]
+	if limit > 0 && len(runbooks) > limit {
+		return runbooks[:limit], nil
+	}
+	return runbooks, nil
+}
+
+func (f *FakeProject) LatestEvidence(slug string, limit int) ([]store.EvidenceListItem, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	evidence := f.EvidenceBySlug[slug]
+	if limit > 0 && len(evidence) > limit {
+		return evidence[:limit], nil
+	}
+	return evidence, nil
 }

@@ -8,6 +8,8 @@ package tui
 import (
 	"github.com/Gentleman-Programming/engram/internal/store"
 	"github.com/Gentleman-Programming/engram/internal/tui/app"
+	"github.com/Gentleman-Programming/engram/internal/tui/data"
+	"github.com/Gentleman-Programming/engram/internal/tui/theme"
 )
 
 // Model is the root Bubble Tea model of the TUI.
@@ -15,5 +17,10 @@ type Model = app.Model
 
 // New creates the TUI bound to the given store.
 func New(s *store.Store, version string) Model {
-	return app.New(s, version)
+	return app.New(
+		data.NewProjectReader(s),
+		version,
+		theme.Default(),
+		"",
+	)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/Gentleman-Programming/engram/internal/store"
 	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
 	"github.com/Gentleman-Programming/engram/internal/tui/tabs/memory"
+	"github.com/Gentleman-Programming/engram/internal/tui/theme"
 	"github.com/Gentleman-Programming/engram/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -327,7 +328,7 @@ func goldenScenes() []goldenScene {
 func renderScene(t *testing.T, scene goldenScene, size goldenSize) string {
 	t.Helper()
 
-	m := New(nil, goldenVersion)
+	m := New(nil, goldenVersion, theme.Default(), "")
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: size.width, Height: size.height})
 	m = sized.(Model)
 	m = scene.build(m)

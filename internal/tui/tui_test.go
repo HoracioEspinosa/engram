@@ -6,6 +6,7 @@ import (
 
 	"github.com/Gentleman-Programming/engram/internal/tui"
 	"github.com/Gentleman-Programming/engram/internal/tui/app"
+	"github.com/Gentleman-Programming/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -32,7 +33,7 @@ func TestNewSatisfiesTheBubbleteaModelContract(t *testing.T) {
 }
 
 func TestModelIsTheRootWorkspaceModel(t *testing.T) {
-	var m tui.Model = app.New(nil, "")
+	var m tui.Model = app.New(nil, "", theme.Default(), "")
 
 	if _, ok := any(m).(tea.Model); !ok {
 		t.Fatal("tui.Model must remain a tea.Model")
