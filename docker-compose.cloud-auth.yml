@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: engram-cloud-postgres-auth
+    environment:
+      POSTGRES_USER: engram
+      POSTGRES_PASSWORD: engram_auth_dev
+      POSTGRES_DB: engram_cloud_auth
+    ports:
+      - "127.0.0.1:5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engram -d engram_cloud_auth"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - engram-cloud-pg-auth:/var/lib/postgresql/data
+
+  cloud:
+    build:
+      context: .
+      dockerfile: docker/cloud/Dockerfile
+    container_name: engram-cloud-auth
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENGRAM_DATABASE_URL: postgres://engram:engram_auth_dev@postgres:5432/engram_cloud_auth?sslmode=disable
+      ENGRAM_JWT_SECRET: engram-auth-jwt-secret-e2e-roundtrip-1234567890
+      ENGRAM_CLOUD_TOKEN_PEPPER: engram-auth-token-pepper-distinct-e2e-9876543210
+      ENGRAM_CLOUD_TOKEN: "egc_auth_e2e_init_token"
+      ENGRAM_CLOUD_ALLOWED_PROJECTS: test-project
+      ENGRAM_CLOUD_HOST: 0.0.0.0
+      ENGRAM_PORT: "18081"
+    ports:
+      - "127.0.0.1:18081:18081"
+    command: ["cloud", "serve"]
+
+volumes:
+  engram-cloud-pg-auth:
