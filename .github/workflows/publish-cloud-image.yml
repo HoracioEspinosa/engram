@@ -1,6 +1,6 @@
 name: publish-cloud-image
 
-# Edge channel for the ClaroDrive fork: every push to custom/main gets an image
+# Edge channel for the ClaroDrive fork: every push to main gets an image
 # so the branch can be exercised before it is tagged.
 #
 # It deliberately does NOT write :custom. That tag is the released one and
@@ -9,7 +9,7 @@ name: publish-cloud-image
 # version the team agreed to ship.
 on:
   push:
-    branches: [custom/main]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

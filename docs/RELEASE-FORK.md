@@ -14,9 +14,9 @@ en `Gentleman-Programming/engram`**: el upstream se lee y nada más.
 | Binarios `darwin`/`linux`/`windows`, `amd64`/`arm64` | GitHub Release de `HoracioEspinosa/engram` | `.goreleaser.custom.yaml` |
 | Cask de Homebrew `engram-custom` | `HoracioEspinosa/homebrew-tap`, carpeta `Casks/` | `.goreleaser.custom.yaml` |
 | Imagen de contenedor | `ghcr.io/horacioespinosa/engram:custom`, `:<versión>`, `:sha-<commit>` | `docker/custom/Dockerfile` |
-| Imagen del canal edge | `ghcr.io/horacioespinosa/engram:edge`, `:edge-<commit>` | `publish-cloud-image.yml`, en cada push a `custom/main` |
+| Imagen del canal edge | `ghcr.io/horacioespinosa/engram:edge`, `:edge-<commit>` | `publish-cloud-image.yml`, en cada push a `main` |
 
-La rama de release es `custom/main`. La etiqueta tiene la forma
+La rama de release es `main`. La etiqueta tiene la forma
 `v<versión-de-upstream>-cd.<n>`, por ejemplo `v1.20.0-cd.1`: la base dice sobre
 qué versión de upstream se construyó y el sufijo cuenta las revisiones propias.
 
@@ -70,29 +70,28 @@ host de cloud lo va a bajar sin credenciales.
 
 ## 3. Ciclo de release
 
-### 3.1 Poner al día el `main` del fork
+### 3.1 Traer los cambios de upstream
 
-`custom/main` se apoya sobre el `main` del fork, y ese `main` está atrasado
-respecto de upstream. Medido el día de escritura: upstream va **324 commits**
-adelante, y el `main` del fork no tiene ningún commit propio, así que la
-sincronización es un avance rápido sin riesgo.
+`main` es a la vez la rama de integración del fork y la de release, así que
+lleva los commits propios encima del código de upstream. Eso significa que
+**no se puede sincronizar con `gh repo sync`**: ese comando espera una rama sin
+commits propios y aquí hay bastantes. Tampoco aplica de otra forma — este
+repositorio es un derivado independiente, no un fork de GitHub.
 
-```
-gh repo sync HoracioEspinosa/engram --source Gentleman-Programming/engram --branch main
-git -C ~/Projects/engram fetch origin
-```
+La vía es el rebase de la sección siguiente, que clona a un directorio
+temporal y añade el remoto de upstream en modo lectura. Nada de lo que hagas
+aquí escribe en `Gentleman-Programming/engram`.
 
-### 3.2 Rebase de `custom/main` sobre upstream
+### 3.2 Rebase de `main` sobre upstream
 
 **Antes del rebase:** asegúrate de que todos los commits que quieren viajar en
-el release estén en `custom/main`. Si hay una rama de feature que no esté
-mergeada (por ejemplo, `feat/engram-projects-schema`), el release no la va a
-incluir, incluso si la rama tiene muchos commits. Fusionarla es un paso manual:
+el release estén en `main`. Si hay una rama de feature sin fusionar, el release
+no la va a incluir por muchos commits que tenga. Fusionarla es un paso manual:
 
 ```
-git -C ~/Projects/engram checkout custom/main
-git -C ~/Projects/engram merge --ff-only feat/engram-projects-schema
-git -C ~/Projects/engram push origin custom/main
+git -C ~/Projects/engram checkout main
+git -C ~/Projects/engram merge --ff-only <rama>
+git -C ~/Projects/engram push origin main
 ```
 
 Luego, sí, el rebase:
@@ -116,7 +115,7 @@ Con `--adopt <rama>` crea la rama resultante dentro de tu repositorio sin mover
 `HEAD` y sin hacer push. Publicarla sigue siendo un acto manual:
 
 ```
-git -C ~/Projects/engram push origin <rama>:custom/main
+git -C ~/Projects/engram push origin <rama>:main
 ```
 
 `rerere` queda activado dentro del clon, así que una resolución hecha una vez se
@@ -187,15 +186,15 @@ batería completa bajo el bash 3.2 de macOS y bajo bash 5.
 ### 3.4 Etiquetar y publicar
 
 ```
-git -C ~/Projects/engram tag -a v1.20.0-cd.1 -m "engram 1.20.0-cd.1 (fork ClaroDrive)" custom/main
+git -C ~/Projects/engram tag -a v1.20.0-cd.1 -m "engram 1.20.0-cd.1 (fork ClaroDrive)" main
 git -C ~/Projects/engram push origin v1.20.0-cd.1
 ```
 
 El push de la etiqueta enciende `release-custom.yml`, que:
 
-1. Comprueba la forma de la etiqueta y que el commit esté en `origin/custom/main`.
+1. Comprueba la forma de la etiqueta y que el commit esté en `origin/main`.
 2. Corre `go test ./...`. Hace falta porque `ci.yml` solo corre en `main` y en
-   pull requests: `custom/main` llega a la etiqueta sin haber pasado por CI.
+   pull requests: `main` llega a la etiqueta sin haber pasado por CI.
 3. Publica binarios y, si hay token, el cask.
 4. Construye y sube la imagen para `linux/amd64` y `linux/arm64`, y después la
    **vuelve a bajar por digest** y verifica que adentro `engram --version`
@@ -280,7 +279,7 @@ docker image inspect ghcr.io/horacioespinosa/engram@sha256:<digest> \
 ```
 
 La primera línea tiene que responder `engram <versión>` y la tercera, el commit
-de `custom/main` del que salió.
+de `main` del que salió.
 
 ### 5.4 Desplegar por digest
 
@@ -330,6 +329,6 @@ pg_restore --clean --if-exists --no-owner \
   atributo de cuarentena al instalar; si alguien baja el comprimido a mano en
   macOS, tiene que hacerlo él:
   `xattr -dr com.apple.quarantine ./engram`.
-- **`custom/main` mezcla dos trabajos.** El commit `0e0c780` trae la
+- **`main` mezcla dos trabajos.** El commit `0e0c780` trae la
   reestructuración de la TUI junto con `engram-projects`. Es lo que hace caro
   cada rebase; ver el inventario de 3.2.

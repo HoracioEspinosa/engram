@@ -56,14 +56,14 @@ jobs:
             *) echo "::error::tag '$tag' is not shaped v<version>-cd.<n>"; exit 1 ;;
           esac
 
-          # A release must come off custom/main. Reading the branch list into a
+          # A release must come off main. Reading the branch list into a
           # variable first keeps the failure of git itself distinguishable from
           # "the commit is not on that branch".
           sha="$(git rev-parse "refs/tags/$tag^{commit}")"
           branches="$(git branch -r --contains "$sha")"
           if ! printf '%s\n' "$branches" \
                | awk '/^[[:space:]]*origin\/custom\/main$/{found=1} END{exit !found}'; then
-            echo "::error::tag '$tag' points at $sha, which is not on origin/custom/main"
+            echo "::error::tag '$tag' points at $sha, which is not on origin/main"
             printf 'branches containing it:\n%s\n' "$branches"
             exit 1
           fi
@@ -89,9 +89,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      # ci.yml only runs on main and on pull requests, so custom/main reaches a
-      # tag untested. This is the gate that stops an unbuildable tree from
-      # becoming a release the team installs.
+      # ci.yml covers the branch, but a tag points at one specific commit and
+      # this runs against that tree. It is the gate that stops an unbuildable
+      # commit from becoming a release the team installs, whatever the last
+      # branch run happened to say.
       - name: Run unit tests
         run: go test ./...
 

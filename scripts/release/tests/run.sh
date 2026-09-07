@@ -86,7 +86,7 @@ make_fixture() {
   git_q -C "$up" commit -m "base"
 
   git_q clone "$up" "$fork"
-  git_q -C "$fork" checkout -b custom/main
+  git_q -C "$fork" checkout -b main
 
   if [ "$mode" != "empty" ]; then
     if [ "$mode" = "conflict" ]; then
@@ -145,23 +145,23 @@ battery() {
       file="'"$REPO_ROOT"'/docs/RELEASE-FORK.md"
 
       # Verify all three commands are present
-      if ! grep -q "git -C ~/Projects/engram checkout custom/main" "$file"; then
-        printf "runbook missing: git checkout custom/main\n" >&2
+      if ! grep -q "git -C ~/Projects/engram checkout main" "$file"; then
+        printf "runbook missing: git checkout main\n" >&2
         exit 1
       fi
       if ! grep -q "git -C ~/Projects/engram merge --ff-only" "$file"; then
         printf "runbook missing: git merge --ff-only\n" >&2
         exit 1
       fi
-      if ! grep -q "git -C ~/Projects/engram push origin custom/main" "$file"; then
-        printf "runbook missing: git push origin custom/main\n" >&2
+      if ! grep -q "git -C ~/Projects/engram push origin main" "$file"; then
+        printf "runbook missing: git push origin main\n" >&2
         exit 1
       fi
 
       # Get line numbers and verify order (checkout < merge < push)
-      checkout_line=$(grep -n "git -C ~/Projects/engram checkout custom/main" "$file" | sed "s/:.*//")
+      checkout_line=$(grep -n "git -C ~/Projects/engram checkout main" "$file" | sed "s/:.*//")
       merge_line=$(grep -n "git -C ~/Projects/engram merge --ff-only" "$file" | sed "s/:.*//")
-      push_line=$(grep -n "git -C ~/Projects/engram push origin custom/main" "$file" | sed "s/:.*//")
+      push_line=$(grep -n "git -C ~/Projects/engram push origin main" "$file" | sed "s/:.*//")
 
       if [ "$checkout_line" -ge "$merge_line" ]; then
         printf "checkout (line %s) must come before merge (line %s)\n" "$checkout_line" "$merge_line" >&2
@@ -251,7 +251,7 @@ battery() {
   fi
 
   head_after_adopt="$(git -C "$TMP/clean/fork" symbolic-ref --short HEAD)"
-  if [ "$head_after_adopt" = "custom/main" ]; then
+  if [ "$head_after_adopt" = "main" ]; then
     pass "adopting does not move HEAD in the source repository"
   else
     fail "adopting does not move HEAD in the source repository: HEAD is $head_after_adopt"
@@ -295,7 +295,7 @@ battery() {
     run_case "build refuses --image when docker is missing" 1 "docker is not installed" -- \
       env PATH="$SHIM:/usr/bin:/bin" "$sh_bin" "$BUILD" --repo "$TMP/clean/fork" --image
     run_case "build refuses a ref without the release configuration" 1 "is missing at" -- \
-      env PATH="$SHIM:/usr/bin:/bin" "$sh_bin" "$BUILD" --repo "$TMP/clean/fork" --ref custom/main \
+      env PATH="$SHIM:/usr/bin:/bin" "$sh_bin" "$BUILD" --repo "$TMP/clean/fork" --ref main \
         --workdir "$TMP/wd-build"
   else
     fail "build refuses --image when docker is missing: goreleaser is not installed here, case not run"

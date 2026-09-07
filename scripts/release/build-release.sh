@@ -11,7 +11,7 @@
 #
 # Options:
 #   --repo <dir>     Source repository (default: the repo this script is in)
-#   --ref <ref>      Commit or branch to build (default: custom/main)
+#   --ref <ref>      Commit or branch to build (default: main)
 #   --tag <tag>      Build as this tag, shaped v<version>-cd.<n>. Without it the
 #                    build is a snapshot and the version is goreleaser's own.
 #   --image          Also build the container image for the host platform and
@@ -41,7 +41,7 @@ set -euo pipefail
 SCRIPT_NAME="${0##*/}"
 
 REPO=""
-REF="custom/main"
+REF="main"
 TAG=""
 WITH_IMAGE=0
 KEEP=0

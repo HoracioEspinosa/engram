@@ -14,7 +14,7 @@
 #
 # Options:
 #   --repo <dir>         Source repository (default: the repo this script is in)
-#   --branch <ref>       Branch carrying the custom commits (default: custom/main)
+#   --branch <ref>       Branch carrying the custom commits (default: main)
 #   --base <ref>         Last commit the custom work sits on top of
 #                        (default: the merge base of --branch and upstream main)
 #   --upstream-url <url> Upstream remote, read only
@@ -43,7 +43,7 @@ set -euo pipefail
 SCRIPT_NAME="${0##*/}"
 
 REPO=""
-BRANCH="custom/main"
+BRANCH="main"
 BASE=""
 UPSTREAM_URL="https://github.com/Gentleman-Programming/engram.git"
 UPSTREAM_REF="main"

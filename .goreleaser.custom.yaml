@@ -1,4 +1,4 @@
-# GoReleaser configuration for the ClaroDrive fork release (branch custom/main).
+# GoReleaser configuration for the ClaroDrive fork release (branch main).
 #
 # It is a SEPARATE file from .goreleaser.yaml on purpose. The upstream config
 # publishes to Gentleman-Programming/homebrew-tap; running it from this fork
@@ -73,7 +73,7 @@ release:
   prerelease: auto
   name_template: "engram {{ .Version }} (ClaroDrive fork)"
   header: |
-    Fork release of engram for the ClaroDrive platform, built from `custom/main`.
+    Fork release of engram for the ClaroDrive platform, built from `main`.
 
     Container image for the cloud runtime:
     `ghcr.io/horacioespinosa/engram:{{ .Version }}`

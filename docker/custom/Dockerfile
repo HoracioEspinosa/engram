@@ -1,4 +1,4 @@
-# Container image for the ClaroDrive fork of engram (branch custom/main).
+# Container image for the ClaroDrive fork of engram (branch main).
 #
 # It is separate from docker/cloud/Dockerfile because that one builds without
 # ldflags: the binary inside it answers `engram --version` with "dev", which
