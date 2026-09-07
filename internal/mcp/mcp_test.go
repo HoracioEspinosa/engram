@@ -7455,3 +7455,93 @@ func TestHandleSearch_MatchModeInvalidError(t *testing.T) {
 		t.Fatalf("parameter-validation error must not contain query-advice suffix \"Try simpler keywords\", got: %s", text)
 	}
 }
+
+// mem_save must refuse an observation with no title.
+//
+// The schema declares title required, but a missing tool argument arrives as
+// the zero value and the handler's type assertion discards its own failure, so
+// nothing stopped an empty title from being written. The cost is not local: the
+// cloud upsert contract rejects a payload with no title, sync processes the
+// queue in order, and one such row stops replication for every mutation behind
+// it. The only signal was the %q in the reply printing two quotes.
+//
+// The last subtest is the control. Without it, a handler that refused every
+// save would pass the first two and this test would prove nothing about the
+// rule it claims to check.
+func TestHandleSave_RejectsMissingTitle(t *testing.T) {
+	const wantMarker = "title is required for mem_save"
+
+	cases := []struct {
+		name      string
+		args      map[string]any
+		wantError bool
+	}{
+		{
+			name: "title absent",
+			args: map[string]any{
+				"content": "Session-based auth in the middleware layer keeps things simple",
+				"type":    "architecture",
+			},
+			wantError: true,
+		},
+		{
+			name: "title empty",
+			args: map[string]any{
+				"title":   "",
+				"content": "Session-based auth in the middleware layer keeps things simple",
+				"type":    "architecture",
+			},
+			wantError: true,
+		},
+		{
+			name: "title only whitespace",
+			args: map[string]any{
+				"title":   "   \t  ",
+				"content": "Session-based auth in the middleware layer keeps things simple",
+				"type":    "architecture",
+			},
+			wantError: true,
+		},
+		{
+			name: "title present is accepted",
+			args: map[string]any{
+				"title":   "Sessions for auth middleware",
+				"content": "Session-based auth in the middleware layer keeps things simple",
+				"type":    "architecture",
+			},
+			wantError: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newMCPTestStore(t)
+			h := handleSave(s, MCPConfig{}, NewSessionActivity(10*time.Minute))
+
+			res, err := h(context.Background(), mcppkg.CallToolRequest{
+				Params: mcppkg.CallToolParams{Arguments: tc.args},
+			})
+			if err != nil {
+				t.Fatalf("handler error: %v", err)
+			}
+			text := callResultText(t, res)
+
+			if !tc.wantError {
+				if res.IsError {
+					t.Fatalf("a save with a title must be accepted, got error: %s", text)
+				}
+				return
+			}
+
+			if !res.IsError {
+				t.Fatalf("a save with no usable title must be refused, got success: %s", text)
+			}
+			// Asserting the marker, not just IsError: several other checks in this
+			// handler also return an error result, and a test that accepted any of
+			// them would keep passing if this rule were removed.
+			if !strings.Contains(text, wantMarker) {
+				t.Fatalf("refused for the wrong reason\n  want marker: %s\n  got: %s", wantMarker, text)
+			}
+		})
+	}
+}

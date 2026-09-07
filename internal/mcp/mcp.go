@@ -1217,6 +1217,18 @@ func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server
 		if strings.TrimSpace(content) == "" {
 			return mcp.NewToolResultError("content is required for mem_save (use content, or observation for backward-compatible clients)"), nil
 		}
+		// The schema declares title required, but a tool argument that never
+		// arrives reaches the handler as the zero value, so the declaration alone
+		// enforces nothing: the type assertion above discards its own failure and
+		// hands on an empty string. Saving that empty string is silent — the only
+		// trace is the %q in the reply, which prints as two quotes and reads as
+		// noise — and it surfaces much later, when cloud sync refuses the mutation
+		// for a payload missing a required upsert field and stops the whole queue
+		// on the first one. Refusing here is what keeps "the caller sent nothing"
+		// from becoming a row nobody can title afterwards.
+		if strings.TrimSpace(title) == "" {
+			return mcp.NewToolResultError("title is required for mem_save: an observation saved without one cannot be replicated (the cloud upsert contract rejects it) and cannot be found by title later"), nil
+		}
 		typ, _ := req.GetArguments()["type"].(string)
 		sessionID, _ := req.GetArguments()["session_id"].(string)
 		scope, _ := req.GetArguments()["scope"].(string)
