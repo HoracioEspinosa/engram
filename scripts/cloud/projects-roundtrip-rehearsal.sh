@@ -188,7 +188,7 @@ if [[ "${http_code}" != "201" ]]; then
 	exit 1
 fi
 
-USER_PRINCIPAL=$(echo "${response_body}" | jq -r // empty' 2>/dev/null || true)
+USER_PRINCIPAL=$(echo "${response_body}" | jq -r '.principal_id // empty' 2>/dev/null || true)
 if [[ -z "${USER_PRINCIPAL}" ]]; then
 	fail "Failed to extract principal_id from user creation"
 	exit 1
@@ -248,7 +248,7 @@ export ENGRAM_PROJECTS_SYNC=1
 export ENGRAM_CLOUD_TOKEN="${USER_RAW_TOKEN}"
 
 # Create a project card
-create_card_output=$("${ENGRAM_BIN}" project card create \
+create_card_output=$("${ENGRAM_BIN}" project "${PROJECT}" upsert \
 	--project "${PROJECT}" \
 	--title "Test Project" \
 	--description "Rehearsal test project" 2>&1 || echo "")
@@ -262,9 +262,8 @@ else
 fi
 
 # Create a task
-create_task_output=$("${ENGRAM_BIN}" task create \
-	--project "${PROJECT}" \
-	--title "Test Task" \
+create_task_output=$("${ENGRAM_BIN}" project "${PROJECT}" tasks upsert --jira \
+		--title "Test Task" \
 	--jira-key "TEST-001" 2>&1 || echo "")
 
 log "Task creation output: ${create_task_output}"
@@ -279,9 +278,10 @@ fi
 EVIDENCE_SHA=""
 for i in {1..64}; do EVIDENCE_SHA="${EVIDENCE_SHA}a"; done
 
-create_evidence_output=$("${ENGRAM_BIN}" evidence create \
+create_evidence_output=$("${ENGRAM_BIN}" project "${PROJECT}" evidence add TEST-001 --path \
 	--project "${PROJECT}" \
 	--sha256 "${EVIDENCE_SHA}" \
+	--kind screenshot \
 	--title "Test Evidence" 2>&1 || echo "")
 
 log "Evidence creation output: ${create_evidence_output}"
@@ -343,7 +343,7 @@ create_other_user_response=$(curl -s -w "\n%{http_code}" -X POST "${CLOUD_URL}/a
 
 http_code=$(echo "${create_other_user_response}" | tail -1)
 response_body=$(echo "${create_other_user_response}" | head -1)
-OTHER_PRINCIPAL=$(echo "${response_body}" | jq -r // empty' 2>/dev/null || true)
+OTHER_PRINCIPAL=$(echo "${response_body}" | jq -r '.principal_id // empty' 2>/dev/null || true)
 
 if [[ -z "${OTHER_PRINCIPAL}" ]]; then
 	log "Note: Could not create secondary user for negative test"

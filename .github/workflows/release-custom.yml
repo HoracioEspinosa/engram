@@ -62,7 +62,7 @@ jobs:
           sha="$(git rev-parse "refs/tags/$tag^{commit}")"
           branches="$(git branch -r --contains "$sha")"
           if ! printf '%s\n' "$branches" \
-               | awk '/^[[:space:]]*origin\/custom\/main$/{found=1} END{exit !found}'; then
+               | awk '/^[[:space:]]*origin\/main$/{found=1} END{exit !found}'; then
             echo "::error::tag '$tag' points at $sha, which is not on origin/main"
             printf 'branches containing it:\n%s\n' "$branches"
             exit 1
