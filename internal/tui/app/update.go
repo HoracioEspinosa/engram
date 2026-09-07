@@ -92,11 +92,10 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.dashboard = m.dashboard.moveCursor(-1)
 		return m, nil
 	case "enter":
-		target := m.dashboard.cursor.target()
-		if target != tabs.Memory {
-			return m, tabs.Navigate(target)
-		}
-		return m, nil
+		// activate() already knows which tabs this build registers, so route
+		// through it instead of guessing here: a block whose tab does not
+		// exist yet leaves the dashboard exactly as it was.
+		return m.activate(m.dashboard.cursor.target())
 	case "0":
 		return m, loadDashboard(m.projects, m.project)
 	case "p":
@@ -192,8 +191,12 @@ func (m Model) broadcast(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) activate(target tabs.ID) (tea.Model, tea.Cmd) {
 	tab := m.tab(target)
 	if tab == nil {
+		// This build does not implement that tab. Staying put with no command
+		// is the whole contract: an unimplemented destination must never move
+		// the workspace nor strand the screen it was showing.
 		return m, nil
 	}
 	m.active = target
+	m.screen = screenTab
 	return m, tab.Refresh()
 }

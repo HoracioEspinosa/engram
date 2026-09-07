@@ -62,10 +62,11 @@ func TestBackItemLeavesTheTab(t *testing.T) {
 	updatedModel, cmd := m.handleKeys("enter")
 	updated := updatedModel.(Model)
 	if cmd == nil {
-		t.Fatal("enter on Back should ask the root to switch tabs")
+		t.Fatal("enter on Back should ask the root to go home")
 	}
-	if nav, ok := cmd().(tabs.NavigateMsg); !ok || nav.Target != tabs.Memory {
-		t.Fatalf("enter on Back should emit NavigateMsg{Memory}, got %#v", cmd())
+	// Back goes home, the same as esc: the root picks the destination.
+	if _, ok := cmd().(tabs.HomeMsg); !ok {
+		t.Fatalf("enter on Back should emit HomeMsg, got %#v", cmd())
 	}
 	if updated.Cursor != 0 {
 		t.Fatalf("cursor should rewind to 0 on leaving, got %d", updated.Cursor)
@@ -95,10 +96,12 @@ func TestEscAndQLeaveTheTab(t *testing.T) {
 			updatedModel, cmd := m.handleKeys(key)
 			updated := updatedModel.(Model)
 			if cmd == nil {
-				t.Fatalf("%q should ask the root to switch tabs", key)
+				t.Fatalf("%q should ask the root to go home", key)
 			}
-			if nav, ok := cmd().(tabs.NavigateMsg); !ok || nav.Target != tabs.Memory {
-				t.Fatalf("%q should emit NavigateMsg{Memory}, got %#v", key, cmd())
+			// Home rather than a fixed tab: the root sends the user to the
+			// active project's dashboard, and only to Memory when none is.
+			if _, ok := cmd().(tabs.HomeMsg); !ok {
+				t.Fatalf("%q should emit HomeMsg, got %#v", key, cmd())
 			}
 			if updated.Cursor != 0 {
 				t.Fatalf("cursor should rewind to 0 on leaving, got %d", updated.Cursor)

@@ -39,5 +39,7 @@ func (m Model) handleKeys(key string) (tabs.Tab, tea.Cmd) {
 // menu opens on its first item the next time around.
 func (m Model) leave() (tabs.Tab, tea.Cmd) {
 	m.Cursor = 0
-	return m, tabs.Navigate(tabs.Memory)
+	// Home, not Memory: the root decides where home is. With a project active
+	// that is its dashboard, and only without one does it fall back to Memory.
+	return m, tabs.Home()
 }

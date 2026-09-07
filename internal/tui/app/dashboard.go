@@ -223,7 +223,15 @@ func (m Model) viewDashboardCard() string {
 		}
 		return m.styles.DetailLabel.Render(label) + m.styles.DetailValue.Render(value) + "\n"
 	}
-	card := detail("project", c.DisplayName) +
+	// The slug leads because it is what identifies the project everywhere else
+	// — the command the user typed, the key in every table — and the display
+	// name follows only when it says something the slug does not.
+	name := c.Slug
+	if c.DisplayName != "" && c.DisplayName != c.Slug {
+		name += " — " + c.DisplayName
+	}
+
+	card := detail("project", name) +
 		detail("repo", orEmpty(c.RepoURL)) +
 		detail("branch", c.DefaultBranch) +
 		detail("jira", c.JiraProject) +

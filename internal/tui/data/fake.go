@@ -140,11 +140,11 @@ func (f *FakeProject) Health(slug string) (ProjectHealth, error) {
 	if f.Err != nil {
 		return ProjectHealth{}, f.Err
 	}
-	health, ok := f.HealthBySlug[slug]
-	if !ok {
-		return ProjectHealth{}, errors.New("no such project")
-	}
-	return health, nil
+	// A project with no counters is not a missing project: it is a project
+	// whose numbers are all zero, the same way one with no tasks returns an
+	// empty slice rather than an error. Only Card reports a slug that does
+	// not exist, because the card is what identifies the project at all.
+	return f.HealthBySlug[slug], nil
 }
 
 func (f *FakeProject) RecentTasks(slug string, limit int) ([]store.TaskListItem, error) {
