@@ -223,7 +223,8 @@ func (m Model) viewDashboardCard() string {
 		}
 		return m.styles.DetailLabel.Render(label) + m.styles.DetailValue.Render(value) + "\n"
 	}
-	card := detail("repo", orEmpty(c.RepoURL)) +
+	card := detail("project", c.DisplayName) +
+		detail("repo", orEmpty(c.RepoURL)) +
 		detail("branch", c.DefaultBranch) +
 		detail("jira", c.JiraProject) +
 		detail("hub", orEmpty(c.KnowledgeHubPath)) +

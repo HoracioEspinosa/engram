@@ -129,7 +129,7 @@ func (m Model) withTab(id tabs.ID, t tabs.Tab) Model {
 // statusText returns the status line text for the active project's sync state,
 // or an empty string if no project is active or syncing is not enabled.
 func (m Model) statusText() string {
-	if m.screen != screenDashboard || m.project == "" {
+	if m.dashboard.slug == "" && m.project == "" {
 		return ""
 	}
 	if m.dashboard.health.Sync.Enrolled {
