@@ -5075,8 +5075,17 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 	}
 	queries := []countQuery{
 		{
+			// Cloud validation hard-rejects a session upsert whose directory is
+			// still empty after inferring it from the live row (see
+			// evaluateCloudUpgradeLegacyMutationTx). Backfilling such a row would
+			// enqueue a mutation the server is certain to reject; since
+			// repairEnrolledProjectSyncMutations runs on every store open, the
+			// rejected mutation would be re-enqueued forever. Exclude it from
+			// both the count and the backfill — this predicate must stay
+			// identical to the SELECT in backfillSessionSyncMutationsTx.
 			q: `SELECT COUNT(*) FROM sessions
 			    WHERE project = ?
+			      AND trim(ifnull(directory, '')) != ''
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
 			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = sessions.id AND sm.source = ?
@@ -5084,10 +5093,19 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			args: []any{project, DefaultSyncTargetKey, SyncEntitySession, SyncSourceLocal},
 		},
 		{
+			// Same principle as above, for the observation upsert fields cloud
+			// validation requires (session_id, type, title, content, scope).
+			// This predicate must stay identical to the SELECT in
+			// backfillObservationSyncMutationsTx's live-observations query.
 			q: `SELECT COUNT(*) FROM observations o
 			    LEFT JOIN sessions s ON s.id = o.session_id
 			    WHERE (ifnull(o.project,'') = ? OR (ifnull(o.project,'') = '' AND ifnull(s.project,'') = ?))
 			      AND o.deleted_at IS NULL
+			      AND trim(ifnull(o.session_id, '')) != ''
+			      AND trim(ifnull(o.type, '')) != ''
+			      AND trim(ifnull(o.title, '')) != ''
+			      AND trim(ifnull(o.content, '')) != ''
+			      AND trim(ifnull(o.scope, '')) != ''
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
 			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = o.sync_id AND sm.source = ?
@@ -5095,9 +5113,15 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			args: []any{project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncSourceLocal},
 		},
 		{
+			// Same principle as above, for the prompt upsert fields cloud
+			// validation requires (session_id, content). This predicate must
+			// stay identical to the SELECT in backfillPromptSyncMutationsTx's
+			// live-prompts query.
 			q: `SELECT COUNT(*) FROM user_prompts p
 			    LEFT JOIN sessions s ON s.id = p.session_id
 			    WHERE (ifnull(p.project,'') = ? OR (ifnull(p.project,'') = '' AND ifnull(s.project,'') = ?))
+			      AND trim(ifnull(p.session_id, '')) != ''
+			      AND trim(ifnull(p.content, '')) != ''
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
 			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = p.sync_id AND sm.source = ?
@@ -5182,10 +5206,15 @@ func (s *Store) repairEnrolledProjectSyncMutations() error {
 }
 
 func (s *Store) backfillSessionSyncMutationsTx(tx *sql.Tx, project string) error {
+	// See the matching comment on the session COUNT query in projectNeedsBackfill:
+	// a session with an empty directory is certain to be rejected by cloud
+	// validation, so it is excluded here too to avoid enqueueing an
+	// undeliverable mutation that would just be re-created on the next backfill.
 	rows, err := s.queryItHook(tx, `
 		SELECT id, project, directory, started_at, ended_at, summary
 		FROM sessions
 		WHERE project = ?
+		  AND trim(ifnull(directory, '')) != ''
 		  AND NOT EXISTS (
 			SELECT 1
 			FROM sync_mutations sm
@@ -5231,6 +5260,11 @@ func (s *Store) backfillSessionSyncMutationsTx(tx *sql.Tx, project string) error
 
 func (s *Store) backfillObservationSyncMutationsTx(tx *sql.Tx, project string) error {
 	// ── Live observations ─────────────────────────────────────────────────────
+	// See the matching comment on the observation COUNT query in
+	// projectNeedsBackfill: an observation still missing any of the cloud's
+	// required upsert fields (session_id, type, title, content, scope) is
+	// excluded here too, otherwise every store open would re-enqueue a
+	// mutation the server is certain to reject.
 	rows, err := s.queryItHook(tx, `
 		SELECT o.sync_id, o.session_id, o.type, o.title, o.content, o.tool_name, o.project, o.scope, o.topic_key,
 		       o.revision_count, o.duplicate_count, o.last_seen_at, o.created_at, o.updated_at
@@ -5241,6 +5275,11 @@ func (s *Store) backfillObservationSyncMutationsTx(tx *sql.Tx, project string) e
 			OR (ifnull(o.project, '') = '' AND ifnull(s.project, '') = ?)
 		)
 		  AND deleted_at IS NULL
+		  AND trim(ifnull(o.session_id, '')) != ''
+		  AND trim(ifnull(o.type, '')) != ''
+		  AND trim(ifnull(o.title, '')) != ''
+		  AND trim(ifnull(o.content, '')) != ''
+		  AND trim(ifnull(o.scope, '')) != ''
 		  AND NOT EXISTS (
 			SELECT 1
 			FROM sync_mutations sm
@@ -5349,6 +5388,10 @@ func (s *Store) backfillObservationSyncMutationsTx(tx *sql.Tx, project string) e
 
 func (s *Store) backfillPromptSyncMutationsTx(tx *sql.Tx, project string) error {
 	// ── Live prompts ──────────────────────────────────────────────────────────
+	// See the matching comment on the prompt COUNT query in
+	// projectNeedsBackfill: a prompt still missing session_id or content is
+	// excluded here too, otherwise every store open would re-enqueue a
+	// mutation the server is certain to reject.
 	rows, err := s.queryItHook(tx, `
 		SELECT p.sync_id, p.session_id, p.content, p.project, p.created_at
 		FROM user_prompts p
@@ -5357,6 +5400,8 @@ func (s *Store) backfillPromptSyncMutationsTx(tx *sql.Tx, project string) error 
 			ifnull(p.project, '') = ?
 			OR (ifnull(p.project, '') = '' AND ifnull(s.project, '') = ?)
 		)
+		  AND trim(ifnull(p.session_id, '')) != ''
+		  AND trim(ifnull(p.content, '')) != ''
 		  AND NOT EXISTS (
 			SELECT 1
 			FROM sync_mutations sm

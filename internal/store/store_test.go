@@ -7724,6 +7724,184 @@ func TestRepairHandlesMixedState(t *testing.T) {
 	}
 }
 
+// TestRepairDoesNotBackfillObservationsCloudWouldReject verifies that an
+// observation still missing a cloud-required upsert field (session_id, type,
+// title, content, or scope — see evaluateCloudUpgradeLegacyMutationTx) is
+// never backfilled into a sync_mutations row, while a fully-valid observation
+// in the same project is. Without the valid-row assertion, a backfill that
+// skips every observation would also satisfy a check that only asserts the
+// invalid row stays unqueued.
+func TestRepairDoesNotBackfillObservationsCloudWouldReject(t *testing.T) {
+	s := newTestStoreRaw(t)
+
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO sync_enrolled_projects (project) VALUES (?)`, "engram"); err != nil {
+		t.Fatalf("enroll project: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO sessions (id, project, directory, started_at) VALUES (?, ?, ?, datetime('now'))`,
+		"s-mixed-obs", "engram", "/tmp/engram",
+	); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	emptyContentSync := "obs-empty-content"
+	if _, err := s.db.Exec(`
+		INSERT INTO observations (session_id, type, title, content, project, scope, normalized_hash,
+		                          revision_count, duplicate_count, last_seen_at, updated_at, sync_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, datetime('now'), datetime('now'), ?)`,
+		"s-mixed-obs", "decision", "Has a title", "", "engram", "project", hashNormalized(""), emptyContentSync,
+	); err != nil {
+		t.Fatalf("insert observation with empty content: %v", err)
+	}
+
+	validSync := "obs-valid-001"
+	if _, err := s.db.Exec(`
+		INSERT INTO observations (session_id, type, title, content, project, scope, normalized_hash,
+		                          revision_count, duplicate_count, last_seen_at, updated_at, sync_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, datetime('now'), datetime('now'), ?)`,
+		"s-mixed-obs", "decision", "T", "C", "engram", "project", hashNormalized("C"), validSync,
+	); err != nil {
+		t.Fatalf("insert valid observation: %v", err)
+	}
+
+	if err := s.repairEnrolledProjectSyncMutations(); err != nil {
+		t.Fatalf("repair: %v", err)
+	}
+
+	var emptyCount int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sync_mutations WHERE entity = ? AND entity_key = ? AND source = ?`,
+		SyncEntityObservation, emptyContentSync, SyncSourceLocal,
+	).Scan(&emptyCount); err != nil {
+		t.Fatalf("count empty-content observation mutations: %v", err)
+	}
+	if emptyCount != 0 {
+		t.Fatalf("expected the empty-content observation to stay unqueued, got %d mutation(s)", emptyCount)
+	}
+
+	var validCount int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sync_mutations WHERE entity = ? AND entity_key = ? AND source = ?`,
+		SyncEntityObservation, validSync, SyncSourceLocal,
+	).Scan(&validCount); err != nil {
+		t.Fatalf("count valid observation mutations: %v", err)
+	}
+	if validCount == 0 {
+		t.Fatalf("expected the valid observation to be backfilled, got 0 mutations")
+	}
+}
+
+// TestRepairDoesNotBackfillPromptsCloudWouldReject mirrors
+// TestRepairDoesNotBackfillObservationsCloudWouldReject for prompts: a prompt
+// with empty content stays unqueued, a prompt with real content is backfilled.
+func TestRepairDoesNotBackfillPromptsCloudWouldReject(t *testing.T) {
+	s := newTestStoreRaw(t)
+
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO sync_enrolled_projects (project) VALUES (?)`, "engram"); err != nil {
+		t.Fatalf("enroll project: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO sessions (id, project, directory, started_at) VALUES (?, ?, ?, datetime('now'))`,
+		"s-mixed-prompt", "engram", "/tmp/engram",
+	); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	emptyContentSync := "prompt-empty-content"
+	if _, err := s.db.Exec(`
+		INSERT INTO user_prompts (session_id, content, project, created_at, sync_id)
+		VALUES (?, ?, ?, datetime('now'), ?)`,
+		"s-mixed-prompt", "", "engram", emptyContentSync,
+	); err != nil {
+		t.Fatalf("insert prompt with empty content: %v", err)
+	}
+
+	validSync := "prompt-valid-001"
+	if _, err := s.db.Exec(`
+		INSERT INTO user_prompts (session_id, content, project, created_at, sync_id)
+		VALUES (?, ?, ?, datetime('now'), ?)`,
+		"s-mixed-prompt", "hello", "engram", validSync,
+	); err != nil {
+		t.Fatalf("insert valid prompt: %v", err)
+	}
+
+	if err := s.repairEnrolledProjectSyncMutations(); err != nil {
+		t.Fatalf("repair: %v", err)
+	}
+
+	var emptyCount int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sync_mutations WHERE entity = ? AND entity_key = ? AND source = ?`,
+		SyncEntityPrompt, emptyContentSync, SyncSourceLocal,
+	).Scan(&emptyCount); err != nil {
+		t.Fatalf("count empty-content prompt mutations: %v", err)
+	}
+	if emptyCount != 0 {
+		t.Fatalf("expected the empty-content prompt to stay unqueued, got %d mutation(s)", emptyCount)
+	}
+
+	var validCount int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sync_mutations WHERE entity = ? AND entity_key = ? AND source = ?`,
+		SyncEntityPrompt, validSync, SyncSourceLocal,
+	).Scan(&validCount); err != nil {
+		t.Fatalf("count valid prompt mutations: %v", err)
+	}
+	if validCount == 0 {
+		t.Fatalf("expected the valid prompt to be backfilled, got 0 mutations")
+	}
+}
+
+// TestRepairDoesNotBackfillSessionsCloudWouldReject mirrors
+// TestRepairDoesNotBackfillObservationsCloudWouldReject for sessions: a
+// session with an empty directory stays unqueued, a session with a real
+// directory is backfilled.
+func TestRepairDoesNotBackfillSessionsCloudWouldReject(t *testing.T) {
+	s := newTestStoreRaw(t)
+
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO sync_enrolled_projects (project) VALUES (?)`, "engram"); err != nil {
+		t.Fatalf("enroll project: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO sessions (id, project, directory, started_at) VALUES (?, ?, ?, datetime('now'))`,
+		"s-empty-directory", "engram", "", // empty directory
+	); err != nil {
+		t.Fatalf("insert session with empty directory: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO sessions (id, project, directory, started_at) VALUES (?, ?, ?, datetime('now'))`,
+		"s-valid-directory", "engram", "/tmp/engram",
+	); err != nil {
+		t.Fatalf("insert valid session: %v", err)
+	}
+
+	if err := s.repairEnrolledProjectSyncMutations(); err != nil {
+		t.Fatalf("repair: %v", err)
+	}
+
+	var emptyCount int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sync_mutations WHERE entity = ? AND entity_key = ? AND source = ?`,
+		SyncEntitySession, "s-empty-directory", SyncSourceLocal,
+	).Scan(&emptyCount); err != nil {
+		t.Fatalf("count empty-directory session mutations: %v", err)
+	}
+	if emptyCount != 0 {
+		t.Fatalf("expected the empty-directory session to stay unqueued, got %d mutation(s)", emptyCount)
+	}
+
+	var validCount int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sync_mutations WHERE entity = ? AND entity_key = ? AND source = ?`,
+		SyncEntitySession, "s-valid-directory", SyncSourceLocal,
+	).Scan(&validCount); err != nil {
+		t.Fatalf("count valid session mutations: %v", err)
+	}
+	if validCount == 0 {
+		t.Fatalf("expected the valid session to be backfilled, got 0 mutations")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Phase F — Decay defaults wiring (REQ-006)
 // ---------------------------------------------------------------------------
