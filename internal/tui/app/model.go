@@ -55,15 +55,21 @@ type Model struct {
 	dashboard dashboardModel
 }
 
-// New builds the TUI bound to the engram store with an optional initial project.
-func New(projects data.ProjectReader, version string, styles theme.Styles, initialProject string) Model {
+// New builds the root workspace around the readers its screens consume: mem
+// feeds the Memory tab, projects feeds the selector and the dashboard.
+// initialProject, when set, opens the workspace on that project's dashboard.
+//
+// The root never opens or wraps a store itself; whoever builds it decides
+// which store backs each reader, so a tab can never end up bound to a
+// different (or missing) store than its siblings.
+func New(mem data.MemoryReader, projects data.ProjectReader, version string, styles theme.Styles, initialProject string) Model {
 	m := Model{
 		styles:    styles,
 		version:   version,
 		active:    tabs.Memory,
 		projects:  projects,
 		project:   initialProject,
-		memory:    memory.New(data.NewMemoryReader(nil), version),
+		memory:    memory.New(mem, version),
 		cloud:     cloud.New(),
 		selector:  newSelectorModel(projects),
 		dashboard: newDashboardModel(projects, initialProject),

@@ -28,7 +28,7 @@ func testSelectorCards() []store.ProjectCardListItem {
 // the tab the workspace opens on, with no project active yet — the state
 // every real session starts from.
 func TestPKeyOpensSelectorAndLoadsCards(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	fake := &data.FakeProject{Cards: testSelectorCards()}
 	m.projects = fake
 	m.selector = newSelectorModel(fake)
@@ -51,7 +51,7 @@ func TestPKeyOpensSelectorAndLoadsCards(t *testing.T) {
 }
 
 func TestSelectorFilterNarrowsBySlugOrName(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	fake := &data.FakeProject{Cards: testSelectorCards()}
 	m.selector = newSelectorModel(fake).applyLoaded(selectorLoadedMsg{cards: testSelectorCards()})
 	m.screen = screenSelector
@@ -84,7 +84,7 @@ func TestSelectorFilterNarrowsBySlugOrName(t *testing.T) {
 // rfc-tui.md §7.1 calls out by name: typing a digit meant for the filter
 // query must not be swallowed as a tab-switch key.
 func TestGlobalKeysReachTheFilterInputWhileItIsFocused(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.selector = newSelectorModel(nil).applyLoaded(selectorLoadedMsg{cards: testSelectorCards()})
 	m.screen = screenSelector
 	m.selector.filterInput.Focus()
@@ -99,7 +99,7 @@ func TestGlobalKeysReachTheFilterInputWhileItIsFocused(t *testing.T) {
 }
 
 func TestSelectorEnterActivatesProjectAndOpensDashboard(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	fake := &data.FakeProject{
 		Cards:      testSelectorCards(),
 		CardBySlug: map[string]store.ProjectCard{"portal": {Slug: "portal", DisplayName: "Portal"}},
@@ -122,7 +122,7 @@ func TestSelectorEnterActivatesProjectAndOpensDashboard(t *testing.T) {
 }
 
 func TestSelectorEnterWithNoRowsSelectedIsANoOp(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenSelector // never loaded: filtered is empty
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -137,7 +137,7 @@ func TestSelectorEnterWithNoRowsSelectedIsANoOp(t *testing.T) {
 func TestSelectorEscNeverQuitsAndCancelsToTheDashboardOnlyWithAProject(t *testing.T) {
 	// No project active yet: esc has nowhere to go back to, so it must do
 	// nothing rather than exit — rfc-tui.md §7.1, "Esc never quits".
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenSelector
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyEsc})
@@ -157,7 +157,7 @@ func TestSelectorEscNeverQuitsAndCancelsToTheDashboardOnlyWithAProject(t *testin
 }
 
 func TestSelectorQQuits(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenSelector
 
 	_, cmd := step(t, m, tea.KeyMsg{Runes: []rune("q"), Type: tea.KeyRunes})
@@ -167,7 +167,7 @@ func TestSelectorQQuits(t *testing.T) {
 }
 
 func TestSelectorRRefreshesTheList(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	fake := &data.FakeProject{Cards: testSelectorCards()}
 	m.projects = fake
 	m.screen = screenSelector
@@ -179,7 +179,7 @@ func TestSelectorRRefreshesTheList(t *testing.T) {
 }
 
 func TestSelectorAppliedLoadedErrorIsShown(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenSelector
 
 	boom := &data.FakeProject{Err: errBoom}
@@ -195,7 +195,7 @@ func TestSelectorAppliedLoadedErrorIsShown(t *testing.T) {
 }
 
 func TestSelectorArrowKeysMoveTheCursor(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenSelector
 	m.selector = newSelectorModel(nil).applyLoaded(selectorLoadedMsg{cards: testSelectorCards()})
 
@@ -210,7 +210,7 @@ func TestSelectorArrowKeysMoveTheCursor(t *testing.T) {
 }
 
 func TestSelectorFilterEnterBlursWithoutClearing(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenSelector
 	m.selector = newSelectorModel(nil).applyLoaded(selectorLoadedMsg{cards: testSelectorCards()})
 	m.selector.filterInput.Focus()
@@ -251,7 +251,7 @@ func TestSelectorMoveCursorOnAnEmptyListIsANoOp(t *testing.T) {
 }
 
 func TestViewSelectorRendersLoadingThenRows(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenSelector
 	if out := m.View(); !strings.Contains(out, "Loading projects") {
 		t.Fatalf("an unloaded selector should show a loading state, got:\n%s", out)
@@ -268,7 +268,7 @@ func TestViewSelectorRendersLoadingThenRows(t *testing.T) {
 }
 
 func TestViewSelectorRendersNoMatches(t *testing.T) {
-	m := New(nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenSelector
 	m.selector = newSelectorModel(nil).applyLoaded(selectorLoadedMsg{cards: testSelectorCards()})
 	m.selector.filterInput.SetValue("no-such-project")

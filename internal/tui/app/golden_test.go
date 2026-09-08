@@ -328,7 +328,7 @@ func goldenScenes() []goldenScene {
 func renderScene(t *testing.T, scene goldenScene, size goldenSize) string {
 	t.Helper()
 
-	m := New(nil, goldenVersion, theme.Default(), "")
+	m := New(nil, nil, goldenVersion, theme.Default(), "")
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: size.width, Height: size.height})
 	m = sized.(Model)
 	m = scene.build(m)

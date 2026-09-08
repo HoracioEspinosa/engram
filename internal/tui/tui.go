@@ -16,8 +16,12 @@ import (
 type Model = app.Model
 
 // New creates the TUI bound to the given store.
+//
+// Every reader the workspace consumes is derived from s here, in one place, so
+// each screen is backed by the same store cmd/engram opened.
 func New(s *store.Store, version string) Model {
 	return app.New(
+		data.NewMemoryReader(s),
 		data.NewProjectReader(s),
 		version,
 		theme.Default(),
