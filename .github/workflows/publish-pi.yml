@@ -8,12 +8,12 @@ on:
 
 jobs:
   publish:
-    # Publishes the npm package `gentle-engram`, which belongs to upstream.
-    # A fork that runs this releases under upstream's name, so the job is
-    # fenced to the upstream repository the same way release.yml and
-    # cloud-image.yml are. To publish from this fork, this is the line to
-    # change — deliberately, not by inheriting a tag push.
-    if: github.repository == 'Gentleman-Programming/engram'
+    # Publishes the npm package `gentle-engram`. release.yml and
+    # cloud-image.yml are fenced to upstream so a fork cannot publish under
+    # its name by accident; this job is fenced to this fork the same way, so
+    # a `pi-v*` tag pushed here is what publishes it, not a tag pushed
+    # upstream.
+    if: github.repository == 'HoracioEspinosa/engram'
     runs-on: ubuntu-latest
     permissions:
       contents: read
