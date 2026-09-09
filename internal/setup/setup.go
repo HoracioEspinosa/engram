@@ -83,7 +83,7 @@ const codexMarketplace = "HoracioEspinosa/engram"
 
 const openCodeSubagentStatuslinePlugin = "opencode-subagent-statusline"
 
-const piMemoryPackage = "npm:@cloudfrog/memory@0.1.8"
+const piMemoryPackage = "npm:@cloudfrog/memory@0.1.10"
 const piMCPAdapterPackage = "npm:pi-mcp-adapter"
 
 // claudeCodeMCPTools are the MCP tool permission names for the agent profile
