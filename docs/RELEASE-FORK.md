@@ -350,12 +350,11 @@ pg_restore --clean --if-exists --no-owner \
   etiquetas publicadas del fork están marcadas prerelease — así que la
   comprobación nunca puede acertar. ADR-045 §2 documenta la causa y la
   decisión (pasar al endpoint de lista); esa fila sigue abierta, sin tocar.
-  Aparte de eso, y sin relación con el 404: el comando que este aviso sugiere
-  (`brew update && brew upgrade --cask HoracioEspinosa/tap/engram-custom`) es
-  el de cuando el tap publicaba un cask; con la fórmula como único artefacto
-  ya no lleva `--cask`. Un downstream que necesite apuntar a otro remoto
-  sobreescribe `repoOwner`/`repoName` en el enlace con
-  `-ldflags "-X <module>/internal/version.repoOwner=... -X
+  El comando que este aviso sugiere en macOS y Linux es
+  `brew update && brew upgrade HoracioEspinosa/tap/engram-custom`, sin
+  `--cask` — la fórmula es el único artefacto del tap. Un downstream que
+  necesite apuntar a otro remoto sobreescribe `repoOwner`/`repoName` en el
+  enlace con `-ldflags "-X <module>/internal/version.repoOwner=... -X
   <module>/internal/version.repoName=..."`, sin tocar el código.
 - **Los binarios están firmados ad hoc, no notarizados.** Una fórmula de
   Homebrew instala vía `curl`, que no aplica el atributo de cuarentena de
