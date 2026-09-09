@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // refMockStore is the mock StoreReader plus the optional engram-projects

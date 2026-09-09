@@ -1,6 +1,6 @@
 package constants
 
-import "github.com/Gentleman-Programming/engram/internal/store"
+import "github.com/HoracioEspinosa/engram/internal/store"
 
 const (
 	TargetKeyCloud = store.DefaultSyncTargetKey

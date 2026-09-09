@@ -1,7 +1,7 @@
 package cloud
 
 import (
-	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

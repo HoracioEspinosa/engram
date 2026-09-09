@@ -4,12 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
-	"github.com/Gentleman-Programming/engram/internal/tui/data"
-	"github.com/Gentleman-Programming/engram/internal/tui/shared"
-	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
-	"github.com/Gentleman-Programming/engram/internal/tui/tabs/memory"
-	"github.com/Gentleman-Programming/engram/internal/tui/theme"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/memory"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

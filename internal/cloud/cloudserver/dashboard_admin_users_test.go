@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	cloudauth "github.com/Gentleman-Programming/engram/internal/cloud/auth"
-	"github.com/Gentleman-Programming/engram/internal/cloud/cloudstore"
+	cloudauth "github.com/HoracioEspinosa/engram/internal/cloud/auth"
+	"github.com/HoracioEspinosa/engram/internal/cloud/cloudstore"
 )
 
 // dashboardAdminUsersTestServer builds a CloudServer wired with a managed

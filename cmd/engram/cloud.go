@@ -12,15 +12,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/cloud"
-	"github.com/Gentleman-Programming/engram/internal/cloud/auth"
-	"github.com/Gentleman-Programming/engram/internal/cloud/cloudserver"
-	"github.com/Gentleman-Programming/engram/internal/cloud/cloudstore"
-	"github.com/Gentleman-Programming/engram/internal/cloud/constants"
-	"github.com/Gentleman-Programming/engram/internal/cloud/dashboard"
-	"github.com/Gentleman-Programming/engram/internal/cloud/remote"
-	"github.com/Gentleman-Programming/engram/internal/store"
-	engramsync "github.com/Gentleman-Programming/engram/internal/sync"
+	"github.com/HoracioEspinosa/engram/internal/cloud"
+	"github.com/HoracioEspinosa/engram/internal/cloud/auth"
+	"github.com/HoracioEspinosa/engram/internal/cloud/cloudserver"
+	"github.com/HoracioEspinosa/engram/internal/cloud/cloudstore"
+	"github.com/HoracioEspinosa/engram/internal/cloud/constants"
+	"github.com/HoracioEspinosa/engram/internal/cloud/dashboard"
+	"github.com/HoracioEspinosa/engram/internal/cloud/remote"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	engramsync "github.com/HoracioEspinosa/engram/internal/sync"
 )
 
 type cloudManifestReader interface {

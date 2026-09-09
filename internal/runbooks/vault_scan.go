@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // runbooksDir is the vault folder the index is built from. Runbooks live

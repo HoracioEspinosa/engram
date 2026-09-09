@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
-	"github.com/Gentleman-Programming/engram/internal/tui"
-	"github.com/Gentleman-Programming/engram/internal/tui/app"
-	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
-	"github.com/Gentleman-Programming/engram/internal/tui/theme"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui"
+	"github.com/HoracioEspinosa/engram/internal/tui/app"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

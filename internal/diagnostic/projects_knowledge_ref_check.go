@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // CheckKnowledgeRefDangling is the doctor check for vault pointers whose

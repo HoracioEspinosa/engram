@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 func TestBuildRepairPlanDirectoryMismatchUsesTrustedEvidence(t *testing.T) {

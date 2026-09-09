@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/cloud"
-	"github.com/Gentleman-Programming/engram/internal/cloud/auth"
+	"github.com/HoracioEspinosa/engram/internal/cloud"
+	"github.com/HoracioEspinosa/engram/internal/cloud/auth"
 )
 
 // These tests cover buildRuntimeAuthenticator's three startup-decision

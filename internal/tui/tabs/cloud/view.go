@@ -3,7 +3,7 @@ package cloud
 import (
 	"strings"
 
-	"github.com/Gentleman-Programming/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 )
 
 // View renders the cloud sync menu. The root wraps it in the application

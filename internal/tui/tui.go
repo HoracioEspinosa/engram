@@ -6,10 +6,10 @@
 package tui
 
 import (
-	"github.com/Gentleman-Programming/engram/internal/store"
-	"github.com/Gentleman-Programming/engram/internal/tui/app"
-	"github.com/Gentleman-Programming/engram/internal/tui/data"
-	"github.com/Gentleman-Programming/engram/internal/tui/theme"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui/app"
+	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 )
 
 // Model is the root Bubble Tea model of the TUI.

@@ -71,7 +71,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // graphSummaryMaxBytes is the hard cap from RFC §8.3 step 8. It fits with

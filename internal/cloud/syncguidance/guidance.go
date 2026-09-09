@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Gentleman-Programming/engram/internal/cloud/constants"
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/cloud/constants"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 const header = "Known repairable cloud sync failure detected."

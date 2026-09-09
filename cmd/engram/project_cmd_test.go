@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	projectpkg "github.com/Gentleman-Programming/engram/internal/project"
-	"github.com/Gentleman-Programming/engram/internal/store"
+	projectpkg "github.com/HoracioEspinosa/engram/internal/project"
+	"github.com/HoracioEspinosa/engram/internal/store"
 	_ "modernc.org/sqlite"
 )
 

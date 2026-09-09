@@ -17,8 +17,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
-	versioncheck "github.com/Gentleman-Programming/engram/internal/version"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	versioncheck "github.com/HoracioEspinosa/engram/internal/version"
 	_ "modernc.org/sqlite"
 )
 

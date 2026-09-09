@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/setup"
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/setup"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // Token-classification rows from openspec/changes/setup-protocol-flag/proposal.md

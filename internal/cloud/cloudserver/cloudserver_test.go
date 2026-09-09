@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	cloudauth "github.com/Gentleman-Programming/engram/internal/cloud/auth"
-	"github.com/Gentleman-Programming/engram/internal/cloud/cloudstore"
-	"github.com/Gentleman-Programming/engram/internal/cloud/dashboard"
-	"github.com/Gentleman-Programming/engram/internal/store"
-	engramsync "github.com/Gentleman-Programming/engram/internal/sync"
+	cloudauth "github.com/HoracioEspinosa/engram/internal/cloud/auth"
+	"github.com/HoracioEspinosa/engram/internal/cloud/cloudstore"
+	"github.com/HoracioEspinosa/engram/internal/cloud/dashboard"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	engramsync "github.com/HoracioEspinosa/engram/internal/sync"
 )
 
 type fakeStore struct {

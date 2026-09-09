@@ -37,9 +37,9 @@ import (
 	"strings"
 	"time"
 
-	projectpkg "github.com/Gentleman-Programming/engram/internal/project"
-	"github.com/Gentleman-Programming/engram/internal/runbooks"
-	"github.com/Gentleman-Programming/engram/internal/store"
+	projectpkg "github.com/HoracioEspinosa/engram/internal/project"
+	"github.com/HoracioEspinosa/engram/internal/runbooks"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // ─── Limits ──────────────────────────────────────────────────────────────────

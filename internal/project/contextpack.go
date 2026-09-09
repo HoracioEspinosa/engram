@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // jiraBaseURL is the Jira Cloud browse base used to build task links. It is

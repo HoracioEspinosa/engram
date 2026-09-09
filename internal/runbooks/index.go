@@ -1,6 +1,6 @@
 package runbooks
 
-import "github.com/Gentleman-Programming/engram/internal/store"
+import "github.com/HoracioEspinosa/engram/internal/store"
 
 // Persister is the store capability SyncIndex needs. Keeping it an interface
 // lets a test drive the filters without opening a database, and keeps the

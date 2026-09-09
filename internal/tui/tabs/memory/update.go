@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/setup"
-	"github.com/Gentleman-Programming/engram/internal/store"
-	"github.com/Gentleman-Programming/engram/internal/tui/shared"
-	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/setup"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )

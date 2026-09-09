@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/setup"
-	"github.com/Gentleman-Programming/engram/internal/store"
-	"github.com/Gentleman-Programming/engram/internal/tui/data"
-	"github.com/Gentleman-Programming/engram/internal/version"
+	"github.com/HoracioEspinosa/engram/internal/setup"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/version"
 )
 
 type testFixture struct {

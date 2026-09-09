@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // The CLI half of the engram -> vault promotion bridge (roadmap T-11.02).

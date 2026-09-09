@@ -8,7 +8,7 @@ package data
 import (
 	"errors"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // ErrStoreUnavailable is returned by an adapter built without a store, which

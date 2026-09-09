@@ -13,11 +13,11 @@
 package memory
 
 import (
-	"github.com/Gentleman-Programming/engram/internal/setup"
-	"github.com/Gentleman-Programming/engram/internal/store"
-	"github.com/Gentleman-Programming/engram/internal/tui/data"
-	"github.com/Gentleman-Programming/engram/internal/tui/theme"
-	"github.com/Gentleman-Programming/engram/internal/version"
+	"github.com/HoracioEspinosa/engram/internal/setup"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
+	"github.com/HoracioEspinosa/engram/internal/version"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"

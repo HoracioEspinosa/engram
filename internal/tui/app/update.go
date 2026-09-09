@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"

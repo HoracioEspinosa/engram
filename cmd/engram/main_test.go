@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/mcp"
-	"github.com/Gentleman-Programming/engram/internal/obsidian"
-	"github.com/Gentleman-Programming/engram/internal/setup"
-	"github.com/Gentleman-Programming/engram/internal/store"
-	engramsync "github.com/Gentleman-Programming/engram/internal/sync"
-	versioncheck "github.com/Gentleman-Programming/engram/internal/version"
+	"github.com/HoracioEspinosa/engram/internal/mcp"
+	"github.com/HoracioEspinosa/engram/internal/obsidian"
+	"github.com/HoracioEspinosa/engram/internal/setup"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	engramsync "github.com/HoracioEspinosa/engram/internal/sync"
+	versioncheck "github.com/HoracioEspinosa/engram/internal/version"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 

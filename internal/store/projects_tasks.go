@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/tasks"
+	"github.com/HoracioEspinosa/engram/internal/tasks"
 )
 
 // MissingFieldError is returned when a required field is absent on create

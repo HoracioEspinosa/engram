@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/setup"
-	"github.com/Gentleman-Programming/engram/internal/store"
-	"github.com/Gentleman-Programming/engram/internal/tui/tabs"
-	"github.com/Gentleman-Programming/engram/internal/tui/tabs/memory"
-	"github.com/Gentleman-Programming/engram/internal/tui/theme"
-	"github.com/Gentleman-Programming/engram/internal/version"
+	"github.com/HoracioEspinosa/engram/internal/setup"
+	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/memory"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
+	"github.com/HoracioEspinosa/engram/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

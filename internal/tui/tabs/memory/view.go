@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Gentleman-Programming/engram/internal/tui/shared"
-	"github.com/Gentleman-Programming/engram/internal/version"
+	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/version"
 )
 
 // ─── Logo ────────────────────────────────────────────────────────────────────

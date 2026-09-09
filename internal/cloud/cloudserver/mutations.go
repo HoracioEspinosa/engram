@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Gentleman-Programming/engram/internal/cloud/cloudstore"
-	"github.com/Gentleman-Programming/engram/internal/cloud/constants"
-	"github.com/Gentleman-Programming/engram/internal/project"
+	"github.com/HoracioEspinosa/engram/internal/cloud/cloudstore"
+	"github.com/HoracioEspinosa/engram/internal/cloud/constants"
+	"github.com/HoracioEspinosa/engram/internal/project"
 )
 
 // ─── Types ────────────────────────────────────────────────────────────────────

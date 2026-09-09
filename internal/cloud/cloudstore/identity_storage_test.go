@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/cloud"
+	"github.com/HoracioEspinosa/engram/internal/cloud"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 

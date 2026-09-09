@@ -1,6 +1,6 @@
 package data
 
-import "github.com/Gentleman-Programming/engram/internal/store"
+import "github.com/HoracioEspinosa/engram/internal/store"
 
 // sqliteMemory adapts the engram SQLite store to MemoryReader.
 //

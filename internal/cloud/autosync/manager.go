@@ -24,9 +24,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/cloud/constants"
-	"github.com/Gentleman-Programming/engram/internal/cloud/syncguidance"
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/cloud/constants"
+	"github.com/HoracioEspinosa/engram/internal/cloud/syncguidance"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // ─── Phase Constants ─────────────────────────────────────────────────────────

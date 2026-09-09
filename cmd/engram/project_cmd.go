@@ -21,8 +21,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	projectpkg "github.com/Gentleman-Programming/engram/internal/project"
-	"github.com/Gentleman-Programming/engram/internal/store"
+	projectpkg "github.com/HoracioEspinosa/engram/internal/project"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // detectProjectFull is injectable for testing; wraps project.DetectProjectFull.

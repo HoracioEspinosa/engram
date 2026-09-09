@@ -16,9 +16,9 @@ import (
 	"regexp"
 	"strings"
 
-	projectpkg "github.com/Gentleman-Programming/engram/internal/project"
-	"github.com/Gentleman-Programming/engram/internal/runbooks"
-	"github.com/Gentleman-Programming/engram/internal/store"
+	projectpkg "github.com/HoracioEspinosa/engram/internal/project"
+	"github.com/HoracioEspinosa/engram/internal/runbooks"
+	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )

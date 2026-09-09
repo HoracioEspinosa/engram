@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/llm"
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/llm"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // cmdConflicts is the top-level dispatcher for `engram conflicts <subcommand>`.

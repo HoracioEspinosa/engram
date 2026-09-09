@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // Contract tests for the engram-projects HTTP API (RFC §6). Every test runs
