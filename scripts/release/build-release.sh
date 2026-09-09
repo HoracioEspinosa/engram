@@ -189,11 +189,16 @@ done
 note "archives: $ARCHIVES"
 [ "$ARCHIVES" -gt 0 ] || die "no archive was produced" 2
 
-CASK="$DIST/homebrew/Casks/engram-custom.rb"
-if [ -f "$CASK" ]; then
-  note "cask:     $CASK"
+FORMULA="$DIST/homebrew/Formula/engram-custom.rb"
+if [ -f "$FORMULA" ]; then
+  note "formula:  $FORMULA"
 else
-  note "cask:     NOT generated (goreleaser skipped the homebrew step)"
+  # Expected: every goreleaser invocation here carries --skip=publish, and the
+  # homebrew formula is written only as part of that publish stage. Inspect it
+  # with a temporary skip_upload: true config copy instead, the way the
+  # formula-vs-cask migration was verified — never by running this script
+  # against the real HOMEBREW_TAP_TOKEN.
+  note "formula:  NOT generated (goreleaser skipped the homebrew step)"
 fi
 
 section "version check"
