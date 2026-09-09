@@ -28,8 +28,9 @@ var (
 // GitHub's "latest release" endpoint excludes prereleases by design (see
 // docs.github.com/en/rest/releases/releases#get-the-latest-release), and
 // every tag this fork has published carries a prerelease identifier, so that
-// endpoint 404s forever (ADR-045 §2). The list includes prereleases and is
-// sorted by creation date, so the first entry is the one to compare against.
+// endpoint 404s forever (ADR-045 §2). The list includes prereleases, but its
+// order is not documented and not trusted here — see the selection loop in
+// CheckLatest for how the actual latest release gets picked.
 var (
 	checkTimeout          = 2 * time.Second
 	githubReleasesListURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", repoOwner, repoName)
@@ -52,6 +53,7 @@ type CheckResult struct {
 // githubRelease is the subset of the GitHub releases API we care about.
 type githubRelease struct {
 	TagName string `json:"tag_name"`
+	Draft   bool   `json:"draft"`
 }
 
 // CheckLatest compares the running version against the latest GitHub release.
@@ -93,11 +95,36 @@ func CheckLatest(current string) CheckResult {
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return checkFailed("Could not check for updates: could not read the GitHub response.")
 	}
-	if len(releases) == 0 {
+
+	// GitHub does not document a sort order for this list, and in practice it
+	// reflects each release's creation date, not its publication date — a
+	// hotfix published after a bigger release was drafted (even a draft that
+	// never got published) can leave an older tag ahead of a newer one; see
+	// github.com/consolidation/self-update#9 for a real report of exactly
+	// that. And a request with push access sees draft releases in this list,
+	// which are not real releases. So this ignores drafts and, instead of
+	// trusting array order, picks the entry that compares newest by the same
+	// rule used against the running version. That rule (isNewer/splitVersion)
+	// only compares the three numeric segments before the first non-digit, so
+	// among tags that differ solely in a trailing -cd.N revision it treats
+	// them as equal and keeps whichever one it saw first — the same
+	// limitation that applies wherever isNewer is used, not something this
+	// loop makes worse.
+	var latestRelease *githubRelease
+	for i := range releases {
+		r := &releases[i]
+		if r.Draft {
+			continue
+		}
+		if latestRelease == nil || isNewer(normalizeVersion(r.TagName), normalizeVersion(latestRelease.TagName)) {
+			latestRelease = r
+		}
+	}
+	if latestRelease == nil {
 		return checkFailed("Could not check for updates: GitHub did not return a release version.")
 	}
 
-	latest := normalizeVersion(releases[0].TagName)
+	latest := normalizeVersion(latestRelease.TagName)
 	running := normalizeVersion(current)
 
 	if latest == "" {

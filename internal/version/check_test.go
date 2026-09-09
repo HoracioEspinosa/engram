@@ -162,6 +162,46 @@ func TestCheckLatest(t *testing.T) {
 		}
 	})
 
+	// GitHub does not document a sort order for the releases list, and a
+	// draft sitting ahead of the real latest release is a reported failure
+	// mode (github.com/consolidation/self-update#9), not a hypothetical one.
+	// This response is deliberately NOT in latest-first order, and puts a
+	// draft ahead of everything, to prove the fix does not just trust
+	// element 0.
+	t.Run("ignores drafts and out-of-order entries in the releases list", func(t *testing.T) {
+		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[
+				{"tag_name":"v9.9.9-cd.1","draft":true},
+				{"tag_name":"v1.20.0-cd.4","draft":false},
+				{"tag_name":"v1.21.0-cd.1","draft":false}
+			]`))
+		}))
+
+		result := CheckLatest("1.20.0-cd.4")
+		if result.Status != StatusUpdateAvailable {
+			t.Fatalf("status = %q, want %q", result.Status, StatusUpdateAvailable)
+		}
+		if !strings.Contains(result.Message, "Update available: 1.20.0-cd.4 -> 1.21.0-cd.1") {
+			t.Fatalf("message = %q, want it to name 1.21.0-cd.1, not the draft 9.9.9-cd.1", result.Message)
+		}
+	})
+
+	t.Run("all entries drafted becomes check failed", func(t *testing.T) {
+		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"tag_name":"v9.9.9-cd.1","draft":true}]`))
+		}))
+
+		result := CheckLatest("1.10.7")
+		if result.Status != StatusCheckFailed {
+			t.Fatalf("status = %q, want %q", result.Status, StatusCheckFailed)
+		}
+		if !strings.Contains(result.Message, "did not return a release version") {
+			t.Fatalf("message = %q", result.Message)
+		}
+	})
+
 	t.Run("empty releases list becomes check failed", func(t *testing.T) {
 		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
