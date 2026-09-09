@@ -1,6 +1,6 @@
 # 🧠 Obsidian Brain — Beta
 
-> **Status**: Beta — feedback welcome on the [GitHub issues](https://github.com/Gentleman-Programming/engram/issues) tagged `beta:obsidian`.
+> **Status**: Beta — feedback welcome on the [GitHub issues](https://github.com/HoracioEspinosa/engram/issues) tagged `beta:obsidian`.
 > **Available since**: `v1.12.0-beta.1`
 > **Stability**: Behavior is locked but flag names may evolve before stable release.
 > **Side-by-side**: This beta installs as `engram-beta` so it doesn't replace your stable `engram`. Both binaries share the same `~/.engram/engram.db`, so memories captured by your stable agent show up in the beta exports automatically.
@@ -358,7 +358,7 @@ You can absolutely tweak the graph view in Obsidian's UI — Engram's `preserve`
 
 ## TypeScript Plugin (Optional)
 
-For an in-Obsidian experience with a ribbon button, settings tab, and status bar indicator, there's a TypeScript community plugin in [`plugin/obsidian/`](https://github.com/Gentleman-Programming/engram/tree/main/plugin/obsidian).
+For an in-Obsidian experience with a ribbon button, settings tab, and status bar indicator, there's a TypeScript community plugin in [`plugin/obsidian/`](https://github.com/HoracioEspinosa/engram/tree/main/plugin/obsidian).
 
 It uses Engram's HTTP API (`engram serve`) instead of reading SQLite directly:
 
@@ -445,7 +445,7 @@ This is a beta feature. **We want to hear how it works for you, especially**:
 - Did the daemon mode crash, leak memory, or behave unexpectedly?
 - Did the graph config bootstrap clobber something you cared about?
 
-File issues at [github.com/Gentleman-Programming/engram/issues](https://github.com/Gentleman-Programming/engram/issues) with the `beta:obsidian` label.
+File issues at [github.com/HoracioEspinosa/engram/issues](https://github.com/HoracioEspinosa/engram/issues) with the `beta:obsidian` label.
 
 ---
 
