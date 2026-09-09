@@ -164,8 +164,8 @@ func splitVersion(v string) [3]int {
 // of this in-app message.
 func updateInstructions() string {
 	switch runtime.GOOS {
-	case "darwin":
-		return fmt.Sprintf("  brew update && brew upgrade --cask %s/tap/engram-custom", repoOwner)
+	case "darwin", "linux":
+		return fmt.Sprintf("  brew update && brew upgrade %s/tap/engram-custom", repoOwner)
 	default:
 		return fmt.Sprintf("  Download the latest release: https://github.com/%s/%s/releases/latest", repoOwner, repoName)
 	}
