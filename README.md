@@ -40,8 +40,13 @@ SQLite + FTS5 (~/.engram/engram.db)
 ### Install
 
 ```bash
-brew install gentleman-programming/tap/engram
+brew install HoracioEspinosa/tap/engram
 ```
+
+> This installs from **this fork's own tap** (`HoracioEspinosa/homebrew-tap`), not the upstream
+> `gentleman-programming/tap`. The upstream tap ships upstream engram, without the ClaroDrive
+> cloud configuration or the fixes this fork carries — installing from it silently gives you the
+> wrong binary.
 
 Windows, Linux, and other install methods → [docs/INSTALLATION.md](docs/INSTALLATION.md)
 

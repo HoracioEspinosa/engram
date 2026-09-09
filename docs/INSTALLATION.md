@@ -15,8 +15,12 @@
 ## Homebrew (macOS / Linux)
 
 ```bash
-brew install gentleman-programming/tap/engram
+brew install HoracioEspinosa/tap/engram
 ```
+
+This installs from **this fork's own tap** (`HoracioEspinosa/homebrew-tap`) — not
+`gentleman-programming/tap`, which ships upstream engram without the ClaroDrive cloud
+configuration or this fork's fixes.
 
 Upgrade to latest:
 
@@ -26,7 +30,7 @@ brew update && brew upgrade engram
 
 > **Migrating from Cask?** If you installed engram before v1.0.1, it was distributed as a Cask. Uninstall first, then reinstall:
 > ```bash
-> brew uninstall --cask engram 2>/dev/null; brew install gentleman-programming/tap/engram
+> brew uninstall --cask engram 2>/dev/null; brew install HoracioEspinosa/tap/engram
 > ```
 
 > **Keep `engram serve` running across `brew upgrade`?** On macOS, `brew upgrade engram` replaces the binary and kills any running `engram serve` process — autosync stops silently until you relaunch it. To make autosync survive upgrades and reboots, use the launchd template in [Running as a Service → Using launchd (macOS)](../DOCS.md#using-launchd-macos). Run `engram cloud status` afterwards: the `Local daemon:` line should report `running`.
@@ -78,7 +82,9 @@ go install ./cmd/engram
 
 **Option C: Download the prebuilt binary**
 
-1. Go to [GitHub Releases](https://github.com/Gentleman-Programming/engram/releases)
+1. Go to [GitHub Releases](https://github.com/HoracioEspinosa/engram/releases) (this fork's
+   repository is **private** — you need read access and to be signed in to GitHub in your
+   browser to download from it)
 2. Download `engram_<version>_windows_amd64.zip` (or `arm64` for ARM devices)
 3. Extract `engram.exe` to a folder in your `PATH` (e.g. `C:\Users\<you>\bin\`)
 
@@ -149,7 +155,17 @@ go install ./cmd/engram
 
 ## Download binary (all platforms)
 
-Grab the latest release for your platform from [GitHub Releases](https://github.com/Gentleman-Programming/engram/releases).
+Grab the latest release for your platform from
+[GitHub Releases](https://github.com/HoracioEspinosa/engram/releases) (this fork's repository,
+not `Gentleman-Programming/engram`). It is **private**, so an unauthenticated download (a bare
+`curl`, without being signed in) gets a `404` — either use the browser while signed in to GitHub
+with read access to the repo, or authenticate the request:
+
+```bash
+# Browser: click the asset on the release page while signed in.
+# Terminal, with a GitHub token that has read access to the repo:
+gh release download <version> --repo HoracioEspinosa/engram --pattern 'engram_*_darwin_arm64.tar.gz' --pattern checksums.txt
+```
 
 | Platform | File |
 |----------|------|
@@ -159,6 +175,13 @@ Grab the latest release for your platform from [GitHub Releases](https://github.
 | Linux (ARM64) | `engram_<version>_linux_arm64.tar.gz` |
 | Windows (x86_64) | `engram_<version>_windows_amd64.zip` |
 | Windows (ARM64) | `engram_<version>_windows_arm64.zip` |
+
+Every release also carries a `checksums.txt`. Verify the archive before extracting it —
+whichever way you downloaded it:
+
+```bash
+grep engram_<version>_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
+```
 
 ---
 
