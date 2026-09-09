@@ -342,20 +342,31 @@ pg_restore --clean --if-exists --no-owner \
 
 ## 6. Límites conocidos
 
-- **El aviso de actualización consulta este fork por defecto, no upstream, pero
-  hoy consulta un endpoint que 404 siempre.** `internal/version.repoOwner`/`repoName`
-  son variables, no constantes, con default `HoracioEspinosa/engram`:
-  `internal/version` consulta `api.github.com/repos/HoracioEspinosa/engram/releases/latest`,
-  que excluye prelanzamientos por diseño de la API de GitHub, y las cuatro
-  etiquetas publicadas del fork están marcadas prerelease — así que la
-  comprobación nunca puede acertar. ADR-045 §2 documenta la causa y la
-  decisión (pasar al endpoint de lista); esa fila sigue abierta, sin tocar.
-  El comando que este aviso sugiere en macOS y Linux es
+- **El aviso de actualización consulta este fork por defecto, no upstream.**
+  `internal/version.repoOwner`/`repoName` son variables, no constantes, con
+  default `HoracioEspinosa/engram`. `internal/version` consulta el
+  **listado** de releases (`api.github.com/repos/HoracioEspinosa/engram/releases`),
+  no el endpoint del «último release»: ese endpoint excluye prelanzamientos
+  por diseño de la API de GitHub, y las cuatro etiquetas publicadas del fork
+  están marcadas prerelease, así que ese endpoint respondería 404 siempre
+  (ADR-045 §2). Del listado descarta los borradores —la API los incluye en peticiones con
+  acceso de escritura, y un borrador no es un release real— y elige la
+  entrada más nueva por comparación en vez de confiar en el orden del array:
+  GitHub no documenta ningún orden para ese listado, y en la práctica
+  refleja la fecha de creación, no la de publicación
+  (`github.com/consolidation/self-update#9` documenta el caso real: una
+  corrección publicada después deja una etiqueta vieja adelante de una más
+  nueva). El comando que este aviso sugiere en macOS y Linux es
   `brew update && brew upgrade HoracioEspinosa/tap/engram-custom`, sin
   `--cask` — la fórmula es el único artefacto del tap. Un downstream que
   necesite apuntar a otro remoto sobreescribe `repoOwner`/`repoName` en el
   enlace con `-ldflags "-X <module>/internal/version.repoOwner=... -X
   <module>/internal/version.repoName=..."`, sin tocar el código.
+  **Límite abierto, sin relación con lo anterior:** la comparación de
+  versiones (`isNewer`/`splitVersion`) solo mira los tres segmentos
+  numéricos antes del primer carácter no-dígito, así que dos etiquetas que
+  solo difieren en su sufijo `-cd.N` —el esquema real de este fork— comparan
+  iguales.
 - **Los binarios están firmados ad hoc, no notarizados.** Una fórmula de
   Homebrew instala vía `curl`, que no aplica el atributo de cuarentena de
   Gatekeeper — solo lo hacen los navegadores y Homebrew Cask, que lo añade a
