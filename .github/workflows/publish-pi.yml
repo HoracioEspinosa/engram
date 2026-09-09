@@ -13,7 +13,7 @@ jobs:
     # its name by accident; this job is fenced to this fork the same way, so
     # a `pi-v*` tag pushed here is what publishes it, not a tag pushed
     # upstream.
-    if: github.repository == 'HoracioEspinosa/engram'
+    if: false  # disarmed: plugin/pi/package.json still declares the npm name 'gentle-engram', whose registry maintainer is the upstream author. Publishing from this fork would push our build to another project's users. Re-enable only after the package is renamed to one this account owns.
     runs-on: ubuntu-latest
     permissions:
       contents: read
