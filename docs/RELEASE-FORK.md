@@ -313,16 +313,14 @@ pg_restore --clean --if-exists --no-owner \
 
 ## 6. Límites conocidos
 
-- **El aviso de actualización apunta a upstream.** `internal/version` consulta
-  `api.github.com/repos/Gentleman-Programming/engram/releases/latest` y sugiere
-  `brew update && brew upgrade engram`. Mientras la base de la versión del fork
-  sea igual a la última de upstream, la comparación da "al día" y no molesta.
-  Cuando upstream suba de versión, el binario del fork va a anunciar una
-  actualización que no le corresponde. No pasa nada grave porque el cask se
-  llama distinto y `brew upgrade engram` no lo toca, pero el mensaje confunde.
-  Arreglarlo de verdad pide un cambio en el código —una variable sobreescribible
-  por `ldflags` o una salida por variable de entorno— y conviene proponerlo
-  primero a upstream, no cargarlo en la rama propia.
+- **El aviso de actualización consulta este fork por defecto, no upstream.**
+  `internal/version.repoOwner`/`repoName` son variables, no constantes, con
+  default `HoracioEspinosa/engram`: `internal/version` consulta
+  `api.github.com/repos/HoracioEspinosa/engram/releases/latest` y sugiere
+  `brew update && brew upgrade HoracioEspinosa/tap/engram`. Un downstream que
+  necesite apuntar a otro remoto sobreescribe ambas variables en el enlace con
+  `-ldflags "-X <module>/internal/version.repoOwner=... -X
+  <module>/internal/version.repoName=..."`, sin tocar el código.
 - **El cask no cubre Linux.** El archivo generado incluye URLs de Linux, pero
   Homebrew solo instala casks en macOS. En Linux se usa el comprimido.
 - **Los binarios están firmados ad hoc, no notarizados.** El cask limpia el

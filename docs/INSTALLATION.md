@@ -39,38 +39,31 @@ brew update && brew upgrade engram
 
 ## Windows
 
-**Option A: Install via `go install` (recommended for technical users)**
+**Option A: Build from source (recommended for technical users)**
 
-If you have Go installed, this is the cleanest and most trustworthy path — the binary is compiled on your machine from source, so no antivirus will flag it:
-
-```powershell
-go install github.com/Gentleman-Programming/engram/cmd/engram@latest
-# Binary goes to %GOPATH%\bin\engram.exe (typically %USERPROFILE%\go\bin\)
-```
-
-Ensure `%GOPATH%\bin` (or `%USERPROFILE%\go\bin`) is on your `PATH`.
-
-**Option B: Build from source**
+If you have Go installed, this is the cleanest and most trustworthy path — the binary is compiled on your machine from source, so no antivirus will flag it. A network `go install github.com/HoracioEspinosa/engram/...@latest` does not work for this fork: its `go.mod` still declares the upstream import path, so `go install` rejects a module resolved under this fork's path with a "module declares its path as" mismatch. Cloning first sidesteps that, since a local build resolves its own package paths instead of a remote module path:
 
 ```powershell
-git clone https://github.com/Gentleman-Programming/engram.git
+git clone https://github.com/HoracioEspinosa/engram.git
 cd engram
 go install ./cmd/engram
 # Binary goes to %GOPATH%\bin\engram.exe (typically %USERPROFILE%\go\bin\)
 ```
 
+Ensure `%GOPATH%\bin` (or `%USERPROFILE%\go\bin`) is on your `PATH`.
+
 > **Want a real version string instead of `dev`?**
 >
 > `go install` always stamps the binary as `dev`. To get a meaningful version, pick one of these — not both. Running them both leaves two binaries on disk and `engram version` keeps reporting `dev` because PATH still resolves to the `go install` build.
 >
-> **Option B1 — version-stamped `go install` (binary stays on PATH):**
+> **Option A1 — version-stamped `go install` (binary stays on PATH):**
 >
 > ```powershell
 > $v = git describe --tags --always
 > go install -ldflags="-X main.version=local-$v" ./cmd/engram
 > ```
 >
-> **Option B2 — `go build` and move the result onto PATH:**
+> **Option A2 — `go build` and move the result onto PATH:**
 >
 > ```powershell
 > $v = git describe --tags --always
@@ -80,11 +73,10 @@ go install ./cmd/engram
 >
 > After either option, `engram version` should print `local-<git-describe>` instead of `dev`.
 
-**Option C: Download the prebuilt binary**
+**Option B: Download the prebuilt binary**
 
 1. Go to [GitHub Releases](https://github.com/HoracioEspinosa/engram/releases) (this fork's
-   repository is **private** — you need read access and to be signed in to GitHub in your
-   browser to download from it)
+   own repository, not `Gentleman-Programming/engram`)
 2. Download `engram_<version>_windows_amd64.zip` (or `arm64` for ARM devices)
 3. Extract `engram.exe` to a folder in your `PATH` (e.g. `C:\Users\<you>\bin\`)
 
@@ -111,9 +103,9 @@ Expand-Archive engram_*_windows_amd64.zip -DestinationPath "$env:USERPROFILE\bin
 > **Maintainer stance:** We will not pay for a code signing certificate at this time. This is a
 > distribution trust problem, not a security problem. The source code is fully auditable.
 >
-> **Recommended workaround:** Technical Windows users should prefer **Option A (`go install`)** or
-> **Option B (build from source)**. Binaries you compile locally will not trigger AV alerts because
-> they originate from your own machine.
+> **Recommended workaround:** Technical Windows users should prefer **Option A (build from
+> source)**. Binaries you compile locally will not trigger AV alerts because they originate from
+> your own machine.
 
 > **Other Windows notes:**
 > - Data is stored in `%USERPROFILE%\.engram\engram.db`
@@ -126,7 +118,7 @@ Expand-Archive engram_*_windows_amd64.zip -DestinationPath "$env:USERPROFILE\bin
 ## Install from source (macOS / Linux)
 
 ```bash
-git clone https://github.com/Gentleman-Programming/engram.git
+git clone https://github.com/HoracioEspinosa/engram.git
 cd engram
 go install ./cmd/engram
 # Binary goes to $GOPATH/bin (typically ~/go/bin/)
@@ -157,14 +149,14 @@ go install ./cmd/engram
 
 Grab the latest release for your platform from
 [GitHub Releases](https://github.com/HoracioEspinosa/engram/releases) (this fork's repository,
-not `Gentleman-Programming/engram`). It is **private**, so an unauthenticated download (a bare
-`curl`, without being signed in) gets a `404` — either use the browser while signed in to GitHub
-with read access to the repo, or authenticate the request:
+not `Gentleman-Programming/engram`). Every release here is marked pre-release, so GitHub's
+`/releases/latest` alias does not resolve to it — name the tag explicitly:
 
 ```bash
-# Browser: click the asset on the release page while signed in.
-# Terminal, with a GitHub token that has read access to the repo:
-gh release download <version> --repo HoracioEspinosa/engram --pattern 'engram_*_darwin_arm64.tar.gz' --pattern checksums.txt
+curl -LO https://github.com/HoracioEspinosa/engram/releases/download/<tag>/engram_<version>_darwin_arm64.tar.gz
+curl -LO https://github.com/HoracioEspinosa/engram/releases/download/<tag>/checksums.txt
+# or, with gh:
+gh release download <tag> --repo HoracioEspinosa/engram --pattern 'engram_*_darwin_arm64.tar.gz' --pattern checksums.txt
 ```
 
 | Platform | File |
