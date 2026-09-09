@@ -13,8 +13,14 @@ import (
 	"time"
 )
 
-const (
-	repoOwner = "Gentleman-Programming"
+// repoOwner and repoName point the update check at this fork by default.
+// They are plain vars (not consts) so a downstream build can retarget them
+// with -ldflags "-X <module>/internal/version.repoOwner=... -X
+// <module>/internal/version.repoName=...", the same mechanism main.version
+// already uses to stamp the release — no source change needed to point a
+// different fork's build at its own repository.
+var (
+	repoOwner = "HoracioEspinosa"
 	repoName  = "engram"
 )
 
@@ -147,14 +153,21 @@ func splitVersion(v string) [3]int {
 }
 
 // updateInstructions returns platform-appropriate update commands.
+//
+// `go install <repoOwner>/<repoName>/...@latest` is deliberately not offered
+// here: this module's own go.mod still declares the upstream import path, so
+// a network `go install` built from repoOwner/repoName fails with a "module
+// declares its path as" mismatch unless repoOwner/repoName are overridden
+// back to the module's declared owner. Building from a local clone (`go
+// install ./cmd/engram`, documented in docs/INSTALLATION.md) does not hit
+// that mismatch, but it is not a one-line update command, so it is left out
+// of this in-app message.
 func updateInstructions() string {
 	switch runtime.GOOS {
 	case "darwin":
-		return "  brew update && brew upgrade engram"
-	case "linux":
-		return "  brew update && brew upgrade engram\n  or: go install github.com/Gentleman-Programming/engram/cmd/engram@latest"
+		return fmt.Sprintf("  brew update && brew upgrade %s/tap/engram", repoOwner)
 	default:
-		return "  go install github.com/Gentleman-Programming/engram/cmd/engram@latest\n  or: https://github.com/Gentleman-Programming/engram/releases/latest"
+		return fmt.Sprintf("  Download the latest release: https://github.com/%s/%s/releases/latest", repoOwner, repoName)
 	}
 }
 

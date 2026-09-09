@@ -222,6 +222,24 @@ func TestUpdateInstructions(t *testing.T) {
 	if msg == "" {
 		t.Fatal("expected non-empty update instructions")
 	}
+	if strings.Contains(msg, "Gentleman-Programming") {
+		t.Fatalf("update instructions must not point at the upstream project, got: %q", msg)
+	}
+	if !strings.Contains(msg, repoOwner) {
+		t.Fatalf("update instructions must reference repoOwner (%q), got: %q", repoOwner, msg)
+	}
+}
+
+func TestRepoOwnerDefaultsToThisFork(t *testing.T) {
+	if repoOwner != "HoracioEspinosa" {
+		t.Fatalf("repoOwner = %q, want %q", repoOwner, "HoracioEspinosa")
+	}
+	if repoName != "engram" {
+		t.Fatalf("repoName = %q, want %q", repoName, "engram")
+	}
+	if !strings.Contains(githubLatestReleaseURL, "HoracioEspinosa/engram") {
+		t.Fatalf("githubLatestReleaseURL = %q, want it to target HoracioEspinosa/engram", githubLatestReleaseURL)
+	}
 }
 
 func withCheckServer(t *testing.T, handler http.Handler) {
