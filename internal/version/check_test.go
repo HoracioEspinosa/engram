@@ -81,7 +81,7 @@ func TestCheckLatest(t *testing.T) {
 	t.Run("update available", func(t *testing.T) {
 		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"tag_name":"v1.10.8"}`))
+			_, _ = w.Write([]byte(`[{"tag_name":"v1.10.8"}]`))
 		}))
 
 		result := CheckLatest("1.10.7")
@@ -96,7 +96,7 @@ func TestCheckLatest(t *testing.T) {
 	t.Run("up to date", func(t *testing.T) {
 		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"tag_name":"v1.10.7"}`))
+			_, _ = w.Write([]byte(`[{"tag_name":"v1.10.7"}]`))
 		}))
 
 		result := CheckLatest("1.10.7")
@@ -105,6 +105,75 @@ func TestCheckLatest(t *testing.T) {
 		}
 		if result.Message != "" {
 			t.Fatalf("message = %q, want empty", result.Message)
+		}
+	})
+
+	// This is the exact shape of the bug ADR-045 §2 documents: every tag this
+	// fork has ever published is marked prerelease, and the "latest release"
+	// endpoint excludes prereleases by design, so it 404s forever. The list
+	// endpoint returns them anyway; taking the first entry is the fix. Fed
+	// through the pre-fix decoder (a single object, not a list), these
+	// fixtures fail with a decode error instead of resolving — confirmed
+	// against the pre-fix code before either was kept, so neither is a test
+	// that would pass either way.
+	//
+	// The version numbers differ in minor version (1.21.0 vs 1.20.0), not
+	// only in the -cd.N suffix, on purpose: splitVersion only compares the
+	// three numeric segments before the first non-digit, so two tags that
+	// differ solely in their -cd.N revision (v1.20.0-cd.3 vs v1.20.0-cd.4,
+	// the actual shape of every tag this fork has published) both truncate to
+	// [1, 20, 0] and compare equal. That is a real, separate bug in
+	// isNewer/splitVersion, not the one this fix addresses — out of scope
+	// here, reported rather than fixed alongside it.
+	t.Run("resolves an all-prerelease repo from the releases list", func(t *testing.T) {
+		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/latest") {
+				t.Fatalf("request hit the latest-release endpoint (%s), which excludes prereleases by design", r.URL.Path)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[
+				{"tag_name":"v1.21.0-cd.1","prerelease":true},
+				{"tag_name":"v1.20.0-cd.4","prerelease":true},
+				{"tag_name":"v1.20.0-cd.3","prerelease":true}
+			]`))
+		}))
+
+		result := CheckLatest("1.20.0-cd.4")
+		if result.Status != StatusUpdateAvailable {
+			t.Fatalf("status = %q, want %q", result.Status, StatusUpdateAvailable)
+		}
+		if !strings.Contains(result.Message, "Update available: 1.20.0-cd.4 -> 1.21.0-cd.1") {
+			t.Fatalf("message = %q", result.Message)
+		}
+	})
+
+	t.Run("all-prerelease repo already up to date resolves without a 404", func(t *testing.T) {
+		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[
+				{"tag_name":"v1.20.0-cd.4","prerelease":true},
+				{"tag_name":"v1.20.0-cd.3","prerelease":true}
+			]`))
+		}))
+
+		result := CheckLatest("1.20.0-cd.4")
+		if result.Status != StatusUpToDate {
+			t.Fatalf("status = %q, want %q", result.Status, StatusUpToDate)
+		}
+	})
+
+	t.Run("empty releases list becomes check failed", func(t *testing.T) {
+		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
+		}))
+
+		result := CheckLatest("1.10.7")
+		if result.Status != StatusCheckFailed {
+			t.Fatalf("status = %q, want %q", result.Status, StatusCheckFailed)
+		}
+		if !strings.Contains(result.Message, "did not return a release version") {
+			t.Fatalf("message = %q", result.Message)
 		}
 	})
 
@@ -125,7 +194,7 @@ func TestCheckLatest(t *testing.T) {
 	t.Run("decode error becomes check failed", func(t *testing.T) {
 		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"tag_name":`))
+			_, _ = w.Write([]byte(`[{"tag_name":`))
 		}))
 
 		result := CheckLatest("1.10.7")
@@ -140,7 +209,7 @@ func TestCheckLatest(t *testing.T) {
 	t.Run("missing tag becomes check failed", func(t *testing.T) {
 		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"tag_name":""}`))
+			_, _ = w.Write([]byte(`[{"tag_name":""}]`))
 		}))
 
 		result := CheckLatest("1.10.7")
@@ -157,7 +226,7 @@ func TestCheckLatest(t *testing.T) {
 		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(50 * time.Millisecond)
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"tag_name":"v1.10.8"}`))
+			_, _ = w.Write([]byte(`[{"tag_name":"v1.10.8"}]`))
 		}))
 
 		result := CheckLatest("1.10.7")
@@ -182,7 +251,7 @@ func TestCheckLatestUsesGitHubToken(t *testing.T) {
 			if got := r.Header.Get("Accept"); got != "application/vnd.github+json" {
 				t.Fatalf("accept = %q", got)
 			}
-			_, _ = w.Write([]byte(`{"tag_name":"v1.10.7"}`))
+			_, _ = w.Write([]byte(`[{"tag_name":"v1.10.7"}]`))
 		}))
 
 		_ = CheckLatest("1.10.7")
@@ -196,7 +265,7 @@ func TestCheckLatestUsesGitHubToken(t *testing.T) {
 			if got := r.Header.Get("Authorization"); got != "Bearer github-token" {
 				t.Fatalf("authorization = %q", got)
 			}
-			_, _ = w.Write([]byte(`{"tag_name":"v1.10.7"}`))
+			_, _ = w.Write([]byte(`[{"tag_name":"v1.10.7"}]`))
 		}))
 
 		_ = CheckLatest("1.10.7")
@@ -210,7 +279,7 @@ func TestCheckLatestUsesGitHubToken(t *testing.T) {
 			if got := r.Header.Get("Authorization"); got != "" {
 				t.Fatalf("authorization = %q, want empty", got)
 			}
-			_, _ = w.Write([]byte(`{"tag_name":"v1.10.7"}`))
+			_, _ = w.Write([]byte(`[{"tag_name":"v1.10.7"}]`))
 		}))
 
 		_ = CheckLatest("1.10.7")
@@ -237,8 +306,8 @@ func TestRepoOwnerDefaultsToThisFork(t *testing.T) {
 	if repoName != "engram" {
 		t.Fatalf("repoName = %q, want %q", repoName, "engram")
 	}
-	if !strings.Contains(githubLatestReleaseURL, "HoracioEspinosa/engram") {
-		t.Fatalf("githubLatestReleaseURL = %q, want it to target HoracioEspinosa/engram", githubLatestReleaseURL)
+	if !strings.Contains(githubReleasesListURL, "HoracioEspinosa/engram") {
+		t.Fatalf("githubReleasesListURL = %q, want it to target HoracioEspinosa/engram", githubReleasesListURL)
 	}
 }
 
@@ -246,10 +315,10 @@ func withCheckServer(t *testing.T, handler http.Handler) {
 	t.Helper()
 
 	srv := httptest.NewServer(handler)
-	oldURL := githubLatestReleaseURL
-	githubLatestReleaseURL = srv.URL
+	oldURL := githubReleasesListURL
+	githubReleasesListURL = srv.URL
 	t.Cleanup(func() {
-		githubLatestReleaseURL = oldURL
+		githubReleasesListURL = oldURL
 		srv.Close()
 	})
 }

@@ -24,10 +24,16 @@ var (
 	repoName  = "engram"
 )
 
+// githubReleasesListURL hits the releases *list*, not /releases/latest.
+// GitHub's "latest release" endpoint excludes prereleases by design (see
+// docs.github.com/en/rest/releases/releases#get-the-latest-release), and
+// every tag this fork has published carries a prerelease identifier, so that
+// endpoint 404s forever (ADR-045 §2). The list includes prereleases and is
+// sorted by creation date, so the first entry is the one to compare against.
 var (
-	checkTimeout           = 2 * time.Second
-	githubLatestReleaseURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", repoOwner, repoName)
-	httpClient             = http.DefaultClient
+	checkTimeout          = 2 * time.Second
+	githubReleasesListURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", repoOwner, repoName)
+	httpClient            = http.DefaultClient
 )
 
 type CheckStatus string
@@ -61,7 +67,7 @@ func CheckLatest(current string) CheckResult {
 	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubLatestReleaseURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubReleasesListURL, nil)
 	if err != nil {
 		return checkFailed("Could not check for updates: could not create the GitHub request.")
 	}
@@ -83,12 +89,15 @@ func CheckLatest(current string) CheckResult {
 		return checkFailed(nonOKStatusMessage(resp.Status))
 	}
 
-	var release githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+	var releases []githubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return checkFailed("Could not check for updates: could not read the GitHub response.")
 	}
+	if len(releases) == 0 {
+		return checkFailed("Could not check for updates: GitHub did not return a release version.")
+	}
 
-	latest := normalizeVersion(release.TagName)
+	latest := normalizeVersion(releases[0].TagName)
 	running := normalizeVersion(current)
 
 	if latest == "" {
