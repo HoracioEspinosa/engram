@@ -362,11 +362,15 @@ pg_restore --clean --if-exists --no-owner \
   necesite apuntar a otro remoto sobreescribe `repoOwner`/`repoName` en el
   enlace con `-ldflags "-X <module>/internal/version.repoOwner=... -X
   <module>/internal/version.repoName=..."`, sin tocar el código.
-  **Límite abierto, sin relación con lo anterior:** la comparación de
-  versiones (`isNewer`/`splitVersion`) solo mira los tres segmentos
-  numéricos antes del primer carácter no-dígito, así que dos etiquetas que
-  solo difieren en su sufijo `-cd.N` —el esquema real de este fork— comparan
-  iguales.
+  La comparación de versiones (`isNewer`) mira primero los tres segmentos
+  numéricos de la base y, si empatan, el número del sufijo `-cd.N`
+  (`cdRevision`) — el esquema real de este fork es una sola versión base con
+  varias revisiones propias encima, así que `1.20.0-cd.5` es más nueva que
+  `1.20.0-cd.4`, y `1.20.0-cd.1` es más nueva que la base sin sufijo
+  `1.20.0`. Esto es lo contrario de cómo semver ordena un prelanzamiento (que
+  va *antes* de la versión que anuncia): el sufijo `-cd.N` no es un adelanto
+  de la versión de upstream, es una revisión del fork publicada *después* de
+  ella, a propósito.
 - **Los binarios están firmados ad hoc, no notarizados.** Una fórmula de
   Homebrew instala vía `curl`, que no aplica el atributo de cuarentena de
   Gatekeeper — solo lo hacen los navegadores y Homebrew Cask, que lo añade a

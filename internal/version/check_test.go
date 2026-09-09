@@ -51,10 +51,46 @@ func TestIsNewer(t *testing.T) {
 		{"1.8.1", "1.8.1", false},
 		{"1.7.0", "1.8.1", false},
 		{"1.8.2", "1.8.1", true},
+		// This fork's actual tag shape: a -cd.N revision on top of an
+		// upstream base version. Every release published so far shares the
+		// same base (1.20.0) and differs only in this suffix, which the base
+		// splitVersion truncates away — these five cases are the ones that
+		// make or break the update check for this fork's real releases, and
+		// were confirmed to fail against the pre-fix isNewer before being
+		// kept (see the fix commit for the exact failures).
+		{"1.20.0-cd.4", "1.20.0-cd.3", true},
+		{"1.20.0-cd.3", "1.20.0-cd.4", false},
+		{"1.20.0-cd.4", "1.20.0-cd.4", false},
+		// A -cd.N revision is a fork-specific build on top of its base
+		// version, published *after* that base — not an upstream prerelease
+		// of it. Semver's own rule (a prerelease suffix sorts *before* the
+		// version it leads up to) would say the opposite; it does not apply
+		// here on purpose.
+		{"1.20.0-cd.1", "1.20.0", true},
+		{"1.20.0", "1.20.0-cd.1", false},
 	}
 	for _, tt := range tests {
 		if got := isNewer(tt.latest, tt.current); got != tt.want {
 			t.Errorf("isNewer(%q, %q) = %v, want %v", tt.latest, tt.current, got, tt.want)
+		}
+	}
+}
+
+func TestCdRevision(t *testing.T) {
+	tests := []struct {
+		in   string
+		want int
+	}{
+		{"1.20.0-cd.4", 4},
+		{"1.20.0-cd.12", 12},
+		{"1.20.0", 0},
+		{"1.20.0-cd.", 0},
+		{"", 0},
+		{"1.12.0-beta.1", 0},
+	}
+	for _, tt := range tests {
+		if got := cdRevision(tt.in); got != tt.want {
+			t.Errorf("cdRevision(%q) = %d, want %d", tt.in, got, tt.want)
 		}
 	}
 }
@@ -116,15 +152,6 @@ func TestCheckLatest(t *testing.T) {
 	// fixtures fail with a decode error instead of resolving — confirmed
 	// against the pre-fix code before either was kept, so neither is a test
 	// that would pass either way.
-	//
-	// The version numbers differ in minor version (1.21.0 vs 1.20.0), not
-	// only in the -cd.N suffix, on purpose: splitVersion only compares the
-	// three numeric segments before the first non-digit, so two tags that
-	// differ solely in their -cd.N revision (v1.20.0-cd.3 vs v1.20.0-cd.4,
-	// the actual shape of every tag this fork has published) both truncate to
-	// [1, 20, 0] and compare equal. That is a real, separate bug in
-	// isNewer/splitVersion, not the one this fix addresses — out of scope
-	// here, reported rather than fixed alongside it.
 	t.Run("resolves an all-prerelease repo from the releases list", func(t *testing.T) {
 		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.Contains(r.URL.Path, "/latest") {
@@ -143,6 +170,28 @@ func TestCheckLatest(t *testing.T) {
 			t.Fatalf("status = %q, want %q", result.Status, StatusUpdateAvailable)
 		}
 		if !strings.Contains(result.Message, "Update available: 1.20.0-cd.4 -> 1.21.0-cd.1") {
+			t.Fatalf("message = %q", result.Message)
+		}
+	})
+
+	// The actual shape every real release of this fork takes: same base
+	// version, later -cd.N revision. Before isNewer learned to break a
+	// base-version tie on the -cd.N suffix, this resolved as up_to_date
+	// instead — a machine on cd.4 would never have been told cd.5 existed.
+	t.Run("resolves the next -cd revision of the same base version", func(t *testing.T) {
+		withCheckServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[
+				{"tag_name":"v1.20.0-cd.5","prerelease":true},
+				{"tag_name":"v1.20.0-cd.4","prerelease":true}
+			]`))
+		}))
+
+		result := CheckLatest("1.20.0-cd.4")
+		if result.Status != StatusUpdateAvailable {
+			t.Fatalf("status = %q, want %q", result.Status, StatusUpdateAvailable)
+		}
+		if !strings.Contains(result.Message, "Update available: 1.20.0-cd.4 -> 1.20.0-cd.5") {
 			t.Fatalf("message = %q", result.Message)
 		}
 	})

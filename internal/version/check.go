@@ -153,7 +153,12 @@ func normalizeVersion(v string) string {
 	return strings.TrimPrefix(strings.TrimSpace(v), "v")
 }
 
-// isNewer returns true if latest > current using simple semver comparison.
+// isNewer returns true if latest > current. Compares the three base version
+// segments first, then breaks a tie on the base version with cdRevision:
+// this fork's -cd.N suffix is not an upstream prerelease of that base
+// version, it is a ClaroDrive revision published *after* it, so within the
+// same base a higher revision — and any revision at all over none — counts
+// as newer, the opposite of how semver orders a prerelease suffix.
 func isNewer(latest, current string) bool {
 	latestParts := splitVersion(latest)
 	currentParts := splitVersion(current)
@@ -166,7 +171,7 @@ func isNewer(latest, current string) bool {
 			return false
 		}
 	}
-	return false
+	return cdRevision(latest) > cdRevision(current)
 }
 
 // splitVersion splits "1.8.1" into [1, 8, 1]. Returns [0,0,0] on parse failure.
@@ -186,6 +191,27 @@ func splitVersion(v string) [3]int {
 		}
 	}
 	return parts
+}
+
+// cdRevision extracts the trailing revision number from this fork's "-cd.N"
+// suffix (v1.20.0-cd.1, v1.20.0-cd.2, ...). It returns 0 when the suffix is
+// absent or not in that exact shape — including a bare base version with no
+// suffix at all, and any other suffix shape (an upstream "-beta.N" tag, for
+// instance): this only orders the fork's own revision marker, nothing else.
+func cdRevision(v string) int {
+	const marker = "-cd."
+	idx := strings.Index(v, marker)
+	if idx == -1 {
+		return 0
+	}
+	n := 0
+	for _, c := range v[idx+len(marker):] {
+		if c < '0' || c > '9' {
+			break
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
 }
 
 // updateInstructions returns platform-appropriate update commands.
