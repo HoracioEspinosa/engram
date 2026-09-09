@@ -2,7 +2,7 @@
 
 # Installation
 
-- [Homebrew (macOS only)](#homebrew-macos-only)
+- [Homebrew (macOS and Linux)](#homebrew-macos-and-linux)
 - [Windows](#windows)
 - [Install from source (macOS / Linux)](#install-from-source-macos--linux)
 - [Download binary (all platforms)](#download-binary-all-platforms)
@@ -12,15 +12,13 @@
 
 ---
 
-## Homebrew (macOS only)
+## Homebrew (macOS and Linux)
 
-The tap ships a Homebrew **cask**, and Homebrew Cask only installs on macOS — there is no
-Homebrew path on Linux, regardless of the platforms the fork itself builds for. Linux users want
-[Install from source](#install-from-source-macos--linux) or [Download binary](#download-binary-all-platforms)
-below.
+The tap ships a Homebrew **formula**, built for `darwin`/`linux`, `amd64`/`arm64` from the same
+archives every other artifact here is built from. Same command on both platforms:
 
 ```bash
-brew install --cask HoracioEspinosa/tap/engram-custom
+brew install HoracioEspinosa/tap/engram-custom
 ```
 
 This installs from **this fork's own tap** (`HoracioEspinosa/homebrew-tap`) — not
@@ -30,18 +28,19 @@ configuration or this fork's fixes.
 Upgrade to latest:
 
 ```bash
-brew update && brew upgrade --cask engram-custom
+brew update && brew upgrade engram-custom
 ```
 
-> **Migrating from the formula?** `HoracioEspinosa/homebrew-tap` used to also carry a
-> hand-written `Formula/engram.rb`, pinned to an older version than the cask published by the same
-> release. It has been retired — the cask is now the tap's only artifact. If you installed through
-> that formula, switch over:
+> **Migrating from the cask?** `HoracioEspinosa/homebrew-tap` used to ship `engram-custom` as a
+> Homebrew **cask**, macOS-only. The cask has been retired in favor of a formula that covers both
+> macOS and Linux — a cask and a formula can't both hold the same install, so if you installed
+> through the cask, remove it first:
 > ```bash
-> brew uninstall engram; brew install --cask HoracioEspinosa/tap/engram-custom
+> brew uninstall --cask engram-custom
+> brew install HoracioEspinosa/tap/engram-custom
 > ```
 
-> **Keep `engram serve` running across `brew upgrade`?** On macOS, `brew upgrade --cask engram-custom` replaces the binary and kills any running `engram serve` process — autosync stops silently until you relaunch it. To make autosync survive upgrades and reboots, use the launchd template in [Running as a Service → Using launchd (macOS)](../DOCS.md#using-launchd-macos). Run `engram cloud status` afterwards: the `Local daemon:` line should report `running`.
+> **Keep `engram serve` running across `brew upgrade`?** On macOS, `brew upgrade engram-custom` replaces the binary and kills any running `engram serve` process — autosync stops silently until you relaunch it. To make autosync survive upgrades and reboots, use the launchd template in [Running as a Service → Using launchd (macOS)](../DOCS.md#using-launchd-macos). Run `engram cloud status` afterwards: the `Local daemon:` line should report `running`.
 
 ---
 

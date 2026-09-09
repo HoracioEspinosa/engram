@@ -12,9 +12,17 @@ en `Gentleman-Programming/engram`**: el upstream se lee y nada más.
 | Artefacto | Dónde vive | Quién lo produce |
 |---|---|---|
 | Binarios `darwin`/`linux`/`windows`, `amd64`/`arm64` | GitHub Release de `HoracioEspinosa/engram` | `.goreleaser.custom.yaml` |
-| Cask de Homebrew `engram-custom` | `HoracioEspinosa/homebrew-tap`, carpeta `Casks/` | `.goreleaser.custom.yaml` |
+| Fórmula de Homebrew `engram-custom` (macOS y Linux) | `HoracioEspinosa/homebrew-tap`, carpeta `Formula/` | `.goreleaser.custom.yaml` |
 | Imagen de contenedor | `ghcr.io/horacioespinosa/engram:custom`, `:<versión>`, `:sha-<commit>` | `docker/custom/Dockerfile` |
 | Imagen del canal edge | `ghcr.io/horacioespinosa/engram:edge`, `:edge-<commit>` | `publish-cloud-image.yml`, en cada push a `main` |
+
+La fórmula usa `brews`, el tipo de artefacto que GoReleaser marcó obsoleto en favor de
+`homebrew_casks` para binarios precompilados — pero obsoleto no es lo mismo que retirado:
+`goreleaser check` lo reporta con salida 2 («usa propiedades obsoletas»), nunca con salida 1
+(«configuración inválida»), y sigue generando una fórmula correcta. Se eligió sobre el cask porque
+Homebrew solo sirve casks en macOS, y este equipo necesita `brew install` en Linux también. El paso
+de validación de `release-custom.yml` distingue ambos códigos explícitamente: la salida 2 pasa con
+un aviso, la 1 (o cualquier otra) sigue siendo fatal.
 
 La rama de release es `main`. La etiqueta tiene la forma
 `v<versión-de-upstream>-cd.<n>`, por ejemplo `v1.20.0-cd.1`: la base dice sobre
@@ -34,9 +42,9 @@ Estos tres pasos son acciones del usuario, no del pipeline.
 ### 2.1 Crear el tap
 
 El repositorio `HoracioEspinosa/homebrew-tap` **todavía no existe**
-(comprobado con `git ls-remote`, que responde 128). Sin él, el cask no se puede
-publicar; el resto del release sí funciona, porque el workflow detecta la
-ausencia del token y se salta ese paso.
+(comprobado con `git ls-remote`, que responde 128). Sin él, la fórmula no se
+puede publicar; el resto del release sí funciona, porque el workflow detecta
+la ausencia del token y se salta ese paso.
 
 ```
 gh repo create HoracioEspinosa/homebrew-tap --public \
@@ -48,7 +56,7 @@ convierte `brew tap horacioespinosa/tap` en una ruta válida.
 
 ### 2.2 Crear el token del tap
 
-GoReleaser escribe el cask en un repositorio distinto del que corre la acción,
+GoReleaser escribe la fórmula en un repositorio distinto del que corre la acción,
 así que el `GITHUB_TOKEN` del workflow no alcanza. Hace falta un token de acceso
 personal con permiso de escritura de contenido **solo** sobre
 `HoracioEspinosa/homebrew-tap`, guardado como secreto del repositorio del fork
@@ -59,7 +67,7 @@ gh secret set HOMEBREW_TAP_TOKEN --repo HoracioEspinosa/engram
 ```
 
 Si el secreto no está, el release sigue adelante y publica binarios e imagen; el
-resumen del workflow dice `HOMEBREW_TAP_TOKEN is unset, cask NOT published`.
+resumen del workflow dice `HOMEBREW_TAP_TOKEN is unset, formula NOT published`.
 
 ### 2.3 Habilitar Actions y paquetes en el fork
 
@@ -168,6 +176,19 @@ manera de pasarle argumentos extra. Al final ejecuta el binario recién
 construido y falla si `engram --version` no dice exactamente la versión de la
 etiqueta. Con `--image` hace lo mismo con la imagen.
 
+#### Inspeccionar la fórmula generada sin publicarla
+
+`--skip=publish` se salta la fórmula entera, no solo el push: GoReleaser
+escribe el `.rb` como parte de la misma etapa de `publish`. Para ver el
+contenido real sin necesitar el token del tap ni tocar GitHub, se agrega
+`skip_upload: true` a una **copia descartable** del `brews` de
+`.goreleaser.custom.yaml` (nunca al archivo real, porque eso apagaría la
+publicación de verdad) y se corre `goreleaser release` contra esa copia dentro
+del propio clon temporal que crea `build-release.sh --keep`. Con
+`skip_upload: true`, GoReleaser escribe la fórmula en
+`dist/homebrew/Formula/engram-custom.rb` en vez de comitearla, que es lo que
+se usó para verificar esta fila.
+
 #### Alcance compartido del `.dockerignore`
 
 El archivo `.dockerignore` en la raíz afecta a TODAS las construcciones de imagen
@@ -195,7 +216,7 @@ El push de la etiqueta enciende `release-custom.yml`, que:
 1. Comprueba la forma de la etiqueta y que el commit esté en `origin/main`.
 2. Corre `go test ./...`. Hace falta porque `ci.yml` solo corre en `main` y en
    pull requests: `main` llega a la etiqueta sin haber pasado por CI.
-3. Publica binarios y, si hay token, el cask.
+3. Publica binarios y, si hay token, la fórmula.
 4. Construye y sube la imagen para `linux/amd64` y `linux/arm64`, y después la
    **vuelve a bajar por digest** y verifica que adentro `engram --version`
    responda la versión de la etiqueta. Si no coincide, el release queda rojo.
@@ -204,40 +225,48 @@ El push de la etiqueta enciende `release-custom.yml`, que:
 
 ## 4. Instalación en las computadoras del equipo
 
-### macOS
+### macOS y Linux
 
 ```
 brew tap horacioespinosa/tap
-brew install --cask engram-custom
+brew install engram-custom
 engram --version
 engram doctor
 ```
 
 Si la máquina ya tiene el `engram` de upstream instalado con `brew`, la
-instalación del cask se niega porque ese binario ya ocupa
+instalación se niega porque ese binario ya ocupa
 `$(brew --prefix)/bin/engram`. Se desinstala primero y se vuelve a intentar:
 
 ```
 brew uninstall engram
 ```
 
-El cask se llama `engram-custom` justamente para que `brew upgrade engram` no
-pueda devolver una máquina al binario de upstream sin que su dueño se entere.
-El binario que instala sigue llamándose `engram`.
+La fórmula se llama `engram-custom` justamente para que `brew upgrade engram`
+no pueda devolver una máquina al binario de upstream sin que su dueño se
+entere. El binario que instala sigue llamándose `engram`.
 
-### Linux y Windows
+**Si la máquina tiene instalado el cask anterior** (`HoracioEspinosa/homebrew-tap`
+publicó `engram-custom` como cask antes de esta fila; el cask y la fórmula no
+pueden convivir bajo el mismo nombre), se desinstala primero:
 
-Homebrew solo soporta casks en macOS. En Linux y en Windows se baja el
-comprimido del release y se verifica contra `checksums.txt`:
+```
+brew uninstall --cask engram-custom
+brew install engram-custom
+```
+
+### Windows
+
+Homebrew no cubre Windows. Se baja el comprimido del release y se verifica
+contra `checksums.txt`:
 
 ```
 gh release download v1.20.0-cd.1 --repo HoracioEspinosa/engram \
-  --pattern 'engram_1.20.0-cd.1_linux_amd64.tar.gz' --pattern 'checksums.txt'
-shasum -a 256 -c checksums.txt --ignore-missing
-tar xzf engram_1.20.0-cd.1_linux_amd64.tar.gz
-install -m 0755 engram ~/.local/bin/engram
-engram --version
+  --pattern 'engram_1.20.0-cd.1_windows_amd64.zip' --pattern 'checksums.txt'
 ```
+
+Ver [docs/INSTALLATION.md](../docs/INSTALLATION.md#windows) para el resto del
+procedimiento en Windows.
 
 ## 5. Actualizar el cloud sin perder datos
 
@@ -313,19 +342,28 @@ pg_restore --clean --if-exists --no-owner \
 
 ## 6. Límites conocidos
 
-- **El aviso de actualización consulta este fork por defecto, no upstream.**
-  `internal/version.repoOwner`/`repoName` son variables, no constantes, con
-  default `HoracioEspinosa/engram`: `internal/version` consulta
-  `api.github.com/repos/HoracioEspinosa/engram/releases/latest` y sugiere
-  `brew update && brew upgrade HoracioEspinosa/tap/engram`. Un downstream que
-  necesite apuntar a otro remoto sobreescribe ambas variables en el enlace con
+- **El aviso de actualización consulta este fork por defecto, no upstream, pero
+  hoy consulta un endpoint que 404 siempre.** `internal/version.repoOwner`/`repoName`
+  son variables, no constantes, con default `HoracioEspinosa/engram`:
+  `internal/version` consulta `api.github.com/repos/HoracioEspinosa/engram/releases/latest`,
+  que excluye prelanzamientos por diseño de la API de GitHub, y las cuatro
+  etiquetas publicadas del fork están marcadas prerelease — así que la
+  comprobación nunca puede acertar. ADR-045 §2 documenta la causa y la
+  decisión (pasar al endpoint de lista); esa fila sigue abierta, sin tocar.
+  Aparte de eso, y sin relación con el 404: el comando que este aviso sugiere
+  (`brew update && brew upgrade --cask HoracioEspinosa/tap/engram-custom`) es
+  el de cuando el tap publicaba un cask; con la fórmula como único artefacto
+  ya no lleva `--cask`. Un downstream que necesite apuntar a otro remoto
+  sobreescribe `repoOwner`/`repoName` en el enlace con
   `-ldflags "-X <module>/internal/version.repoOwner=... -X
   <module>/internal/version.repoName=..."`, sin tocar el código.
-- **El cask no cubre Linux.** El archivo generado incluye URLs de Linux, pero
-  Homebrew solo instala casks en macOS. En Linux se usa el comprimido.
-- **Los binarios están firmados ad hoc, no notarizados.** El cask limpia el
-  atributo de cuarentena al instalar; si alguien baja el comprimido a mano en
-  macOS, tiene que hacerlo él:
+- **Los binarios están firmados ad hoc, no notarizados.** Una fórmula de
+  Homebrew instala vía `curl`, que no aplica el atributo de cuarentena de
+  Gatekeeper — solo lo hacen los navegadores y Homebrew Cask, que lo añade a
+  propósito como medida propia (`Homebrew/homebrew-cask#22388`). Así que
+  `brew install engram-custom` no necesita limpiarlo. Si alguien baja el
+  comprimido a mano por un camino que sí lo aplica (un navegador, por
+  ejemplo), tiene que hacerlo él:
   `xattr -dr com.apple.quarantine ./engram`.
 - **`main` mezcla dos trabajos.** El commit `0e0c780` trae la
   reestructuración de la TUI junto con `engram-projects`. Es lo que hace caro
