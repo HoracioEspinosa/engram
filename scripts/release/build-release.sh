@@ -135,7 +135,20 @@ section "validate the configuration"
 # which is the point: a dry run must not need the real secret.
 HOMEBREW_TAP_TOKEN="${HOMEBREW_TAP_TOKEN:-}"
 export HOMEBREW_TAP_TOKEN
-( cd "$CLONE" && goreleaser check -f "$CONFIG" ) || die "goreleaser check rejected $CONFIG" 2
+# goreleaser check exits 2, not 1, when the config is valid but uses a
+# deprecated property (the brews formula, kept on purpose). That is this
+# script's own "goreleaser failed" exit code too, so it must not collapse a
+# real invalid-config failure (exit 1) into the same bucket as a deprecation
+# notice (exit 2) — only the former is worth dying over here.
+set +e
+( cd "$CLONE" && goreleaser check -f "$CONFIG" )
+CHECK_STATUS=$?
+set -e
+case "$CHECK_STATUS" in
+  0) ;;
+  2) note "goreleaser check: valid configuration, deprecated properties tolerated (brews formula)" ;;
+  *) die "goreleaser check rejected $CONFIG (exit $CHECK_STATUS)" 2 ;;
+esac
 
 section "build"
 EXPECTED=""
