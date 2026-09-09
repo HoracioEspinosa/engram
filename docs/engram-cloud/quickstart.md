@@ -67,9 +67,13 @@ engram cloud upgrade status --project smoke-project
 
 ## Deploy with Official GHCR Image (Dokploy/Coolify/Portainer/VPS)
 
-Do not build from source for production deploys. Use the published image:
+Do not build from source for production deploys. Use this fork's own published image, not
+`ghcr.io/gentleman-programming/engram` — that is the upstream project's image, without the
+ClaroDrive cloud configuration or this fork's fixes:
 
-- `ghcr.io/gentleman-programming/engram:latest`
+- `ghcr.io/horacioespinosa/engram:custom` (always the latest release; pin an explicit version tag
+  like `:1.20.0-cd.4` for a production deploy instead — a rollback needs an exact name, and Compose
+  does not reliably re-pull a tag it already has cached locally)
 
 Reference compose file:
 - [docker-compose.ghcr.yml](./docker-compose.ghcr.yml)
@@ -89,7 +93,7 @@ Optional runtime env vars:
 
 Dokploy guidance:
 1. Create a managed Postgres service.
-2. Create an app from image `ghcr.io/gentleman-programming/engram:latest`.
+2. Create an app from image `ghcr.io/horacioespinosa/engram:custom` (or an explicit version tag).
 3. Configure the env vars above (with strong secrets).
 4. Expose container port `18080`.
 5. Avoid build-from-source mode unless you are actively developing Engram itself.
@@ -167,7 +171,7 @@ services:
       - engram-cloud-pg:/var/lib/postgresql/data
 
   cloud:
-    image: ghcr.io/gentleman-programming/engram:latest
+    image: ghcr.io/horacioespinosa/engram:custom # pin an explicit version tag in production
     restart: unless-stopped
     depends_on:
       postgres:

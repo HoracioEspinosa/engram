@@ -39,8 +39,10 @@ SQLite + FTS5 (~/.engram/engram.db)
 
 ### Install
 
+**Requires macOS** — the tap ships a Homebrew cask, and Homebrew Cask does not install on Linux.
+
 ```bash
-brew install HoracioEspinosa/tap/engram
+brew install --cask HoracioEspinosa/tap/engram-custom
 ```
 
 > This installs from **this fork's own tap** (`HoracioEspinosa/homebrew-tap`), not the upstream

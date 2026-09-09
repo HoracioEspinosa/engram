@@ -17,7 +17,11 @@ services:
       retries: 10
 
   cloud:
-    image: ghcr.io/gentleman-programming/engram:latest
+    # ghcr.io/horacioespinosa/engram — this fork's own image, not
+    # ghcr.io/gentleman-programming/engram (upstream, no ClaroDrive cloud
+    # configuration or this fork's fixes). :custom always tracks the latest
+    # release; pin an explicit version tag instead for a production deploy.
+    image: ghcr.io/horacioespinosa/engram:custom
     restart: unless-stopped
     depends_on:
       postgres:

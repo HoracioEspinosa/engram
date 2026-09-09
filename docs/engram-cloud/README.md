@@ -34,9 +34,10 @@ Continue with full verification and expected outputs in [Quickstart](./quickstar
 
 ## Public Container Image (GHCR)
 
-Engram Cloud publishes an official image at:
+This fork publishes its own image at:
 
-- `ghcr.io/gentleman-programming/engram`
+- `ghcr.io/horacioespinosa/engram` (not `ghcr.io/gentleman-programming/engram` — that namespace is
+  the upstream project's image, without the ClaroDrive cloud configuration or this fork's fixes)
 
 Supported platforms:
 - `linux/amd64`
