@@ -54,7 +54,7 @@ const ENGRAM_TOOL_NAMES = new Set<string>(ENGRAM_TOOLS);
 const MEMORY_INSTRUCTIONS = `## Engram Persistent Memory — Protocol
 
 You have access to Engram, a persistent memory system that survives across sessions and compactions.
-These instructions are injected by gentle-engram, the Pi-native memory provider. Use the memory tools named in this section as the authoritative Pi memory contract. Do not infer alternative Engram tool names from other integrations unless the user explicitly asks you to use them.
+These instructions are injected by @cloudfrog/memory, the Pi-native memory provider. Use the memory tools named in this section as the authoritative Pi memory contract. Do not infer alternative Engram tool names from other integrations unless the user explicitly asks you to use them.
 
 ### WHEN TO SAVE (mandatory — not optional)
 
@@ -805,12 +805,12 @@ async function callMemoryTool(toolName: string, params: Record<string, unknown>,
 
 function unreachableMessage(timedOutMethod: string | undefined): string {
   if (timedOutMethod && timedOutMethod !== "GET") {
-    return `gentle-engram timed out after ${ENGRAM_FETCH_TIMEOUT_MS}ms waiting for the Engram HTTP server at ${ENGRAM_URL}. The ${timedOutMethod} request may already have been applied — do NOT blindly retry it, or you may duplicate the write. Verify with mem_search or mem_doctor first.`;
+    return `@cloudfrog/memory timed out after ${ENGRAM_FETCH_TIMEOUT_MS}ms waiting for the Engram HTTP server at ${ENGRAM_URL}. The ${timedOutMethod} request may already have been applied — do NOT blindly retry it, or you may duplicate the write. Verify with mem_search or mem_doctor first.`;
   }
   if (timedOutMethod) {
-    return `gentle-engram timed out after ${ENGRAM_FETCH_TIMEOUT_MS}ms waiting for the Engram HTTP server at ${ENGRAM_URL}. The server accepted the connection but did not respond. Run mem_doctor or restart Engram.`;
+    return `@cloudfrog/memory timed out after ${ENGRAM_FETCH_TIMEOUT_MS}ms waiting for the Engram HTTP server at ${ENGRAM_URL}. The server accepted the connection but did not respond. Run mem_doctor or restart Engram.`;
   }
-  return `gentle-engram could not reach the Engram HTTP server at ${ENGRAM_URL}. The Pi-native mem_* tools are registered, but the native memory provider is not currently responding. Run mem_doctor or restart Engram.`;
+  return `@cloudfrog/memory could not reach the Engram HTTP server at ${ENGRAM_URL}. The Pi-native mem_* tools are registered, but the native memory provider is not currently responding. Run mem_doctor or restart Engram.`;
 }
 
 async function executeMemoryTool(toolName: string, params: Record<string, unknown>, ctx: MemoryToolContext) {
@@ -848,7 +848,7 @@ function registerMemoryTools(pi: ExtensionAPI): void {
     pi.registerTool({
       name: toolName,
       label: `Engram: ${humanToolName(toolName)}`,
-      description: `Engram memory tool: ${humanToolName(toolName)}. Compact UI is provided by gentle-engram; persistence is handled by Engram when installed and running.`,
+      description: `Engram memory tool: ${humanToolName(toolName)}. Compact UI is provided by @cloudfrog/memory; persistence is handled by Engram when installed and running.`,
       promptSnippet: `Engram memory: ${humanToolName(toolName)}`,
       parameters: MEMORY_TOOL_SCHEMAS[toolName],
       renderShell: "self",

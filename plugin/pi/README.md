@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/gentle-engram"><img alt="npm" src="https://img.shields.io/npm/v/gentle-engram?color=blue" /></a>
+  <a href="https://www.npmjs.com/package/@cloudfrog/memory"><img alt="npm" src="https://img.shields.io/npm/v/@cloudfrog/memory?color=blue" /></a>
   <a href="https://github.com/Gentleman-Programming/engram"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Gentleman-Programming/engram?style=flat&color=yellow" /></a>
   <a href="https://github.com/Gentleman-Programming/engram/graphs/contributors"><img alt="Contributors" src="https://img.shields.io/github/contributors/Gentleman-Programming/engram?color=brightgreen" /></a>
   <a href="https://github.com/Gentleman-Programming/engram/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Gentleman-Programming/engram/ci.yml?label=CI" /></a>
@@ -17,7 +17,7 @@
 
 Pi is great at doing the work in front of it. The problem is everything around the work: what the agent learned yesterday, which architecture decision was accepted, why a bug was fixed a certain way, what the user prefers, and what should survive when the context window compacts.
 
-Engram is persistent memory for AI coding agents. `gentle-engram` connects Pi to that memory so your agent can save the useful parts of a session and retrieve them later — without stuffing raw tool output back into the prompt.
+Engram is persistent memory for AI coding agents. `@cloudfrog/memory` connects Pi to that memory so your agent can save the useful parts of a session and retrieve them later — without stuffing raw tool output back into the prompt.
 
 ## At a glance
 
@@ -78,7 +78,7 @@ Engram includes a terminal UI for browsing sessions, observations, prompts, proj
 ## Quick start
 
 ```bash
-pi install npm:gentle-engram@0.1.8
+pi install npm:@cloudfrog/memory@0.1.8
 pi install npm:pi-mcp-adapter
 pi-engram init
 ```
@@ -87,7 +87,7 @@ Restart Pi after installation, then ask Pi what it remembers about the current p
 
 ## What gets installed
 
-`gentle-engram` connects Pi to Engram through two complementary paths:
+`@cloudfrog/memory` connects Pi to Engram through two complementary paths:
 
 | Path         | Purpose                                                                                                                                |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -95,7 +95,7 @@ Restart Pi after installation, then ask Pi what it remembers about the current p
 | MCP tools    | Keeps Engram's MCP surface available through `pi-mcp-adapter` for clients and flows that use MCP directly.                             |
 
 ```text
-Pi events/tools -> gentle-engram extension -> ENGRAM_URL / engram serve -> SQLite
+Pi events/tools -> @cloudfrog/memory extension -> ENGRAM_URL / engram serve -> SQLite
 Pi MCP tools   -> pi-mcp-adapter -> ENGRAM_BIN / engram mcp -> SQLite
 ```
 
@@ -103,7 +103,7 @@ Pi-native compact tools use the same HTTP server path as event capture, includin
 
 ## Compact memory tool rendering
 
-`gentle-engram` owns the Pi chrome for Engram memory tools by registering compact Pi-native `mem_*` tools in the companion package. When tools such as `mem_search`, `mem_context`, `mem_save`, `mem_session_summary`, `mem_get_observation`, `mem_review`, `mem_judge`, and `mem_doctor` run in Pi, the default collapsed view stays compact:
+`@cloudfrog/memory` owns the Pi chrome for Engram memory tools by registering compact Pi-native `mem_*` tools in the companion package. When tools such as `mem_search`, `mem_context`, `mem_save`, `mem_session_summary`, `mem_get_observation`, `mem_review`, `mem_judge`, and `mem_doctor` run in Pi, the default collapsed view stays compact:
 
 ```text
 🧠 search “auth model” …
@@ -131,7 +131,7 @@ When a tool call fails because Engram cannot determine which project to use, the
 | `🧠 repos · ambiguous project` | Pi was started from a directory that contains multiple git repos. Run Pi from inside a single repo, or add `.engram/config.json` with `project_name` to the parent directory. |
 | `🧠 repos · error`         | A different tool or network error occurred. Expand the tool output in Pi for the full error message.  |
 
-Full tool details remain available by expanding the tool output in Pi. If `gentle-engram` or the Engram server is not installed/running, the compact tool reports an error instead of implying memory is available.
+Full tool details remain available by expanding the tool output in Pi. If `@cloudfrog/memory` or the Engram server is not installed/running, the compact tool reports an error instead of implying memory is available.
 
 ## What Pi can remember
 
@@ -144,7 +144,7 @@ Full tool details remain available by expanding the tool output in Pi. If `gentl
 
 ## Private blocks
 
-`gentle-engram` redacts explicit private blocks before sending captured prompts, passive observations, or compaction summaries to Engram:
+`@cloudfrog/memory` redacts explicit private blocks before sending captured prompts, passive observations, or compaction summaries to Engram:
 
 ```text
 <private>
@@ -158,7 +158,7 @@ This is a lightweight convenience convention, not a full secret-scanning system.
 
 ## Compaction recovery
 
-When Pi emits a compaction lifecycle event, `gentle-engram` best-effort extracts a compacted summary from supported event fields and saves it as a `session_summary` observation with topic key `session/compaction-recovery`.
+When Pi emits a compaction lifecycle event, `@cloudfrog/memory` best-effort extracts a compacted summary from supported event fields and saves it as a `session_summary` observation with topic key `session/compaction-recovery`.
 
 Unsupported event shapes fail gracefully. The extension still injects a manual recovery instruction containing `FIRST ACTION REQUIRED`, so the next agent turn can call `mem_session_summary` if the Engram MCP tools are installed and active. If the tools are unavailable, save the compacted summary manually after Engram is available again.
 
@@ -178,7 +178,7 @@ Cloud is opt-in and project-scoped. Local SQLite remains the source of truth; cl
 
 - Pi coding agent with npm package support.
 - Engram installed as `engram` on `PATH`, or `ENGRAM_BIN` pointing at the binary.
-- `pi-mcp-adapter` only if you want the optional MCP gateway for compatibility/debugging; Pi-native `mem_*` tools come from `gentle-engram`.
+- `pi-mcp-adapter` only if you want the optional MCP gateway for compatibility/debugging; Pi-native `mem_*` tools come from `@cloudfrog/memory`.
 
 If you only want HTTP session capture against an already running Engram server, set `ENGRAM_URL` and the extension will not auto-start a local `engram serve` process.
 
@@ -208,7 +208,7 @@ If the binary is missing, Pi keeps running and memory degrades instead of crashi
 
 `pi-engram init` writes Pi-owned config in the Pi agent directory:
 
-- `settings.json`: ensures `npm:pi-mcp-adapter` and `npm:gentle-engram@0.1.8` are declared.
+- `settings.json`: ensures `npm:pi-mcp-adapter` and `npm:@cloudfrog/memory@0.1.8` are declared.
 - `mcp.json`: adds an `engram` MCP server that launches `engram mcp --tools=agent` through a safe Node wrapper with `directTools: false`, so MCP remains available through the gateway without duplicating Pi-native `mem_*` tools.
 
 `engram setup pi` also auto-pins `npmCommand` in Pi's `settings.json` when [mise](https://mise.jdx.dev/) is detected in `PATH`. It sets `npmCommand` to `["mise", "exec", "node@<version>", "--", "npm"]` so Pi always uses the mise-managed Node version. Existing `npmCommand` values are never overwritten; if mise is not found, this step is a no-op.
@@ -243,7 +243,7 @@ MCP tool calls still use Engram core's canonical project resolver at call time. 
 
 | Symptom                                                      | Fix                                                                                                                                                                                                                                                                     |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mem_*` tools are missing                                    | Install/verify `npm:gentle-engram@0.1.8`, run `pi-engram init`, then restart Pi. Keep `npm:pi-mcp-adapter` installed if you use MCP integrations such as Notion or direct MCP flows.                                                                                    |
+| `mem_*` tools are missing                                    | Install/verify `npm:@cloudfrog/memory@0.1.8`, run `pi-engram init`, then restart Pi. Keep `npm:pi-mcp-adapter` installed if you use MCP integrations such as Notion or direct MCP flows.                                                                                    |
 | Pi cannot find `engram`                                      | Set `ENGRAM_BIN=/absolute/path/to/engram`.                                                                                                                                                                                                                              |
 | Session capture should use another server                    | Set `ENGRAM_URL=http://host:7437`.                                                                                                                                                                                                                                      |
 | Pi shows `error MCP: 0/N servers` but `mem_*` works          | That status is Pi's global MCP gateway, not proof that Engram's Pi-native HTTP tools failed. Check `~/.pi/agent/mcp.json` for stale/unreachable servers such as remote OAuth services, and keep `npm:pi-mcp-adapter` installed if you use MCP integrations like Notion. |

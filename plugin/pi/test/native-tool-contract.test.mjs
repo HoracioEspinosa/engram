@@ -68,7 +68,7 @@ test("registered Pi-native mem_search reports native provider transport failure"
     );
 
     assert.equal(result.isError, true);
-    assert.match(result.content[0].text, /gentle-engram could not reach the Engram HTTP server/);
+    assert.match(result.content[0].text, /@cloudfrog\/memory could not reach the Engram HTTP server/);
     assert.match(result.content[0].text, /Pi-native mem_\* tools are registered/);
     assert.match(result.details.error, /native memory provider is not currently responding/);
   } finally {

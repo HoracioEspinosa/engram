@@ -10,7 +10,7 @@
 //     absolute binary path so the subprocess never needs PATH resolution.
 //   - Gemini CLI: injects MCP registration in ~/.gemini/settings.json
 //   - Codex: injects MCP registration in ~/.codex/config.toml
-//   - Pi: installs gentle-engram/pi-mcp-adapter packages and writes Pi MCP config
+//   - Pi: installs @cloudfrog/memory and pi-mcp-adapter packages and writes Pi MCP config
 package setup
 
 import (
@@ -83,7 +83,7 @@ const codexMarketplace = "HoracioEspinosa/engram"
 
 const openCodeSubagentStatuslinePlugin = "opencode-subagent-statusline"
 
-const piGentleEngramPackage = "npm:gentle-engram@0.1.8"
+const piMemoryPackage = "npm:@cloudfrog/memory@0.1.8"
 const piMCPAdapterPackage = "npm:pi-mcp-adapter"
 
 // claudeCodeMCPTools are the MCP tool permission names for the agent profile
@@ -278,8 +278,8 @@ func piAgentDir() string {
 }
 
 func installPi() (*Result, error) {
-	if _, err := runCommand("pi", "install", piGentleEngramPackage); err != nil {
-		return nil, fmt.Errorf("install %s: %w", piGentleEngramPackage, err)
+	if _, err := runCommand("pi", "install", piMemoryPackage); err != nil {
+		return nil, fmt.Errorf("install %s: %w", piMemoryPackage, err)
 	}
 	if _, err := runCommand("pi", "install", piMCPAdapterPackage); err != nil {
 		return nil, fmt.Errorf("install %s: %w", piMCPAdapterPackage, err)
@@ -327,7 +327,7 @@ func ensurePiPackageSettings(settingsPath string) (bool, error) {
 		return false, err
 	}
 	changed := false
-	for _, pkg := range []string{piGentleEngramPackage, piMCPAdapterPackage} {
+	for _, pkg := range []string{piMemoryPackage, piMCPAdapterPackage} {
 		if !rawArrayContainsString(packages, pkg) {
 			raw, err := jsonMarshalFn(pkg)
 			if err != nil {

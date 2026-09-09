@@ -88,7 +88,7 @@ No Node.js, no Python, no Docker. **One binary, one SQLite file.**
 
 ### Pi Package
 
-Engram has a first-class Pi package: [`gentle-engram`](plugin/pi/README.md).
+Engram has a first-class Pi package: [`@cloudfrog/memory`](plugin/pi/README.md).
 
 ```bash
 engram setup pi

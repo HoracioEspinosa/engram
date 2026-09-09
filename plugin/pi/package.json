@@ -1,10 +1,13 @@
 {
-  "name": "gentle-engram",
+  "name": "@cloudfrog/memory",
   "version": "0.1.10",
   "description": "Persistent memory for Pi agents — one local-or-cloud brain shared across sessions, compactions, and MCP agents",
   "type": "module",
   "license": "MIT",
   "author": "Gentleman Programming",
+  "contributors": [
+    "Horacio Espinosa (fork maintainer) <https://github.com/HoracioEspinosa>"
+  ],
   "homepage": "https://github.com/HoracioEspinosa/engram",
   "repository": {
     "type": "git",

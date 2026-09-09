@@ -50,7 +50,7 @@ export function extractCompactedSummary(event) {
 export function recoveryInstruction(project) {
   return (
     `CRITICAL INSTRUCTION FOR COMPACTED SUMMARY:\n` +
-    `The agent has access to Engram persistent memory via MCP tools when gentle-engram and the Engram MCP tools are installed and active.\n` +
+    `The agent has access to Engram persistent memory via MCP tools when @cloudfrog/memory and the Engram MCP tools are installed and active.\n` +
     `FIRST ACTION REQUIRED: Call mem_session_summary with the content of this compacted summary. ` +
     `Use project: '${project}'. This preserves what was accomplished before compaction. Do this BEFORE any other work.\n` +
     `If mem_session_summary is unavailable, manually save this compacted summary once Engram tools are available.`

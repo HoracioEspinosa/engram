@@ -1,4 +1,4 @@
-name: Publish gentle-engram
+name: Publish @cloudfrog/memory
 
 on:
   push:
@@ -8,12 +8,13 @@ on:
 
 jobs:
   publish:
-    # Publishes the npm package `gentle-engram`. release.yml and
+    # Publishes the npm package `@cloudfrog/memory` under the `cloudfrog`
+    # npm scope, owned by this fork's maintainer. release.yml and
     # cloud-image.yml are fenced to upstream so a fork cannot publish under
     # its name by accident; this job is fenced to this fork the same way, so
     # a `pi-v*` tag pushed here is what publishes it, not a tag pushed
     # upstream.
-    if: false  # disarmed: plugin/pi/package.json still declares the npm name 'gentle-engram', whose registry maintainer is the upstream author. Publishing from this fork would push our build to another project's users. Re-enable only after the package is renamed to one this account owns.
+    if: github.repository == 'HoracioEspinosa/engram'
     runs-on: ubuntu-latest
     permissions:
       contents: read

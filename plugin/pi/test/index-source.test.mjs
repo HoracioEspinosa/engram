@@ -140,8 +140,8 @@ test("ambiguous_project error maps to actionable status label, not generic 'erro
   assert.doesNotMatch(source, /setStatus\?\.\("engram",\s*`🧠 \$\{project\} · error`\)/);
 });
 
-test("memory protocol declares gentle-engram as the Pi-native provider", () => {
-  assert.match(source, /These instructions are injected by gentle-engram, the Pi-native memory provider/);
+test("memory protocol declares @cloudfrog/memory as the Pi-native provider", () => {
+  assert.match(source, /These instructions are injected by @cloudfrog\/memory, the Pi-native memory provider/);
   assert.match(source, /Use the memory tools named in this section as the authoritative Pi memory contract/);
   assert.match(source, /Do not infer alternative Engram tool names from other integrations/);
 });
@@ -527,7 +527,7 @@ test("native tool fetch preserves HTTP error status", async () => {
 });
 
 test("native tool unavailable error names the Pi-native HTTP path", () => {
-  assert.match(source, /gentle-engram could not reach the Engram HTTP server/);
+  assert.match(source, /@cloudfrog\/memory could not reach the Engram HTTP server/);
   assert.match(source, /Pi-native mem_\* tools are registered/);
   assert.match(source, /Run mem_doctor or restart Engram/);
 });

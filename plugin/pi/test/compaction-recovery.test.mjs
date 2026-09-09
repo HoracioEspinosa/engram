@@ -19,7 +19,7 @@ test("recoveryInstruction keeps manual FIRST ACTION REQUIRED fallback", () => {
   const notice = recoveryInstruction("engram");
   assert.match(notice, /FIRST ACTION REQUIRED/);
   assert.match(notice, /mem_session_summary/);
-  assert.match(notice, /gentle-engram and the Engram MCP tools are installed and active/);
+  assert.match(notice, /@cloudfrog\/memory and the Engram MCP tools are installed and active/);
   assert.match(notice, /If mem_session_summary is unavailable/);
 });
 
