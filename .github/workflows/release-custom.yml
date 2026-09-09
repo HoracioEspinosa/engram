@@ -112,13 +112,34 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Validate the release configuration
+      - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2.12"
-          args: check -f .goreleaser.custom.yaml
+          install-only: true
+
+      # `goreleaser check` exits 2, not 1, when the config is valid but uses a
+      # deprecated property (our `brews` formula, kept on purpose — see the
+      # comment in .goreleaser.custom.yaml). goreleaser-action's own `args:`
+      # form treats any nonzero exit as a failure, so this step calls the
+      # installed binary directly and decides: exit 2 is a pass with a note,
+      # exit 1 or anything else stays fatal. Loosening this to "tolerate any
+      # failure" would defeat the gate for a genuinely invalid configuration,
+      # which is the one thing it exists to catch.
+      - name: Validate the release configuration
+        shell: bash
         env:
           HOMEBREW_TAP_TOKEN: ""
+        run: |
+          set +e
+          goreleaser check -f .goreleaser.custom.yaml
+          status=$?
+          set -e
+          case "$status" in
+            0) ;;
+            2) echo "::notice::goreleaser check: valid configuration, deprecated properties tolerated (brews formula)" ;;
+            *) echo "::error::goreleaser check failed with exit $status"; exit "$status" ;;
+          esac
 
       # The tap is a separate repository with its own token. Until it exists,
       # the release still has to produce binaries: without this branch the

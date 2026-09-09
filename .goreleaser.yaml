@@ -44,6 +44,17 @@ changelog:
       - "^test:"
       - "^ci:"
 
+# This is upstream's own file, kept so the fork can rebase against upstream's
+# changes to it, and no workflow here ever runs goreleaser against it —
+# release-custom.yml always passes `-f .goreleaser.custom.yaml` explicitly.
+# The residual risk is a human running `goreleaser release` (or `check`)
+# locally without `-f`: goreleaser falls back to this file by default, and its
+# `brews.repository` below still names Gentleman-Programming/homebrew-tap,
+# upstream's own tap, which this plan never writes to under any
+# circumstances. `skip_upload: true` makes that structurally impossible
+# instead of merely discouraged: the formula is written to dist/ only, never
+# committed or pushed anywhere, regardless of which token is in the
+# environment when someone runs this by hand.
 brews:
   - repository:
       owner: Gentleman-Programming
@@ -55,3 +66,4 @@ brews:
     description: "Persistent memory for AI coding agents. Agent-agnostic, single binary, zero dependencies."
     license: "MIT"
     commit_msg_template: "chore: update engram formula to {{ .Tag }}"
+    skip_upload: true

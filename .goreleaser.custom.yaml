@@ -78,47 +78,46 @@ release:
     Container image for the cloud runtime:
     `ghcr.io/horacioespinosa/engram:{{ .Version }}`
 
-# A cask, not a formula: GoReleaser deprecated `brews` for pre-compiled
-# binaries, and `goreleaser check` fails on the deprecated section, so the
-# formula path cannot be gated in CI. The generated cask does carry linux URLs,
-# but Homebrew only supports casks on macOS, so Linux and Windows machines
-# install the release tarball directly and the cloud runtime takes the
-# container image instead. docs/RELEASE-FORK.md carries both routes.
-homebrew_casks:
-  # The cask is named engram-custom, not engram, so `brew upgrade engram` can
-  # never swap a team machine back onto the upstream build behind its owner's
-  # back. The binary it installs is still called engram.
+# A formula, not a cask: Homebrew only serves casks on macOS, and this team
+# needs `brew install` on Linux too. `brews` is the artifact type GoReleaser
+# deprecated in favor of `homebrew_casks` for precompiled binaries (see the
+# GoReleaser v2.16 release notes), but deprecated is not the same as removed:
+# `goreleaser check` reports it with exit code 2 ("uses deprecated
+# properties"), not exit 1 ("invalid configuration"), and the generator still
+# writes a correct formula, covering macOS and Linux, amd64 and arm64, from
+# the same archives every other artifact here is built from. The one thing
+# this requires is that release-custom.yml's check step tolerate exit 2
+# without tolerating exit 1 or any other nonzero code — see the comment there.
+#
+# A formula install via `curl` never gets the com.apple.quarantine attribute
+# Gatekeeper checks for in the first place (that attribute is a Cask-specific
+# safety feature Homebrew added on top of its own downloads — see
+# Homebrew/homebrew-cask#22388), so this needs no post-install dequarantine
+# hook the way the cask did.
+brews:
+  # Named engram-custom, not engram, so `brew upgrade engram` can never swap a
+  # team machine back onto the upstream build behind its owner's back. The
+  # binary it installs is still called engram.
   - name: engram-custom
-    binaries:
-      - engram
     repository:
       owner: HoracioEspinosa
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Casks
+    directory: Formula
     homepage: "https://github.com/HoracioEspinosa/engram"
     description: "Engram (ClaroDrive fork): persistent memory for AI coding agents, with engram-projects"
+    license: "MIT"
     commit_author:
       name: github-actions[bot]
       email: 41898282+github-actions[bot]@users.noreply.github.com
-    commit_msg_template: "chore: update engram-custom cask to {{ .Tag }}"
-    # No `conflicts:` block on purpose. Homebrew removed cask-vs-formula
-    # conflicts, so declaring one is a no-op that `goreleaser check` now
-    # rejects. The collision still surfaces: a machine that already has the
-    # upstream formula owns $(brew --prefix)/bin/engram, and the cask install
-    # refuses rather than overwriting it. The caveats below say what to do.
-    #
-    # The binaries are ad-hoc signed, not notarized. Homebrew quarantines
-    # anything a cask downloads, and macOS then refuses to run it with a
-    # message that names no cause. Clearing the attribute at install time is
-    # what keeps `engram --version` from dying on a Gatekeeper prompt.
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/engram"]
-          end
+    commit_msg_template: "chore: update engram-custom formula to {{ .Tag }}"
+    install: |
+      bin.install "engram"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/engram --version")
+    # A machine that already has the upstream formula owns
+    # $(brew --prefix)/bin/engram, and this install refuses to overwrite it.
     caveats: |
       This build replaces the upstream engram binary. If Homebrew refuses to
       link it, uninstall the upstream formula first:
