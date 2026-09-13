@@ -275,3 +275,30 @@ func TestInstallAgentCommand(t *testing.T) {
 		}
 	})
 }
+
+// TestSearchForLandsOnSearchResultsRegardlessOfWhoAskedForIt pins the deep
+// link rfc-tui.md §3.1 S8/S9's "t" key needs: another tab (Runbooks) driving
+// a search through SearchFor must land on the exact same screen the "/" key
+// reaches from ScreenSearch, since searchResultsMsg's own handler — not
+// SearchFor — is what switches the screen.
+func TestSearchForLandsOnSearchResultsRegardlessOfWhoAskedForIt(t *testing.T) {
+	fx := newTestFixture(t)
+	m := New(fx.reader(), "v1")
+
+	cmd := m.SearchFor("needle")
+	if cmd == nil {
+		t.Fatal("SearchFor should return a non-nil command")
+	}
+	updated, _ := m.Update(cmd())
+	next := updated.(Model)
+
+	if next.Screen != ScreenSearchResults {
+		t.Fatalf("Screen = %v, want ScreenSearchResults", next.Screen)
+	}
+	if next.SearchQuery != "needle" {
+		t.Fatalf("SearchQuery = %q, want %q", next.SearchQuery, "needle")
+	}
+	if len(next.SearchResults) == 0 {
+		t.Fatal("expected at least one search result for the seeded needle observation")
+	}
+}
