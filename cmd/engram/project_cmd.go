@@ -158,6 +158,14 @@ func projResolveScope(explicit string) (projScope, error) {
 	if det.Error != nil {
 		return projScope{}, det.Error
 	}
+	// This resolver backs writing subcommands (project_upsert, task_upsert,
+	// evidence_add, ...) as well as read ones, over the same store calls the
+	// `projects` MCP profile uses. A directory-name guess must not be
+	// accepted as the cwd-detected scope for either: ADR-057 §3 treats it as
+	// unresolved rather than as a usable, if uncertain, project.
+	if projectpkg.IsGuessedSource(det.Source) {
+		return projScope{}, fmt.Errorf("project is not resolvable from %q: only a directory-name guess was found; pass an explicit slug or set ENGRAM_PROJECT", det.Path)
+	}
 	slug, _ := store.NormalizeProject(det.Project)
 	if slug == "" {
 		return projScope{}, errors.New("cannot determine project from the current directory")

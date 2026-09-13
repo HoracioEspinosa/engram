@@ -41,6 +41,30 @@ func stubDetection(t *testing.T, name, path string) {
 	t.Cleanup(func() { detectProjectFull = old })
 }
 
+// TestProjResolveScopeRejectsDirBasenameGuess ties the ADR-057 write-decider
+// rule to the CLI's `engram project` family: without an explicit slug,
+// ENGRAM_PROJECT, or a git-backed cwd, it must not resolve to a
+// directory-name guess. Every subcommand under `engram project <slug> ...`
+// shares this one resolver, several of which write (project_upsert,
+// task_upsert, evidence add) — the same reuse pattern that let the MCP
+// server's mem_evidence_add fall through its "read" resolver into an
+// unguarded write.
+func TestProjResolveScopeRejectsDirBasenameGuess(t *testing.T) {
+	old := detectProjectFull
+	t.Cleanup(func() { detectProjectFull = old })
+	detectProjectFull = func(dir string) projectpkg.DetectionResult {
+		return projectpkg.DetectionResult{Project: "guessed-from-dir", Source: projectpkg.SourceDirBasename, Path: dir}
+	}
+
+	_, err := projResolveScope("")
+	if err == nil {
+		t.Fatal("expected projResolveScope to refuse a dir_basename guess, got success")
+	}
+	if !strings.Contains(err.Error(), "directory-name guess") {
+		t.Fatalf("expected a directory-name-guess error, got: %v", err)
+	}
+}
+
 func openTestStore(t *testing.T, cfg store.Config) *store.Store {
 	t.Helper()
 	s, err := store.New(cfg)
