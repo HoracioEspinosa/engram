@@ -199,6 +199,10 @@ func resolveProjectsToolReadProject(s *store.Store, cfg MCPConfig, override stri
 	if errors.Is(err, projectpkg.ErrInvalidConfig) {
 		return res, projectToolError("invalid_project_config", err.Error(), nil)
 	}
+	var unresolvableErr *unresolvableProjectError
+	if errors.As(err, &unresolvableErr) {
+		return res, projectToolError("unresolvable_project", unresolvableErr.Error(), nil)
+	}
 	return res, projectToolError("ambiguous_project",
 		fmt.Sprintf("Cannot determine project: %s", err),
 		map[string]any{"available_projects": res.AvailableProjects})
@@ -216,6 +220,10 @@ func resolveProjectsToolCreateProject(s *store.Store, cfg MCPConfig, explicit st
 		if err != nil {
 			if errors.Is(err, projectpkg.ErrInvalidConfig) {
 				return res, projectToolError("invalid_project_config", err.Error(), nil)
+			}
+			var unresolvableErr *unresolvableProjectError
+			if errors.As(err, &unresolvableErr) {
+				return res, projectToolError("unresolvable_project", unresolvableErr.Error(), nil)
 			}
 			return res, projectToolError("ambiguous_project",
 				fmt.Sprintf("Cannot determine project: %s", err),

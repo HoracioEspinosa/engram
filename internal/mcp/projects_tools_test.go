@@ -196,6 +196,29 @@ func TestTaskLink_UnknownTask(t *testing.T) {
 
 // ─── mem_evidence_add / mem_evidence_list ────────────────────────────────────
 
+// TestEvidenceAdd_RejectsDirBasenameGuess ties the ADR-057 write-decider rule
+// to the evidence-capture tool named in that decision: mem_evidence_add must
+// not attach evidence to a project name guessed from the current directory's
+// basename. It has no project argument at all (project field intentionally
+// not read — auto-detect only), so a plain non-git temp directory with no
+// process override is the only way to force Source == dir_basename here.
+func TestEvidenceAdd_RejectsDirBasenameGuess(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	s := newMCPTestStore(t)
+	cfg := MCPConfig{}
+
+	res := callProjectTool(t, handleEvidenceAdd(s, cfg), map[string]any{
+		"task": "PROJ-1", "path": "a.png",
+		"sha256": "9f2b1c0a7e4d5b6c8a1f3e2d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c3b",
+		"kind":   "png", "proves": "p",
+	})
+	if !res.IsError || callResultJSON(t, res)["code"] != "unresolvable_project" {
+		t.Fatalf("expected unresolvable_project, got %v", callResultJSON(t, res))
+	}
+}
+
 func TestEvidenceAdd_InvalidSha256(t *testing.T) {
 	s := newMCPTestStore(t)
 	cfg := MCPConfig{DefaultProject: "nextcloud"}

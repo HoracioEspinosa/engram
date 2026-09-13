@@ -5365,6 +5365,67 @@ func TestResolveWriteProject_AmbiguousError(t *testing.T) {
 	}
 }
 
+// TestResolveWriteProject_RejectsDirBasenameGuess ties the ADR-057 defect to
+// a test: a write decider must not accept a project it only guessed from the
+// directory name as if it were a fact. A plain temp directory (no git repo,
+// no .engram/config.json) forces DetectProjectFull down to Source ==
+// dir_basename; resolveWriteProject must refuse it instead of returning it
+// as a usable result — exactly the gap that let 177 observations drift into
+// a wrong slug in silence.
+func TestResolveWriteProject_RejectsDirBasenameGuess(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	res, err := resolveWriteProject()
+	if err == nil {
+		t.Fatalf("expected resolveWriteProject to refuse a dir_basename guess, got success: %+v", res)
+	}
+	var unresolvableErr *unresolvableProjectError
+	if !errors.As(err, &unresolvableErr) {
+		t.Fatalf("expected *unresolvableProjectError, got %T: %v", err, err)
+	}
+}
+
+// TestHandleSave_RejectsDirBasenameGuess is the write-path version of the
+// same defect: mem_save must not silently save a memory under a project name
+// guessed from the current directory's basename. Before the ADR-057 fix,
+// resolveWriteProject() (and therefore handleSave) accepted
+// project.SourceDirBasename as if it were certain, which is how a disabled
+// repo-scope config turned into memories landing under the wrong project
+// without any signal.
+func TestHandleSave_RejectsDirBasenameGuess(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	s := newMCPTestStore(t)
+	h := handleSave(s, MCPConfig{}, NewSessionActivity(10*time.Minute))
+
+	res, err := h(context.Background(), mcppkg.CallToolRequest{Params: mcppkg.CallToolParams{Arguments: map[string]any{
+		"title":   "Should not land anywhere",
+		"content": "mem_save must refuse a directory-name guess, not write under it",
+	}}})
+	if err != nil {
+		t.Fatalf("handler transport error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected mem_save to refuse a dir_basename guess, got success: %s", callResultText(t, res))
+	}
+	m := callResultJSON(t, res)
+	if m["error_code"] != "unresolvable_project" {
+		t.Fatalf("expected error_code=unresolvable_project, got %v (full: %v)", m["error_code"], m)
+	}
+
+	// No observation must have been written under the guessed folder name.
+	guessed, _ := store.NormalizeProject(filepath.Base(dir))
+	obs, err := s.RecentObservations(guessed, "project", 5)
+	if err != nil {
+		t.Fatalf("RecentObservations: %v", err)
+	}
+	if len(obs) != 0 {
+		t.Fatalf("mem_save must not write under the guessed project %q; found %d observations", guessed, len(obs))
+	}
+}
+
 // TestResolveReadProject_WithOverride: known project override succeeds
 func TestResolveReadProject_WithOverride(t *testing.T) {
 	s := newMCPTestStore(t)

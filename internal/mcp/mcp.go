@@ -1006,11 +1006,19 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 		// regardless of the project override or any auto-detected project. This
 		// keeps the cross-project flow independent of cwd-based detection so the
 		// agent can recall context from any project without knowing its key.
+		// REQ-391: personal scope is cross-project by definition, so a bare
+		// scope=personal request (no explicit project override) never needs a
+		// resolved project — resolution is skipped rather than required to
+		// succeed and then discarded, which otherwise fails this cross-project
+		// request in a directory with no resolvable project (ADR-057 §3).
+		personalCrossProject := scope == "personal" && strings.TrimSpace(projectOverride) == ""
+
 		var detRes projectpkg.DetectionResult
 		var project string
-		if allProjects {
+		switch {
+		case allProjects, personalCrossProject:
 			detRes = projectpkg.DetectionResult{Source: projectpkg.SourceAllProjects}
-		} else {
+		default:
 			// Resolve project: validate override or auto-detect (REQ-310, REQ-311)
 			res, err := resolveReadProjectWithProcessOverride(s, projectOverride, cfg.DefaultProject)
 			if err != nil {
@@ -1649,21 +1657,33 @@ func handleContext(s *store.Store, cfg MCPConfig, activity *SessionActivity) ser
 		projectOverride, _ := req.GetArguments()["project"].(string)
 		scope, _ := req.GetArguments()["scope"].(string)
 
-		// Resolve project: validate override or auto-detect (REQ-310, REQ-311)
-		detRes, err := resolveReadProjectWithProcessOverride(s, projectOverride, cfg.DefaultProject)
-		if err != nil {
-			var upe *unknownProjectError
-			if errors.As(err, &upe) {
-				return errorWithMeta("unknown_project",
-					fmt.Sprintf("Project %q not found in store", upe.Name),
-					upe.AvailableProjects,
-				), nil
+		// REQ-391: personal scope is cross-project by definition, so a bare
+		// scope=personal request (no explicit project override) never needs a
+		// resolved project — resolution is skipped rather than required to
+		// succeed and then discarded, which otherwise fails this cross-project
+		// request in a directory with no resolvable project (ADR-057 §3).
+		var detRes projectpkg.DetectionResult
+		var project string
+		if scope == "personal" && strings.TrimSpace(projectOverride) == "" {
+			detRes = projectpkg.DetectionResult{Source: projectpkg.SourceAllProjects}
+		} else {
+			// Resolve project: validate override or auto-detect (REQ-310, REQ-311)
+			res, err := resolveReadProjectWithProcessOverride(s, projectOverride, cfg.DefaultProject)
+			if err != nil {
+				var upe *unknownProjectError
+				if errors.As(err, &upe) {
+					return errorWithMeta("unknown_project",
+						fmt.Sprintf("Project %q not found in store", upe.Name),
+						upe.AvailableProjects,
+					), nil
+				}
+				return mcp.NewToolResultError(fmt.Sprintf("Project resolution failed: %s", err)), nil
 			}
-			return mcp.NewToolResultError(fmt.Sprintf("Project resolution failed: %s", err)), nil
+			detRes = res
+			project = detRes.Project
+			project, _ = store.NormalizeProject(project)
+			detRes.Project = project // JR2-1: keep envelope in sync with normalized query project
 		}
-		project := detRes.Project
-		project, _ = store.NormalizeProject(project)
-		detRes.Project = project // JR2-1: keep envelope in sync with normalized query project
 
 		// REQ-391: personal scope is cross-project by definition. When scope=personal
 		// and no explicit project override was provided, clear the project filter so
@@ -2013,19 +2033,17 @@ func handleSessionEnd(s *store.Store, cfg MCPConfig, activity *SessionActivity) 
 		// project field intentionally not read — auto-detect only (REQ-308)
 
 		detRes, err := resolveWriteProject()
-		if err != nil {
-			if errors.Is(err, projectpkg.ErrInvalidConfig) {
-				return writeProjectErrorResult(nil, "", detRes, err), nil
-			}
-			// For session end, still complete the operation even if project resolution fails.
-			// Use basename fallback.
-			cwd, _ := os.Getwd()
-			detRes = projectpkg.DetectionResult{
-				Project: projectpkg.DetectProject(cwd),
-				Source:  "dir_basename",
-				Path:    cwd,
-			}
+		if err != nil && errors.Is(err, projectpkg.ErrInvalidConfig) {
+			return writeProjectErrorResult(nil, "", detRes, err), nil
 		}
+		// Session end must still complete even when the caller's directory does
+		// not resolve to a trustworthy project (ambiguous, or only a
+		// directory-name guess): EndSession is keyed by session id, not by
+		// project, so there is no write to misplace. detRes already carries
+		// whatever resolveWriteProject actually saw — reporting that as-is
+		// (empty project on ambiguous, the guess on SourceDirBasename) is more
+		// honest than fabricating a fresh guess and relabeling it, which is
+		// exactly the "adivinanza con cara de certeza" this task closes.
 		project, _ := store.NormalizeProject(detRes.Project)
 
 		if err := s.EndSession(id, summary); err != nil {
@@ -2342,8 +2360,26 @@ func (e *sessionProjectMismatchError) Error() string {
 	return fmt.Sprintf("session %q belongs to project %q, not %q", e.SessionID, e.SessionProject, e.ExplicitProject)
 }
 
+// unresolvableProjectError signals that project detection produced nothing
+// better than a directory-name guess (DetectionResult.Source ==
+// project.SourceDirBasename). A caller that decides where a memory lands
+// must not accept that guess as if it were certain — it is what let a
+// disabled repo-scope config drift 177 observations into the wrong project
+// slug in silence (ADR-057). Res still carries the guessed Project/Path for
+// diagnostics; callers must not use it to complete the write.
+type unresolvableProjectError struct {
+	Path string
+}
+
+func (e *unresolvableProjectError) Error() string {
+	return fmt.Sprintf("project is not resolvable from %q: no explicit project, ENGRAM_PROJECT, repo config, or git-backed source was found, only a directory-name guess", e.Path)
+}
+
 // resolveWriteProject detects the current project from the process working
-// directory. Returns ErrAmbiguousProject if cwd is a parent of multiple repos.
+// directory. Returns ErrAmbiguousProject if cwd is a parent of multiple repos,
+// and *unresolvableProjectError if the only available source is a
+// directory-name guess (project.SourceDirBasename): a write must not land
+// silently under a guessed project (ADR-057 §3).
 func resolveWriteProject() (projectpkg.DetectionResult, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -2352,6 +2388,9 @@ func resolveWriteProject() (projectpkg.DetectionResult, error) {
 	res := projectpkg.DetectProjectFull(cwd)
 	if res.Error != nil {
 		return res, res.Error
+	}
+	if projectpkg.IsGuessedSource(res.Source) {
+		return res, &unresolvableProjectError{Path: res.Path}
 	}
 	return res, nil
 }
@@ -2907,6 +2946,10 @@ func writeProjectErrorResult(activity *SessionActivity, sessionID string, res pr
 			res.AvailableProjects,
 		)
 	}
+	var unresolvableErr *unresolvableProjectError
+	if errors.As(err, &unresolvableErr) {
+		return errorWithMeta("unresolvable_project", unresolvableErr.Error(), res.AvailableProjects)
+	}
 	result := errorWithMeta(code, fmt.Sprintf("Cannot determine project: %s", err), res.AvailableProjects)
 	if code == "ambiguous_project" && activity != nil {
 		if strings.TrimSpace(sessionID) == "" {
@@ -2969,6 +3012,8 @@ func errorWithMeta(code, msg string, availableProjects []string) *mcp.CallToolRe
 		envelope["hint"] = "Start the session first, omit session_id, or retry with an existing session_id."
 	case "session_project_mismatch":
 		envelope["hint"] = "Use a project that matches the existing session, or omit session_id and write to a different project."
+	case "unresolvable_project":
+		envelope["hint"] = "Pass project explicitly, set ENGRAM_PROJECT, or run from inside a git repository (or a repo with .engram/config.json) so the write has a trustworthy destination."
 	}
 	out, _ := jsonMarshal(envelope)
 	result := mcp.NewToolResultText(string(out))
