@@ -70,18 +70,22 @@ type Tab interface {
 // NavigateMsg asks the root to activate another tab. A tab emits it instead of
 // switching itself, which is what keeps tabs from importing each other.
 //
-// ObservationID and TaskID are the cross-tab context v1 needs, each 0 except
-// for the one navigation it carries a deep link for:
+// ObservationID, TaskID and Query are the cross-tab context v1 needs, each
+// zero except for the one navigation it carries a deep link for:
 //   - ObservationID: rfc-tui.md §3.1 S4 has Enter on a task's linked
 //     observation open that observation's detail inside Memory.
 //   - TaskID: §3.1 S4's "e" opens Evidence filtered to the task under view
 //     (S6's task_id filter), and §3.1 S7's "Enter" opens that evidence
 //     file's task inside Tasks — the same field serves both directions
 //     because Target already says which one applies.
+//   - Query: §3.1 S8/S9's "t" opens Memory pre-searched for
+//     "runbook/RB-NNN", the executions recorded against that runbook
+//     (D-09's `runbook/RB-NNN/exec/<CDBS-key>` topic_key convention).
 type NavigateMsg struct {
 	Target        ID
 	ObservationID int64
 	TaskID        int64
+	Query         string
 }
 
 // Navigate returns the command that emits a NavigateMsg for target.
@@ -112,6 +116,14 @@ func NavigateToTaskEvidence(taskID int64) tea.Cmd {
 func NavigateToTask(taskID int64) tea.Cmd {
 	return func() tea.Msg {
 		return NavigateMsg{Target: Tasks, TaskID: taskID}
+	}
+}
+
+// NavigateToMemorySearch returns the command that asks the root to open
+// Memory pre-searched for query (rfc-tui.md §3.1 S8/S9's "t" key).
+func NavigateToMemorySearch(query string) tea.Cmd {
+	return func() tea.Msg {
+		return NavigateMsg{Target: Memory, Query: query}
 	}
 }
 

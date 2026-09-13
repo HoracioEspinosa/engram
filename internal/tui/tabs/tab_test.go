@@ -96,3 +96,24 @@ func TestNavigateToTaskEmitsATasksTargetWithTheTaskID(t *testing.T) {
 		t.Fatalf("TaskID = %d, want 7", msg.TaskID)
 	}
 }
+
+// TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery pins rfc-tui.md
+// §3.1 S8/S9's "t" key: it needs a field none of the above cover, since
+// ObservationID and TaskID both name an id, not a search string.
+func TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery(t *testing.T) {
+	cmd := NavigateToMemorySearch("runbook/RB-003")
+	if cmd == nil {
+		t.Fatal("NavigateToMemorySearch should return a non-nil command")
+	}
+
+	msg, ok := cmd().(NavigateMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want NavigateMsg", cmd())
+	}
+	if msg.Target != Memory {
+		t.Fatalf("target = %v, want %v", msg.Target, Memory)
+	}
+	if msg.Query != "runbook/RB-003" {
+		t.Fatalf("Query = %q, want %q", msg.Query, "runbook/RB-003")
+	}
+}
