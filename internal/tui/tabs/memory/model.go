@@ -100,10 +100,22 @@ type setupInstallMsg struct {
 	err    error
 }
 
+type linkTaskResultsMsg struct {
+	results []store.TaskListItem
+	err     error
+}
+
+type observationLinkedToTaskMsg struct {
+	taskID int64
+	err    error
+}
+
 // ─── Model ───────────────────────────────────────────────────────────────────
 
 type Model struct {
 	reader     data.MemoryReader
+	tasks      data.TaskReader
+	project    string
 	styles     theme.Styles
 	Version    string
 	Screen     Screen
@@ -127,6 +139,19 @@ type Model struct {
 	SearchInput   textinput.Model
 	SearchQuery   string
 	SearchResults []store.SearchResult
+
+	// Link to task (rfc-tui.md §7.2's "L", the only addition rfc-tui.md §5
+	// lists for the memory screens): a task-search overlay available from
+	// Search Results, Recent and Observation Detail. Selecting a result
+	// writes the task_observations row mem_task_link writes over MCP today,
+	// then navigates to that task's detail (rfc-tui.md §7.3's
+	// "MEM -->|L link| TD"). It renders through shared.Menu, the same
+	// component the Tasks tab's state picker uses (ADR-051 §4).
+	Linking     bool
+	LinkObsID   int64
+	LinkQuery   textinput.Model
+	LinkResults []store.TaskListItem
+	LinkCursor  int
 
 	// Recent observations
 	RecentObservations []store.Observation
@@ -172,6 +197,11 @@ func New(r data.MemoryReader, version string) Model {
 	ti.CharLimit = 256
 	ti.Width = 60
 
+	lq := textinput.New()
+	lq.Placeholder = "Search tasks..."
+	lq.CharLimit = 256
+	lq.Width = 60
+
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = styles.Spinner
@@ -182,6 +212,7 @@ func New(r data.MemoryReader, version string) Model {
 		Version:      version,
 		Screen:       ScreenDashboard,
 		SearchInput:  ti,
+		LinkQuery:    lq,
 		SetupSpinner: sp,
 	}
 }
@@ -196,6 +227,23 @@ func New(r data.MemoryReader, version string) Model {
 func (m Model) WithStyles(styles theme.Styles) Model {
 	m.styles = styles
 	m.SetupSpinner.Style = styles.Spinner
+	return m
+}
+
+// WithTasks returns a copy of m able to look up and link tasks. The "L"
+// picker needs a data.TaskReader to search tasks and write
+// task_observations, a capability data.MemoryReader has no business
+// exposing.
+func (m Model) WithTasks(r data.TaskReader) Model {
+	m.tasks = r
+	return m
+}
+
+// WithProject sets the project the "L" picker scopes its task search to.
+// Memory's own data — search, recent observations, sessions — spans every
+// project, so nothing else about the tab reads this field.
+func (m Model) WithProject(project string) Model {
+	m.project = project
 	return m
 }
 
@@ -321,3 +369,23 @@ func installAgent(agentName string) tea.Cmd {
 
 var installAgentFn = setup.Install
 var addClaudeCodeAllowlistFn = setup.AddClaudeCodeAllowlist
+
+// searchTasksForLink returns the command that lists project's tasks
+// matching query, for the "L" picker (rfc-tui.md §5).
+func searchTasksForLink(r data.TaskReader, project, query string) tea.Cmd {
+	return func() tea.Msg {
+		results, err := r.ListTasks(project, store.TaskListFilter{Query: query, Limit: 20})
+		return linkTaskResultsMsg{results: results, err: err}
+	}
+}
+
+// linkObservationToTask returns the command that writes the
+// task_observations row linking observationID to taskID — the same write
+// data.TaskReader.LinkObservation performs for the Tasks tab's own "l" key,
+// used here in the other direction.
+func linkObservationToTask(r data.TaskReader, taskID, observationID int64) tea.Cmd {
+	return func() tea.Msg {
+		err := r.LinkObservation(taskID, observationID)
+		return observationLinkedToTaskMsg{taskID: taskID, err: err}
+	}
+}

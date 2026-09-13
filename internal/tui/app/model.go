@@ -86,7 +86,7 @@ func New(mem data.MemoryReader, projects data.ProjectReader, task data.TaskReade
 		active:    tabs.Memory,
 		projects:  projects,
 		project:   initialProject,
-		memory:    memory.New(mem, version).WithStyles(styles),
+		memory:    memory.New(mem, version).WithTasks(task).WithProject(initialProject).WithStyles(styles),
 		tasks:     tasks.New(task).WithProject(initialProject).WithStyles(styles),
 		evidence:  evidence.New(evidenceReader).WithProject(initialProject).WithStyles(styles),
 		runbooks:  runbooks.New(runbookReader, projects).WithProject(initialProject).WithStyles(styles),

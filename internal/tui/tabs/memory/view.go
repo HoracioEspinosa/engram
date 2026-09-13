@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 	"github.com/HoracioEspinosa/engram/internal/version"
 )
@@ -65,6 +67,10 @@ func (m Model) View() string {
 		content = m.viewSetup()
 	default:
 		content = "Unknown screen"
+	}
+
+	if m.Linking {
+		content += "\n" + m.viewLinkPicker()
 	}
 
 	// Show error if present
@@ -695,4 +701,40 @@ func (m Model) renderObservationListItem(index int, id int64, obsType, title, co
 		Pinned:    pinned,
 		Selected:  index == m.Cursor,
 	})
+}
+
+// ─── Link to Task (L) ────────────────────────────────────────────────────────
+
+// viewLinkPicker renders the "L" overlay (rfc-tui.md §5): the task search
+// box while a query is being typed, or the shared.Menu list of matches once
+// one has run — the same list component the Tasks tab's state picker uses
+// (ADR-051 §4).
+func (m Model) viewLinkPicker() string {
+	var b strings.Builder
+	b.WriteString(m.styles.SectionHeading.Render("  link to task (enter select · esc cancel)"))
+	b.WriteString("\n")
+
+	if m.LinkQuery.Focused() {
+		b.WriteString(m.styles.SearchInput.Render(m.LinkQuery.View()))
+		b.WriteString("\n")
+		return b.String()
+	}
+
+	if len(m.LinkResults) == 0 {
+		b.WriteString(m.styles.NoResults.Render("  No tasks match this filter. / to search again."))
+		b.WriteString("\n")
+		return b.String()
+	}
+
+	items := make([]string, len(m.LinkResults))
+	for i, t := range m.LinkResults {
+		items[i] = linkTaskLabel(t)
+	}
+	b.WriteString(shared.Menu(m.styles, items, m.LinkCursor))
+	return b.String()
+}
+
+// linkTaskLabel formats one shared.Menu row for the picker.
+func linkTaskLabel(t store.TaskListItem) string {
+	return fmt.Sprintf("%s  %s  (%s)", data.TaskKey(t.Task), shared.Truncate(t.Title, 50), t.State)
 }

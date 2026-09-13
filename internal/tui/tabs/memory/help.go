@@ -20,6 +20,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "detail")),
 			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
+			key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "link to task")),
 			key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search again")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
@@ -30,6 +31,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "detail")),
 			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
+			key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "link to task")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
 	case ScreenObservationDetail:
@@ -37,6 +39,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("j/k", "scroll")),
 			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
+			key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "link to task")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
 	case ScreenTimeline:
@@ -93,9 +96,13 @@ func (m Model) Help() []key.Binding {
 	}
 }
 
-// CapturingText reports whether the search box is focused (rfc-tui.md §7.1's
-// textinput suspension rule): while true, digits typed into a memory search
-// must reach SearchInput, never the root's tab-switch keys.
+// CapturingText reports whether the search box is focused, or the "L"
+// link-to-task picker is open (rfc-tui.md §7.1's textinput suspension
+// rule): while true, digits and letters typed into either must reach the
+// tab, never the root's tab-switch keys. The picker counts for its whole
+// lifetime, not only while its own query box has focus — browsing its
+// results with j/k must not have "1" jump to the Tasks tab out from under
+// the cursor either.
 func (m Model) CapturingText() bool {
-	return m.Screen == ScreenSearch && m.SearchInput.Focused()
+	return (m.Screen == ScreenSearch && m.SearchInput.Focused()) || m.Linking
 }

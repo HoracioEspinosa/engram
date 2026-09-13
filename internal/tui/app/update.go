@@ -299,6 +299,7 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.tasks = m.tasks.WithProject(selected.Slug)
 			m.evidence = m.evidence.WithProject(selected.Slug)
 			m.runbooks = m.runbooks.WithProject(selected.Slug)
+			m.memory = m.memory.WithProject(selected.Slug)
 			return m, loadDashboard(m.projects, selected.Slug)
 		}
 		return m, nil

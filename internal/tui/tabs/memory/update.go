@@ -26,6 +26,14 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// The "L" link-to-task picker is a modal overlay independent of
+		// Screen (rfc-tui.md §7.1's textinput suspension rule extends to
+		// its whole lifetime, not just while its query box is focused —
+		// see CapturingText), so it is checked before the search input and
+		// before the per-screen router.
+		if m.Linking {
+			return m.handleLinkingKeys(msg)
+		}
 		// If search input is focused, let it handle most keys
 		if m.Screen == ScreenSearch && m.SearchInput.Focused() {
 			return m.handleSearchInputKeys(msg)
@@ -124,6 +132,22 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 		}
 		m.ErrorMsg = ""
 		return m, loadRecentSessions(m.reader)
+
+	case linkTaskResultsMsg:
+		if msg.err != nil {
+			m.ErrorMsg = msg.err.Error()
+			return m, nil
+		}
+		m.LinkResults = msg.results
+		m.LinkCursor = 0
+		return m, nil
+
+	case observationLinkedToTaskMsg:
+		if msg.err != nil {
+			m.ErrorMsg = msg.err.Error()
+			return m, nil
+		}
+		return m, tabs.NavigateToTask(msg.taskID)
 
 	case setupInstallMsg:
 		m.SetupInstalling = false
@@ -363,6 +387,10 @@ func (m Model) handleSearchResultsKeys(key string) (tabs.Tab, tea.Cmd) {
 			m.PrevScreen = ScreenSearchResults
 			return m, loadTimeline(m.reader, obsID)
 		}
+	case "L":
+		if len(m.SearchResults) > 0 && m.Cursor < len(m.SearchResults) {
+			return m.startLinking(m.SearchResults[m.Cursor].ID)
+		}
 	case "/", "s":
 		m.PrevScreen = ScreenSearchResults
 		m.Screen = ScreenSearch
@@ -424,6 +452,10 @@ func (m Model) handleRecentKeys(key string) (tabs.Tab, tea.Cmd) {
 			m.PrevScreen = ScreenRecent
 			return m, loadTimeline(m.reader, obsID)
 		}
+	case "L":
+		if len(m.RecentObservations) > 0 && m.Cursor < len(m.RecentObservations) {
+			return m.startLinking(m.RecentObservations[m.Cursor].ID)
+		}
 	case "esc", "q":
 		m.Screen = ScreenDashboard
 		m.Cursor = 0
@@ -451,6 +483,10 @@ func (m Model) handleObservationDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 		// View timeline for this observation
 		if m.SelectedObservation != nil {
 			return m, loadTimeline(m.reader, m.SelectedObservation.ID)
+		}
+	case "L":
+		if m.SelectedObservation != nil {
+			return m.startLinking(m.SelectedObservation.ID)
 		}
 	case "esc", "q":
 		m.Screen = m.PrevScreen
@@ -662,6 +698,73 @@ func (m Model) handleSetupKeys(key string) (tabs.Tab, tea.Cmd) {
 		m.Screen = ScreenDashboard
 		m.Cursor = 0
 		return m, loadStats(m.reader)
+	}
+	return m, nil
+}
+
+// ─── Link to Task (L) ────────────────────────────────────────────────────────
+
+// startLinking opens the "L" picker (rfc-tui.md §5) for obsID: the
+// observation the cursor was on, or the one Observation Detail is showing,
+// when the key was pressed.
+func (m Model) startLinking(obsID int64) (tabs.Tab, tea.Cmd) {
+	m.Linking = true
+	m.LinkObsID = obsID
+	m.LinkResults = nil
+	m.LinkCursor = 0
+	m.LinkQuery.SetValue("")
+	m.LinkQuery.Focus()
+	return m, nil
+}
+
+// cancelLinking closes the picker without writing anything.
+func (m Model) cancelLinking() Model {
+	m.Linking = false
+	m.LinkObsID = 0
+	m.LinkResults = nil
+	m.LinkCursor = 0
+	m.LinkQuery.SetValue("")
+	m.LinkQuery.Blur()
+	return m
+}
+
+// handleLinkingKeys drives the picker while it is open: the task search box
+// first, then the results list shared.Menu renders once a search has run.
+func (m Model) handleLinkingKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
+	if m.LinkQuery.Focused() {
+		switch msg.Type {
+		case tea.KeyEnter:
+			m.LinkQuery.Blur()
+			return m, searchTasksForLink(m.tasks, m.project, m.LinkQuery.Value())
+		case tea.KeyEsc:
+			m = m.cancelLinking()
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.LinkQuery, cmd = m.LinkQuery.Update(msg)
+		return m, cmd
+	}
+
+	switch msg.String() {
+	case "up", "k":
+		if m.LinkCursor > 0 {
+			m.LinkCursor--
+		}
+	case "down", "j":
+		if m.LinkCursor < len(m.LinkResults)-1 {
+			m.LinkCursor++
+		}
+	case "enter":
+		if len(m.LinkResults) > 0 && m.LinkCursor < len(m.LinkResults) {
+			task := m.LinkResults[m.LinkCursor]
+			obsID := m.LinkObsID
+			m = m.cancelLinking()
+			return m, linkObservationToTask(m.tasks, task.ID, obsID)
+		}
+	case "/":
+		m.LinkQuery.Focus()
+	case "esc":
+		m = m.cancelLinking()
 	}
 	return m, nil
 }
