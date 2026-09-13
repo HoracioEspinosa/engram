@@ -59,6 +59,11 @@ type Model struct {
 	project   string
 	selector  selectorModel
 	dashboard dashboardModel
+
+	// showHelp toggles the "?" overlay (rfc-tui.md §7.1). It is root state,
+	// not per-tab: closing it always returns to whatever screen was showing
+	// underneath, untouched.
+	showHelp bool
 }
 
 // New builds the root workspace around the readers its screens consume: mem

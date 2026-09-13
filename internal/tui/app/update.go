@@ -20,6 +20,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, globalKeys.Quit) {
 			return m, tea.Quit
 		}
+		if m.showHelp {
+			// While the "?" overlay (rfc-tui.md §7.1) is open, every key but
+			// the three that close it is swallowed here, before it ever
+			// reaches updateActive: a "j" meant for reading help must not
+			// move a list's cursor on the screen underneath.
+			switch msg.String() {
+			case "?", "esc", "q":
+				m.showHelp = false
+			}
+			return m, nil
+		}
 		return m.updateActive(msg)
 
 	case tabs.NavigateMsg:
@@ -144,6 +155,10 @@ func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case tea.KeyShiftTab:
 					return m.activateRelative(-1)
 				}
+				if keyMsg.String() == "?" {
+					m.showHelp = true
+					return m, nil
+				}
 			}
 		}
 	}
@@ -212,6 +227,9 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, loadSelector(m.projects)
 	case "r":
 		return m, loadDashboard(m.projects, m.project)
+	case "?":
+		m.showHelp = true
+		return m, nil
 	case "q":
 		return m, tea.Quit
 	}
@@ -301,6 +319,9 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "r":
 		return m, loadSelector(m.projects)
+	case "?":
+		m.showHelp = true
+		return m, nil
 	case "q":
 		return m, tea.Quit
 	}

@@ -21,5 +21,13 @@ func (m Model) View() string {
 		}
 	}
 
+	if m.showHelp {
+		// The "?" overlay (rfc-tui.md §7.1) replaces the body outright
+		// rather than compositing over it: bubbles has no layering
+		// primitive in the v1 line this fork stays on (rfc-tui.md §6), and
+		// a full-screen swap keeps the overlay legible at 80 columns too.
+		body = m.viewHelpOverlay()
+	}
+
 	return m.styles.App.Render(body)
 }
