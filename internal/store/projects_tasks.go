@@ -627,3 +627,67 @@ func TaskStateStale(stateSyncedAt *string, staleAfterHours int) bool {
 	}
 	return isTaskStateStale(stateSyncedAt, staleAfterHours)
 }
+
+// ─── TUI Tasks tab (rfc-tui.md §4.3, §9.2) ─────────────────────────────────
+
+// GetTask returns one task by its numeric id, regardless of project. The id
+// is the tasks table's own primary key, so unlike ResolveTaskRef this needs
+// no project to scope the lookup — the TUI's Tasks tab already resolved the
+// id from a project-scoped ListTasks call before it ever reaches here.
+func (s *Store) GetTask(id int64) (Task, error) {
+	return s.getTaskByID(id)
+}
+
+// ErrInvalidTaskState is returned by UpdateTaskStateMirror when state is not
+// one of the values the tasks.state CHECK constraint accepts. It is distinct
+// from the rfc-engram-projects.md §5.0 sentinel errors above: this one guards
+// a write rfc-tui.md §9.2 adds for the TUI, not an engram-projects tool.
+var ErrInvalidTaskState = errors.New("invalid task state")
+
+// mirrorableTaskStates lists every value the tasks.state CHECK constraint
+// accepts (internal/store/projects_schema.go), reusing the internal/tasks
+// constants so the two never drift apart.
+var mirrorableTaskStates = map[string]bool{
+	tasks.StateOpen: true, tasks.StateAnalysis: true, tasks.StateInProgress: true,
+	tasks.StateReview: true, tasks.StateVerified: true, tasks.StateDone: true,
+	tasks.StateBlocked: true, tasks.StateCancelled: true,
+}
+
+// UpdateTaskStateMirror sets a task's local state mirror from the TUI
+// (rfc-tui.md §9.2, ADR-028: "el cambio de state es espejo"). Jira remains
+// the source of truth (D-02): this never talks to Jira and never touches
+// jira_status, jira_status_category or state_synced_at — the columns the
+// sync pipeline reads to detect drift between the mirror and the real Jira
+// status. closed_at is cleared when the mirror moves a task out of a closed
+// state, because the tasks table's CHECK constraint requires closed_at IS
+// NULL outside ('done','cancelled'); it is never set by this path when
+// moving a task into one of those two states, since only a real Jira
+// transition — not a local guess — knows the true closing time.
+func (s *Store) UpdateTaskStateMirror(id int64, state string) error {
+	if !mirrorableTaskStates[state] {
+		return fmt.Errorf("%w: %q", ErrInvalidTaskState, state)
+	}
+	now := s.nowUTC()
+	closesTask := 0
+	if isClosedState(state) {
+		closesTask = 1
+	}
+	return s.withTx(func(tx *sql.Tx) error {
+		res, err := s.execHook(tx, `
+			UPDATE tasks SET state = ?, updated_at = ?,
+				closed_at = CASE WHEN ? THEN closed_at ELSE NULL END
+			WHERE id = ? AND deleted_at IS NULL`,
+			state, now, closesTask, id)
+		if err != nil {
+			return fmt.Errorf("engram-projects: update task state mirror: %w", err)
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("engram-projects: update task state mirror: %w", err)
+		}
+		if affected == 0 {
+			return ErrUnknownTask
+		}
+		return nil
+	})
+}

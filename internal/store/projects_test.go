@@ -621,3 +621,121 @@ func TestLinkTaskObservation_GraphCommitRejectionPersistsNothing(t *testing.T) {
 		t.Fatalf("retry produced linked=%v role=%q, want true/root_cause", result.Linked, result.Role)
 	}
 }
+
+// ─── TUI Tasks tab (rfc-tui.md §4.3, §9.2) ─────────────────────────────────
+
+func TestGetTask_ReturnsAnyProjectByID(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	upserted, err := s.UpsertTask(UpsertTaskParams{
+		Project: "nextcloud", JiraKey: strp("CDBS-10336"), Title: strp("previews"), Kind: strp("incident"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+
+	got, err := s.GetTask(upserted.Task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.JiraKey == nil || *got.JiraKey != "CDBS-10336" {
+		t.Fatalf("GetTask = %+v, want CDBS-10336", got)
+	}
+
+	if _, err := s.GetTask(999999); !errors.Is(err, ErrUnknownTask) {
+		t.Fatalf("GetTask(missing) err = %v, want ErrUnknownTask", err)
+	}
+}
+
+// TestUpdateTaskStateMirror_LeavesJiraSyncFieldsUntouched pins ADR-028's
+// "el cambio de state es espejo": a TUI-driven state change must never look
+// like a Jira-confirmed transition, or the state_stale badge the dashboard
+// and context pack both rely on would lie.
+func TestUpdateTaskStateMirror_LeavesJiraSyncFieldsUntouched(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	upserted, err := s.UpsertTask(UpsertTaskParams{
+		Project: "nextcloud", JiraKey: strp("CDBS-1"), Title: strp("t"), Kind: strp("bugfix"),
+		JiraStatus: strp("In Progress"), JiraStatusCategory: strp("indeterminate"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+	before, err := s.GetTask(upserted.Task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if before.StateSyncedAt == nil {
+		t.Fatal("expected state_synced_at to be set by the Jira-driven upsert")
+	}
+
+	if err := s.UpdateTaskStateMirror(upserted.Task.ID, "review"); err != nil {
+		t.Fatalf("UpdateTaskStateMirror: %v", err)
+	}
+
+	after, err := s.GetTask(upserted.Task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if after.State != "review" {
+		t.Fatalf("state = %q, want review", after.State)
+	}
+	if after.JiraStatus == nil || *after.JiraStatus != "In Progress" {
+		t.Fatalf("jira_status = %v, want untouched \"In Progress\"", after.JiraStatus)
+	}
+	if after.StateSyncedAt == nil || *after.StateSyncedAt != *before.StateSyncedAt {
+		t.Fatalf("state_synced_at = %v, want untouched %v", after.StateSyncedAt, before.StateSyncedAt)
+	}
+}
+
+// TestUpdateTaskStateMirror_ClearsClosedAtWhenReopening pins the CHECK
+// constraint `closed_at IS NULL OR state IN ('done','cancelled')`: mirroring
+// a closed task back open without clearing closed_at would violate it.
+func TestUpdateTaskStateMirror_ClearsClosedAtWhenReopening(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	upserted, err := s.UpsertTask(UpsertTaskParams{
+		Project: "nextcloud", JiraKey: strp("CDBS-2"), Title: strp("t"), Kind: strp("bugfix"), State: strp("done"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+	closed, err := s.GetTask(upserted.Task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if closed.ClosedAt == nil {
+		t.Fatal("expected closed_at to be set for a task created with state=done")
+	}
+
+	if err := s.UpdateTaskStateMirror(upserted.Task.ID, "open"); err != nil {
+		t.Fatalf("UpdateTaskStateMirror: %v", err)
+	}
+
+	reopened, err := s.GetTask(upserted.Task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if reopened.ClosedAt != nil {
+		t.Fatalf("closed_at = %v, want cleared after mirroring the state back to open", reopened.ClosedAt)
+	}
+}
+
+func TestUpdateTaskStateMirror_RejectsAnUnknownState(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	upserted, err := s.UpsertTask(UpsertTaskParams{
+		Project: "nextcloud", JiraKey: strp("CDBS-3"), Title: strp("t"), Kind: strp("bugfix"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+
+	if err := s.UpdateTaskStateMirror(upserted.Task.ID, "in-flight"); !errors.Is(err, ErrInvalidTaskState) {
+		t.Fatalf("err = %v, want ErrInvalidTaskState", err)
+	}
+}
+
+func TestUpdateTaskStateMirror_UnknownTaskID(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+
+	if err := s.UpdateTaskStateMirror(999999, "open"); !errors.Is(err, ErrUnknownTask) {
+		t.Fatalf("err = %v, want ErrUnknownTask", err)
+	}
+}
