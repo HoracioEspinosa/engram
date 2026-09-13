@@ -117,3 +117,39 @@ func TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery(t *testing.T) {
 		t.Fatalf("Query = %q, want %q", msg.Query, "runbook/RB-003")
 	}
 }
+
+// TestNavigateToObservationEmitsAMemoryTargetWithTheObservationID pins
+// rfc-tui.md §3.1 S4's "Enter" on a task's linked observation, the one
+// NavigateMsg constructor no test exercised: app/update.go's own NavigateMsg
+// branch for it is covered through app's tests, but the constructor itself,
+// in isolation, was not.
+func TestNavigateToObservationEmitsAMemoryTargetWithTheObservationID(t *testing.T) {
+	cmd := NavigateToObservation(101)
+	if cmd == nil {
+		t.Fatal("NavigateToObservation should return a non-nil command")
+	}
+
+	msg, ok := cmd().(NavigateMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want NavigateMsg", cmd())
+	}
+	if msg.Target != Memory {
+		t.Fatalf("target = %v, want %v", msg.Target, Memory)
+	}
+	if msg.ObservationID != 101 {
+		t.Fatalf("ObservationID = %d, want 101", msg.ObservationID)
+	}
+}
+
+// TestHomeEmitsHomeMsg pins the "go home" command the root's HomeMsg branch
+// answers to (the Dashboard when a project is active, Memory otherwise):
+// same gap as NavigateToObservation, a real command nothing called directly.
+func TestHomeEmitsHomeMsg(t *testing.T) {
+	cmd := Home()
+	if cmd == nil {
+		t.Fatal("Home should return a non-nil command")
+	}
+	if _, ok := cmd().(HomeMsg); !ok {
+		t.Fatalf("command returned %T, want HomeMsg", cmd())
+	}
+}
