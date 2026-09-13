@@ -19,7 +19,7 @@ import (
 // workspace model, and the store handed to New is the one every screen reads.
 
 func TestNewSatisfiesTheBubbleteaModelContract(t *testing.T) {
-	var m tea.Model = tui.New(nil, "1.0.0-test", "")
+	var m tea.Model = tui.New(nil, "1.0.0-test", "", theme.CatppuccinMocha())
 
 	if cmd := m.Init(); cmd == nil {
 		t.Fatal("Init should return the startup batch")
@@ -81,7 +81,7 @@ func TestNewWiresTheStoreIntoTheMemoryTab(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	var m tea.Model = tui.New(s, "1.0.0-test", "")
+	var m tea.Model = tui.New(s, "1.0.0-test", "", theme.CatppuccinMocha())
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	// Leaving and re-entering the Memory tab reloads the dashboard counters
@@ -112,7 +112,7 @@ func TestNewOpensTheDashboardForAnExplicitProject(t *testing.T) {
 		t.Fatalf("seed project card: %v", err)
 	}
 
-	var m tea.Model = tui.New(s, "1.0.0-test", "clarodrive")
+	var m tea.Model = tui.New(s, "1.0.0-test", "clarodrive", theme.CatppuccinMocha())
 
 	initCmd := m.Init()
 	if initCmd == nil {

@@ -26,6 +26,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/store"
 	engramsync "github.com/HoracioEspinosa/engram/internal/sync"
 	"github.com/HoracioEspinosa/engram/internal/tui"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 	versioncheck "github.com/HoracioEspinosa/engram/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -167,7 +168,9 @@ func stubRuntimeHooks(t *testing.T) {
 		return mcpserver.NewMCPServer("test", "0", mcpserver.WithRecovery())
 	}
 	serveMCP = func(_ *mcpserver.MCPServer, _ ...mcpserver.StdioOption) error { return nil }
-	newTUIModel = func(_ *store.Store, _ string) tui.Model { return tui.New(nil, "", "") }
+	newTUIModel = func(_ *store.Store, _ string, _ theme.Palette) tui.Model {
+		return tui.New(nil, "", "", theme.CatppuccinMocha())
+	}
 	newTeaProgram = func(tea.Model, ...tea.ProgramOption) *tea.Program { return &tea.Program{} }
 	runTeaProgram = func(*tea.Program) (tea.Model, error) { return nil, nil }
 	setupSupportedAgents = setup.SupportedAgents
@@ -583,10 +586,10 @@ func TestCmdTUIResolvesProjectPrecedence(t *testing.T) {
 
 			var gotProject string
 			sawCall := false
-			newTUIModel = func(_ *store.Store, project string) tui.Model {
+			newTUIModel = func(_ *store.Store, project string, _ theme.Palette) tui.Model {
 				sawCall = true
 				gotProject = project
-				return tui.New(nil, "", "")
+				return tui.New(nil, "", "", theme.CatppuccinMocha())
 			}
 
 			_, _, recovered := captureOutputAndRecover(t, func() { cmdTUI(cfg) })
@@ -619,10 +622,10 @@ func TestCmdTUILeavesProjectEmptyWhenNothingResolves(t *testing.T) {
 
 	var gotProject string
 	sawCall := false
-	newTUIModel = func(_ *store.Store, project string) tui.Model {
+	newTUIModel = func(_ *store.Store, project string, _ theme.Palette) tui.Model {
 		sawCall = true
 		gotProject = project
-		return tui.New(nil, "", "")
+		return tui.New(nil, "", "", theme.CatppuccinMocha())
 	}
 
 	_, _, recovered := captureOutputAndRecover(t, func() { cmdTUI(cfg) })
@@ -634,6 +637,140 @@ func TestCmdTUILeavesProjectEmptyWhenNothingResolves(t *testing.T) {
 	}
 	if gotProject != "" {
 		t.Fatalf("project = %q, want empty when nothing resolves", gotProject)
+	}
+}
+
+// TestCmdTUIResolvesThemePrecedence pins rfc-tui.md §8.2's precedence chain
+// for the TUI's theme — flag, then ENGRAM_TUI_THEME, then tui.theme in
+// <data-dir>/config.json, then catppuccin-mocha — the same shape
+// TestCmdTUIResolvesProjectPrecedence already pins for --project.
+//
+// --theme, ENGRAM_TUI_THEME and tui.theme did not exist before this task
+// (T-10.06), so unlike TestNoTwoDistinctRolesShareAColour in
+// internal/tui/theme, there is no pre-existing bug this test reproduces —
+// it was written alongside the implementation it pins.
+func TestCmdTUIResolvesThemePrecedence(t *testing.T) {
+	cfg := testConfig(t)
+	stubRuntimeHooks(t)
+	configPath := filepath.Join(cfg.DataDir, "config.json")
+
+	tests := []struct {
+		name       string
+		args       []string
+		env        string
+		configFile string // "" = no config.json written for this case
+		want       string
+	}{
+		{name: "nothing set falls back to the default", args: []string{"engram", "tui"}, want: "catppuccin-mocha"},
+		{name: "explicit flag wins with no env or config", args: []string{"engram", "tui", "--theme", "kanagawa"}, want: "kanagawa"},
+		{name: "equals form is accepted", args: []string{"engram", "tui", "--theme=elephant"}, want: "elephant"},
+		{name: "ENGRAM_TUI_THEME is used without a flag", args: []string{"engram", "tui"}, env: "kanagawa", want: "kanagawa"},
+		{name: "an explicit flag overrides ENGRAM_TUI_THEME", args: []string{"engram", "tui", "--theme", "elephant"}, env: "kanagawa", want: "elephant"},
+		{name: "tui.theme in config.json is used without a flag or env", args: []string{"engram", "tui"}, configFile: `{"tui":{"theme":"kanagawa"}}`, want: "kanagawa"},
+		{name: "ENGRAM_TUI_THEME overrides tui.theme", args: []string{"engram", "tui"}, env: "elephant", configFile: `{"tui":{"theme":"kanagawa"}}`, want: "elephant"},
+		{name: "an unknown --theme falls back to the default, not to a lower tier", args: []string{"engram", "tui", "--theme", "not-a-real-theme"}, env: "kanagawa", want: "catppuccin-mocha"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withArgs(t, tc.args...)
+			t.Setenv("ENGRAM_TUI_THEME", tc.env)
+
+			if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("clear config.json from a previous case: %v", err)
+			}
+			if tc.configFile != "" {
+				if err := os.WriteFile(configPath, []byte(tc.configFile), 0o644); err != nil {
+					t.Fatalf("write config.json: %v", err)
+				}
+			}
+
+			var gotPalette string
+			sawCall := false
+			newTUIModel = func(_ *store.Store, _ string, palette theme.Palette) tui.Model {
+				sawCall = true
+				gotPalette = palette.Name
+				return tui.New(nil, "", "", palette)
+			}
+
+			_, _, recovered := captureOutputAndRecover(t, func() { cmdTUI(cfg) })
+			if recovered != nil {
+				t.Fatalf("cmdTUI panicked: %v", recovered)
+			}
+			if !sawCall {
+				t.Fatal("newTUIModel was never called")
+			}
+			if gotPalette != tc.want {
+				t.Fatalf("palette = %q, want %q", gotPalette, tc.want)
+			}
+		})
+	}
+}
+
+// TestCmdTUIWarnsOnAnUnknownTheme pins rfc-tui.md §10.1's smoke test line:
+// "engram tui --theme desconocido cae al default con aviso" — falling back
+// silently is not enough, cmdTUI must also print a warning naming the
+// rejected value. Before this change cmdTUI called theme.Resolve directly
+// with no warning at all; this reproduced that gap for real (see this
+// task's report for the literal failure).
+func TestCmdTUIWarnsOnAnUnknownTheme(t *testing.T) {
+	cfg := testConfig(t)
+	stubRuntimeHooks(t)
+	withArgs(t, "engram", "tui", "--theme", "not-a-real-theme")
+
+	newTUIModel = func(_ *store.Store, _ string, palette theme.Palette) tui.Model {
+		return tui.New(nil, "", "", palette)
+	}
+
+	_, stderr, recovered := captureOutputAndRecover(t, func() { cmdTUI(cfg) })
+	if recovered != nil {
+		t.Fatalf("cmdTUI panicked: %v", recovered)
+	}
+	if !strings.Contains(stderr, "not-a-real-theme") {
+		t.Fatalf("stderr should name the rejected theme, got: %q", stderr)
+	}
+	if !strings.Contains(stderr, theme.DefaultThemeName) {
+		t.Fatalf("stderr should name the fallback theme, got: %q", stderr)
+	}
+}
+
+// TestCmdTUIStaysQuietOnAKnownTheme pins the other half: a valid --theme
+// must not print anything to stderr.
+func TestCmdTUIStaysQuietOnAKnownTheme(t *testing.T) {
+	cfg := testConfig(t)
+	stubRuntimeHooks(t)
+	withArgs(t, "engram", "tui", "--theme", "kanagawa")
+
+	newTUIModel = func(_ *store.Store, _ string, palette theme.Palette) tui.Model {
+		return tui.New(nil, "", "", palette)
+	}
+
+	_, stderr, recovered := captureOutputAndRecover(t, func() { cmdTUI(cfg) })
+	if recovered != nil {
+		t.Fatalf("cmdTUI panicked: %v", recovered)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("a known theme should print nothing to stderr, got: %q", stderr)
+	}
+}
+
+// TestReadTUIThemeConfigToleratesAMissingOrMalformedFile pins that an
+// optional file's absence or corruption never turns into a hard failure: a
+// developer with no <data-dir>/config.json (the common case, since nothing
+// else writes this file yet) must still get `engram tui` running.
+func TestReadTUIThemeConfigToleratesAMissingOrMalformedFile(t *testing.T) {
+	cfg := testConfig(t)
+
+	if got := readTUIThemeConfig(cfg); got != "" {
+		t.Fatalf("with no config.json at all, readTUIThemeConfig = %q, want empty", got)
+	}
+
+	configPath := filepath.Join(cfg.DataDir, "config.json")
+	if err := os.WriteFile(configPath, []byte("{not valid json"), 0o644); err != nil {
+		t.Fatalf("write malformed config.json: %v", err)
+	}
+	if got := readTUIThemeConfig(cfg); got != "" {
+		t.Fatalf("with a malformed config.json, readTUIThemeConfig = %q, want empty", got)
 	}
 }
 

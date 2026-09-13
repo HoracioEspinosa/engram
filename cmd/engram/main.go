@@ -41,6 +41,7 @@ import (
 	engramsync "github.com/HoracioEspinosa/engram/internal/sync"
 	"github.com/HoracioEspinosa/engram/internal/timeutil"
 	"github.com/HoracioEspinosa/engram/internal/tui"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 	versioncheck "github.com/HoracioEspinosa/engram/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -74,7 +75,9 @@ var (
 	// detectProject is injectable for testing; wraps project.DetectProject.
 	detectProject = project.DetectProject
 
-	newTUIModel   = func(s *store.Store, project string) tui.Model { return tui.New(s, version, project) }
+	newTUIModel = func(s *store.Store, project string, palette theme.Palette) tui.Model {
+		return tui.New(s, version, project, palette)
+	}
 	newTeaProgram = tea.NewProgram
 	runTeaProgram = (*tea.Program).Run
 
@@ -913,7 +916,12 @@ func cmdTUI(cfg store.Config) {
 	}
 	defer s.Close()
 
-	model := newTUIModel(s, resolveTUIProject())
+	themeFlag, themeEnv, themeConfig := resolveTUITheme(cfg)
+	if unknown := theme.UnknownName(themeFlag, themeEnv, themeConfig); unknown != "" {
+		fmt.Fprintf(os.Stderr, "engram: unknown theme %q, falling back to %s\n", unknown, theme.DefaultThemeName)
+	}
+	palette := theme.Resolve(themeFlag, themeEnv, themeConfig)
+	model := newTUIModel(s, resolveTUIProject(), palette)
 	p := newTeaProgram(model)
 	if _, err := runTeaProgram(p); err != nil {
 		fatal(err)
@@ -952,6 +960,66 @@ func resolveTUIProject() string {
 		fmt.Fprintln(os.Stderr, warning)
 	}
 	return normalized
+}
+
+// resolveTUITheme extracts the three raw candidates rfc-tui.md §8.2's
+// precedence chain resolves between, following the same shape as
+// resolveTUIProject: an explicit --theme (or --theme=) flag, then
+// ENGRAM_TUI_THEME, then the tui.theme key in <data-dir>/config.json.
+// Picking the winner and falling back to the default is theme.Resolve's
+// job, not this function's — resolveTUIProject inlines that choice because
+// it has no registry to validate against, but theme.Resolve is exactly
+// that registry-aware chooser, so this stays a plain three-value extractor
+// and calls straight into it: theme.Resolve(resolveTUITheme(cfg)).
+func resolveTUITheme(cfg store.Config) (flag, env, config string) {
+	for i := 2; i < len(os.Args); i++ {
+		switch {
+		case os.Args[i] == "--theme" && i+1 < len(os.Args):
+			flag = os.Args[i+1]
+			i++
+		case strings.HasPrefix(os.Args[i], "--theme="):
+			flag = strings.TrimPrefix(os.Args[i], "--theme=")
+		}
+	}
+	env = strings.TrimSpace(os.Getenv("ENGRAM_TUI_THEME"))
+	config = readTUIThemeConfig(cfg)
+	return flag, env, config
+}
+
+// tuiConfigFile is the shape of <data-dir>/config.json's "tui" section.
+// rfc-tui.md §8.2 names this file "~/.engram/config.json"; cfg.DataDir is
+// engram's home directory (ENGRAM_DATA_DIR-overridable, cfg.DataDir is
+// ~/.engram by default per store.DefaultConfig), so reading
+// filepath.Join(cfg.DataDir, "config.json") is the same file under that
+// name.
+//
+// This is a different, new file from the per-project ".engram/config.json"
+// internal/project.DetectProjectFull already reads (a repo-relative lock
+// carrying only project_name): that one is scoped to a single repository
+// and does not exist at cfg.DataDir, and this task does not repurpose it —
+// tui.theme is a genuinely new global setting with nowhere else to live.
+type tuiConfigFile struct {
+	TUI struct {
+		Theme string `json:"theme"`
+	} `json:"tui"`
+}
+
+// readTUIThemeConfig reads tui.theme from <data-dir>/config.json. The file
+// not existing is the common case (no such global config has ever been
+// needed before this task) and is not an error; a malformed file is logged
+// and otherwise ignored rather than fatal, since a broken optional config
+// file should not block `engram tui` from starting.
+func readTUIThemeConfig(cfg store.Config) string {
+	data, err := os.ReadFile(filepath.Join(cfg.DataDir, "config.json"))
+	if err != nil {
+		return ""
+	}
+	var parsed tuiConfigFile
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		log.Printf("[engram] ignoring %s: %v", filepath.Join(cfg.DataDir, "config.json"), err)
+		return ""
+	}
+	return strings.TrimSpace(parsed.TUI.Theme)
 }
 
 func cmdSearch(cfg store.Config) {
@@ -2697,7 +2765,13 @@ Commands:
                        Example: engram mcp --tools=agent,projects
                        --project NAME  Set process-level default project (overrides cwd detection).
                                        Also accepted as ENGRAM_PROJECT=NAME env var.
-  tui                Launch interactive terminal UI
+  tui [--project NAME] [--theme NAME]
+                     Launch interactive terminal UI
+                       --project NAME  Open directly on a project's Dashboard, else the Selector.
+                                       Also accepted as ENGRAM_PROJECT=NAME env var.
+                       --theme NAME    Palette: catppuccin-mocha (default) | kanagawa | elephant.
+                                       Also accepted as ENGRAM_TUI_THEME=NAME env var, or the
+                                       tui.theme key in <data-dir>/config.json.
   search <query>     Search memories [--type TYPE] [--project PROJECT] [--scope SCOPE] [--limit N]
   save <title> <msg> Save a memory  [--type TYPE] [--project PROJECT] [--scope SCOPE]
   delete <obs_id>    Delete an observation [--hard] (soft-delete by default; --hard removes permanently)
@@ -2772,6 +2846,9 @@ Environment:
   ENGRAM_PROJECT     Process-level default project override.
                      For "engram serve": fallback for GET /sync/status with no project param.
                      For "engram mcp": sets DefaultProject, overriding cwd detection for all tools.
+  ENGRAM_TUI_THEME   Palette for "engram tui": catppuccin-mocha (default) | kanagawa | elephant.
+                     Precedence: --theme flag, then this var, then tui.theme in
+                     <data-dir>/config.json, then the default.
   ENGRAM_HTTP_TOKEN  Optional Bearer auth for local HTTP server (engram serve).
                      When set, the following routes require Authorization: Bearer <token>:
                        DELETE /sessions/{id}, DELETE /observations/{id}, DELETE /prompts/{id},
