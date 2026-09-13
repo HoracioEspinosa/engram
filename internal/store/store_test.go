@@ -6460,6 +6460,46 @@ func TestMigrateProjectRewritesTheSyncMutationsPayloadToo(t *testing.T) {
 	}
 }
 
+// TestMigrateProjectMovesTasksWhenCanonicalHasNoCardYet is MigrateProject's
+// side of the same reproduction as
+// TestMergeProjectsMovesTasksAndEvidenceWhenCanonicalHasNoCardYet: before
+// project_cards' own identity resolved ahead of the tasks/evidence/
+// runbook_index pass, this would have failed with a foreign key error
+// instead of migrating anything.
+func TestMigrateProjectMovesTasksWhenCanonicalHasNoCardYet(t *testing.T) {
+	s := newTestStore(t)
+	seedProjectCard(t, s, "old-project")
+
+	if _, err := s.db.Exec(
+		`INSERT INTO tasks (id, sync_id, project, jira_key, title, kind) VALUES (1, 'task-1', 'old-project', 'PROJ-100', 'fix upload', 'bugfix')`,
+	); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+
+	result, err := s.MigrateProject("old-project", "new-project")
+	if err != nil {
+		t.Fatalf("MigrateProject must not fail with no canonical card yet: %v", err)
+	}
+	if !result.Migrated {
+		t.Fatal("expected migration to happen")
+	}
+
+	var project string
+	if err := s.db.QueryRow(`SELECT project FROM tasks WHERE id = 1`).Scan(&project); err != nil {
+		t.Fatalf("read task: %v", err)
+	}
+	if project != "new-project" {
+		t.Fatalf("task project = %q, want %q", project, "new-project")
+	}
+	var cardCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM project_cards WHERE slug = ?`, "new-project").Scan(&cardCount); err != nil {
+		t.Fatalf("count new-project card: %v", err)
+	}
+	if cardCount != 1 {
+		t.Fatalf("project_cards has %d row(s) for %q, want exactly 1", cardCount, "new-project")
+	}
+}
+
 // ─── Phase 2: project-name-drift — NormalizeProject, ListProjectNames,
 //              ListProjectsWithStats, MergeProjects tests ─────────────────────
 
@@ -7305,14 +7345,24 @@ func TestMergeProjectsCoversEveryProjectScopedTable(t *testing.T) {
 		t.Fatalf("MergeProjects: %v", err)
 	}
 
-	if len(result.TableRowsMoved) != len(tables) {
-		t.Fatalf("TableRowsMoved has %d table(s) %v, want one entry per table %v",
-			len(result.TableRowsMoved), result.TableRowsMoved, tables)
+	// One entry per table projectScopedTables finds, plus project_cards —
+	// engram-projects' identity table, which has no column literally named
+	// "project" (its own is "slug") and so is invisible to that column
+	// scan; it is discovered and migrated through its own dedicated path
+	// (mergeProjectCardTx) instead. See TestTablesReferencingProjectCards
+	// for the discovery half of that fix on its own.
+	wantTables := len(tables) + 1
+	if len(result.TableRowsMoved) != wantTables {
+		t.Fatalf("TableRowsMoved has %d table(s) %v, want %d (one per table %v, plus %q)",
+			len(result.TableRowsMoved), result.TableRowsMoved, wantTables, tables, projectCardsTable)
 	}
 	for _, table := range tables {
 		if _, ok := result.TableRowsMoved[table.name]; !ok {
 			t.Errorf("TableRowsMoved is missing %q — MergeProjects skipped a table the schema has", table.name)
 		}
+	}
+	if _, ok := result.TableRowsMoved[projectCardsTable]; !ok {
+		t.Errorf("TableRowsMoved is missing %q", projectCardsTable)
 	}
 }
 
@@ -7398,6 +7448,167 @@ func TestMergeProjectsMovesEvidenceTasksRunbooksAndTombstones(t *testing.T) {
 	}
 	if runbookFTSProject != "new-project" {
 		t.Errorf("runbook_index_fts.project = %q, want the trigger to have followed the rename to %q", runbookFTSProject, "new-project")
+	}
+
+	// Both projects already had their own card (seedProjectCard for each),
+	// so this is the "canonical already owns one" half of mergeProjectCardTx:
+	// the source's card must be retired, not overwritten or left behind
+	// duplicating an identity nothing points at anymore.
+	var oldCardCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM project_cards WHERE slug = ?`, "old-project").Scan(&oldCardCount); err != nil {
+		t.Fatalf("count old-project card: %v", err)
+	}
+	if oldCardCount != 0 {
+		t.Errorf("project_cards still has a row for %q, want it retired", "old-project")
+	}
+	var newCardCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM project_cards WHERE slug = ?`, "new-project").Scan(&newCardCount); err != nil {
+		t.Fatalf("count new-project card: %v", err)
+	}
+	if newCardCount != 1 {
+		t.Fatalf("project_cards has %d row(s) for %q, want exactly 1 (canonical's own, kept)", newCardCount, "new-project")
+	}
+	if got := result.TableRowsDropped[projectCardsTable]; got != 1 {
+		t.Errorf("TableRowsDropped[%q] = %d, want 1", projectCardsTable, got)
+	}
+}
+
+// TestTablesReferencingProjectCards pins the exact set of tables discovered
+// via PRAGMA foreign_key_list as of this schema — tasks, evidence and
+// runbook_index, each through a foreign key on their own "project" column
+// into project_cards(slug). A future table with the same FK shape needs no
+// matching addition here; this test is what would need updating to notice
+// that isn't happening automatically.
+func TestTablesReferencingProjectCards(t *testing.T) {
+	s := newTestStore(t)
+
+	tables, err := s.projectScopedTables()
+	if err != nil {
+		t.Fatalf("projectScopedTables: %v", err)
+	}
+	dependents, err := s.tablesReferencingProjectCards(tables)
+	if err != nil {
+		t.Fatalf("tablesReferencingProjectCards: %v", err)
+	}
+
+	got := make(map[string]bool, len(dependents))
+	for _, d := range dependents {
+		got[d.name] = true
+	}
+	want := map[string]bool{"tasks": true, "evidence": true, "runbook_index": true}
+	if len(got) != len(want) {
+		t.Fatalf("tablesReferencingProjectCards = %v, want %v", got, want)
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("tablesReferencingProjectCards is missing %q", name)
+		}
+	}
+
+	// observations, sessions, user_prompts, prompt_tombstones and
+	// sync_mutations have no foreign key into project_cards at all — their
+	// "project" column is a plain string, unconstrained by any card.
+	for _, name := range []string{"observations", "sessions", "user_prompts", "prompt_tombstones", "sync_mutations"} {
+		if got[name] {
+			t.Errorf("tablesReferencingProjectCards wrongly includes %q, which has no such foreign key", name)
+		}
+	}
+}
+
+// TestMergeProjectsMovesTasksAndEvidenceWhenCanonicalHasNoCardYet
+// reproduces the exact failure measured against real data: a project with
+// tasks and evidence merging into a canonical name that has no
+// project_cards row of its own yet. Before mergeProjectCardTx resolved
+// project_cards' own identity ahead of the tasks/evidence/runbook_index
+// pass, the UPDATE against those tables had no parent row to reference —
+// this repo's connection checks foreign keys immediately, not deferred to
+// commit — and the whole merge transaction rolled back with a
+// "FOREIGN KEY constraint failed" error instead of moving anything.
+func TestMergeProjectsMovesTasksAndEvidenceWhenCanonicalHasNoCardYet(t *testing.T) {
+	s := newTestStore(t)
+	seedProjectCard(t, s, "old-project")
+	// Deliberately no card for "new-project" — the exact gap that used to
+	// make this fail.
+
+	if _, err := s.db.Exec(
+		`INSERT INTO tasks (id, sync_id, project, jira_key, title, kind) VALUES (1, 'task-1', 'old-project', 'PROJ-100', 'fix upload', 'bugfix')`,
+	); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO evidence (sync_id, project, task_id, task_sync_id, path, sha256, kind, proves, captured_at)
+		 VALUES ('ev-1', 'old-project', 1, 'task-1', 'shots/one.png', ?, 'png', 'upload works', datetime('now'))`,
+		strings.Repeat("a", 64),
+	); err != nil {
+		t.Fatalf("seed evidence: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"old-project"}, "new-project")
+	if err != nil {
+		t.Fatalf("MergeProjects must not fail with no canonical card yet: %v", err)
+	}
+
+	if got := result.TableRowsMoved[projectCardsTable]; got != 1 {
+		t.Errorf("TableRowsMoved[%q] = %d, want 1 (the source card renamed to become canonical's)", projectCardsTable, got)
+	}
+	if got := result.TableRowsMoved["tasks"]; got != 1 {
+		t.Errorf("TableRowsMoved[tasks] = %d, want 1", got)
+	}
+	if got := result.TableRowsMoved["evidence"]; got != 1 {
+		t.Errorf("TableRowsMoved[evidence] = %d, want 1", got)
+	}
+
+	var cardCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM project_cards WHERE slug = ?`, "new-project").Scan(&cardCount); err != nil {
+		t.Fatalf("count new-project card: %v", err)
+	}
+	if cardCount != 1 {
+		t.Fatalf("project_cards has %d row(s) for %q, want exactly 1", cardCount, "new-project")
+	}
+	var oldCardCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM project_cards WHERE slug = ?`, "old-project").Scan(&oldCardCount); err != nil {
+		t.Fatalf("count old-project card: %v", err)
+	}
+	if oldCardCount != 0 {
+		t.Errorf("project_cards still has a row for %q, want it renamed away", "old-project")
+	}
+
+	for _, table := range []string{"tasks", "evidence"} {
+		var project string
+		if err := s.db.QueryRow(`SELECT project FROM ` + table + ` LIMIT 1`).Scan(&project); err != nil {
+			t.Fatalf("read %s: %v", table, err)
+		}
+		if project != "new-project" {
+			t.Errorf("%s.project = %q, want %q", table, project, "new-project")
+		}
+	}
+}
+
+// TestMergeProjectCardBumpsUpdatedAtOnRename pins that renaming the card
+// also bumps its own updated_at — project_cards already uses
+// incomingWinsLWW on pull (RFC section 10.3), and an untouched clock would
+// leave that guard nothing to compare a stale pull against, the same gap
+// closed for observations and tasks elsewhere in this line of work.
+func TestMergeProjectCardBumpsUpdatedAtOnRename(t *testing.T) {
+	s := newTestStore(t)
+	const originalUpdatedAt = "2026-01-01T00:00:00Z"
+	if _, err := s.db.Exec(
+		`INSERT INTO project_cards (slug, sync_id, display_name, updated_at) VALUES (?, ?, ?, ?)`,
+		"old-project", "card-old", "old-project", originalUpdatedAt,
+	); err != nil {
+		t.Fatalf("seed card: %v", err)
+	}
+
+	if _, err := s.MergeProjects([]string{"old-project"}, "new-project"); err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+
+	var updatedAt string
+	if err := s.db.QueryRow(`SELECT updated_at FROM project_cards WHERE slug = ?`, "new-project").Scan(&updatedAt); err != nil {
+		t.Fatalf("read renamed card: %v", err)
+	}
+	if updatedAt == originalUpdatedAt {
+		t.Fatalf("updated_at = %q, want it bumped by the rename, not left at its pre-rename value", updatedAt)
 	}
 }
 

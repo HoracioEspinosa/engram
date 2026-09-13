@@ -4496,6 +4496,10 @@ func (s *Store) MigrateProject(oldName, newName string) (*MigrateResult, error) 
 	if err != nil {
 		return nil, fmt.Errorf("discover project-scoped tables: %w", err)
 	}
+	cardDependents, err := s.tablesReferencingProjectCards(tables)
+	if err != nil {
+		return nil, fmt.Errorf("discover project_cards dependents: %w", err)
+	}
 
 	// Check if old project has any records, across every project-scoped
 	// table rather than the original three — a project whose only rows
@@ -4506,17 +4510,35 @@ func (s *Store) MigrateProject(oldName, newName string) (*MigrateResult, error) 
 		return nil, fmt.Errorf("check old project: %w", err)
 	}
 	if !exists {
-		return &MigrateResult{}, nil
+		var cardExists bool
+		if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM project_cards WHERE slug = ?)`, oldName).Scan(&cardExists); err != nil {
+			return nil, fmt.Errorf("check old project card: %w", err)
+		}
+		if !cardExists {
+			return &MigrateResult{}, nil
+		}
 	}
 
 	result := &MigrateResult{Migrated: true}
 
 	err = s.withTx(func(tx *sql.Tx) error {
 		sourceVariants := []string{oldName}
+
+		// project_cards must resolve before tasks, evidence and
+		// runbook_index below — see mergeProjectCardTx's doc comment and
+		// MergeProjects' identical ordering for why.
+		_, _, dependentMoved, err := s.mergeProjectCardTx(tx, newName, sourceVariants, cardDependents)
+		if err != nil {
+			return fmt.Errorf("migrate %s %q → %q: %w", projectCardsTable, oldName, newName, err)
+		}
+
 		for _, table := range tables {
 			moved, _, err := s.mergeProjectScopedTableTx(tx, table, newName, sourceVariants)
 			if err != nil {
 				return fmt.Errorf("migrate %s %q → %q: %w", table.name, oldName, newName, err)
+			}
+			if n := dependentMoved[table.name]; n > 0 {
+				moved += n
 			}
 			switch table.name {
 			case "observations":
@@ -4829,10 +4851,14 @@ func (s *Store) MergeProjects(sources []string, canonical string) (*MergeResult,
 	if err != nil {
 		return nil, fmt.Errorf("discover project-scoped tables: %w", err)
 	}
+	cardDependents, err := s.tablesReferencingProjectCards(tables)
+	if err != nil {
+		return nil, fmt.Errorf("discover project_cards dependents: %w", err)
+	}
 
 	result := &MergeResult{
 		Canonical:        canonical,
-		TableRowsMoved:   make(map[string]int64, len(tables)),
+		TableRowsMoved:   make(map[string]int64, len(tables)+1),
 		TableRowsDropped: make(map[string]int64),
 		SourcesSkipped:   make(map[string]string),
 	}
@@ -4875,6 +4901,30 @@ func (s *Store) MergeProjects(sources []string, canonical string) (*MergeResult,
 			}
 
 			var sourceMoved, sourceDropped int64
+
+			// project_cards must resolve before tasks, evidence and
+			// runbook_index below: each of those carries a foreign key
+			// into project_cards(slug) that this connection checks
+			// immediately, so canonical needs a card to reference before
+			// any UPDATE can set their "project" column to it. See
+			// mergeProjectCardTx's doc comment for why dependentMoved,
+			// not those tables' own UPDATE further down, is what
+			// correctly counts rows a card rename cascaded into moving.
+			cardMoved, cardDropped, dependentMoved, err := s.mergeProjectCardTx(tx, canonical, sourceVariants, cardDependents)
+			if err != nil {
+				return fmt.Errorf("merge %s %q → %q: %w", projectCardsTable, srcNormalized, canonical, err)
+			}
+			result.TableRowsMoved[projectCardsTable] += cardMoved
+			sourceMoved += cardMoved
+			if cardDropped > 0 {
+				result.TableRowsDropped[projectCardsTable] += cardDropped
+				sourceDropped += cardDropped
+			}
+			for name, n := range dependentMoved {
+				result.TableRowsMoved[name] += n
+				sourceMoved += n
+			}
+
 			for _, table := range tables {
 				moved, dropped, err := s.mergeProjectScopedTableTx(tx, table, canonical, sourceVariants)
 				if err != nil {
@@ -5017,6 +5067,131 @@ func (s *Store) projectScopedTables() ([]projectScopedTable, error) {
 		}
 	}
 	return tables, nil
+}
+
+// projectCardsTable is engram-projects' identity table: one row per
+// project, keyed by "slug" rather than "project" (see projectScopedTables'
+// doc comment — that column-name difference is exactly why a scan for a
+// literal "project" column never finds it), and the parent every one of
+// its dependents (see tablesReferencingProjectCards) enforces a foreign
+// key against.
+const projectCardsTable = "project_cards"
+
+// tablesReferencingProjectCards discovers, via PRAGMA foreign_key_list on
+// each of tables, which ones have a foreign key whose target is
+// project_cards(slug) through their own "project" column — tasks, evidence
+// and runbook_index as of this schema. Discovered rather than named by
+// hand for the same reason projectScopedTables itself is: a future table
+// added with the same shape is covered automatically, and this is exactly
+// the check that would have caught project_cards being left out of
+// mergeProjectScopedTableTx's original table-column scan in the first
+// place — those three tables' own foreign keys already said, in the
+// schema, that a fourth table's identity needed to move too.
+func (s *Store) tablesReferencingProjectCards(tables []projectScopedTable) ([]projectScopedTable, error) {
+	var dependents []projectScopedTable
+	for _, table := range tables {
+		// See projectScopedTables' matching comment: table.name is
+		// schema-discovered, never caller input.
+		rows, err := s.db.Query(fmt.Sprintf("PRAGMA foreign_key_list(%q)", table.name))
+		if err != nil {
+			return nil, fmt.Errorf("foreign_key_list(%s): %w", table.name, err)
+		}
+		references := false
+		for rows.Next() {
+			var id, seq int
+			var refTable, from, to, onUpdate, onDelete, match string
+			if err := rows.Scan(&id, &seq, &refTable, &from, &to, &onUpdate, &onDelete, &match); err != nil {
+				return nil, closeRowsWithError(rows, fmt.Errorf("scan foreign_key_list(%s): %w", table.name, err))
+			}
+			if refTable == projectCardsTable && from == "project" && to == "slug" {
+				references = true
+			}
+		}
+		if err := rows.Close(); err != nil {
+			return nil, fmt.Errorf("foreign_key_list(%s): %w", table.name, err)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("foreign_key_list(%s): %w", table.name, err)
+		}
+		if references {
+			dependents = append(dependents, table)
+		}
+	}
+	return dependents, nil
+}
+
+// mergeProjectCardTx resolves project_cards' own identity for one merge —
+// tasks, evidence and runbook_index (see tablesReferencingProjectCards)
+// all carry ON UPDATE CASCADE / ON DELETE RESTRICT foreign keys into
+// project_cards(slug), and this repo's connection checks foreign keys
+// immediately, not deferred to commit — so canonical needs a card to point
+// at before this function's caller issues a single UPDATE against any of
+// those three tables, or that UPDATE fails outright with no parent row to
+// reference.
+//
+// Two cases, the same shape mergeProjectScopedTableTx already uses for
+// sync_enrolled_projects and cloud_upgrade_state:
+//
+//   - canonical has no card yet, a source variant does: that card is
+//     renamed to canonical (its slug is its only identity — nothing else
+//     distinguishes "this card" from "a card"), which also bumps its
+//     updated_at (project_cards already uses incomingWinsLWW on pull,
+//     exactly like tasks — an untouched clock here would leave that guard
+//     nothing to compare against, the same gap closed for observations
+//     and tasks by mergeProjectScopedTableTx's own hasUpdatedAt handling).
+//     Renaming a referenced primary key cascades to every dependent row
+//     still pointing at it, before this function's own accounting would
+//     see it: dependentMoved is populated from a COUNT taken immediately
+//     before the rename precisely so those rows are still credited to the
+//     right table instead of the cascade making them invisible to
+//     RowsAffected() on whatever UPDATE the caller runs against dependents
+//     afterward.
+//   - canonical already has its own card: dependents are repointed to it
+//     explicitly first (a plain UPDATE, not a rename, so no cascade is in
+//     play and RowsAffected() is accurate on its own), then the source's
+//     now-unreferenced card is deleted — that order is load-bearing, since
+//     deleting it first, while a dependent still points at it, is exactly
+//     what ON DELETE RESTRICT exists to refuse.
+func (s *Store) mergeProjectCardTx(tx *sql.Tx, canonical string, sourceVariants []string, dependents []projectScopedTable) (cardMoved, cardDropped int64, dependentMoved map[string]int64, err error) {
+	dependentMoved = make(map[string]int64, len(dependents))
+	for _, variant := range sourceVariants {
+		for _, dep := range dependents {
+			var n int64
+			if err := tx.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE project = ?`, dep.name), variant).Scan(&n); err != nil {
+				return cardMoved, cardDropped, dependentMoved, fmt.Errorf("count %s referencing %q: %w", dep.name, variant, err)
+			}
+			if n > 0 {
+				dependentMoved[dep.name] += n
+			}
+		}
+
+		res, renameErr := s.execHook(tx, `UPDATE project_cards SET slug = ?, updated_at = datetime('now') WHERE slug = ?`, canonical, variant)
+		if renameErr == nil {
+			n, _ := res.RowsAffected()
+			cardMoved += n
+			continue
+		}
+		if !isPrimaryKeyConflict(renameErr) {
+			return cardMoved, cardDropped, dependentMoved, renameErr
+		}
+
+		for _, dep := range dependents {
+			setClause := "project = ?"
+			if dep.hasUpdatedAt {
+				setClause += ", updated_at = datetime('now')"
+			}
+			if _, err := s.execHook(tx, fmt.Sprintf(`UPDATE %s SET %s WHERE project = ?`, dep.name, setClause), canonical, variant); err != nil {
+				return cardMoved, cardDropped, dependentMoved, fmt.Errorf("repoint %s from %q to %q: %w", dep.name, variant, canonical, err)
+			}
+		}
+		res, err := s.execHook(tx, `DELETE FROM project_cards WHERE slug = ?`, variant)
+		if err != nil {
+			return cardMoved, cardDropped, dependentMoved, fmt.Errorf("retire card %q: %w", variant, err)
+		}
+		n, _ := res.RowsAffected()
+		cardDropped += n
+	}
+	return cardMoved, cardDropped, dependentMoved, nil
 }
 
 // mergeProjectScopedTableTx migrates table's rows from sourceVariants to
