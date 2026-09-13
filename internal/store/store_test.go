@@ -2501,6 +2501,107 @@ func TestMarkSyncPendingClearsDegradedMetadata(t *testing.T) {
 	}
 }
 
+// TestApplyObservationUpsertRejectsAStaleProjectRevert is the scenario
+// behind ADR-060's "the cloud can undo the consolidation on its own":
+// MergeProjects renames a row's project without minting a new updated_at
+// (mergeProjectScopedTableTx never touches it), so a pull that later
+// arrives carrying the pre-merge state — same content, same original
+// updated_at, but the merged-away project — must not be allowed to win
+// just because it happened to apply last. Before the last-write-wins guard
+// in applyObservationUpsertTx, nothing compared timestamps at all and this
+// pull would have silently reverted the merge.
+func TestApplyObservationUpsertRejectsAStaleProjectRevert(t *testing.T) {
+	s := newTestStore(t)
+
+	const originalUpdatedAt = "2026-01-01T00:00:00Z"
+	if _, err := s.db.Exec(`INSERT INTO sessions (id, project, directory) VALUES (?, ?, ?)`, "s1", "old-project", "/work"); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO observations (sync_id, session_id, type, title, content, project, scope, normalized_hash, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"obs-1", "s1", "decision", "renamed", "unchanged content", "old-project", "project", "hash-1", originalUpdatedAt, originalUpdatedAt,
+	); err != nil {
+		t.Fatalf("seed observation under old-project: %v", err)
+	}
+
+	// The merge itself bumps updated_at (see mergeProjectScopedTableTx's
+	// hasUpdatedAt handling) — that bump, not a digest coincidence, is what
+	// the guard below actually relies on.
+	if _, err := s.MergeProjects([]string{"old-project"}, "new-project"); err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+
+	// The pulled mutation describes the pre-merge state: same content, the
+	// original pre-merge updated_at, and the project the merge has since
+	// moved away from — exactly what an un-corrected outbound mutation
+	// from before the rename would still say (mergeSyncMutationsTx is the
+	// half of this fix that keeps that from being sent at all; this test
+	// covers what must also hold on the receiving end, in case it is —
+	// a replica running older code, for instance).
+	stalePull := SyncMutation{
+		Seq:       1,
+		TargetKey: DefaultSyncTargetKey,
+		Entity:    SyncEntityObservation,
+		EntityKey: "obs-1",
+		Op:        SyncOpUpsert,
+		Payload: fmt.Sprintf(
+			`{"sync_id":"obs-1","session_id":"s1","type":"decision","title":"renamed","content":"unchanged content","project":"old-project","scope":"project","updated_at":%q}`,
+			originalUpdatedAt,
+		),
+	}
+	if err := s.ApplyPulledMutation(DefaultSyncTargetKey, stalePull); err != nil {
+		t.Fatalf("apply stale pull: %v", err)
+	}
+
+	var project string
+	if err := s.db.QueryRow(`SELECT project FROM observations WHERE sync_id = ?`, "obs-1").Scan(&project); err != nil {
+		t.Fatalf("read observation: %v", err)
+	}
+	if project != "new-project" {
+		t.Fatalf("project = %q after a stale pull, want %q preserved (last-write-wins must reject it)", project, "new-project")
+	}
+}
+
+// TestApplyObservationUpsertAppliesAGenuinelyNewerUpdate guards against the
+// LWW fix being overly conservative: a pull whose updated_at is actually
+// later than what is stored must still apply.
+func TestApplyObservationUpsertAppliesAGenuinelyNewerUpdate(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(`INSERT INTO sessions (id, project, directory) VALUES (?, ?, ?)`, "s1", "engram", "/work"); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO observations (sync_id, session_id, type, title, content, project, scope, normalized_hash, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"obs-1", "s1", "decision", "original title", "original content", "engram", "project", "hash-1",
+		"2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z",
+	); err != nil {
+		t.Fatalf("seed observation: %v", err)
+	}
+
+	newerPull := SyncMutation{
+		Seq:       1,
+		TargetKey: DefaultSyncTargetKey,
+		Entity:    SyncEntityObservation,
+		EntityKey: "obs-1",
+		Op:        SyncOpUpsert,
+		Payload:   `{"sync_id":"obs-1","session_id":"s1","type":"decision","title":"edited title","content":"edited content","project":"engram","scope":"project","updated_at":"2026-01-02T00:00:00Z"}`,
+	}
+	if err := s.ApplyPulledMutation(DefaultSyncTargetKey, newerPull); err != nil {
+		t.Fatalf("apply newer pull: %v", err)
+	}
+
+	var title string
+	if err := s.db.QueryRow(`SELECT title FROM observations WHERE sync_id = ?`, "obs-1").Scan(&title); err != nil {
+		t.Fatalf("read observation: %v", err)
+	}
+	if title != "edited title" {
+		t.Fatalf("title = %q, want the genuinely newer pull to have applied", title)
+	}
+}
+
 func TestApplyRemoteMutationIdempotent(t *testing.T) {
 	s := newTestStore(t)
 
@@ -6278,6 +6379,87 @@ func TestMigrateProjectIdempotent(t *testing.T) {
 	}
 }
 
+// TestMigrateProjectMovesEvidenceAndTasksToo pins that MigrateProject shares
+// MergeProjects' fixed table coverage instead of its own separate,
+// hand-written three-table list: a project whose only data lives in
+// evidence and tasks — never observations, sessions or user_prompts — must
+// still migrate.
+func TestMigrateProjectMovesEvidenceAndTasksToo(t *testing.T) {
+	s := newTestStore(t)
+	seedProjectCard(t, s, "old-project")
+	seedProjectCard(t, s, "new-project")
+
+	if _, err := s.db.Exec(
+		`INSERT INTO tasks (id, sync_id, project, jira_key, title, kind) VALUES (1, 'task-1', 'old-project', 'PROJ-100', 'fix upload', 'bugfix')`,
+	); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO evidence (sync_id, project, task_id, task_sync_id, path, sha256, kind, proves, captured_at)
+		 VALUES ('ev-1', 'old-project', 1, 'task-1', 'shots/one.png', ?, 'png', 'upload works', datetime('now'))`,
+		strings.Repeat("a", 64),
+	); err != nil {
+		t.Fatalf("seed evidence: %v", err)
+	}
+
+	result, err := s.MigrateProject("old-project", "new-project")
+	if err != nil {
+		t.Fatalf("MigrateProject: %v", err)
+	}
+	if !result.Migrated {
+		t.Fatal("expected migration to happen — evidence and tasks had rows even though the original three tables did not")
+	}
+
+	for _, table := range []string{"tasks", "evidence"} {
+		var remaining int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE project = ?`, "old-project").Scan(&remaining); err != nil {
+			t.Fatalf("count remaining %s rows: %v", table, err)
+		}
+		if remaining != 0 {
+			t.Errorf("%s still has %d row(s) under the old project name", table, remaining)
+		}
+		var migrated int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE project = ?`, "new-project").Scan(&migrated); err != nil {
+			t.Fatalf("count migrated %s rows: %v", table, err)
+		}
+		if migrated != 1 {
+			t.Errorf("%s has %d row(s) under the new project name, want 1", table, migrated)
+		}
+	}
+}
+
+// TestMigrateProjectRewritesTheSyncMutationsPayloadToo pins that
+// MigrateProject shares mergeSyncMutationsTx with MergeProjects instead of
+// a plain column-only UPDATE: the un-acked mutation's embedded payload
+// project must move with the column, not just the column.
+func TestMigrateProjectRewritesTheSyncMutationsPayloadToo(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(
+		`INSERT INTO sync_mutations (target_key, entity, entity_key, op, payload, source, project)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		DefaultSyncTargetKey, SyncEntityEvidence, "ev-1", SyncOpUpsert,
+		`{"sync_id":"ev-1","project":"old-project"}`, SyncSourceLocal, "old-project",
+	); err != nil {
+		t.Fatalf("seed sync_mutations: %v", err)
+	}
+
+	if _, err := s.MigrateProject("old-project", "new-project"); err != nil {
+		t.Fatalf("MigrateProject: %v", err)
+	}
+
+	var project, payload string
+	if err := s.db.QueryRow(`SELECT project, payload FROM sync_mutations WHERE entity_key = 'ev-1'`).Scan(&project, &payload); err != nil {
+		t.Fatalf("read migrated row: %v", err)
+	}
+	if project != "new-project" {
+		t.Fatalf("column project = %q, want %q", project, "new-project")
+	}
+	if !strings.Contains(payload, `"project":"new-project"`) {
+		t.Fatalf("payload = %q, want its embedded project field rewritten too", payload)
+	}
+}
+
 // ─── Phase 2: project-name-drift — NormalizeProject, ListProjectNames,
 //              ListProjectsWithStats, MergeProjects tests ─────────────────────
 
@@ -7047,35 +7229,41 @@ func TestProjectScopedTablesMatchesTheLiveSchema(t *testing.T) {
 		t.Fatalf("projectScopedTables: %v", err)
 	}
 
-	got := make(map[string]bool, len(tables))
-	gotPK := make(map[string]bool, len(tables))
+	type wantShape struct {
+		projectPK    bool
+		hasUpdatedAt bool
+	}
+	got := make(map[string]projectScopedTable, len(tables))
 	for _, table := range tables {
-		got[table.name] = true
-		gotPK[table.name] = table.projectPK
+		got[table.name] = table
 	}
 
-	want := map[string]bool{
-		"cloud_upgrade_state":    true, // PK
-		"evidence":               false,
-		"observations":           false,
-		"prompt_tombstones":      false,
-		"runbook_index":          false,
-		"sessions":               false,
-		"sync_enrolled_projects": true, // PK
-		"sync_mutations":         false,
-		"tasks":                  false,
-		"user_prompts":           false,
+	want := map[string]wantShape{
+		"cloud_upgrade_state":    {projectPK: true, hasUpdatedAt: true},
+		"evidence":               {},
+		"observations":           {hasUpdatedAt: true},
+		"prompt_tombstones":      {},
+		"runbook_index":          {},
+		"sessions":               {},
+		"sync_enrolled_projects": {projectPK: true},
+		"sync_mutations":         {},
+		"tasks":                  {hasUpdatedAt: true},
+		"user_prompts":           {},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("projectScopedTables returned %d table(s) %v, want %d %v", len(got), got, len(want), want)
 	}
-	for name, wantPK := range want {
-		if !got[name] {
+	for name, wantShape := range want {
+		table, ok := got[name]
+		if !ok {
 			t.Errorf("projectScopedTables is missing %q", name)
 			continue
 		}
-		if gotPK[name] != wantPK {
-			t.Errorf("projectScopedTables[%q].projectPK = %v, want %v", name, gotPK[name], wantPK)
+		if table.projectPK != wantShape.projectPK {
+			t.Errorf("projectScopedTables[%q].projectPK = %v, want %v", name, table.projectPK, wantShape.projectPK)
+		}
+		if table.hasUpdatedAt != wantShape.hasUpdatedAt {
+			t.Errorf("projectScopedTables[%q].hasUpdatedAt = %v, want %v", name, table.hasUpdatedAt, wantShape.hasUpdatedAt)
 		}
 	}
 
@@ -7085,7 +7273,7 @@ func TestProjectScopedTablesMatchesTheLiveSchema(t *testing.T) {
 	// tables too. They must never appear here — see projectScopedTables'
 	// doc comment for why an UPDATE against one directly would be wrong.
 	for _, ftsTable := range []string{"observations_fts", "prompts_fts", "tasks_fts", "runbook_index_fts"} {
-		if got[ftsTable] {
+		if _, ok := got[ftsTable]; ok {
 			t.Errorf("projectScopedTables must exclude the FTS5 virtual table %q", ftsTable)
 		}
 	}
@@ -7244,6 +7432,188 @@ func TestMergeProjectsRenamesSyncMutationsRows(t *testing.T) {
 	}
 	if remaining != 0 {
 		t.Fatalf("sync_mutations still has %d row(s) under the merged-away project", remaining)
+	}
+}
+
+// TestMergeProjectsRewritesTheSyncMutationsPayloadNotJustTheColumn pins the
+// actual defect: an un-acked mutation's "project" is recorded twice — the
+// column, and the JSON payload that is what actually gets transmitted.
+// Renaming only the column would make every local query agree the row
+// belongs to canonical while still queuing the old name to leave the
+// machine. Both must change together.
+func TestMergeProjectsRewritesTheSyncMutationsPayloadNotJustTheColumn(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(
+		`INSERT INTO sync_mutations (target_key, entity, entity_key, op, payload, source, project)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		DefaultSyncTargetKey, SyncEntityEvidence, "ev-1", SyncOpUpsert,
+		`{"sync_id":"ev-1","project":"old-project","path":"shots/one.png"}`, SyncSourceLocal, "old-project",
+	); err != nil {
+		t.Fatalf("seed sync_mutations: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"old-project"}, "new-project")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+	if result.TableRowsMoved["sync_mutations"] != 1 {
+		t.Fatalf("TableRowsMoved[sync_mutations] = %d, want 1", result.TableRowsMoved["sync_mutations"])
+	}
+
+	var project, payload string
+	if err := s.db.QueryRow(`SELECT project, payload FROM sync_mutations WHERE entity_key = 'ev-1'`).Scan(&project, &payload); err != nil {
+		t.Fatalf("read migrated row: %v", err)
+	}
+	if project != "new-project" {
+		t.Fatalf("column project = %q, want %q", project, "new-project")
+	}
+	if !strings.Contains(payload, `"project":"new-project"`) {
+		t.Fatalf("payload = %q, want its embedded project field rewritten too — the column alone is not what gets sent to the cloud", payload)
+	}
+	if strings.Contains(payload, "old-project") {
+		t.Fatalf("payload = %q, still names the merged-away project somewhere", payload)
+	}
+	if !strings.Contains(payload, `"path":"shots/one.png"`) {
+		t.Fatalf("payload = %q, rewriting the project field must not disturb the rest of the payload", payload)
+	}
+}
+
+// TestMergeProjectsLeavesAckedSyncMutationsUntouched pins the other half of
+// the same fix: an acked mutation already left this machine — rewriting it
+// now would not undo that send, only misdescribe it afterward. Whether the
+// cloud still has the wrong project for this entity is what the widened
+// projectNeedsBackfill guard (a separate, paired fix) is responsible for
+// correcting, by enqueuing a fresh mutation — not this one lying about what
+// was actually transmitted.
+func TestMergeProjectsLeavesAckedSyncMutationsUntouched(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(
+		`INSERT INTO sync_mutations (target_key, entity, entity_key, op, payload, source, project, acked_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+		DefaultSyncTargetKey, SyncEntityEvidence, "ev-1", SyncOpUpsert,
+		`{"sync_id":"ev-1","project":"old-project"}`, SyncSourceLocal, "old-project",
+	); err != nil {
+		t.Fatalf("seed acked sync_mutations: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"old-project"}, "new-project")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+	if result.TableRowsMoved["sync_mutations"] != 0 {
+		t.Fatalf("TableRowsMoved[sync_mutations] = %d, want 0 — an acked row must not be touched", result.TableRowsMoved["sync_mutations"])
+	}
+
+	var project, payload string
+	if err := s.db.QueryRow(`SELECT project, payload FROM sync_mutations WHERE entity_key = 'ev-1'`).Scan(&project, &payload); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if project != "old-project" {
+		t.Fatalf("column project = %q, want it left exactly as sent: %q", project, "old-project")
+	}
+	if !strings.Contains(payload, "old-project") {
+		t.Fatalf("payload = %q, want it left exactly as it was actually transmitted", payload)
+	}
+}
+
+// TestMergeProjectsSyncMutationsRewriteNeverInjectsAMissingProjectField pins
+// the safety property that keeps the json_set rewrite from corrupting a
+// payload shape that never carried a "project" key: it must be left
+// byte-for-byte identical, not gain a field the entity type's payload
+// struct never serializes.
+func TestMergeProjectsSyncMutationsRewriteNeverInjectsAMissingProjectField(t *testing.T) {
+	s := newTestStore(t)
+
+	const original = `{"sync_id":"tl-1","task_sync_id":"task-1","observation_sync_id":"obs-1"}`
+	if _, err := s.db.Exec(
+		`INSERT INTO sync_mutations (target_key, entity, entity_key, op, payload, source, project)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		DefaultSyncTargetKey, SyncEntityTaskLink, "tl-1", SyncOpUpsert, original, SyncSourceLocal, "old-project",
+	); err != nil {
+		t.Fatalf("seed sync_mutations: %v", err)
+	}
+
+	if _, err := s.MergeProjects([]string{"old-project"}, "new-project"); err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+
+	var payload string
+	if err := s.db.QueryRow(`SELECT payload FROM sync_mutations WHERE entity_key = 'tl-1'`).Scan(&payload); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if payload != original {
+		t.Fatalf("payload = %q, want it left byte-for-byte identical (no \"project\" key to rewrite)", payload)
+	}
+}
+
+// TestMergeProjectsBackfillEnqueuesAFreshMutationWhenTheOnlyExistingOneIsStale
+// closes the loop between the two paired fixes: mergeSyncMutationsTx
+// deliberately leaves an acked mutation alone (see
+// TestMergeProjectsLeavesAckedSyncMutationsUntouched), which means the
+// cloud's own copy is not corrected by that fix alone. This test pins that
+// the widened projectNeedsBackfill guard is what actually closes the gap:
+// an observation whose only existing mutation is an acked one naming the
+// merged-away project must get a fresh, un-acked mutation naming canonical
+// after the merge — the old guard ("does any mutation exist for this
+// entity_key") would have seen the acked one and concluded there was
+// nothing to do, leaving the cloud's stale copy permanently uncorrected.
+func TestMergeProjectsBackfillEnqueuesAFreshMutationWhenTheOnlyExistingOneIsStale(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(`INSERT INTO sessions (id, project, directory) VALUES (?, ?, ?)`, "s1", "old-project", "/work"); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO observations (sync_id, session_id, type, title, content, project, scope, normalized_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"obs-1", "s1", "decision", "t", "c", "old-project", "project", "hash-1",
+	); err != nil {
+		t.Fatalf("seed observation: %v", err)
+	}
+	// A mutation that already reached the cloud before the rename, still
+	// naming the merged-away project — mergeSyncMutationsTx must leave this
+	// exact row alone (it is history of what was actually sent).
+	if _, err := s.db.Exec(
+		`INSERT INTO sync_mutations (target_key, entity, entity_key, op, payload, source, project, acked_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+		DefaultSyncTargetKey, SyncEntityObservation, "obs-1", SyncOpUpsert,
+		`{"sync_id":"obs-1","session_id":"s1","type":"decision","title":"t","content":"c","project":"old-project","scope":"project"}`,
+		SyncSourceLocal, "old-project",
+	); err != nil {
+		t.Fatalf("seed acked mutation: %v", err)
+	}
+
+	if _, err := s.MergeProjects([]string{"old-project"}, "new-project"); err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sync_mutations WHERE entity_key = 'obs-1'`).Scan(&total); err != nil {
+		t.Fatalf("count mutations: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("sync_mutations for obs-1 = %d, want 2 (the old acked one, left alone, plus a fresh one)", total)
+	}
+
+	var freshUnacked int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sync_mutations WHERE entity_key = 'obs-1' AND acked_at IS NULL AND project = ?`, "new-project",
+	).Scan(&freshUnacked); err != nil {
+		t.Fatalf("count fresh mutation: %v", err)
+	}
+	if freshUnacked != 1 {
+		t.Fatalf("fresh un-acked mutation under the canonical project = %d, want 1 — the widened backfill guard should have enqueued one to correct the cloud's stale copy", freshUnacked)
+	}
+
+	var ackedStillStale int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sync_mutations WHERE entity_key = 'obs-1' AND acked_at IS NOT NULL AND project = ?`, "old-project",
+	).Scan(&ackedStillStale); err != nil {
+		t.Fatalf("count acked mutation: %v", err)
+	}
+	if ackedStillStale != 1 {
+		t.Fatalf("acked mutation still naming the old project = %d, want 1 — it must be left exactly as sent", ackedStillStale)
 	}
 }
 

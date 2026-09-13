@@ -4471,22 +4471,37 @@ type MigrateResult struct {
 	PromptsUpdated      int64 `json:"prompts_updated"`
 }
 
+// MigrateProject renames every project-scoped row from the exact string
+// oldName to the exact string newName — unlike MergeProjects, it does not
+// normalize either name or expand oldName into alias spellings; the HTTP
+// handler that is this function's only caller already normalizes both
+// names and skips a case-only difference before ever calling this (see
+// TestMigrateProjectCaseOnlySkipped), so a literal rename is exactly the
+// contract this function is meant to keep.
+//
+// It shares its per-table migration logic with MergeProjects
+// (mergeProjectScopedTableTx, mergeSyncMutationsTx) instead of a second,
+// separately-hand-written list of tables — the second hand-written list is
+// exactly what let this function fall behind the first one: it moved the
+// same three tables MergeProjects used to, and nothing else, including the
+// same sync_mutations column-only inconsistency and the same narrow
+// backfill guard, because a defect fixed in one hand-maintained copy has no
+// way of reaching a second one.
 func (s *Store) MigrateProject(oldName, newName string) (*MigrateResult, error) {
 	if oldName == "" || newName == "" || oldName == newName {
 		return &MigrateResult{}, nil
 	}
 
-	// Check if old project has any records (short-circuit on first match)
-	var exists bool
-	err := s.db.QueryRow(
-		`SELECT EXISTS(
-			SELECT 1 FROM observations WHERE project = ?
-			UNION ALL
-			SELECT 1 FROM sessions WHERE project = ?
-			UNION ALL
-			SELECT 1 FROM user_prompts WHERE project = ?
-		)`, oldName, oldName, oldName,
-	).Scan(&exists)
+	tables, err := s.projectScopedTables()
+	if err != nil {
+		return nil, fmt.Errorf("discover project-scoped tables: %w", err)
+	}
+
+	// Check if old project has any records, across every project-scoped
+	// table rather than the original three — a project whose only rows
+	// were, say, evidence would otherwise report Migrated: false and never
+	// reach the loop that would have moved them.
+	exists, err := s.anyProjectScopedTableHasRows(oldName, tables)
 	if err != nil {
 		return nil, fmt.Errorf("check old project: %w", err)
 	}
@@ -4497,24 +4512,21 @@ func (s *Store) MigrateProject(oldName, newName string) (*MigrateResult, error) 
 	result := &MigrateResult{Migrated: true}
 
 	err = s.withTx(func(tx *sql.Tx) error {
-		// FTS triggers handle index updates automatically on UPDATE
-		res, err := s.execHook(tx, `UPDATE observations SET project = ? WHERE project = ?`, newName, oldName)
-		if err != nil {
-			return fmt.Errorf("migrate observations: %w", err)
+		sourceVariants := []string{oldName}
+		for _, table := range tables {
+			moved, _, err := s.mergeProjectScopedTableTx(tx, table, newName, sourceVariants)
+			if err != nil {
+				return fmt.Errorf("migrate %s %q → %q: %w", table.name, oldName, newName, err)
+			}
+			switch table.name {
+			case "observations":
+				result.ObservationsUpdated = moved
+			case "sessions":
+				result.SessionsUpdated = moved
+			case "user_prompts":
+				result.PromptsUpdated = moved
+			}
 		}
-		result.ObservationsUpdated, _ = res.RowsAffected()
-
-		res, err = s.execHook(tx, `UPDATE sessions SET project = ? WHERE project = ?`, newName, oldName)
-		if err != nil {
-			return fmt.Errorf("migrate sessions: %w", err)
-		}
-		result.SessionsUpdated, _ = res.RowsAffected()
-
-		res, err = s.execHook(tx, `UPDATE user_prompts SET project = ? WHERE project = ?`, newName, oldName)
-		if err != nil {
-			return fmt.Errorf("migrate prompts: %w", err)
-		}
-		result.PromptsUpdated, _ = res.RowsAffected()
 
 		// Enqueue sync mutations so cloud sync picks up the migrated records.
 		// Same pattern used by EnrollProject and MergeProjects.
@@ -4525,6 +4537,26 @@ func (s *Store) MigrateProject(oldName, newName string) (*MigrateResult, error) 
 	}
 
 	return result, nil
+}
+
+// anyProjectScopedTableHasRows reports whether project has at least one row
+// in any of tables, via a single EXISTS over a UNION ALL of one SELECT per
+// table — schema-driven the same way projectScopedTables is, so a project
+// whose only data lives in a table MigrateProject did not used to touch
+// (evidence, say) is not reported as having nothing to migrate.
+func (s *Store) anyProjectScopedTableHasRows(project string, tables []projectScopedTable) (bool, error) {
+	if len(tables) == 0 {
+		return false, nil
+	}
+	parts := make([]string, len(tables))
+	args := make([]any, len(tables))
+	for i, table := range tables {
+		parts[i] = fmt.Sprintf("SELECT 1 FROM %s WHERE project = ?", table.name)
+		args[i] = project
+	}
+	var exists bool
+	err := s.db.QueryRow("SELECT EXISTS("+strings.Join(parts, " UNION ALL ")+")", args...).Scan(&exists)
+	return exists, err
 }
 
 // ─── Project Queries ──────────────────────────────────────────────────────────
@@ -4887,9 +4919,19 @@ func (s *Store) MergeProjects(sources []string, canonical string) (*MergeResult,
 // how mergeProjectScopedTableTx must migrate it: an ordinary column
 // tolerates a plain UPDATE, a primary-key column can collide with a row the
 // canonical project already owns.
+//
+// hasUpdatedAt records whether the table also has an "updated_at" column,
+// which mergeProjectScopedTableTx bumps alongside the rename. A rename is a
+// real change to the row; leaving its own modification clock untouched is
+// what would let a stale pull win a last-write-wins comparison purely by
+// arriving after a rename that, as far as that clock is concerned, never
+// happened (see applyObservationUpsertTx's incomingWinsLWW guard, the
+// concrete case this protects — the only project-scoped table synced
+// through that path, observations, has this column).
 type projectScopedTable struct {
-	name      string
-	projectPK bool
+	name         string
+	projectPK    bool
+	hasUpdatedAt bool
 }
 
 // projectScopedTables inspects sqlite_master and PRAGMA table_info to list
@@ -4948,7 +4990,7 @@ func (s *Store) projectScopedTables() ([]projectScopedTable, error) {
 		if err != nil {
 			return nil, fmt.Errorf("table_info(%s): %w", name, err)
 		}
-		hasProject, projectPK := false, false
+		hasProject, projectPK, hasUpdatedAt := false, false, false
 		for info.Next() {
 			var cid, notnull, pk int
 			var colName, colType string
@@ -4956,9 +4998,12 @@ func (s *Store) projectScopedTables() ([]projectScopedTable, error) {
 			if err := info.Scan(&cid, &colName, &colType, &notnull, &dflt, &pk); err != nil {
 				return nil, closeRowsWithError(info, fmt.Errorf("scan table_info(%s): %w", name, err))
 			}
-			if colName == "project" {
+			switch colName {
+			case "project":
 				hasProject = true
 				projectPK = pk > 0
+			case "updated_at":
+				hasUpdatedAt = true
 			}
 		}
 		if err := info.Close(); err != nil {
@@ -4968,7 +5013,7 @@ func (s *Store) projectScopedTables() ([]projectScopedTable, error) {
 			return nil, fmt.Errorf("table_info(%s): %w", name, err)
 		}
 		if hasProject {
-			tables = append(tables, projectScopedTable{name: name, projectPK: projectPK})
+			tables = append(tables, projectScopedTable{name: name, projectPK: projectPK, hasUpdatedAt: hasUpdatedAt})
 		}
 	}
 	return tables, nil
@@ -4978,8 +5023,24 @@ func (s *Store) projectScopedTables() ([]projectScopedTable, error) {
 // canonical, inside MergeProjects' transaction. moved counts rows whose
 // project column changed in place; dropped counts rows removed instead.
 //
-// For an ordinary column, a single UPDATE ... WHERE project IN (...) does
-// the whole job, the same as before this table was discoverable.
+// sync_mutations gets its own dedicated handling (mergeSyncMutationsTx)
+// before either case below applies: it is the one project-scoped table
+// where the project column is not the only carrier of the project, and a
+// plain rename would make the column agree with canonical while the
+// payload — what is actually transmitted — still names the old one.
+//
+// For every other ordinary column, a single UPDATE ... WHERE project IN
+// (...) does the whole job, the same as before this table was
+// discoverable — except that when the table has its own "updated_at"
+// column (see projectScopedTable.hasUpdatedAt), the rename bumps it too.
+// A rename is a real change to the row, and a table synced through a
+// last-write-wins apply path (observations, via
+// applyObservationUpsertTx's incomingWinsLWW guard) needs that clock
+// moved forward for the guard to actually protect this change: left
+// untouched, a pull carrying the row's pre-rename state would tie on
+// timestamp and fall to a content digest that a project-only rename never
+// affects, deciding the outcome by coincidence instead of by the rename
+// having actually happened more recently than whatever the pull describes.
 //
 // For a column that is (part of) the primary key, that UPDATE can collide:
 // canonical may already own its own row (sync_enrolled_projects and
@@ -4995,6 +5056,14 @@ func (s *Store) projectScopedTables() ([]projectScopedTable, error) {
 // back and reporting nothing moved, when every other table's rename should
 // still go through.
 func (s *Store) mergeProjectScopedTableTx(tx *sql.Tx, table projectScopedTable, canonical string, sourceVariants []string) (moved, dropped int64, err error) {
+	if table.name == "sync_mutations" {
+		return s.mergeSyncMutationsTx(tx, canonical, sourceVariants)
+	}
+	setClause := "project = ?"
+	if table.hasUpdatedAt {
+		setClause += ", updated_at = datetime('now')"
+	}
+
 	if !table.projectPK {
 		placeholders := sqlPlaceholders(len(sourceVariants))
 		args := make([]any, 0, len(sourceVariants)+1)
@@ -5002,7 +5071,7 @@ func (s *Store) mergeProjectScopedTableTx(tx *sql.Tx, table projectScopedTable, 
 		for _, variant := range sourceVariants {
 			args = append(args, variant)
 		}
-		res, err := s.execHook(tx, fmt.Sprintf(`UPDATE %s SET project = ? WHERE project IN (%s)`, table.name, placeholders), args...)
+		res, err := s.execHook(tx, fmt.Sprintf(`UPDATE %s SET %s WHERE project IN (%s)`, table.name, setClause, placeholders), args...)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -5011,7 +5080,7 @@ func (s *Store) mergeProjectScopedTableTx(tx *sql.Tx, table projectScopedTable, 
 	}
 
 	for _, variant := range sourceVariants {
-		res, renameErr := s.execHook(tx, fmt.Sprintf(`UPDATE %s SET project = ? WHERE project = ?`, table.name), canonical, variant)
+		res, renameErr := s.execHook(tx, fmt.Sprintf(`UPDATE %s SET %s WHERE project = ?`, table.name, setClause), canonical, variant)
 		if renameErr == nil {
 			n, _ := res.RowsAffected()
 			moved += n
@@ -5028,6 +5097,60 @@ func (s *Store) mergeProjectScopedTableTx(tx *sql.Tx, table projectScopedTable, 
 		dropped += n
 	}
 	return moved, dropped, nil
+}
+
+// mergeSyncMutationsTx migrates sync_mutations rows for sourceVariants into
+// canonical. This table needs different handling from every other
+// project-scoped one because a row's project is recorded twice:
+//
+//   - the "project" column, which is what every local query filters
+//     by — enrollment scoping (ListPendingSyncMutations), pending-mutation
+//     counts (ProjectsSyncStatus), and the cloud-upgrade repair diagnostics
+//     (listPendingProjectMutationsTx);
+//   - the "project" field inside the JSON "payload", which is the actual
+//     content transmitted to the cloud server.
+//
+// A plain UPDATE on the column alone — the treatment every other
+// ordinary-column table gets — makes every one of those local queries agree
+// the row belongs to canonical while the bytes still queued to leave this
+// machine keep naming the merged-away project: the outbox looks correct
+// and still sends the wrong thing, which is worse than looking wrong,
+// because nothing left to check would catch it.
+//
+// Only un-acked rows are rewritten (both column and payload's $.project,
+// via json_set — left as-is when the payload has no "project" key at all,
+// so this never injects a field a given entity's payload shape never
+// carried). An acked row already left this machine with whatever project
+// it named when it was sent; rewriting it afterward would not undo that
+// send, only misdescribe it after the fact — sync_mutations existing at
+// all is what lets anyone answer "what did we actually tell the server",
+// and an acked row is exactly the answer to that question. An un-acked row
+// has not been sent yet, so correcting it is not rewriting history, it is
+// correcting an outbound intent before it goes out — the direct, minimal
+// counterpart to letting a widened backfill guard (see
+// projectNeedsBackfill) enqueue a fresh, correct mutation for the entity
+// this one already describes.
+func (s *Store) mergeSyncMutationsTx(tx *sql.Tx, canonical string, sourceVariants []string) (moved, dropped int64, err error) {
+	placeholders := sqlPlaceholders(len(sourceVariants))
+	args := make([]any, 0, len(sourceVariants)+2)
+	args = append(args, canonical, canonical)
+	for _, variant := range sourceVariants {
+		args = append(args, variant)
+	}
+	res, err := s.execHook(tx, fmt.Sprintf(`
+		UPDATE sync_mutations
+		SET project = ?,
+		    payload = CASE
+		                WHEN json_type(payload, '$.project') IS NOT NULL
+		                THEN json_set(payload, '$.project', ?)
+		                ELSE payload
+		              END
+		WHERE project IN (%s) AND acked_at IS NULL`, placeholders), args...)
+	if err != nil {
+		return 0, 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, 0, nil
 }
 
 // isPrimaryKeyConflict reports whether err is a SQLite primary-key or
@@ -5365,9 +5488,20 @@ func (s *Store) backfillProjectSyncMutationsTx(tx *sql.Tx, project string) error
 	return s.backfillRelationSyncMutationsTx(tx, project)
 }
 
-// projectNeedsBackfill returns true when a project has any sessions, live observations,
-// or prompts that are missing a corresponding sync_mutation row.
-// It runs three lightweight COUNT queries — no cursor is held open.
+// projectNeedsBackfill returns true when a project has any sessions, live
+// observations, prompts, or relations that are missing a corresponding
+// sync_mutation row. It runs four lightweight COUNT queries — no cursor is
+// held open.
+//
+// "Missing" means no matching sync_mutations row exists for the row's
+// current project — not merely that some sync_mutations row exists for
+// that entity_key at all. A row can outlive its own project: MergeProjects
+// renames the entity in place, and any mutation enqueued before that rename
+// still carries the old name in its "project" column. Treating that stale
+// mutation as sufficient coverage — the guard before this comment was
+// written — would leave the entity backed only by an outbound intent that
+// still names a project that no longer applies to it, and nothing would
+// ever notice or correct that.
 func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 	type countQuery struct {
 		q    string
@@ -5388,9 +5522,9 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			      AND trim(ifnull(directory, '')) != ''
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = sessions.id AND sm.source = ?
+			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = sessions.id AND sm.source = ? AND sm.project = ?
 			      )`,
-			args: []any{project, DefaultSyncTargetKey, SyncEntitySession, SyncSourceLocal},
+			args: []any{project, DefaultSyncTargetKey, SyncEntitySession, SyncSourceLocal, project},
 		},
 		{
 			// Same principle as above, for the observation upsert fields cloud
@@ -5408,9 +5542,9 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			      AND trim(ifnull(o.scope, '')) != ''
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = o.sync_id AND sm.source = ?
+			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = o.sync_id AND sm.source = ? AND sm.project = ?
 			      )`,
-			args: []any{project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncSourceLocal},
+			args: []any{project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncSourceLocal, project},
 		},
 		{
 			// Same principle as above, for the prompt upsert fields cloud
@@ -5424,9 +5558,9 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			      AND trim(ifnull(p.content, '')) != ''
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = p.sync_id AND sm.source = ?
+			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = p.sync_id AND sm.source = ? AND sm.project = ?
 			      )`,
-			args: []any{project, project, DefaultSyncTargetKey, SyncEntityPrompt, SyncSourceLocal},
+			args: []any{project, project, DefaultSyncTargetKey, SyncEntityPrompt, SyncSourceLocal, project},
 		},
 		{
 			// Count only fully-judged relations (not orphaned, not pending, with
@@ -5448,9 +5582,9 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			      AND coalesce(nullif(src.project, ''), src_s.project, '') = ?
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = r.sync_id AND sm.source = ?
+			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = r.sync_id AND sm.source = ? AND sm.project = ?
 			      )`,
-			args: []any{JudgmentStatusOrphaned, JudgmentStatusPending, project, DefaultSyncTargetKey, SyncEntityRelation, SyncSourceLocal},
+			args: []any{JudgmentStatusOrphaned, JudgmentStatusPending, project, DefaultSyncTargetKey, SyncEntityRelation, SyncSourceLocal, project},
 		},
 	}
 	for _, cq := range queries {
@@ -5522,9 +5656,10 @@ func (s *Store) backfillSessionSyncMutationsTx(tx *sql.Tx, project string) error
 			  AND sm.entity = ?
 			  AND sm.entity_key = sessions.id
 			  AND sm.source = ?
+			  AND sm.project = ?
 		  )
 		ORDER BY started_at ASC, id ASC`,
-		project, DefaultSyncTargetKey, SyncEntitySession, SyncSourceLocal,
+		project, DefaultSyncTargetKey, SyncEntitySession, SyncSourceLocal, project,
 	)
 	if err != nil {
 		return err
@@ -5587,9 +5722,10 @@ func (s *Store) backfillObservationSyncMutationsTx(tx *sql.Tx, project string) e
 			  AND sm.entity = ?
 			  AND sm.entity_key = o.sync_id
 			  AND sm.source = ?
+			  AND sm.project = ?
 		  )
 		ORDER BY o.id ASC`,
-		project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncSourceLocal,
+		project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncSourceLocal, project,
 	)
 	if err != nil {
 		return err
@@ -5651,9 +5787,10 @@ func (s *Store) backfillObservationSyncMutationsTx(tx *sql.Tx, project string) e
 			  AND sm.entity_key = o.sync_id
 			  AND sm.op = ?
 			  AND sm.source = ?
+			  AND sm.project = ?
 		  )
 		ORDER BY o.id ASC`,
-		project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncOpDelete, SyncSourceLocal,
+		project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncOpDelete, SyncSourceLocal, project,
 	)
 	if err != nil {
 		return err
@@ -5709,9 +5846,10 @@ func (s *Store) backfillPromptSyncMutationsTx(tx *sql.Tx, project string) error 
 			  AND sm.entity = ?
 			  AND sm.entity_key = p.sync_id
 			  AND sm.source = ?
+			  AND sm.project = ?
 		  )
 		ORDER BY p.id ASC`,
-		project, project, DefaultSyncTargetKey, SyncEntityPrompt, SyncSourceLocal,
+		project, project, DefaultSyncTargetKey, SyncEntityPrompt, SyncSourceLocal, project,
 	)
 	if err != nil {
 		return err
@@ -5757,9 +5895,10 @@ func (s *Store) backfillPromptSyncMutationsTx(tx *sql.Tx, project string) error 
 			  AND sm.entity_key = prompt_tombstones.sync_id
 			  AND sm.source = ?
 			  AND sm.op = ?
+			  AND sm.project = ?
 		  )
 		ORDER BY deleted_at ASC`,
-		project, project, DefaultSyncTargetKey, SyncEntityPrompt, SyncSourceLocal, SyncOpDelete,
+		project, project, DefaultSyncTargetKey, SyncEntityPrompt, SyncSourceLocal, SyncOpDelete, project,
 	)
 	if err != nil {
 		return err
@@ -5834,11 +5973,12 @@ func (s *Store) backfillRelationSyncMutationsTx(tx *sql.Tx, project string) erro
 		      AND sm.entity = ?
 		      AND sm.entity_key = r.sync_id
 		      AND sm.source = ?
+		      AND sm.project = ?
 		  )
 		ORDER BY r.created_at ASC, r.sync_id ASC`,
 		JudgmentStatusOrphaned, JudgmentStatusPending,
 		project,
-		DefaultSyncTargetKey, SyncEntityRelation, SyncSourceLocal,
+		DefaultSyncTargetKey, SyncEntityRelation, SyncSourceLocal, project,
 	)
 	if err != nil {
 		return err
@@ -6236,6 +6376,19 @@ func (s *Store) applySessionDeleteTx(tx *sql.Tx, payload syncSessionPayload) err
 	return err
 }
 
+// observationDescriptiveDigest hashes every field applyObservationUpsertTx's
+// UPDATE writes from the incoming payload, the same multi-field grouping
+// projects_sync.go's taskDescriptiveDigest uses for tasks (see groupDigest).
+// It exists solely as the tie-break half of that function's LWW guard: two
+// upserts for the same sync_id at the same updated_at are indistinguishable
+// to that guard unless this digest differs, so every field a legitimate
+// edit could change belongs here — a digest scoped to content alone would
+// tie whenever content is untouched regardless of what else changed, silently
+// dropping that other change instead of applying it.
+func observationDescriptiveDigest(sessionID, obsType, title, content, toolName, project, scope, topicKey string) string {
+	return groupDigest(sessionID, obsType, title, content, toolName, project, scope, topicKey)
+}
+
 func (s *Store) applyObservationUpsertTx(tx *sql.Tx, payload syncObservationPayload) error {
 	revisionCount := maxInt(payload.RevisionCount, 1)
 	duplicateCount := maxInt(payload.DuplicateCount, 1)
@@ -6289,6 +6442,33 @@ func (s *Store) applyObservationUpsertTx(tx *sql.Tx, payload syncObservationPayl
 	}
 	if strings.TrimSpace(payload.UpdatedAt) == "" {
 		updatedAt = existing.UpdatedAt
+	}
+
+	// Last-write-wins, the same rule RFC section 10.3 already applies to
+	// project_cards and tasks (see incomingWinsLWW): an incoming upsert
+	// whose updated_at is not newer than what is already stored must not
+	// overwrite it. Without this guard a pull applied unconditionally, the
+	// only behavior this function had until this comment: a stale payload
+	// — for instance one produced before MergeProjects renamed this row's
+	// project — would win purely by being the one that happened to arrive
+	// last, silently reverting a change the puller never made and has no
+	// reason to expect undone.
+	//
+	// The tie-break digest covers every field this UPDATE writes (see
+	// observationDescriptiveDigest), not content alone: two upserts that
+	// share content but differ in project — exactly what a project-only
+	// rename produces — would otherwise hash equal and tie regardless of
+	// what else changed, and a tie always favors the row already stored.
+	// A single-field digest would make that the general rule for every
+	// other field too: unrelated same-second edits that happen to leave
+	// content untouched (a title fix, a project rename, a tool_name
+	// correction) would all tie and silently drop, not just the rename
+	// this fix targets.
+	if !incomingWinsLWW(existing.UpdatedAt, updatedAt,
+		observationDescriptiveDigest(existing.SessionID, existing.Type, existing.Title, existing.Content, ptrOrEmpty(existing.ToolName), ptrOrEmpty(existing.Project), existing.Scope, ptrOrEmpty(existing.TopicKey)),
+		observationDescriptiveDigest(payload.SessionID, payload.Type, payload.Title, payload.Content, ptrOrEmpty(payload.ToolName), ptrOrEmpty(payload.Project), normalizeScope(payload.Scope), ptrOrEmpty(payload.TopicKey)),
+	) {
+		return nil
 	}
 
 	_, err = s.execHook(tx,
