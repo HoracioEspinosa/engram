@@ -48,7 +48,7 @@ func testDashboardReader() *data.FakeProject {
 func intp(v int) *int { return &v }
 
 func TestZeroKeyIsANoOpWithoutAnActiveProject(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	m, cmd := step(t, m, tea.KeyMsg{Runes: []rune("0"), Type: tea.KeyRunes})
 	if m.screen != screenTab {
@@ -60,7 +60,7 @@ func TestZeroKeyIsANoOpWithoutAnActiveProject(t *testing.T) {
 }
 
 func TestInitialProjectOpensStraightOnTheDashboard(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "nextcloud")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "nextcloud")
 
 	if m.screen != screenDashboard {
 		t.Fatalf("screen = %v, want screenDashboard", m.screen)
@@ -74,7 +74,7 @@ func TestInitialProjectOpensStraightOnTheDashboard(t *testing.T) {
 }
 
 func TestZeroKeyShowsTheDashboardAndReloadsIt(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	reader := testDashboardReader()
 	m.project = "nextcloud"
 	m.active = tabs.Cloud
@@ -114,7 +114,7 @@ func TestZeroKeyShowsTheDashboardAndReloadsIt(t *testing.T) {
 // task this had to stay the graceful no-op TestNavigateToAnUnimplementedTabIsANoOp
 // still pins for Evidence/Runbooks.
 func TestDashboardEnterOnRecentTasksNavigatesToTasks(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenDashboard
 	m.project = "nextcloud"
 	m.dashboard.cursor = dashBlockTasks
@@ -133,7 +133,7 @@ func TestDashboardEnterOnRecentTasksNavigatesToTasks(t *testing.T) {
 // dashBlockEvidence.target() has resolved to tabs.Evidence since it was
 // declared, and activate() only ever needed a real sub-model behind it.
 func TestDashboardEnterOnEvidenceBlockNavigatesToEvidence(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenDashboard
 	m.project = "nextcloud"
 	m.dashboard.cursor = dashBlockEvidence
@@ -148,7 +148,7 @@ func TestDashboardEnterOnEvidenceBlockNavigatesToEvidence(t *testing.T) {
 }
 
 func TestDashboardCursorMovesAcrossAllThreeBlocks(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenDashboard
 
 	for _, key := range []string{"j", "j"} {
@@ -168,7 +168,7 @@ func TestDashboardCursorMovesAcrossAllThreeBlocks(t *testing.T) {
 // Dashboard row: "h/l mover entre bloques", alongside the j/k pair
 // TestDashboardCursorMovesAcrossAllThreeBlocks already covers.
 func TestDashboardHLAreAliasesForCursorMovement(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenDashboard
 
 	m, _ = step(t, m, tea.KeyMsg{Runes: []rune("l"), Type: tea.KeyRunes})
@@ -182,7 +182,7 @@ func TestDashboardHLAreAliasesForCursorMovement(t *testing.T) {
 }
 
 func TestDashboardQQuits(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenDashboard
 
 	_, cmd := step(t, m, tea.KeyMsg{Runes: []rune("q"), Type: tea.KeyRunes})
@@ -192,7 +192,7 @@ func TestDashboardQQuits(t *testing.T) {
 }
 
 func TestGoHomeFallsBackToMemoryWithoutAnActiveProject(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Cloud
 
 	m, cmd := step(t, m, tabs.HomeMsg{})
@@ -205,7 +205,7 @@ func TestGoHomeFallsBackToMemoryWithoutAnActiveProject(t *testing.T) {
 }
 
 func TestGoHomeGoesToTheDashboardOnceAProjectIsActive(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
 	m.active = tabs.Cloud
 
@@ -223,7 +223,7 @@ func TestGoHomeGoesToTheDashboardOnceAProjectIsActive(t *testing.T) {
 // no-project case, but with a project active: leaving Cloud must land on the
 // Dashboard now, not on Memory.
 func TestCloudEscRoundTripsThroughTheRootWithAProjectActive(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
 	m.dashboard = newDashboardModel(testDashboardReader(), "nextcloud")
 
@@ -357,7 +357,7 @@ func TestLoadDashboardKeepsTheCardWhenALaterCallFails(t *testing.T) {
 }
 
 func TestStatusTextReportsTheSyncLifecycleOnceEnrolled(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.dashboard = newDashboardModel(nil, "nextcloud")
 	m.dashboard = m.dashboard.applyLoaded(dashboardLoadedMsg{
 		slug:   "nextcloud",
@@ -387,7 +387,7 @@ func TestLoadDashboardShortCircuitsOnACardError(t *testing.T) {
 }
 
 func TestViewDashboardRendersEveryBlock(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenDashboard
 	m.project = "nextcloud"
 	m.dashboard = newDashboardModel(testDashboardReader(), "nextcloud")
@@ -407,7 +407,7 @@ func TestViewDashboardRendersEveryBlock(t *testing.T) {
 }
 
 func TestViewDashboardRendersEmptyBlocksGracefully(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenDashboard
 	m.project = "portal"
 	m.dashboard = newDashboardModel(nil, "portal")
@@ -422,7 +422,7 @@ func TestViewDashboardRendersEmptyBlocksGracefully(t *testing.T) {
 }
 
 func TestViewDashboardShowsLoadingBeforeTheFirstResponse(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "nextcloud")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "nextcloud")
 
 	if out := m.View(); !strings.Contains(out, "Loading nextcloud") {
 		t.Fatalf("an unloaded dashboard should show a loading state, got:\n%s", out)
@@ -430,7 +430,7 @@ func TestViewDashboardShowsLoadingBeforeTheFirstResponse(t *testing.T) {
 }
 
 func TestViewDashboardShowsTheLoadError(t *testing.T) {
-	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenDashboard
 	m.project = "nextcloud"
 	m.dashboard = newDashboardModel(nil, "nextcloud").applyLoaded(dashboardLoadedMsg{

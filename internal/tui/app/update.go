@@ -32,6 +32,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = screenTab
 			return m, m.memory.OpenObservation(msg.ObservationID)
 		}
+		if msg.Target == tabs.Memory && msg.Query != "" {
+			// Runbooks' "t" (rfc-tui.md §3.1 S8/S9): open Memory pre-searched
+			// for this runbook's executions instead of landing on whatever
+			// screen Memory last showed.
+			m.active = tabs.Memory
+			m.screen = screenTab
+			return m, m.memory.SearchFor(msg.Query)
+		}
 		if msg.Target == tabs.Tasks && msg.TaskID != 0 {
 			// The mirror image, for S7's "Enter" on an evidence file: open
 			// that file's task directly instead of landing on the list.
@@ -191,12 +199,13 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenDashboard
 			m.dashboard = newDashboardModel(m.projects, selected.Slug)
 			// Every project-scoped tab is rebuilt here, the same way the
-			// dashboard is: neither Tasks' nor Evidence's Refresh() takes a
-			// project parameter of its own (tabs.Tab is a project-agnostic
-			// contract), so each has to already know the new slug before it
-			// is ever activated.
+			// dashboard is: neither Tasks', Evidence's nor Runbooks'
+			// Refresh() takes a project parameter of its own (tabs.Tab is a
+			// project-agnostic contract), so each has to already know the
+			// new slug before it is ever activated.
 			m.tasks = m.tasks.WithProject(selected.Slug)
 			m.evidence = m.evidence.WithProject(selected.Slug)
+			m.runbooks = m.runbooks.WithProject(selected.Slug)
 			return m, loadDashboard(m.projects, selected.Slug)
 		}
 		return m, nil

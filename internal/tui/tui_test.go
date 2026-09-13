@@ -36,7 +36,7 @@ func TestNewSatisfiesTheBubbleteaModelContract(t *testing.T) {
 }
 
 func TestModelIsTheRootWorkspaceModel(t *testing.T) {
-	var m tui.Model = app.New(nil, nil, nil, nil, "", theme.Default(), "")
+	var m tui.Model = app.New(nil, nil, nil, nil, nil, "", theme.Default(), "")
 
 	if _, ok := any(m).(tea.Model); !ok {
 		t.Fatal("tui.Model must remain a tea.Model")
