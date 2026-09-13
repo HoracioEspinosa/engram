@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/HoracioEspinosa/engram/internal/project"
 	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
@@ -739,5 +740,279 @@ func TestFakeRunbookErrShortCircuits(t *testing.T) {
 	}
 	if _, err := f.SearchRunbooks("acme", false, "q", 10); !errors.Is(err, boom) {
 		t.Errorf("SearchRunbooks error = %v", err)
+	}
+}
+
+// TestFakeProjectReturnsWhatItWasGiven is FakeProject's counterpart of
+// TestFakeMemoryReturnsWhatItWasGiven: nothing exercised FakeProject's own
+// methods before this task (the Selector and Dashboard Update tests all
+// build data.FakeProject directly and read the fields back, never through
+// the interface methods themselves), which is why the package's coverage
+// left every one of them at 0%.
+func TestFakeProjectReturnsWhatItWasGiven(t *testing.T) {
+	card := store.ProjectCard{Slug: "acme", DisplayName: "Acme"}
+	health := ProjectHealth{ProjectCardCounts: store.ProjectCardCounts{Observations: 3}}
+	tasks := []store.TaskListItem{
+		{Task: store.Task{ID: 1}}, {Task: store.Task{ID: 2}}, {Task: store.Task{ID: 3}},
+	}
+	stale := []store.RunbookIndexRow{{ID: "RB-900"}, {ID: "RB-901"}}
+	ev := []store.EvidenceListItem{{Evidence: store.Evidence{Path: "a.png"}}}
+
+	f := &FakeProject{
+		Cards:             []store.ProjectCardListItem{{ProjectCard: card}},
+		CardBySlug:        map[string]store.ProjectCard{"acme": card},
+		HealthBySlug:      map[string]ProjectHealth{"acme": health},
+		TasksBySlug:       map[string][]store.TaskListItem{"acme": tasks},
+		StaleRunbooksSlug: map[string][]store.RunbookIndexRow{"acme": stale},
+		EvidenceBySlug:    map[string][]store.EvidenceListItem{"acme": ev},
+	}
+
+	cards, err := f.ListCards()
+	if err != nil || len(cards) != 1 || cards[0].Slug != "acme" {
+		t.Fatalf("ListCards = %+v, err %v", cards, err)
+	}
+
+	gotCard, err := f.Card("acme")
+	if err != nil || gotCard.Slug != "acme" {
+		t.Fatalf("Card = %+v, err %v", gotCard, err)
+	}
+	if _, err := f.Card("missing"); err == nil {
+		t.Fatal("Card for an unseeded slug should report an error, not the zero card")
+	}
+
+	gotHealth, err := f.Health("acme")
+	if err != nil || gotHealth.Observations != 3 {
+		t.Fatalf("Health = %+v, err %v", gotHealth, err)
+	}
+	// A project with no seeded counters is not a missing project (readers.go's
+	// own doc comment): the zero ProjectHealth, not an error.
+	if h, err := f.Health("missing"); err != nil || h != (ProjectHealth{}) {
+		t.Fatalf("Health for an unseeded slug = %+v, err %v, want the zero value and no error", h, err)
+	}
+
+	limited, err := f.RecentTasks("acme", 2)
+	if err != nil || len(limited) != 2 {
+		t.Fatalf("RecentTasks(limit=2) = %+v, err %v", limited, err)
+	}
+	unlimited, err := f.RecentTasks("acme", 0)
+	if err != nil || len(unlimited) != 3 {
+		t.Fatalf("RecentTasks(limit=0) = %+v, err %v, want every seeded row", unlimited, err)
+	}
+
+	staleLimited, err := f.StaleRunbooks("acme", 1)
+	if err != nil || len(staleLimited) != 1 || staleLimited[0].ID != "RB-900" {
+		t.Fatalf("StaleRunbooks(limit=1) = %+v, err %v", staleLimited, err)
+	}
+
+	evGot, err := f.LatestEvidence("acme", 10)
+	if err != nil || len(evGot) != 1 || evGot[0].Path != "a.png" {
+		t.Fatalf("LatestEvidence = %+v, err %v", evGot, err)
+	}
+}
+
+func TestFakeProjectErrShortCircuits(t *testing.T) {
+	boom := errors.New("boom")
+	f := &FakeProject{Err: boom}
+
+	if _, err := f.ListCards(); !errors.Is(err, boom) {
+		t.Errorf("ListCards error = %v", err)
+	}
+	if _, err := f.Card("acme"); !errors.Is(err, boom) {
+		t.Errorf("Card error = %v", err)
+	}
+	if _, err := f.Health("acme"); !errors.Is(err, boom) {
+		t.Errorf("Health error = %v", err)
+	}
+	if _, err := f.RecentTasks("acme", 10); !errors.Is(err, boom) {
+		t.Errorf("RecentTasks error = %v", err)
+	}
+	if _, err := f.StaleRunbooks("acme", 10); !errors.Is(err, boom) {
+		t.Errorf("StaleRunbooks error = %v", err)
+	}
+	if _, err := f.LatestEvidence("acme", 10); !errors.Is(err, boom) {
+		t.Errorf("LatestEvidence error = %v", err)
+	}
+}
+
+// TestFakeTaskReturnsWhatItWasGiven is FakeTask's counterpart of
+// TestFakeProjectReturnsWhatItWasGiven, covering the pagination default
+// ListTasks documents (an unset limit still caps the page at 20, mirroring
+// store.ListTasks) and its query filter, neither of which any tabs/tasks
+// test drives through the interface method itself.
+func TestFakeTaskReturnsWhatItWasGiven(t *testing.T) {
+	items := make([]store.TaskListItem, 0, 25)
+	for i := 0; i < 25; i++ {
+		title := "other task"
+		if i == 7 {
+			title = "needle task"
+		}
+		items = append(items, store.TaskListItem{Task: store.Task{ID: int64(i), Title: title}})
+	}
+	f := &FakeTask{
+		ItemsByProject:  map[string][]store.TaskListItem{"acme": items},
+		DetailByID:      map[int64]TaskDetail{1: {Task: store.Task{ID: 1, Title: "one"}}},
+		ContextPackByID: map[int64]string{1: "# pack"},
+	}
+
+	defaultPage, err := f.ListTasks("acme", store.TaskListFilter{})
+	if err != nil || len(defaultPage) != 20 {
+		t.Fatalf("ListTasks with no limit = %d items, err %v, want the default 20-row page", len(defaultPage), err)
+	}
+
+	filtered, err := f.ListTasks("acme", store.TaskListFilter{Query: "needle"})
+	if err != nil || len(filtered) != 1 || filtered[0].ID != 7 {
+		t.Fatalf("ListTasks(query=needle) = %+v, err %v", filtered, err)
+	}
+	if f.LastListFilter.Query != "needle" {
+		t.Fatalf("LastListFilter = %+v, want the issued query recorded", f.LastListFilter)
+	}
+
+	paged, err := f.ListTasks("acme", store.TaskListFilter{Limit: 5, Offset: 22})
+	if err != nil || len(paged) != 3 {
+		t.Fatalf("ListTasks(limit=5, offset=22) = %d items, err %v, want the 3 remaining rows", len(paged), err)
+	}
+
+	detail, err := f.Task(1)
+	if err != nil || detail.Task.Title != "one" {
+		t.Fatalf("Task(1) = %+v, err %v", detail, err)
+	}
+	if _, err := f.Task(999); err == nil {
+		t.Fatal("Task for an unseeded id should report an error")
+	}
+
+	if err := f.UpdateState(1, "review"); err != nil {
+		t.Fatalf("UpdateState: %v", err)
+	}
+	if len(f.UpdateStateCalls) != 1 || f.UpdateStateCalls[0].State != "review" {
+		t.Fatalf("UpdateStateCalls = %+v, want the call recorded", f.UpdateStateCalls)
+	}
+
+	if err := f.LinkObservation(1, 42); err != nil {
+		t.Fatalf("LinkObservation: %v", err)
+	}
+	if len(f.LinkCalls) != 1 || f.LinkCalls[0].ObservationID != 42 {
+		t.Fatalf("LinkCalls = %+v, want the call recorded", f.LinkCalls)
+	}
+
+	pack, err := f.ContextPack(1)
+	if err != nil || pack != "# pack" {
+		t.Fatalf("ContextPack(1) = %q, err %v", pack, err)
+	}
+	if pack, err := f.ContextPack(999); err != nil || pack != "" {
+		t.Fatalf("ContextPack for an unseeded id = %q, err %v, want the empty string and no error", pack, err)
+	}
+}
+
+func TestFakeTaskErrShortCircuitsButStillRecordsTheAttemptedWrite(t *testing.T) {
+	boom := errors.New("boom")
+	f := &FakeTask{Err: boom}
+
+	if _, err := f.ListTasks("acme", store.TaskListFilter{}); !errors.Is(err, boom) {
+		t.Errorf("ListTasks error = %v", err)
+	}
+	if _, err := f.Task(1); !errors.Is(err, boom) {
+		t.Errorf("Task error = %v", err)
+	}
+	if _, err := f.ContextPack(1); !errors.Is(err, boom) {
+		t.Errorf("ContextPack error = %v", err)
+	}
+
+	// UpdateState and LinkObservation record the attempted write before
+	// returning Err, the same convention FakeMemory.DeleteSession follows in
+	// reverse (it records only on success): a test asserting on "what did the
+	// tab try to write" must see the attempt even when the store call it
+	// stands in for was going to fail.
+	if err := f.UpdateState(1, "review"); !errors.Is(err, boom) {
+		t.Errorf("UpdateState error = %v", err)
+	}
+	if len(f.UpdateStateCalls) != 1 {
+		t.Fatalf("UpdateStateCalls = %+v, want the attempt recorded even on failure", f.UpdateStateCalls)
+	}
+	if err := f.LinkObservation(1, 2); !errors.Is(err, boom) {
+		t.Errorf("LinkObservation error = %v", err)
+	}
+	if len(f.LinkCalls) != 1 {
+		t.Fatalf("LinkCalls = %+v, want the attempt recorded even on failure", f.LinkCalls)
+	}
+}
+
+// TestTaskKeyFollowsJiraThenSDDThenSyncID pins data.TaskKey's delegation to
+// project.TaskKey: 0% coverage here was not a missing branch, only a
+// function nothing in this package's own tests called directly (every tab
+// test imports and asserts on project.TaskKey's behaviour indirectly through
+// rendered view text instead).
+func TestTaskKeyFollowsJiraThenSDDThenSyncID(t *testing.T) {
+	jiraKey := "ACME-9"
+	if got := TaskKey(store.Task{JiraKey: &jiraKey, SyncID: "sync-1"}); got != "ACME-9" {
+		t.Errorf("TaskKey (jira set) = %q, want ACME-9", got)
+	}
+
+	sdd := "add-thing"
+	if got := TaskKey(store.Task{SDDChange: &sdd, SyncID: "sync-1"}); got != "add-thing" {
+		t.Errorf("TaskKey (no jira, sdd set) = %q, want add-thing", got)
+	}
+
+	if got := TaskKey(store.Task{SyncID: "sync-1"}); got != "sync-1" {
+		t.Errorf("TaskKey (neither jira nor sdd) = %q, want sync-1", got)
+	}
+}
+
+// TestJiraURLBuildsTheBrowseLink pins data.JiraURL's delegation to
+// project.JiraBaseURL(): jiraBaseURL itself is resolved once at package init
+// from ENGRAM_JIRA_BASE_URL (see internal/project/contextpack.go), so a test
+// cannot t.Setenv it into a different value here — asserting the
+// concatenation against the real base this process resolved is still a real
+// assertion, not a call with nothing checked.
+func TestJiraURLBuildsTheBrowseLink(t *testing.T) {
+	got := JiraURL("ACME-1")
+	want := project.JiraBaseURL() + "ACME-1"
+	if got != want {
+		t.Fatalf("JiraURL(%q) = %q, want %q", "ACME-1", got, want)
+	}
+}
+
+// TestSQLiteProjectReaderHealthReportsAClosedStore, ...Task... and
+// ...LinkObservation... close the store before calling, which fails every
+// query the sqlite adapter issues. That reaches each function's FIRST error
+// branch (ProjectCardCounts in Health, GetTask in Task, GetTask in
+// LinkObservation and ContextPack). It deliberately does not reach the
+// SECOND error branch each of those functions also has (ProjectSyncSummary
+// failing after ProjectCardCounts already succeeded, TaskObservationsForTask
+// or ListEvidence failing after GetTask already succeeded, LinkTaskObservation
+// failing after GetTask already succeeded): forcing only the second query in
+// a chain to fail would need a store double narrower than *store.Store, and
+// this task did not build one for four branches that already sit well clear
+// of the package's 80% target.
+func TestSQLiteProjectReaderHealthReportsAClosedStore(t *testing.T) {
+	s := newTestStore(t)
+	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: "acme"}); err != nil {
+		t.Fatalf("UpsertProjectCard: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if _, err := NewProjectReader(s).Health("acme"); err == nil {
+		t.Fatal("Health against a closed store should report an error")
+	}
+}
+
+func TestSQLiteTaskReaderTaskAndLinkObservationReportAClosedStore(t *testing.T) {
+	s := newTestStore(t)
+	const slug = "acme"
+	task := seedProject(t, s, slug)
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	r := NewTaskReader(s)
+	if _, err := r.Task(task.ID); err == nil {
+		t.Fatal("Task against a closed store should report an error")
+	}
+	if err := r.LinkObservation(task.ID, 1); err == nil {
+		t.Fatal("LinkObservation against a closed store should report an error")
+	}
+	if _, err := r.ContextPack(task.ID); err == nil {
+		t.Fatal("ContextPack against a closed store should report an error")
 	}
 }
