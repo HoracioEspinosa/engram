@@ -2,6 +2,8 @@ package data
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -204,6 +206,165 @@ func TestFakeMemoryReturnsWhatItWasGiven(t *testing.T) {
 	}
 	if len(f.DeletedSessions) != 1 || f.DeletedSessions[0] != "s2" {
 		t.Fatalf("recorded deletes = %v", f.DeletedSessions)
+	}
+}
+
+func strp(v string) *string { return &v }
+func boolp(v bool) *bool    { return &v }
+
+// seedProject populates slug with one active task, one evidence file attached
+// to it, and one runbook flagged for review — one row in each table the
+// Selector (S1) and Dashboard (S2) read counters from (rfc-tui.md §3.1),
+// so TestSQLiteProjectReaderCoversTheContract exercises every real query
+// those screens depend on, not just the ones with an existing store-level
+// test.
+func seedProject(t *testing.T, s *store.Store, slug string) store.Task {
+	t.Helper()
+
+	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: slug}); err != nil {
+		t.Fatalf("UpsertProjectCard: %v", err)
+	}
+	taskResult, err := s.UpsertTask(store.UpsertTaskParams{
+		Project: slug, JiraKey: strp("ACME-1"), Title: strp("Fix the thing"), Kind: strp("bugfix"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+	if _, _, _, err := s.AddEvidence(store.AddEvidenceParams{
+		Task: taskResult.Task, Path: "evidence.png",
+		SHA256: strings.Repeat("a", 64), Kind: "png", Proves: "it works",
+	}); err != nil {
+		t.Fatalf("AddEvidence: %v", err)
+	}
+	if _, err := s.SyncRunbookIndex(store.RunbookIndexSyncParams{
+		Source: "knowledge-mcp",
+		Entries: []store.RunbookIndexEntryInput{
+			{
+				ID: "RB-900", VaultPath: "Runbooks/RB-900.md", Title: "Stale runbook",
+				Service: slug, Category: "performance", Status: "verified", NeedsReview: boolp(true),
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SyncRunbookIndex: %v", err)
+	}
+	return taskResult.Task
+}
+
+// TestSQLiteProjectReaderCoversTheContract is the ProjectReader counterpart
+// of TestSQLiteMemoryReaderCoversTheContract: it drives NewProjectReader
+// against a real store instead of data.FakeProject, which is what every
+// Selector/Dashboard Update test uses. A fake proves the screen reacts
+// correctly to a given count; only this test proves the count itself is
+// real, read from project_cards/tasks/evidence/runbook_index rather than
+// asserted by the test.
+func TestSQLiteProjectReaderCoversTheContract(t *testing.T) {
+	s := newTestStore(t)
+	const slug = "acme"
+	seedProject(t, s, slug)
+
+	r := NewProjectReader(s)
+
+	cards, err := r.ListCards()
+	if err != nil {
+		t.Fatalf("ListCards: %v", err)
+	}
+	var found *store.ProjectCardListItem
+	for i := range cards {
+		if cards[i].Slug == slug {
+			found = &cards[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("ListCards missing %q, got %+v", slug, cards)
+	}
+	if found.Counts == nil {
+		t.Fatal("ListCards should include real counters, not just the card")
+	}
+
+	card, err := r.Card(slug)
+	if err != nil {
+		t.Fatalf("Card: %v", err)
+	}
+	if card.Slug != slug {
+		t.Fatalf("card = %+v", card)
+	}
+
+	health, err := r.Health(slug)
+	if err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+	if health.Observations != 0 || health.TasksActive != 1 || health.Evidence != 1 || health.RunbooksStale != 1 {
+		t.Fatalf("health = %+v, want 0 observations, 1 active task, 1 evidence file, 1 stale runbook", health)
+	}
+
+	tasks, err := r.RecentTasks(slug, 10)
+	if err != nil {
+		t.Fatalf("RecentTasks: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].JiraKey == nil || *tasks[0].JiraKey != "ACME-1" {
+		t.Fatalf("tasks = %+v, want the seeded ACME-1", tasks)
+	}
+
+	stale, err := r.StaleRunbooks(slug, 10)
+	if err != nil {
+		t.Fatalf("StaleRunbooks: %v", err)
+	}
+	if len(stale) != 1 || stale[0].ID != "RB-900" {
+		t.Fatalf("stale runbooks = %+v, want the seeded RB-900", stale)
+	}
+
+	evidence, err := r.LatestEvidence(slug, 10)
+	if err != nil {
+		t.Fatalf("LatestEvidence: %v", err)
+	}
+	if len(evidence) != 1 || evidence[0].Path != "evidence.png" {
+		t.Fatalf("evidence = %+v, want the seeded evidence.png", evidence)
+	}
+}
+
+func TestSQLiteProjectReaderRecentTasksHonoursTheLimit(t *testing.T) {
+	s := newTestStore(t)
+	const slug = "acme"
+	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: slug}); err != nil {
+		t.Fatalf("UpsertProjectCard: %v", err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := s.UpsertTask(store.UpsertTaskParams{
+			Project: slug, JiraKey: strp(fmt.Sprintf("ACME-%d", i+1)), Title: strp("t"), Kind: strp("bugfix"),
+		}); err != nil {
+			t.Fatalf("UpsertTask %d: %v", i, err)
+		}
+	}
+
+	tasks, err := NewProjectReader(s).RecentTasks(slug, 2)
+	if err != nil {
+		t.Fatalf("RecentTasks: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("tasks = %d, want the limit of 2 honoured", len(tasks))
+	}
+}
+
+func TestSQLiteProjectReaderWithoutAStoreReportsIt(t *testing.T) {
+	r := NewProjectReader(nil)
+
+	if _, err := r.ListCards(); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("ListCards error = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := r.Card("acme"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("Card error = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := r.Health("acme"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("Health error = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := r.RecentTasks("acme", 10); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("RecentTasks error = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := r.StaleRunbooks("acme", 10); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("StaleRunbooks error = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := r.LatestEvidence("acme", 10); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("LatestEvidence error = %v, want ErrStoreUnavailable", err)
 	}
 }
 
