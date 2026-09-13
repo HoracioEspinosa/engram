@@ -6,7 +6,11 @@
 // workspace without touching a single view.
 package theme
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // logoRows is the number of gradient stops the wordmark needs, one per row of
 // the ASCII logo.
@@ -38,6 +42,13 @@ type Palette struct {
 	Accent lipgloss.Color
 	// Highlight tags classifications such as an observation type badge.
 	Highlight lipgloss.Color
+	// SearchHighlight marks a search match inline (rfc-tui.md §8.1's
+	// "highlight" token). It is its own field rather than reusing Success or
+	// Highlight because on catppuccin-mocha and kanagawa the RFC gives it a
+	// third, distinct hex value; on elephant it happens to equal Success,
+	// which is why a single shared field went unnoticed until this palette
+	// had two others to be checked against.
+	SearchHighlight lipgloss.Color
 
 	// Success, Warning, Danger and Info carry state, in that order of
 	// escalation.
@@ -50,75 +61,187 @@ type Palette struct {
 	LogoGradient [logoRows]lipgloss.Color
 }
 
-// Elephant is the palette engram has shipped since the TUI existed. It stays
-// the default so an upgrade never surprises anyone with new colours.
+// Elephant is the palette engram shipped with before theming existed —
+// rfc-tui.md §8 found these thirteen hex values hardcoded in styles.go under
+// a comment claiming Catppuccin Mocha, when they are actually Rosé Pine. It
+// stays selectable as "elephant" so an upgrade never surprises anyone who
+// liked the original look; CatppuccinMocha, not this, is the default (ADR-028
+// §5, rfc-tui.md §8.2).
 func Elephant() Palette {
 	var (
-		base      = lipgloss.Color("#191724")
-		surface   = lipgloss.Color("#1f1d2e")
-		overlay   = lipgloss.Color("#6e6a86")
-		text      = lipgloss.Color("#e0def4")
-		subtext   = lipgloss.Color("#908caa")
-		primary   = lipgloss.Color("#c4a7e7")
-		accent    = lipgloss.Color("#ebbcba")
-		highlight = lipgloss.Color("#f6c177")
-		success   = lipgloss.Color("#9ccfd8")
-		warning   = lipgloss.Color("#f1ca93")
-		danger    = lipgloss.Color("#eb6f92")
-		info      = lipgloss.Color("#31748f")
+		base            = lipgloss.Color("#191724")
+		surface         = lipgloss.Color("#1f1d2e")
+		overlay         = lipgloss.Color("#6e6a86")
+		text            = lipgloss.Color("#e0def4")
+		subtext         = lipgloss.Color("#908caa")
+		primary         = lipgloss.Color("#c4a7e7")
+		accent          = lipgloss.Color("#ebbcba")
+		highlight       = lipgloss.Color("#f6c177")
+		searchHighlight = lipgloss.Color("#9ccfd8")
+		success         = lipgloss.Color("#9ccfd8")
+		warning         = lipgloss.Color("#f1ca93")
+		danger          = lipgloss.Color("#eb6f92")
+		info            = lipgloss.Color("#31748f")
 	)
 
 	return Palette{
-		Name:         "elephant",
-		Base:         base,
-		Surface:      surface,
-		Overlay:      overlay,
-		Text:         text,
-		Subtext:      subtext,
-		Primary:      primary,
-		Accent:       accent,
-		Highlight:    highlight,
-		Success:      success,
-		Warning:      warning,
-		Danger:       danger,
-		Info:         info,
-		LogoGradient: [logoRows]lipgloss.Color{accent, primary, info, success, success},
+		Name:            "elephant",
+		Base:            base,
+		Surface:         surface,
+		Overlay:         overlay,
+		Text:            text,
+		Subtext:         subtext,
+		Primary:         primary,
+		Accent:          accent,
+		Highlight:       highlight,
+		SearchHighlight: searchHighlight,
+		Success:         success,
+		Warning:         warning,
+		Danger:          danger,
+		Info:            info,
+		LogoGradient:    [logoRows]lipgloss.Color{accent, primary, info, success, success},
 	}
 }
 
-// CatppuccinMocha is the Catppuccin Mocha colour scheme.
+// CatppuccinMocha is the Catppuccin Mocha colour scheme and the default
+// theme (ADR-028 §5, rfc-tui.md §8.2). Values are transcribed from
+// rfc-tui.md §8.1's table, itself the project's canonical Catppuccin Mocha
+// hex codes (https://catppuccin.com/palette — mocha: lavender #b4befe,
+// mauve #cba6f7, peach #fab387, teal #94e2d5, blue #89b4fa), not composed.
 func CatppuccinMocha() Palette {
 	var (
-		base      = lipgloss.Color("#1e1e2e")
-		surface   = lipgloss.Color("#313244")
-		overlay   = lipgloss.Color("#585b70")
-		text      = lipgloss.Color("#cdd6f4")
-		subtext   = lipgloss.Color("#a6adc8")
-		primary   = lipgloss.Color("#89b4fa")
-		accent    = lipgloss.Color("#f38ba8")
-		highlight = lipgloss.Color("#f9e2af")
-		success   = lipgloss.Color("#a6e3a1")
-		warning   = lipgloss.Color("#f9e2af")
-		danger    = lipgloss.Color("#f38ba8")
-		info      = lipgloss.Color("#89dceb")
+		base            = lipgloss.Color("#1e1e2e")
+		surface         = lipgloss.Color("#313244")
+		overlay         = lipgloss.Color("#6c7086")
+		text            = lipgloss.Color("#cdd6f4")
+		subtext         = lipgloss.Color("#a6adc8")
+		primary         = lipgloss.Color("#b4befe")
+		accent          = lipgloss.Color("#cba6f7")
+		highlight       = lipgloss.Color("#fab387")
+		searchHighlight = lipgloss.Color("#94e2d5")
+		success         = lipgloss.Color("#a6e3a1")
+		warning         = lipgloss.Color("#f9e2af")
+		danger          = lipgloss.Color("#f38ba8")
+		info            = lipgloss.Color("#89b4fa")
 	)
 
 	return Palette{
-		Name:         "catppuccin-mocha",
-		Base:         base,
-		Surface:      surface,
-		Overlay:      overlay,
-		Text:         text,
-		Subtext:      subtext,
-		Primary:      primary,
-		Accent:       accent,
-		Highlight:    highlight,
-		Success:      success,
-		Warning:      warning,
-		Danger:       danger,
-		Info:         info,
-		LogoGradient: [logoRows]lipgloss.Color{accent, primary, info, success, success},
+		Name:            "catppuccin-mocha",
+		Base:            base,
+		Surface:         surface,
+		Overlay:         overlay,
+		Text:            text,
+		Subtext:         subtext,
+		Primary:         primary,
+		Accent:          accent,
+		Highlight:       highlight,
+		SearchHighlight: searchHighlight,
+		Success:         success,
+		Warning:         warning,
+		Danger:          danger,
+		Info:            info,
+		LogoGradient:    [logoRows]lipgloss.Color{accent, primary, info, success, success},
 	}
+}
+
+// Kanagawa is the Kanagawa "wave" colour scheme rfc-tui.md §8.1 specifies as
+// the second selectable option. Values are transcribed from that table,
+// itself Kanagawa's published hex codes
+// (https://github.com/rebelot/kanagawa.nvim — wave: crystalBlue #7e9cd8,
+// oniViolet #957fb8, springGreen #98bb6c, carpYellow #e6c384, samuraiRed
+// #e82424, springBlue #7fb4ca, surimiOrange #ffa066, waveAqua2 #7aa89f), not
+// composed.
+func Kanagawa() Palette {
+	var (
+		base            = lipgloss.Color("#1f1f28")
+		surface         = lipgloss.Color("#2a2a37")
+		overlay         = lipgloss.Color("#54546d")
+		text            = lipgloss.Color("#dcd7ba")
+		subtext         = lipgloss.Color("#727169")
+		primary         = lipgloss.Color("#7e9cd8")
+		accent          = lipgloss.Color("#957fb8")
+		highlight       = lipgloss.Color("#ffa066")
+		searchHighlight = lipgloss.Color("#7aa89f")
+		success         = lipgloss.Color("#98bb6c")
+		warning         = lipgloss.Color("#e6c384")
+		danger          = lipgloss.Color("#e82424")
+		info            = lipgloss.Color("#7fb4ca")
+	)
+
+	return Palette{
+		Name:            "kanagawa",
+		Base:            base,
+		Surface:         surface,
+		Overlay:         overlay,
+		Text:            text,
+		Subtext:         subtext,
+		Primary:         primary,
+		Accent:          accent,
+		Highlight:       highlight,
+		SearchHighlight: searchHighlight,
+		Success:         success,
+		Warning:         warning,
+		Danger:          danger,
+		Info:            info,
+		LogoGradient:    [logoRows]lipgloss.Color{accent, primary, info, success, success},
+	}
+}
+
+// registry lists every palette selectable by name (rfc-tui.md §8.2). The
+// three keys are the only valid values for --theme, ENGRAM_TUI_THEME and
+// tui.theme.
+var registry = map[string]func() Palette{
+	"catppuccin-mocha": CatppuccinMocha,
+	"kanagawa":         Kanagawa,
+	"elephant":         Elephant,
+}
+
+// DefaultThemeName is the palette rfc-tui.md §8.2 and ADR-028 §5 fix as the
+// out-of-the-box theme.
+const DefaultThemeName = "catppuccin-mocha"
+
+// pickName returns the first non-blank candidate among flag, env and config,
+// in that precedence order, or "" if all three are blank. Resolve and
+// UnknownName both build on it so the two never disagree on which tier won.
+func pickName(flag, env, config string) string {
+	for _, candidate := range []string{flag, env, config} {
+		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+// Resolve picks a palette by name from flag, env or config, in that order of
+// precedence — the first non-blank one wins outright, with no fallthrough to
+// a lower tier if it turns out invalid. rfc-tui.md §8.2: "flag `--theme` >
+// ENGRAM_TUI_THEME > tui.theme > catppuccin-mocha". A blank or unrecognised
+// name at the winning tier resolves to DefaultThemeName, never to a lower
+// tier's value, so a typo in --theme cannot silently fall back to whatever
+// ENGRAM_TUI_THEME happens to hold.
+func Resolve(flag, env, config string) Palette {
+	ctor, ok := registry[pickName(flag, env, config)]
+	if !ok {
+		ctor = registry[DefaultThemeName]
+	}
+	return ctor()
+}
+
+// UnknownName reports the winning candidate among flag, env and config when
+// it is non-blank and not a registered palette, so a caller can warn before
+// Resolve silently falls back to DefaultThemeName — rfc-tui.md §10.1's
+// smoke test: "engram tui --theme desconocido cae al default con aviso". It
+// returns "" when the winning candidate is blank, or already valid, in
+// which case no warning is warranted.
+func UnknownName(flag, env, config string) string {
+	name := pickName(flag, env, config)
+	if name == "" {
+		return ""
+	}
+	if _, ok := registry[name]; ok {
+		return ""
+	}
+	return name
 }
 
 // Styles is every style the TUI renders with, built once from a Palette and
@@ -334,7 +457,7 @@ func New(p Palette) Styles {
 		MarginBottom(1)
 
 	s.SearchHighlight = lipgloss.NewStyle().
-		Foreground(p.Success).
+		Foreground(p.SearchHighlight).
 		Bold(true)
 
 	s.NoResults = lipgloss.NewStyle().
@@ -379,5 +502,9 @@ func New(p Palette) Styles {
 	return s
 }
 
-// Default is the style set the TUI uses when no theme has been selected.
-func Default() Styles { return New(Elephant()) }
+// Default is the style set the TUI uses when no theme has been selected —
+// CatppuccinMocha, per ADR-028 §5 and rfc-tui.md §8.2's precedence chain
+// bottoming out at "catppuccin-mocha". Callers that build a screen without
+// going through theme.Resolve (a tab's own package tests, mostly) get this
+// same default rather than a second, competing notion of "no theme chosen".
+func Default() Styles { return New(CatppuccinMocha()) }
