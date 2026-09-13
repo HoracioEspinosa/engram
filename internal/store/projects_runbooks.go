@@ -408,6 +408,64 @@ func ftsMatchQuery(query, matchMode string) string {
 	return strings.Join(quoted, sep)
 }
 
+// SearchRunbookIndex searches runbook_index_fts by title and symptoms,
+// returning full runbook_index rows ranked by BM25 (rfc-tui.md §9.2's "S8
+// search by symptoms" query). project scopes the match to one project;
+// passing "" searches every project, backing the Runbooks tab's "a" toggle
+// (rfc-tui.md §3.1 S8).
+//
+// Unlike FindRunbooks — built for mem_runbook_find's thinner MCP envelope —
+// this returns the same RunbookIndexRow shape ListRunbookIndex does,
+// including Symptoms, because the TUI renders search results in the exact
+// same table as the unfiltered index (rfc-tui.md §9.4).
+func (s *Store) SearchRunbookIndex(query, project string, limit int) ([]RunbookIndexRow, error) {
+	ftsQuery := ftsMatchQuery(query, "any")
+
+	where := []string{"runbook_index_fts MATCH ?"}
+	args := []any{ftsQuery}
+	if project != "" {
+		where = append(where, "ri.project = ?")
+		args = append(args, project)
+	}
+	whereSQL := strings.Join(where, " AND ")
+
+	if limit <= 0 {
+		limit = 50
+	}
+	args = append(args, limit)
+
+	rows, err := s.db.Query(`
+		SELECT ri.id, ri.project, ri.vault_path, ri.title, ri.category, ri.pattern, ri.severity, ri.status,
+		       ri.symptoms, ri.owner, ri.automation_level, ri.last_updated, ri.last_verified, ri.stale,
+		       ri.age_days, ri.exec_count, ri.last_exec_at, ri.synced_at
+		FROM runbook_index_fts
+		JOIN runbook_index ri ON ri.seq = runbook_index_fts.rowid
+		WHERE `+whereSQL+`
+		ORDER BY bm25(runbook_index_fts) LIMIT ?`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("engram-projects: search runbook index: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]RunbookIndexRow, 0)
+	for rows.Next() {
+		var r RunbookIndexRow
+		var symptoms string
+		var stale int
+		if err := rows.Scan(&r.ID, &r.Project, &r.VaultPath, &r.Title, &r.Category, &r.Pattern,
+			&r.Severity, &r.Status, &symptoms, &r.Owner, &r.AutomationLevel, &r.LastUpdated,
+			&r.LastVerified, &stale, &r.AgeDays, &r.ExecCount, &r.LastExecAt, &r.SyncedAt); err != nil {
+			return nil, fmt.Errorf("engram-projects: scan searched runbook row: %w", err)
+		}
+		r.Stale = stale == 1
+		if strings.TrimSpace(symptoms) != "" {
+			r.Symptoms = strings.Split(symptoms, "\n")
+		}
+		items = append(items, r)
+	}
+	return items, rows.Err()
+}
+
 // ─── Index listing (backs GET /projects/{slug}/runbooks) ─────────────────────
 
 // RunbookListFilter holds the filters of the runbook index listing. Unlike
@@ -444,10 +502,19 @@ type RunbookIndexRow struct {
 	SyncedAt        string   `json:"synced_at"`
 }
 
-// ListRunbookIndex pages through the runbook index of one project.
+// ListRunbookIndex pages through the runbook index, scoped to one project or,
+// when project is "", every project — the cross-project mode
+// rfc-tui.md §3.1 S8's "a" (all projects) toggle needs, alongside
+// GET /projects/{slug}/runbooks (internal/server/projects_routes.go), which
+// always resolves a real slug through knownProject before calling this and so
+// never hits the empty-string branch.
 func (s *Store) ListRunbookIndex(project string, f RunbookListFilter) ([]RunbookIndexRow, int, error) {
-	where := []string{"project = ?"}
-	args := []any{project}
+	var where []string
+	var args []any
+	if project != "" {
+		where = append(where, "project = ?")
+		args = append(args, project)
+	}
 	if f.Stale != nil {
 		v := 0
 		if *f.Stale {
@@ -468,7 +535,10 @@ func (s *Store) ListRunbookIndex(project string, f RunbookListFilter) ([]Runbook
 		where = append(where, "status = ?")
 		args = append(args, f.Status)
 	}
-	whereSQL := strings.Join(where, " AND ")
+	whereSQL := "1=1"
+	if len(where) > 0 {
+		whereSQL = strings.Join(where, " AND ")
+	}
 
 	var total int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM runbook_index WHERE `+whereSQL, args...).Scan(&total); err != nil {

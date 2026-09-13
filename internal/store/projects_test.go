@@ -589,6 +589,92 @@ func TestFindRunbooks(t *testing.T) {
 	}
 }
 
+// TestSearchRunbookIndex is SearchRunbookIndex's counterpart to TestFindRunbooks:
+// unlike FindRunbooks (mem_runbook_find's thinner item shape for the MCP
+// envelope), the TUI's Runbooks tab (rfc-tui.md §3.1 S8) renders search
+// results in the exact same table as the unfiltered index, so this proves the
+// full RunbookIndexRow — including Symptoms, which RunbookFindItem drops —
+// comes back ranked by BM25 over runbook_index_fts (rfc-tui.md §9.2's "S8
+// search by symptoms" query).
+func TestSearchRunbookIndex(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	if _, err := s.SyncRunbookIndex(RunbookIndexSyncParams{
+		Source: "knowledge-mcp",
+		Entries: []RunbookIndexEntryInput{
+			{
+				ID: "RB-003", VaultPath: "Runbooks/RB-003.md", Title: "Preview endpoint slow or failing", Service: "nextcloud",
+				Category: "performance", Status: "verified",
+				Symptoms: []string{"GET /index.php/core/preview returns 503", "previews time out"},
+			},
+			{
+				ID: "RB-004", VaultPath: "Runbooks/RB-004.md", Title: "BSS subscription desync", Service: "middleware",
+				Category: "registration", Status: "verified",
+				Symptoms: []string{"external BSS state differs from internal state"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SyncRunbookIndex: %v", err)
+	}
+
+	// Scoped to the project: RB-004 (middleware) never matches even if its
+	// symptoms happened to contain the term, because the WHERE clause filters
+	// by project before ranking.
+	scoped, err := s.SearchRunbookIndex("503", "nextcloud", 10)
+	if err != nil {
+		t.Fatalf("SearchRunbookIndex (scoped): %v", err)
+	}
+	if len(scoped) != 1 || scoped[0].ID != "RB-003" {
+		t.Fatalf("scoped search = %+v, want only RB-003", scoped)
+	}
+	if len(scoped[0].Symptoms) != 2 {
+		t.Fatalf("scoped[0].Symptoms = %+v, want the 2 seeded lines (RunbookFindItem has no such field)", scoped[0].Symptoms)
+	}
+
+	// project="" means every project — the "a" (all projects) toggle.
+	all, err := s.SearchRunbookIndex("desync", "", 10)
+	if err != nil {
+		t.Fatalf("SearchRunbookIndex (all projects): %v", err)
+	}
+	if len(all) != 1 || all[0].ID != "RB-004" {
+		t.Fatalf("all-projects search = %+v, want RB-004", all)
+	}
+}
+
+// TestListRunbookIndex_EmptyProjectListsEveryProject pins the "a" (all
+// projects) toggle rfc-tui.md §3.1 S8 needs: ListRunbookIndex today (backing
+// only the single-project GET /projects/{slug}/runbooks route) filters on
+// `project = ?` unconditionally, so an empty project returns zero rows
+// instead of "every project" — this is the gap the Runbooks tab's "a" key
+// needs closed.
+func TestListRunbookIndex_EmptyProjectListsEveryProject(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	if _, err := s.SyncRunbookIndex(RunbookIndexSyncParams{
+		Source: "knowledge-mcp",
+		Entries: []RunbookIndexEntryInput{
+			{ID: "RB-003", VaultPath: "Runbooks/RB-003.md", Title: "Preview endpoint slow", Service: "nextcloud", Category: "performance", Status: "verified"},
+			{ID: "RB-001", VaultPath: "Runbooks/RB-001.md", Title: "Line not recognized", Service: "middleware", Category: "registration", Status: "verified"},
+		},
+	}); err != nil {
+		t.Fatalf("SyncRunbookIndex: %v", err)
+	}
+
+	scoped, total, err := s.ListRunbookIndex("nextcloud", RunbookListFilter{})
+	if err != nil {
+		t.Fatalf("ListRunbookIndex (scoped): %v", err)
+	}
+	if total != 1 || len(scoped) != 1 || scoped[0].ID != "RB-003" {
+		t.Fatalf("scoped listing = %+v (total %d), want only RB-003", scoped, total)
+	}
+
+	all, total, err := s.ListRunbookIndex("", RunbookListFilter{})
+	if err != nil {
+		t.Fatalf("ListRunbookIndex (all projects): %v", err)
+	}
+	if total != 2 || len(all) != 2 {
+		t.Fatalf("all-projects listing = %+v (total %d), want both RB-001 and RB-003", all, total)
+	}
+}
+
 func boolp(v bool) *bool { return &v }
 
 func TestDefaultJiraProject(t *testing.T) {
