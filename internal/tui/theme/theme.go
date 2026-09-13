@@ -38,17 +38,17 @@ type Palette struct {
 
 	// Primary marks the focused element and the brand.
 	Primary lipgloss.Color
-	// Accent titles sections and headings.
+	// Secondary titles sections and headings (rfc-tui.md §8.1's "secondary"
+	// token: "títulos de sección").
+	Secondary lipgloss.Color
+	// Accent tags classifications such as an observation type badge
+	// (rfc-tui.md §8.1's "accent" token: "badges de tipo").
 	Accent lipgloss.Color
-	// Highlight tags classifications such as an observation type badge.
+	// Highlight marks a search match inline (rfc-tui.md §8.1's "highlight"
+	// token: "coincidencias de búsqueda"). On elephant it happens to equal
+	// Success, which is why it is excluded from
+	// TestNoTwoDistinctRolesShareAColour.
 	Highlight lipgloss.Color
-	// SearchHighlight marks a search match inline (rfc-tui.md §8.1's
-	// "highlight" token). It is its own field rather than reusing Success or
-	// Highlight because on catppuccin-mocha and kanagawa the RFC gives it a
-	// third, distinct hex value; on elephant it happens to equal Success,
-	// which is why a single shared field went unnoticed until this palette
-	// had two others to be checked against.
-	SearchHighlight lipgloss.Color
 
 	// Success, Warning, Danger and Info carry state, in that order of
 	// escalation.
@@ -69,37 +69,37 @@ type Palette struct {
 // §5, rfc-tui.md §8.2).
 func Elephant() Palette {
 	var (
-		base            = lipgloss.Color("#191724")
-		surface         = lipgloss.Color("#1f1d2e")
-		overlay         = lipgloss.Color("#6e6a86")
-		text            = lipgloss.Color("#e0def4")
-		subtext         = lipgloss.Color("#908caa")
-		primary         = lipgloss.Color("#c4a7e7")
-		accent          = lipgloss.Color("#ebbcba")
-		highlight       = lipgloss.Color("#f6c177")
-		searchHighlight = lipgloss.Color("#9ccfd8")
-		success         = lipgloss.Color("#9ccfd8")
-		warning         = lipgloss.Color("#f1ca93")
-		danger          = lipgloss.Color("#eb6f92")
-		info            = lipgloss.Color("#31748f")
+		base      = lipgloss.Color("#191724")
+		surface   = lipgloss.Color("#1f1d2e")
+		overlay   = lipgloss.Color("#6e6a86")
+		text      = lipgloss.Color("#e0def4")
+		subtext   = lipgloss.Color("#908caa")
+		primary   = lipgloss.Color("#c4a7e7")
+		secondary = lipgloss.Color("#ebbcba")
+		accent    = lipgloss.Color("#f6c177")
+		highlight = lipgloss.Color("#9ccfd8")
+		success   = lipgloss.Color("#9ccfd8")
+		warning   = lipgloss.Color("#f1ca93")
+		danger    = lipgloss.Color("#eb6f92")
+		info      = lipgloss.Color("#31748f")
 	)
 
 	return Palette{
-		Name:            "elephant",
-		Base:            base,
-		Surface:         surface,
-		Overlay:         overlay,
-		Text:            text,
-		Subtext:         subtext,
-		Primary:         primary,
-		Accent:          accent,
-		Highlight:       highlight,
-		SearchHighlight: searchHighlight,
-		Success:         success,
-		Warning:         warning,
-		Danger:          danger,
-		Info:            info,
-		LogoGradient:    [logoRows]lipgloss.Color{accent, primary, info, success, success},
+		Name:         "elephant",
+		Base:         base,
+		Surface:      surface,
+		Overlay:      overlay,
+		Text:         text,
+		Subtext:      subtext,
+		Primary:      primary,
+		Secondary:    secondary,
+		Accent:       accent,
+		Highlight:    highlight,
+		Success:      success,
+		Warning:      warning,
+		Danger:       danger,
+		Info:         info,
+		LogoGradient: [logoRows]lipgloss.Color{secondary, primary, info, success, success},
 	}
 }
 
@@ -110,37 +110,37 @@ func Elephant() Palette {
 // mauve #cba6f7, peach #fab387, teal #94e2d5, blue #89b4fa), not composed.
 func CatppuccinMocha() Palette {
 	var (
-		base            = lipgloss.Color("#1e1e2e")
-		surface         = lipgloss.Color("#313244")
-		overlay         = lipgloss.Color("#6c7086")
-		text            = lipgloss.Color("#cdd6f4")
-		subtext         = lipgloss.Color("#a6adc8")
-		primary         = lipgloss.Color("#b4befe")
-		accent          = lipgloss.Color("#cba6f7")
-		highlight       = lipgloss.Color("#fab387")
-		searchHighlight = lipgloss.Color("#94e2d5")
-		success         = lipgloss.Color("#a6e3a1")
-		warning         = lipgloss.Color("#f9e2af")
-		danger          = lipgloss.Color("#f38ba8")
-		info            = lipgloss.Color("#89b4fa")
+		base      = lipgloss.Color("#1e1e2e")
+		surface   = lipgloss.Color("#313244")
+		overlay   = lipgloss.Color("#6c7086")
+		text      = lipgloss.Color("#cdd6f4")
+		subtext   = lipgloss.Color("#a6adc8")
+		primary   = lipgloss.Color("#b4befe")
+		secondary = lipgloss.Color("#cba6f7")
+		accent    = lipgloss.Color("#fab387")
+		highlight = lipgloss.Color("#94e2d5")
+		success   = lipgloss.Color("#a6e3a1")
+		warning   = lipgloss.Color("#f9e2af")
+		danger    = lipgloss.Color("#f38ba8")
+		info      = lipgloss.Color("#89b4fa")
 	)
 
 	return Palette{
-		Name:            "catppuccin-mocha",
-		Base:            base,
-		Surface:         surface,
-		Overlay:         overlay,
-		Text:            text,
-		Subtext:         subtext,
-		Primary:         primary,
-		Accent:          accent,
-		Highlight:       highlight,
-		SearchHighlight: searchHighlight,
-		Success:         success,
-		Warning:         warning,
-		Danger:          danger,
-		Info:            info,
-		LogoGradient:    [logoRows]lipgloss.Color{accent, primary, info, success, success},
+		Name:         "catppuccin-mocha",
+		Base:         base,
+		Surface:      surface,
+		Overlay:      overlay,
+		Text:         text,
+		Subtext:      subtext,
+		Primary:      primary,
+		Secondary:    secondary,
+		Accent:       accent,
+		Highlight:    highlight,
+		Success:      success,
+		Warning:      warning,
+		Danger:       danger,
+		Info:         info,
+		LogoGradient: [logoRows]lipgloss.Color{secondary, primary, info, success, success},
 	}
 }
 
@@ -153,37 +153,37 @@ func CatppuccinMocha() Palette {
 // composed.
 func Kanagawa() Palette {
 	var (
-		base            = lipgloss.Color("#1f1f28")
-		surface         = lipgloss.Color("#2a2a37")
-		overlay         = lipgloss.Color("#54546d")
-		text            = lipgloss.Color("#dcd7ba")
-		subtext         = lipgloss.Color("#727169")
-		primary         = lipgloss.Color("#7e9cd8")
-		accent          = lipgloss.Color("#957fb8")
-		highlight       = lipgloss.Color("#ffa066")
-		searchHighlight = lipgloss.Color("#7aa89f")
-		success         = lipgloss.Color("#98bb6c")
-		warning         = lipgloss.Color("#e6c384")
-		danger          = lipgloss.Color("#e82424")
-		info            = lipgloss.Color("#7fb4ca")
+		base      = lipgloss.Color("#1f1f28")
+		surface   = lipgloss.Color("#2a2a37")
+		overlay   = lipgloss.Color("#54546d")
+		text      = lipgloss.Color("#dcd7ba")
+		subtext   = lipgloss.Color("#727169")
+		primary   = lipgloss.Color("#7e9cd8")
+		secondary = lipgloss.Color("#957fb8")
+		accent    = lipgloss.Color("#ffa066")
+		highlight = lipgloss.Color("#7aa89f")
+		success   = lipgloss.Color("#98bb6c")
+		warning   = lipgloss.Color("#e6c384")
+		danger    = lipgloss.Color("#e82424")
+		info      = lipgloss.Color("#7fb4ca")
 	)
 
 	return Palette{
-		Name:            "kanagawa",
-		Base:            base,
-		Surface:         surface,
-		Overlay:         overlay,
-		Text:            text,
-		Subtext:         subtext,
-		Primary:         primary,
-		Accent:          accent,
-		Highlight:       highlight,
-		SearchHighlight: searchHighlight,
-		Success:         success,
-		Warning:         warning,
-		Danger:          danger,
-		Info:            info,
-		LogoGradient:    [logoRows]lipgloss.Color{accent, primary, info, success, success},
+		Name:         "kanagawa",
+		Base:         base,
+		Surface:      surface,
+		Overlay:      overlay,
+		Text:         text,
+		Subtext:      subtext,
+		Primary:      primary,
+		Secondary:    secondary,
+		Accent:       accent,
+		Highlight:    highlight,
+		Success:      success,
+		Warning:      warning,
+		Danger:       danger,
+		Info:         info,
+		LogoGradient: [logoRows]lipgloss.Color{secondary, primary, info, success, success},
 	}
 }
 
@@ -394,7 +394,7 @@ func New(p Palette) Styles {
 
 	s.Title = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(p.Accent).
+		Foreground(p.Secondary).
 		MarginBottom(1)
 
 	s.ListItem = lipgloss.NewStyle().
@@ -407,7 +407,7 @@ func New(p Palette) Styles {
 		PaddingLeft(1)
 
 	s.TypeBadge = lipgloss.NewStyle().
-		Foreground(p.Highlight).
+		Foreground(p.Accent).
 		Bold(true)
 
 	s.StateWarningBadge = lipgloss.NewStyle().
@@ -438,7 +438,7 @@ func New(p Palette) Styles {
 
 	s.SectionHeading = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(p.Accent).
+		Foreground(p.Secondary).
 		MarginTop(1).
 		MarginBottom(1)
 
@@ -475,7 +475,7 @@ func New(p Palette) Styles {
 		MarginBottom(1)
 
 	s.SearchHighlight = lipgloss.NewStyle().
-		Foreground(p.SearchHighlight).
+		Foreground(p.Highlight).
 		Bold(true)
 
 	s.NoResults = lipgloss.NewStyle().

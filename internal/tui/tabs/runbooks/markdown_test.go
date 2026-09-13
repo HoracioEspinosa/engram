@@ -33,7 +33,7 @@ func TestRenderMarkdownIsColourlessUnderGoTest(t *testing.T) {
 // TestGlamourStyleConfigUsesThePalette proves glamourStyleConfig is not
 // returning a fixed style regardless of its argument: two different
 // palettes must produce two different heading colours, each matching that
-// palette's own Accent.
+// palette's own Secondary.
 func TestGlamourStyleConfigUsesThePalette(t *testing.T) {
 	mocha := theme.CatppuccinMocha()
 	kanagawa := theme.Kanagawa()
@@ -41,11 +41,11 @@ func TestGlamourStyleConfigUsesThePalette(t *testing.T) {
 	mochaCfg := glamourStyleConfig(mocha)
 	kanagawaCfg := glamourStyleConfig(kanagawa)
 
-	if mochaCfg.Heading.Color == nil || *mochaCfg.Heading.Color != string(mocha.Accent) {
-		t.Errorf("catppuccin-mocha Heading.Color = %v, want %s", mochaCfg.Heading.Color, mocha.Accent)
+	if mochaCfg.Heading.Color == nil || *mochaCfg.Heading.Color != string(mocha.Secondary) {
+		t.Errorf("catppuccin-mocha Heading.Color = %v, want %s", mochaCfg.Heading.Color, mocha.Secondary)
 	}
-	if kanagawaCfg.Heading.Color == nil || *kanagawaCfg.Heading.Color != string(kanagawa.Accent) {
-		t.Errorf("kanagawa Heading.Color = %v, want %s", kanagawaCfg.Heading.Color, kanagawa.Accent)
+	if kanagawaCfg.Heading.Color == nil || *kanagawaCfg.Heading.Color != string(kanagawa.Secondary) {
+		t.Errorf("kanagawa Heading.Color = %v, want %s", kanagawaCfg.Heading.Color, kanagawa.Secondary)
 	}
 	if mochaCfg.Heading.Color != nil && kanagawaCfg.Heading.Color != nil && *mochaCfg.Heading.Color == *kanagawaCfg.Heading.Color {
 		t.Fatal("catppuccin-mocha and kanagawa produced the same glamour heading colour — the palette is not flowing through glamourStyleConfig")

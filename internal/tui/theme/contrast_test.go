@@ -84,9 +84,9 @@ func legibilityIssues(p Palette) []contrastIssue {
 		{"Text", p.Text},
 		{"Subtext", p.Subtext},
 		{"Primary", p.Primary},
+		{"Secondary", p.Secondary},
 		{"Accent", p.Accent},
 		{"Highlight", p.Highlight},
-		{"SearchHighlight", p.SearchHighlight},
 		{"Success", p.Success},
 		{"Warning", p.Warning},
 		{"Danger", p.Danger},
@@ -129,11 +129,11 @@ var knownContrastDebt = map[string]map[string]bool{
 		"Info/Surface": true,
 	},
 	"kanagawa": {
-		"Subtext/Base":    true,
-		"Subtext/Surface": true,
-		"Danger/Base":     true,
-		"Danger/Surface":  true,
-		"Accent/Surface":  true,
+		"Subtext/Base":      true,
+		"Subtext/Surface":   true,
+		"Danger/Base":       true,
+		"Danger/Surface":    true,
+		"Secondary/Surface": true,
 	},
 }
 
@@ -193,20 +193,20 @@ func TestKnownContrastDebtIsStillReal(t *testing.T) {
 // reported.
 func TestLegibilityIssuesCatchesAnIllegiblePalette(t *testing.T) {
 	illegible := Palette{
-		Name:            "illegible",
-		Base:            "#1e1e2e",
-		Surface:         "#f0f0f0",
-		Overlay:         "#6c7086",
-		Text:            "#cdd6f4",
-		Subtext:         "#a6adc8",
-		Primary:         "#b4befe",
-		Accent:          "#cba6f7",
-		Highlight:       "#fab387",
-		SearchHighlight: "#94e2d5",
-		Success:         "#a6e3a1",
-		Warning:         "#f9e2af",
-		Danger:          "#f38ba8",
-		Info:            "#89b4fa",
+		Name:      "illegible",
+		Base:      "#1e1e2e",
+		Surface:   "#f0f0f0",
+		Overlay:   "#6c7086",
+		Text:      "#cdd6f4",
+		Subtext:   "#a6adc8",
+		Primary:   "#b4befe",
+		Secondary: "#cba6f7",
+		Accent:    "#fab387",
+		Highlight: "#94e2d5",
+		Success:   "#a6e3a1",
+		Warning:   "#f9e2af",
+		Danger:    "#f38ba8",
+		Info:      "#89b4fa",
 	}
 
 	issues := legibilityIssues(illegible)

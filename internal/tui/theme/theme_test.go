@@ -28,19 +28,19 @@ func TestEveryPaletteFillsEverySemanticRole(t *testing.T) {
 			}
 
 			roles := map[string]lipgloss.Color{
-				"Base":            p.Base,
-				"Surface":         p.Surface,
-				"Overlay":         p.Overlay,
-				"Text":            p.Text,
-				"Subtext":         p.Subtext,
-				"Primary":         p.Primary,
-				"Accent":          p.Accent,
-				"Highlight":       p.Highlight,
-				"SearchHighlight": p.SearchHighlight,
-				"Success":         p.Success,
-				"Warning":         p.Warning,
-				"Danger":          p.Danger,
-				"Info":            p.Info,
+				"Base":      p.Base,
+				"Surface":   p.Surface,
+				"Overlay":   p.Overlay,
+				"Text":      p.Text,
+				"Subtext":   p.Subtext,
+				"Primary":   p.Primary,
+				"Secondary": p.Secondary,
+				"Accent":    p.Accent,
+				"Highlight": p.Highlight,
+				"Success":   p.Success,
+				"Warning":   p.Warning,
+				"Danger":    p.Danger,
+				"Info":      p.Info,
 			}
 			for role, color := range roles {
 				if color == "" {
@@ -79,11 +79,11 @@ func TestForegroundAndBackgroundStayReadable(t *testing.T) {
 }
 
 // distinctRoles are the "brand and state" roles rfc-tui.md §8.1 assigns one
-// meaning each. SearchHighlight is deliberately excluded: it is allowed to
-// coincide with Success (elephant does, by design — see
-// Palette.SearchHighlight's doc comment). LogoGradient reuses these colours
-// on purpose and is not part of this check either.
-var distinctRoles = []string{"Primary", "Accent", "Highlight", "Success", "Warning", "Danger", "Info"}
+// meaning each. Highlight is deliberately excluded: it is allowed to
+// coincide with Success (elephant does, by design — see Palette.Highlight's
+// doc comment). LogoGradient reuses these colours on purpose and is not
+// part of this check either.
+var distinctRoles = []string{"Primary", "Secondary", "Accent", "Success", "Warning", "Danger", "Info"}
 
 // TestNoTwoDistinctRolesShareAColour catches a palette where two roles with
 // different meanings render identically — e.g. a section title the same
@@ -98,8 +98,8 @@ func TestNoTwoDistinctRolesShareAColour(t *testing.T) {
 			p := registry[name]()
 			colors := map[string]lipgloss.Color{
 				"Primary":   p.Primary,
+				"Secondary": p.Secondary,
 				"Accent":    p.Accent,
-				"Highlight": p.Highlight,
 				"Success":   p.Success,
 				"Warning":   p.Warning,
 				"Danger":    p.Danger,
@@ -140,9 +140,9 @@ func TestNewBindsEveryStyleToThePalette(t *testing.T) {
 		{"Notice", s.Notice, p.Success},
 		{"UpdateBanner", s.UpdateBanner, p.Warning},
 		{"MenuSelected", s.MenuSelected, p.Primary},
-		{"Title", s.Title, p.Accent},
-		{"TypeBadge", s.TypeBadge, p.Highlight},
-		{"SearchHighlight", s.SearchHighlight, p.SearchHighlight},
+		{"Title", s.Title, p.Secondary},
+		{"TypeBadge", s.TypeBadge, p.Accent},
+		{"SearchHighlight", s.SearchHighlight, p.Highlight},
 		{"ID", s.ID, p.Info},
 		{"Project", s.Project, p.Warning},
 		{"TimelineConnector", s.TimelineConnector, p.Overlay},
