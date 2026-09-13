@@ -309,7 +309,14 @@ func (s *Store) ApplySessionProjectReclassification(actions []SessionProjectRecl
 	result.BackupPath = backupPath
 	err = s.withTx(func(tx *sql.Tx) error {
 		for _, action := range normalized {
-			res, err := s.execHook(tx, `UPDATE sessions SET project = ? WHERE id = ? AND project = ?`, action.ToProject, action.SessionID, action.FromProject)
+			// updated_at is bumped alongside the rename on both tables: this
+			// repair is a real change to the row, and applySessionPayloadTx /
+			// applyPromptUpsertTx now gate a pull on that clock (see
+			// incomingWinsLWW). Leaving it untouched would let a pull
+			// carrying the pre-repair project tie on timestamp and fall to a
+			// content digest this rename never affects, silently reverting
+			// the repair on the next pull instead of the guard rejecting it.
+			res, err := s.execHook(tx, `UPDATE sessions SET project = ?, updated_at = datetime('now') WHERE id = ? AND project = ?`, action.ToProject, action.SessionID, action.FromProject)
 			if err != nil {
 				return fmt.Errorf("reclassify session %q: %w", action.SessionID, err)
 			}
@@ -323,7 +330,7 @@ func (s *Store) ApplySessionProjectReclassification(actions []SessionProjectRecl
 			n, _ = res.RowsAffected()
 			result.Counts.Observations += n
 
-			res, err = s.execHook(tx, `UPDATE user_prompts SET project = ? WHERE session_id = ? AND project = ?`, action.ToProject, action.SessionID, action.FromProject)
+			res, err = s.execHook(tx, `UPDATE user_prompts SET project = ?, updated_at = datetime('now') WHERE session_id = ? AND project = ?`, action.ToProject, action.SessionID, action.FromProject)
 			if err != nil {
 				return fmt.Errorf("reclassify prompts for session %q: %w", action.SessionID, err)
 			}

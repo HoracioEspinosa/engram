@@ -391,6 +391,7 @@ type syncSessionPayload struct {
 	StartedAt  string  `json:"started_at,omitempty"`
 	EndedAt    *string `json:"ended_at,omitempty"`
 	Summary    *string `json:"summary,omitempty"`
+	UpdatedAt  string  `json:"updated_at,omitempty"`
 	Deleted    bool    `json:"deleted,omitempty"`
 	DeletedAt  *string `json:"deleted_at,omitempty"`
 	HardDelete bool    `json:"hard_delete,omitempty"`
@@ -422,6 +423,7 @@ type syncPromptPayload struct {
 	Content    string  `json:"content"`
 	Project    *string `json:"project,omitempty"`
 	CreatedAt  string  `json:"created_at,omitempty"`
+	UpdatedAt  string  `json:"updated_at,omitempty"`
 	Deleted    bool    `json:"deleted,omitempty"`
 	DeletedAt  *string `json:"deleted_at,omitempty"`
 	HardDelete bool    `json:"hard_delete,omitempty"`
@@ -718,7 +720,8 @@ func (s *Store) migrate() error {
 			directory  TEXT NOT NULL,
 			started_at TEXT NOT NULL DEFAULT (datetime('now')),
 			ended_at   TEXT,
-			summary    TEXT
+			summary    TEXT,
+			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);
 
 			CREATE TABLE IF NOT EXISTS observations (
@@ -766,6 +769,7 @@ func (s *Store) migrate() error {
 			content    TEXT    NOT NULL,
 			project    TEXT,
 			created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+			updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
 			FOREIGN KEY (session_id) REFERENCES sessions(id)
 		);
 
@@ -1012,6 +1016,27 @@ func (s *Store) migrate() error {
 	if _, err := s.execHook(s.db, `UPDATE user_prompts SET sync_id = 'prompt-' || lower(hex(randomblob(16))) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
 		return err
 	}
+
+	// sessions and user_prompts previously had no per-row modification clock:
+	// started_at and created_at mark a row's birth, not its last write, so
+	// applySessionPayloadTx and applyPromptUpsertTx had nothing to compare a
+	// pull against and overwrote unconditionally. This mirrors the column
+	// observations already got (see the observationColumns loop above) and
+	// backfills it from the closest available birth timestamp so existing
+	// rows are never left with an empty clock.
+	if err := s.addColumnIfNotExists("sessions", "updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfNotExists("user_prompts", "updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `UPDATE sessions SET updated_at = started_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `UPDATE user_prompts SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+		return err
+	}
+
 	if _, err := s.execHook(s.db, `INSERT OR IGNORE INTO sync_state (target_key, lifecycle, updated_at) VALUES ('cloud', 'idle', datetime('now'))`); err != nil {
 		return err
 	}
@@ -2043,8 +2068,8 @@ func (s *Store) CreateSession(id, project, directory string) error {
 		if err := s.createSessionTx(tx, id, project, directory); err != nil {
 			return err
 		}
-		var startedAt string
-		if err := tx.QueryRow(`SELECT started_at FROM sessions WHERE id = ?`, id).Scan(&startedAt); err != nil {
+		var startedAt, updatedAt string
+		if err := tx.QueryRow(`SELECT started_at, updated_at FROM sessions WHERE id = ?`, id).Scan(&startedAt, &updatedAt); err != nil {
 			return err
 		}
 		return s.enqueueSyncMutationTx(tx, SyncEntitySession, id, SyncOpUpsert, syncSessionPayload{
@@ -2052,6 +2077,7 @@ func (s *Store) CreateSession(id, project, directory string) error {
 			Project:   project,
 			Directory: directory,
 			StartedAt: startedAt,
+			UpdatedAt: updatedAt,
 		})
 	})
 }
@@ -2059,7 +2085,7 @@ func (s *Store) CreateSession(id, project, directory string) error {
 func (s *Store) EndSession(id string, summary string) error {
 	return s.withTx(func(tx *sql.Tx) error {
 		res, err := s.execHook(tx,
-			`UPDATE sessions SET ended_at = datetime('now'), summary = ? WHERE id = ?`,
+			`UPDATE sessions SET ended_at = datetime('now'), summary = ?, updated_at = datetime('now') WHERE id = ?`,
 			nullableString(summary), id,
 		)
 		if err != nil {
@@ -2073,13 +2099,13 @@ func (s *Store) EndSession(id string, summary string) error {
 			return nil
 		}
 
-		var startedAt, endedAt string
+		var startedAt, endedAt, updatedAt string
 		var project, directory string
 		var storedSummary *string
 		if err := tx.QueryRow(
-			`SELECT project, directory, started_at, ended_at, summary FROM sessions WHERE id = ?`,
+			`SELECT project, directory, started_at, ended_at, summary, updated_at FROM sessions WHERE id = ?`,
 			id,
-		).Scan(&project, &directory, &startedAt, &endedAt, &storedSummary); err != nil {
+		).Scan(&project, &directory, &startedAt, &endedAt, &storedSummary, &updatedAt); err != nil {
 			return err
 		}
 
@@ -2090,6 +2116,7 @@ func (s *Store) EndSession(id string, summary string) error {
 			StartedAt: startedAt,
 			EndedAt:   &endedAt,
 			Summary:   storedSummary,
+			UpdatedAt: updatedAt,
 		})
 	})
 }
@@ -2595,8 +2622,8 @@ func (s *Store) AddPrompt(p AddPromptParams) (int64, error) {
 		if err != nil {
 			return err
 		}
-		var createdAt string
-		if err := tx.QueryRow(`SELECT created_at FROM user_prompts WHERE id = ?`, promptID).Scan(&createdAt); err != nil {
+		var createdAt, updatedAt string
+		if err := tx.QueryRow(`SELECT created_at, updated_at FROM user_prompts WHERE id = ?`, promptID).Scan(&createdAt, &updatedAt); err != nil {
 			return err
 		}
 		if _, err := s.execHook(tx, `DELETE FROM prompt_tombstones WHERE sync_id = ?`, syncID); err != nil {
@@ -2608,6 +2635,7 @@ func (s *Store) AddPrompt(p AddPromptParams) (int64, error) {
 			Content:   content,
 			Project:   nullableString(p.Project),
 			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
 		})
 	})
 	if err != nil {
@@ -2646,8 +2674,8 @@ func (s *Store) AddPromptIfMissing(p AddPromptParams) (int64, bool, error) {
 		if err != nil {
 			return err
 		}
-		var createdAt string
-		if err := tx.QueryRow(`SELECT created_at FROM user_prompts WHERE id = ?`, promptID).Scan(&createdAt); err != nil {
+		var createdAt, updatedAt string
+		if err := tx.QueryRow(`SELECT created_at, updated_at FROM user_prompts WHERE id = ?`, promptID).Scan(&createdAt, &updatedAt); err != nil {
 			return err
 		}
 		if _, err := s.execHook(tx, `DELETE FROM prompt_tombstones WHERE sync_id = ?`, syncID); err != nil {
@@ -2660,6 +2688,7 @@ func (s *Store) AddPromptIfMissing(p AddPromptParams) (int64, bool, error) {
 			Content:   content,
 			Project:   nullableString(p.Project),
 			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
 		})
 	})
 	if err != nil {
@@ -5602,11 +5631,18 @@ func isRetryableSQLiteLockError(err error) bool {
 }
 
 func (s *Store) createSessionTx(tx *sql.Tx, id, project, directory string) error {
+	// updated_at only bumps when this call actually backfills project or
+	// directory (the same condition those two columns already use): a
+	// repeated call that finds both already set is a no-op re-affirmation,
+	// and bumping the clock on a no-op would make it lie about the row
+	// having changed, letting it out-rank a genuinely newer pull on a later
+	// comparison purely because this session was touched again.
 	_, err := s.execHook(tx,
 		`INSERT INTO sessions (id, project, directory) VALUES (?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
-		   project   = CASE WHEN sessions.project = '' THEN excluded.project ELSE sessions.project END,
-		   directory = CASE WHEN sessions.directory = '' THEN excluded.directory ELSE sessions.directory END`,
+		   project    = CASE WHEN sessions.project = '' THEN excluded.project ELSE sessions.project END,
+		   directory  = CASE WHEN sessions.directory = '' THEN excluded.directory ELSE sessions.directory END,
+		   updated_at = CASE WHEN sessions.project = '' OR sessions.directory = '' THEN datetime('now') ELSE sessions.updated_at END`,
 		id, project, directory,
 	)
 	return err
@@ -6511,20 +6547,82 @@ func observationPayloadFromObservation(obs *Observation) syncObservationPayload 
 	}
 }
 
+// sessionDescriptiveDigest hashes every field applySessionPayloadTx's UPDATE
+// writes, the sessions counterpart of observationDescriptiveDigest. A session
+// and an observation share no fields worth comparing (a session has no
+// content or type), so this cannot reuse that digest — a shared digest would
+// decide same-instant session ties by coincidence against fields that never
+// applied to a session in the first place.
+func sessionDescriptiveDigest(project, directory, startedAt, endedAt, summary string) string {
+	return groupDigest(project, directory, startedAt, endedAt, summary)
+}
+
 func (s *Store) applySessionPayloadTx(tx *sql.Tx, payload syncSessionPayload) error {
 	if isSessionDeletePayload(payload) {
 		return s.applySessionDeleteTx(tx, payload)
 	}
-	_, err := s.execHook(tx,
-		`INSERT INTO sessions (id, project, directory, started_at, ended_at, summary)
-		 VALUES (?, ?, ?, COALESCE(NULLIF(?, ''), datetime('now')), ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET
-		   project = excluded.project,
-		   directory = excluded.directory,
-		   started_at = COALESCE(NULLIF(excluded.started_at, ''), sessions.started_at),
-		   ended_at = COALESCE(excluded.ended_at, sessions.ended_at),
-		   summary = COALESCE(excluded.summary, sessions.summary)`,
-		payload.ID, payload.Project, payload.Directory, strings.TrimSpace(payload.StartedAt), payload.EndedAt, payload.Summary,
+
+	startedAt := strings.TrimSpace(payload.StartedAt)
+	updatedAt := strings.TrimSpace(payload.UpdatedAt)
+	if updatedAt == "" {
+		if startedAt != "" {
+			updatedAt = startedAt
+		} else {
+			updatedAt = Now()
+		}
+	}
+
+	var existingProject, existingDirectory, existingStartedAt, existingUpdatedAt string
+	var existingEndedAt, existingSummary *string
+	err := tx.QueryRow(
+		`SELECT project, directory, started_at, ended_at, summary, ifnull(updated_at, '') FROM sessions WHERE id = ?`,
+		payload.ID,
+	).Scan(&existingProject, &existingDirectory, &existingStartedAt, &existingEndedAt, &existingSummary, &existingUpdatedAt)
+	if err == sql.ErrNoRows {
+		_, err = s.execHook(tx,
+			`INSERT INTO sessions (id, project, directory, started_at, ended_at, summary, updated_at)
+			 VALUES (?, ?, ?, COALESCE(NULLIF(?, ''), datetime('now')), ?, ?, ?)`,
+			payload.ID, payload.Project, payload.Directory, startedAt, payload.EndedAt, payload.Summary, updatedAt,
+		)
+		return err
+	}
+	if err != nil {
+		return err
+	}
+
+	// Fields the incoming payload leaves unset fall back to what is already
+	// stored, the same merge applySessionPayloadTx always did via COALESCE —
+	// only now it happens before the guard so the guard's tie-break digest
+	// sees the value that would actually be written, not the payload's gap.
+	newStartedAt := existingStartedAt
+	if startedAt != "" {
+		newStartedAt = startedAt
+	}
+	newEndedAt := existingEndedAt
+	if payload.EndedAt != nil {
+		newEndedAt = payload.EndedAt
+	}
+	newSummary := existingSummary
+	if payload.Summary != nil {
+		newSummary = payload.Summary
+	}
+
+	// Last-write-wins, the same rule applyObservationUpsertTx already applies
+	// (see incomingWinsLWW): before this guard, project and directory were
+	// overwritten unconditionally on every pull, so a pull describing a
+	// session's pre-merge project — same content, same original updated_at —
+	// would win purely by arriving after MergeProjects renamed it, silently
+	// reverting a change the puller never made.
+	if !incomingWinsLWW(existingUpdatedAt, updatedAt,
+		sessionDescriptiveDigest(existingProject, existingDirectory, existingStartedAt, ptrOrEmpty(existingEndedAt), ptrOrEmpty(existingSummary)),
+		sessionDescriptiveDigest(payload.Project, payload.Directory, newStartedAt, ptrOrEmpty(newEndedAt), ptrOrEmpty(newSummary)),
+	) {
+		return nil
+	}
+
+	_, err = s.execHook(tx,
+		`UPDATE sessions SET project = ?, directory = ?, started_at = ?, ended_at = ?, summary = ?, updated_at = ? WHERE id = ?`,
+		payload.Project, payload.Directory, newStartedAt, newEndedAt, newSummary, updatedAt, payload.ID,
 	)
 	return err
 }
@@ -6693,6 +6791,15 @@ func (s *Store) applyObservationDeleteTx(tx *sql.Tx, payload syncObservationPayl
 	return err
 }
 
+// promptDescriptiveDigest hashes every field applyPromptUpsertTx's UPDATE
+// writes, the prompts counterpart of observationDescriptiveDigest. A prompt
+// has no type, scope or tool_name, so it cannot reuse that digest — a shared
+// digest would decide same-instant prompt ties against fields no prompt row
+// carries.
+func promptDescriptiveDigest(sessionID, content, project, createdAt string) string {
+	return groupDigest(sessionID, content, project, createdAt)
+}
+
 func (s *Store) applyPromptUpsertTx(tx *sql.Tx, payload syncPromptPayload) error {
 	var tombstoneDeletedAt string
 	err := tx.QueryRow(`SELECT deleted_at FROM prompt_tombstones WHERE sync_id = ?`, payload.SyncID).Scan(&tombstoneDeletedAt)
@@ -6708,18 +6815,32 @@ func (s *Store) applyPromptUpsertTx(tx *sql.Tx, payload syncPromptPayload) error
 		}
 	}
 
+	createdAt := strings.TrimSpace(payload.CreatedAt)
+	updatedAt := strings.TrimSpace(payload.UpdatedAt)
+	if updatedAt == "" {
+		if createdAt != "" {
+			updatedAt = createdAt
+		} else {
+			updatedAt = Now()
+		}
+	}
+
 	var existingID int64
-	err = tx.QueryRow(`SELECT id FROM user_prompts WHERE sync_id = ? ORDER BY id DESC LIMIT 1`, payload.SyncID).Scan(&existingID)
+	var existingSessionID, existingContent, existingProject, existingCreatedAt, existingUpdatedAt string
+	err = tx.QueryRow(
+		`SELECT id, session_id, content, ifnull(project, ''), created_at, ifnull(updated_at, '') FROM user_prompts WHERE sync_id = ? ORDER BY id DESC LIMIT 1`,
+		payload.SyncID,
+	).Scan(&existingID, &existingSessionID, &existingContent, &existingProject, &existingCreatedAt, &existingUpdatedAt)
 	if err == sql.ErrNoRows {
-		if strings.TrimSpace(payload.CreatedAt) == "" {
+		if createdAt == "" {
 			_, err = s.execHook(tx,
-				`INSERT INTO user_prompts (sync_id, session_id, content, project) VALUES (?, ?, ?, ?)`,
-				payload.SyncID, payload.SessionID, payload.Content, payload.Project,
+				`INSERT INTO user_prompts (sync_id, session_id, content, project, updated_at) VALUES (?, ?, ?, ?, ?)`,
+				payload.SyncID, payload.SessionID, payload.Content, payload.Project, updatedAt,
 			)
 		} else {
 			_, err = s.execHook(tx,
-				`INSERT INTO user_prompts (sync_id, session_id, content, project, created_at) VALUES (?, ?, ?, ?, ?)`,
-				payload.SyncID, payload.SessionID, payload.Content, payload.Project, payload.CreatedAt,
+				`INSERT INTO user_prompts (sync_id, session_id, content, project, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+				payload.SyncID, payload.SessionID, payload.Content, payload.Project, createdAt, updatedAt,
 			)
 		}
 		return err
@@ -6727,14 +6848,36 @@ func (s *Store) applyPromptUpsertTx(tx *sql.Tx, payload syncPromptPayload) error
 	if err != nil {
 		return err
 	}
+
+	// created_at is preserved unless the incoming payload actually supplies
+	// one, the same merge the original CASE expression performed — kept here
+	// so the guard's tie-break digest sees the value that would be written.
+	newCreatedAt := existingCreatedAt
+	if createdAt != "" {
+		newCreatedAt = createdAt
+	}
+
+	// Last-write-wins, the same rule applyObservationUpsertTx already applies
+	// (see incomingWinsLWW): before this guard, session_id/content/project
+	// were overwritten unconditionally on every pull with nothing to compare
+	// against, so a pull describing an earlier edit of this prompt could
+	// clobber a later local edit purely by being applied last.
+	if !incomingWinsLWW(existingUpdatedAt, updatedAt,
+		promptDescriptiveDigest(existingSessionID, existingContent, existingProject, existingCreatedAt),
+		promptDescriptiveDigest(payload.SessionID, payload.Content, ptrOrEmpty(payload.Project), newCreatedAt),
+	) {
+		return nil
+	}
+
 	_, err = s.execHook(tx,
 		`UPDATE user_prompts
 		 SET session_id = ?,
 		     content = ?,
 		     project = ?,
-		     created_at = CASE WHEN ? = '' THEN created_at ELSE ? END
+		     created_at = ?,
+		     updated_at = ?
 		 WHERE id = ?`,
-		payload.SessionID, payload.Content, payload.Project, strings.TrimSpace(payload.CreatedAt), payload.CreatedAt, existingID,
+		payload.SessionID, payload.Content, payload.Project, newCreatedAt, updatedAt, existingID,
 	)
 	return err
 }

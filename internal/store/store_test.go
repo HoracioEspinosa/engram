@@ -3019,13 +3019,18 @@ func TestApplyPulledPromptUpsertUpdatesCreatedAtOnExistingPrompt(t *testing.T) {
 		t.Fatalf("lookup prompt sync id: %v", err)
 	}
 
+	// updated_at must be genuinely newer than the local prompt's own clock
+	// (set moments ago by AddPrompt) for this pull to win applyPromptUpsertTx's
+	// last-write-wins guard — a payload with no updated_at at all would fall
+	// back to its own created_at, which here is deliberately older and would
+	// be correctly rejected instead of overwriting a newer local prompt.
 	mutation := SyncMutation{
 		Seq:       45,
 		TargetKey: DefaultSyncTargetKey,
 		Entity:    SyncEntityPrompt,
 		EntityKey: syncID,
 		Op:        SyncOpUpsert,
-		Payload:   fmt.Sprintf(`{"sync_id":"%s","session_id":"s-prompt-upsert","content":"remote overwrite","project":"engram","created_at":"2024-01-02 03:04:05"}`, syncID),
+		Payload:   fmt.Sprintf(`{"sync_id":"%s","session_id":"s-prompt-upsert","content":"remote overwrite","project":"engram","created_at":"2024-01-02 03:04:05","updated_at":"2026-12-31 00:00:00"}`, syncID),
 	}
 	if err := s.ApplyPulledMutation(DefaultSyncTargetKey, mutation); err != nil {
 		t.Fatalf("apply pulled prompt upsert: %v", err)
@@ -7284,11 +7289,11 @@ func TestProjectScopedTablesMatchesTheLiveSchema(t *testing.T) {
 		"observations":           {hasUpdatedAt: true},
 		"prompt_tombstones":      {},
 		"runbook_index":          {},
-		"sessions":               {},
+		"sessions":               {hasUpdatedAt: true},
 		"sync_enrolled_projects": {projectPK: true},
 		"sync_mutations":         {},
 		"tasks":                  {hasUpdatedAt: true},
-		"user_prompts":           {},
+		"user_prompts":           {hasUpdatedAt: true},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("projectScopedTables returned %d table(s) %v, want %d %v", len(got), got, len(want), want)

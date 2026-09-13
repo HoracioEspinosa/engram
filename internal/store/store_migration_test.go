@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -819,5 +820,161 @@ func TestMigrate_AddsIdxMemrelStatusCreated(t *testing.T) {
 	}
 	if pendingCount != 2 {
 		t.Errorf("pending relations count = %d, want 2 (seeded rows with judgment_status='pending')", pendingCount)
+	}
+}
+
+// ─── T-04.13: sessions / user_prompts modification clock ───────────────────
+//
+// TestMigrate_AddsSessionAndPromptUpdatedAt seeds a v_(N+2) database
+// (legacyDDLPostMemoryConflictAudit — the last baseline before this change,
+// which never touched sessions or user_prompts) with one session and one
+// prompt via raw SQL, then calls migrate() via New() — the same call
+// `engram doctor` makes when it opens the store — and asserts:
+//
+//  1. both tables report an "updated_at" column via PRAGMA table_info;
+//  2. existing rows are preserved and their clock is backfilled from the
+//     closest birth timestamp (started_at / created_at), never left empty;
+//  3. running migrate() a second time (idempotency) changes nothing.
+//
+// RED: fails until addColumnIfNotExists is wired up for both tables.
+func TestMigrate_AddsSessionAndPromptUpdatedAt(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "engram.db")
+
+	raw, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := raw.Exec("PRAGMA journal_mode = WAL"); err != nil {
+		raw.Close()
+		t.Fatalf("WAL pragma: %v", err)
+	}
+	if _, err := raw.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		raw.Close()
+		t.Fatalf("foreign_keys pragma: %v", err)
+	}
+	if _, err := raw.Exec(legacyDDLPostMemoryConflictAudit); err != nil {
+		raw.Close()
+		t.Fatalf("apply legacy DDL: %v", err)
+	}
+	if _, err := raw.Exec(
+		`INSERT INTO sessions (id, project, directory, started_at) VALUES (?, ?, ?, ?)`,
+		"sess-clock-migration", "engram", "/tmp/engram", "2025-06-01 00:00:00",
+	); err != nil {
+		raw.Close()
+		t.Fatalf("insert legacy session: %v", err)
+	}
+	if _, err := raw.Exec(
+		`INSERT INTO user_prompts (sync_id, session_id, content, project, created_at) VALUES (?, ?, ?, ?, ?)`,
+		"prompt-clock-migration", "sess-clock-migration", "legacy prompt", "engram", "2025-06-01 00:05:00",
+	); err != nil {
+		raw.Close()
+		t.Fatalf("insert legacy prompt: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	cfg := mustDefaultConfig(t)
+	cfg.DataDir = dir
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New(cfg) failed against a pre-T-04.13 database: %v — migration must be additive, not require a fresh database", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	assertHasColumn := func(store *Store, table, column string) {
+		t.Helper()
+		rows, err := store.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+		if err != nil {
+			t.Fatalf("PRAGMA table_info(%s): %v", table, err)
+		}
+		defer rows.Close()
+		found := false
+		for rows.Next() {
+			var cid int
+			var name, typ string
+			var notnull, pk int
+			var dflt any
+			if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+				t.Fatalf("scan table_info(%s): %v", table, err)
+			}
+			if name == column {
+				found = true
+			}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("table_info(%s) rows: %v", table, err)
+		}
+		if !found {
+			t.Fatalf("%s missing column %q after migrate() (expected RED until this change)", table, column)
+		}
+	}
+
+	// 1. Both tables report the new column — what `engram doctor` (storeNew
+	//    -> store.New -> migrate) reports current on.
+	assertHasColumn(s, "sessions", "updated_at")
+	assertHasColumn(s, "user_prompts", "updated_at")
+
+	// 2. Existing rows are preserved and backfilled — never left with an
+	//    empty clock, which would defeat the guard on the very first pull.
+	var sessionUpdatedAt string
+	if err := s.db.QueryRow(`SELECT updated_at FROM sessions WHERE id = ?`, "sess-clock-migration").Scan(&sessionUpdatedAt); err != nil {
+		t.Fatalf("read session updated_at: %v", err)
+	}
+	if sessionUpdatedAt != "2025-06-01 00:00:00" {
+		t.Errorf("session updated_at = %q, want backfilled from started_at %q", sessionUpdatedAt, "2025-06-01 00:00:00")
+	}
+
+	var promptUpdatedAt string
+	if err := s.db.QueryRow(`SELECT updated_at FROM user_prompts WHERE sync_id = ?`, "prompt-clock-migration").Scan(&promptUpdatedAt); err != nil {
+		t.Fatalf("read prompt updated_at: %v", err)
+	}
+	if promptUpdatedAt != "2025-06-01 00:05:00" {
+		t.Errorf("prompt updated_at = %q, want backfilled from created_at %q", promptUpdatedAt, "2025-06-01 00:05:00")
+	}
+
+	var sessionContent, promptContent string
+	if err := s.db.QueryRow(`SELECT project FROM sessions WHERE id = ?`, "sess-clock-migration").Scan(&sessionContent); err != nil {
+		t.Fatalf("read session project: %v", err)
+	}
+	if sessionContent != "engram" {
+		t.Errorf("session project = %q, want preserved %q", sessionContent, "engram")
+	}
+	if err := s.db.QueryRow(`SELECT content FROM user_prompts WHERE sync_id = ?`, "prompt-clock-migration").Scan(&promptContent); err != nil {
+		t.Fatalf("read prompt content: %v", err)
+	}
+	if promptContent != "legacy prompt" {
+		t.Errorf("prompt content = %q, want preserved %q", promptContent, "legacy prompt")
+	}
+
+	// 3. Idempotency: reopening the same (now-migrated) database must not
+	//    error and must not disturb the backfilled values.
+	if err := s.Close(); err != nil {
+		t.Fatalf("close store before second migration: %v", err)
+	}
+	s2, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() second run failed: %v — migrate() is not idempotent", err)
+	}
+	t.Cleanup(func() { _ = s2.Close() })
+
+	assertHasColumn(s2, "sessions", "updated_at")
+	assertHasColumn(s2, "user_prompts", "updated_at")
+
+	var sessionUpdatedAt2 string
+	if err := s2.db.QueryRow(`SELECT updated_at FROM sessions WHERE id = ?`, "sess-clock-migration").Scan(&sessionUpdatedAt2); err != nil {
+		t.Fatalf("read session updated_at after second migrate: %v", err)
+	}
+	if sessionUpdatedAt2 != sessionUpdatedAt {
+		t.Errorf("session updated_at changed on a second migrate(): before=%q after=%q", sessionUpdatedAt, sessionUpdatedAt2)
+	}
+
+	var promptUpdatedAt2 string
+	if err := s2.db.QueryRow(`SELECT updated_at FROM user_prompts WHERE sync_id = ?`, "prompt-clock-migration").Scan(&promptUpdatedAt2); err != nil {
+		t.Fatalf("read prompt updated_at after second migrate: %v", err)
+	}
+	if promptUpdatedAt2 != promptUpdatedAt {
+		t.Errorf("prompt updated_at changed on a second migrate(): before=%q after=%q", promptUpdatedAt, promptUpdatedAt2)
 	}
 }
