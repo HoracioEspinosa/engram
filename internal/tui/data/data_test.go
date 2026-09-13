@@ -508,3 +508,101 @@ func TestFakeMemoryErrShortCircuitsEveryCall(t *testing.T) {
 		t.Fatalf("a failing delete must not be recorded, got %v", f.DeletedSessions)
 	}
 }
+
+// TestSQLiteEvidenceReaderCoversTheContract is the EvidenceReader
+// counterpart of TestSQLiteTaskReaderCoversTheContract: it drives
+// NewEvidenceReader against a real store instead of data.FakeEvidence, which
+// is what every Evidence Update test uses. seedProject's evidence.png is
+// enough for the plain list; a second task's evidence pins the task_id
+// filter rfc-tui.md §9.2's S6 query needs (`e.task_id = ?2`), the one no
+// existing store-level test covered before T-10.04.
+func TestSQLiteEvidenceReaderCoversTheContract(t *testing.T) {
+	s := newTestStore(t)
+	const slug = "acme"
+	task := seedProject(t, s, slug)
+
+	other, err := s.UpsertTask(store.UpsertTaskParams{
+		Project: slug, JiraKey: strp("ACME-2"), Title: strp("Something else"), Kind: strp("bugfix"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertTask (second): %v", err)
+	}
+	if _, _, _, err := s.AddEvidence(store.AddEvidenceParams{
+		Task: other.Task, Path: "other.png",
+		SHA256: strings.Repeat("b", 64), Kind: "png", Proves: "unrelated",
+	}); err != nil {
+		t.Fatalf("AddEvidence (second task): %v", err)
+	}
+
+	r := NewEvidenceReader(s)
+
+	all, err := r.ListEvidence(slug, store.EvidenceListFilter{})
+	if err != nil {
+		t.Fatalf("ListEvidence: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("ListEvidence (unfiltered) = %+v, want the seeded evidence.png and other.png", all)
+	}
+
+	scoped, err := r.ListEvidence(slug, store.EvidenceListFilter{TaskID: task.ID})
+	if err != nil {
+		t.Fatalf("ListEvidence (task filter): %v", err)
+	}
+	if len(scoped) != 1 || scoped[0].Path != "evidence.png" || scoped[0].TaskID != task.ID {
+		t.Fatalf("ListEvidence scoped to task %d = %+v, want only evidence.png", task.ID, scoped)
+	}
+}
+
+func TestSQLiteEvidenceReaderWithoutAStoreReportsIt(t *testing.T) {
+	r := NewEvidenceReader(nil)
+
+	if _, err := r.ListEvidence("acme", store.EvidenceListFilter{}); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("ListEvidence error = %v, want ErrStoreUnavailable", err)
+	}
+}
+
+func TestFakeEvidenceFiltersByTaskIDAndAttached(t *testing.T) {
+	attached := store.EvidenceListItem{Evidence: store.Evidence{ID: 1, TaskID: 5, Path: "a.png", AttachedJira: true}}
+	pending := store.EvidenceListItem{Evidence: store.Evidence{ID: 2, TaskID: 5, Path: "b.png"}}
+	otherTask := store.EvidenceListItem{Evidence: store.Evidence{ID: 3, TaskID: 6, Path: "c.png"}}
+	f := &FakeEvidence{ItemsByProject: map[string][]store.EvidenceListItem{
+		"acme": {attached, pending, otherTask},
+	}}
+
+	all, err := f.ListEvidence("acme", store.EvidenceListFilter{})
+	if err != nil {
+		t.Fatalf("ListEvidence: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("unfiltered = %+v, want all 3 seeded rows", all)
+	}
+
+	byTask, err := f.ListEvidence("acme", store.EvidenceListFilter{TaskID: 5})
+	if err != nil {
+		t.Fatalf("ListEvidence (task filter): %v", err)
+	}
+	if len(byTask) != 2 {
+		t.Fatalf("task filter = %+v, want the 2 rows under task 5", byTask)
+	}
+	if f.LastFilter.TaskID != 5 {
+		t.Fatalf("LastFilter = %+v, want the task filter just issued recorded", f.LastFilter)
+	}
+
+	yes := true
+	byAttached, err := f.ListEvidence("acme", store.EvidenceListFilter{AttachedJira: &yes})
+	if err != nil {
+		t.Fatalf("ListEvidence (attached filter): %v", err)
+	}
+	if len(byAttached) != 1 || byAttached[0].Path != "a.png" {
+		t.Fatalf("attached filter = %+v, want only a.png", byAttached)
+	}
+}
+
+func TestFakeEvidenceErrShortCircuits(t *testing.T) {
+	boom := errors.New("boom")
+	f := &FakeEvidence{Err: boom}
+
+	if _, err := f.ListEvidence("acme", store.EvidenceListFilter{}); !errors.Is(err, boom) {
+		t.Errorf("ListEvidence error = %v", err)
+	}
+}

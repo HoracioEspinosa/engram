@@ -220,6 +220,29 @@ func (r sqliteTask) ContextPack(taskID int64) (string, error) {
 	return markdown, err
 }
 
+// sqliteEvidence adapts the engram SQLite store to EvidenceReader.
+//
+// The TUI shares the single *store.Store that cmd/engram already opened; it
+// does not open a connection of its own.
+type sqliteEvidence struct {
+	store *store.Store
+}
+
+// NewEvidenceReader wraps an engram store as the Evidence tab's reader.
+//
+// A nil store yields a reader whose queries report ErrStoreUnavailable.
+func NewEvidenceReader(s *store.Store) EvidenceReader {
+	return sqliteEvidence{store: s}
+}
+
+func (r sqliteEvidence) ListEvidence(project string, f store.EvidenceListFilter) ([]store.EvidenceListItem, error) {
+	if r.store == nil {
+		return nil, ErrStoreUnavailable
+	}
+	items, _, _, err := r.store.ListEvidence(project, f)
+	return items, err
+}
+
 // TaskKey returns the label a task is identified by everywhere in the TUI:
 // its Jira key, falling back to its SDD change slug, falling back to its
 // sync_id. It is the same precedence internal/project.BuildContextPack uses

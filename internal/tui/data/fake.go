@@ -283,3 +283,49 @@ func (f *FakeTask) ContextPack(taskID int64) (string, error) {
 	}
 	return f.ContextPackByID[taskID], nil
 }
+
+// FakeEvidence is an in-memory EvidenceReader for tests: set the fields you
+// care about, leave the rest zero.
+//
+// Err short-circuits the call, which is how a test drives the error banner
+// without a broken database. Unlike FakeTask, ListEvidence applies every
+// filter itself instead of only recording it, because the Evidence tab's own
+// "t" (filter by task) and "a" (attached only) keys have nothing else to
+// assert against — a fake that just echoed the seeded rows back would let a
+// broken filter pass.
+type FakeEvidence struct {
+	ItemsByProject map[string][]store.EvidenceListItem
+
+	// Err is returned by every method when set.
+	Err error
+
+	// LastFilter records the filter the tab most recently asked for, the
+	// same convention FakeTask.LastListFilter follows.
+	LastFilter store.EvidenceListFilter
+}
+
+var _ EvidenceReader = (*FakeEvidence)(nil)
+
+func (f *FakeEvidence) ListEvidence(project string, filter store.EvidenceListFilter) ([]store.EvidenceListItem, error) {
+	f.LastFilter = filter
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	var filtered []store.EvidenceListItem
+	for _, it := range f.ItemsByProject[project] {
+		if filter.TaskID != 0 && it.TaskID != filter.TaskID {
+			continue
+		}
+		if filter.TaskSyncID != "" && it.TaskSyncID != filter.TaskSyncID {
+			continue
+		}
+		if filter.AttachedJira != nil && it.AttachedJira != *filter.AttachedJira {
+			continue
+		}
+		if filter.Kind != "" && it.Kind != filter.Kind {
+			continue
+		}
+		filtered = append(filtered, it)
+	}
+	return filtered, nil
+}

@@ -77,6 +77,19 @@ type TaskReader interface {
 	ContextPack(taskID int64) (string, error)
 }
 
+// EvidenceReader is the surface the Evidence tab needs: the project's
+// evidence list, optionally filtered by task and/or attached status (S6).
+// S7's detail adds nothing the store must be queried for beyond what a list
+// row already carries — manifest.json's positive/negative control pair is
+// read from disk, not from SQLite — so unlike TaskReader there is no second
+// "get one" method here: the Evidence tab keeps the row it already loaded.
+type EvidenceReader interface {
+	// ListEvidence lists project's evidence applying f (task, attached-jira
+	// and kind filters), most recently captured first (rfc-tui.md §9.2's
+	// "S6 Evidence list" query).
+	ListEvidence(project string, f store.EvidenceListFilter) ([]store.EvidenceListItem, error)
+}
+
 // MemoryReader is the surface the Memory tab needs: the observation, session
 // and timeline queries behind engram's memory screens, plus the one destructive
 // operation those screens expose.
