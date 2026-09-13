@@ -42,6 +42,41 @@ type ProjectReader interface {
 	LatestEvidence(slug string, limit int) ([]store.EvidenceListItem, error)
 }
 
+// TaskDetail is the aggregate the Tasks tab's detail screen needs (S4): the
+// task row plus its linked observations (task_observations, root_cause
+// first) and its evidence.
+type TaskDetail struct {
+	Task         store.Task
+	Observations []store.TaskObservationDetail
+	Evidence     []store.EvidenceListItem
+}
+
+// TaskReader is the surface the Tasks tab needs: the filtered/searched list
+// (S3), one task's aggregate detail (S4), the two writes ADR-028 allows from
+// the TUI — the local `state` mirror and linking an observation — and the
+// context pack (S5).
+//
+// ListTasks folds search into the same call rather than exposing a second
+// SearchTasks method: store.TaskListFilter.Query already runs against
+// tasks_fts (rfc-tui.md §9.2's "S3 search" query), so a second method would
+// just be a thinner duplicate of this one.
+type TaskReader interface {
+	// ListTasks lists tasks for a project applying f (state, kind, query,
+	// limit, offset), most recently updated first.
+	ListTasks(project string, f store.TaskListFilter) ([]store.TaskListItem, error)
+	// Task returns one task's aggregate detail by id.
+	Task(id int64) (TaskDetail, error)
+	// UpdateState sets a task's local state mirror. Jira remains the source
+	// of truth (ADR-028): this never talks to Jira.
+	UpdateState(id int64, state string) error
+	// LinkObservation links an existing observation to a task by id.
+	LinkObservation(taskID, observationID int64) error
+	// ContextPack renders the markdown context pack for a task (delegates to
+	// internal/project.BuildContextPack, the same function mem_context_pack
+	// calls).
+	ContextPack(taskID int64) (string, error)
+}
+
 // MemoryReader is the surface the Memory tab needs: the observation, session
 // and timeline queries behind engram's memory screens, plus the one destructive
 // operation those screens expose.

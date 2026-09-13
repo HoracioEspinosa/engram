@@ -368,6 +368,114 @@ func TestSQLiteProjectReaderWithoutAStoreReportsIt(t *testing.T) {
 	}
 }
 
+// TestSQLiteTaskReaderCoversTheContract exercises every TaskReader method
+// against a real store: the seeded ACME-1 task (seedProject) already carries
+// one evidence file, so this only adds the observation link ListTasks and
+// Task alone cannot cover, then drives the two writes ADR-028 allows from the
+// TUI (UpdateState, LinkObservation) and the context pack (S5).
+func TestSQLiteTaskReaderCoversTheContract(t *testing.T) {
+	s := newTestStore(t)
+	const slug = "acme"
+	task := seedProject(t, s, slug)
+
+	if err := s.CreateSession("session-task", slug, "/tmp/acme"); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	obsID, err := s.AddObservation(store.AddObservationParams{
+		SessionID: "session-task", Type: "discovery", Title: "Root cause",
+		Content: "race in writeStream", Project: slug, Scope: "project",
+	})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+	if _, err := s.LinkTaskObservation(store.LinkTaskObservationParams{
+		Task: task, ObservationID: obsID, Role: "root_cause",
+	}); err != nil {
+		t.Fatalf("LinkTaskObservation (seed): %v", err)
+	}
+
+	r := NewTaskReader(s)
+
+	items, err := r.ListTasks(slug, store.TaskListFilter{})
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(items) != 1 || items[0].JiraKey == nil || *items[0].JiraKey != "ACME-1" {
+		t.Fatalf("ListTasks = %+v, want the seeded ACME-1", items)
+	}
+
+	detail, err := r.Task(task.ID)
+	if err != nil {
+		t.Fatalf("Task: %v", err)
+	}
+	if detail.Task.ID != task.ID {
+		t.Fatalf("Task.Task.ID = %d, want %d", detail.Task.ID, task.ID)
+	}
+	if len(detail.Observations) != 1 || detail.Observations[0].Observation.ID != obsID {
+		t.Fatalf("Observations = %+v, want the one linked in the seed", detail.Observations)
+	}
+	if len(detail.Evidence) != 1 || detail.Evidence[0].Path != "evidence.png" {
+		t.Fatalf("Evidence = %+v, want the seeded evidence.png", detail.Evidence)
+	}
+
+	if err := r.UpdateState(task.ID, "review"); err != nil {
+		t.Fatalf("UpdateState: %v", err)
+	}
+	afterState, err := r.Task(task.ID)
+	if err != nil {
+		t.Fatalf("Task (after UpdateState): %v", err)
+	}
+	if afterState.Task.State != "review" {
+		t.Fatalf("state = %q, want review", afterState.Task.State)
+	}
+
+	obsID2, err := s.AddObservation(store.AddObservationParams{
+		SessionID: "session-task", Type: "decision", Title: "Fix rolled out",
+		Content: "guard the write behind a mutex", Project: slug, Scope: "project",
+	})
+	if err != nil {
+		t.Fatalf("AddObservation (second): %v", err)
+	}
+	if err := r.LinkObservation(task.ID, obsID2); err != nil {
+		t.Fatalf("LinkObservation: %v", err)
+	}
+	afterLink, err := r.Task(task.ID)
+	if err != nil {
+		t.Fatalf("Task (after LinkObservation): %v", err)
+	}
+	if len(afterLink.Observations) != 2 {
+		t.Fatalf("Observations after LinkObservation = %+v, want 2", afterLink.Observations)
+	}
+
+	pack, err := r.ContextPack(task.ID)
+	if err != nil {
+		t.Fatalf("ContextPack: %v", err)
+	}
+	if !strings.Contains(pack, "ACME-1") {
+		t.Fatalf("context pack = %q, want it to mention ACME-1", pack)
+	}
+}
+
+func TestSQLiteTaskReaderWithoutAStoreReportsIt(t *testing.T) {
+	r := NewTaskReader(nil)
+
+	if _, err := r.ListTasks("acme", store.TaskListFilter{}); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("ListTasks error = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := r.Task(1); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("Task error = %v, want ErrStoreUnavailable", err)
+	}
+	if err := r.UpdateState(1, "open"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("UpdateState error = %v, want ErrStoreUnavailable", err)
+	}
+	if err := r.LinkObservation(1, 2); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("LinkObservation error = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := r.ContextPack(1); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("ContextPack error = %v, want ErrStoreUnavailable", err)
+	}
+}
+
 func TestFakeMemoryErrShortCircuitsEveryCall(t *testing.T) {
 	boom := errors.New("boom")
 	f := &FakeMemory{Err: boom}

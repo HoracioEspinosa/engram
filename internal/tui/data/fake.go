@@ -2,6 +2,7 @@ package data
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
 )
@@ -178,4 +179,107 @@ func (f *FakeProject) LatestEvidence(slug string, limit int) ([]store.EvidenceLi
 		return evidence[:limit], nil
 	}
 	return evidence, nil
+}
+
+// FakeTask is an in-memory TaskReader for tests: set the fields you care
+// about, leave the rest zero.
+//
+// Err short-circuits every method, which is how a test drives the error
+// banner without a broken database. UpdateStateCalls and LinkCalls record
+// what the tab asked to write, so a test can assert on the call and not only
+// on the screen it produced.
+type FakeTask struct {
+	ItemsByProject  map[string][]store.TaskListItem
+	DetailByID      map[int64]TaskDetail
+	ContextPackByID map[int64]string
+
+	// Err is returned by every method when set.
+	Err error
+
+	// LastListFilter records the filter the tab most recently asked for.
+	LastListFilter   store.TaskListFilter
+	UpdateStateCalls []struct {
+		ID    int64
+		State string
+	}
+	LinkCalls []struct {
+		TaskID        int64
+		ObservationID int64
+	}
+}
+
+var _ TaskReader = (*FakeTask)(nil)
+
+func (f *FakeTask) ListTasks(taskProject string, filter store.TaskListFilter) ([]store.TaskListItem, error) {
+	f.LastListFilter = filter
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	items := f.ItemsByProject[taskProject]
+	if filter.Query != "" {
+		var matched []store.TaskListItem
+		for _, it := range items {
+			if strings.Contains(strings.ToLower(it.Title), strings.ToLower(filter.Query)) {
+				matched = append(matched, it)
+			}
+		}
+		items = matched
+	}
+	// Mirrors store.ListTasks's own default: an unset limit still caps the
+	// page at 20, it does not mean "everything" (see internal/store's
+	// projects_tasks.go ListTasks). A fake that returned every row here
+	// would let a caller's pagination logic go untested.
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	offset := filter.Offset
+	if offset > len(items) {
+		offset = len(items)
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[offset:end], nil
+}
+
+func (f *FakeTask) Task(id int64) (TaskDetail, error) {
+	if f.Err != nil {
+		return TaskDetail{}, f.Err
+	}
+	d, ok := f.DetailByID[id]
+	if !ok {
+		return TaskDetail{}, errors.New("no such task")
+	}
+	return d, nil
+}
+
+func (f *FakeTask) UpdateState(id int64, state string) error {
+	f.UpdateStateCalls = append(f.UpdateStateCalls, struct {
+		ID    int64
+		State string
+	}{ID: id, State: state})
+	if f.Err != nil {
+		return f.Err
+	}
+	return nil
+}
+
+func (f *FakeTask) LinkObservation(taskID, observationID int64) error {
+	f.LinkCalls = append(f.LinkCalls, struct {
+		TaskID        int64
+		ObservationID int64
+	}{TaskID: taskID, ObservationID: observationID})
+	if f.Err != nil {
+		return f.Err
+	}
+	return nil
+}
+
+func (f *FakeTask) ContextPack(taskID int64) (string, error) {
+	if f.Err != nil {
+		return "", f.Err
+	}
+	return f.ContextPackByID[taskID], nil
 }
