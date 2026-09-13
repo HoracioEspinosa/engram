@@ -38,6 +38,11 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 			m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 			m.project = "nextcloud"
 			m.active = tc.active
+			// New now opens the selector without a resolvable project
+			// (T-10.02); this case's premise is being on tc.active's root
+			// screen already, so that is set explicitly rather than relied
+			// on as New's default.
+			m.screen = screenTab
 
 			var msg tea.KeyMsg
 			if tc.key == "esc" {
@@ -89,6 +94,10 @@ func TestMemorysOwnDashboardQuitsDirectlyNotHome(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
 	m.active = tabs.Memory
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is being on Memory's own dashboard already, so
+	// that is set explicitly rather than relied on as New's default.
+	m.screen = screenTab
 
 	if _, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd == nil {
 		t.Fatal("q on Memory's own dashboard should still quit directly, unchanged by this task")

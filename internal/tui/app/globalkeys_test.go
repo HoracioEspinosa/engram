@@ -28,6 +28,9 @@ func TestDigitKeysSwitchTabsAndRefresh(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.digit, func(t *testing.T) {
 			m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+			// New now opens the selector without a resolvable project
+			// (T-10.02); every case here assumes it is already on a tab.
+			m.screen = screenTab
 			// Start on a different tab than the target so the assertion means
 			// something even for "1" (already Memory's own digit).
 			m.active = tabs.Cloud
@@ -77,6 +80,7 @@ func TestDigitKeysSwitchTabsFromTheDashboardToo(t *testing.T) {
 // either end.
 func TestTabKeyAdvancesToTheNextRegisteredTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenTab  // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Cloud // last in registered order
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyTab})
@@ -90,6 +94,7 @@ func TestTabKeyAdvancesToTheNextRegisteredTab(t *testing.T) {
 
 func TestShiftTabGoesToThePreviousRegisteredTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenTab   // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Memory // first in registered order
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyShiftTab})
@@ -106,6 +111,7 @@ func TestShiftTabGoesToThePreviousRegisteredTab(t *testing.T) {
 // never switch tabs.
 func TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenTab // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Tasks
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
@@ -124,6 +130,7 @@ func TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 // value to type, but it must still not steal focus mid-search.
 func TestTabKeyIsSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenTab // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Runbooks
 	m.runbooks.Searching = true
 	m.runbooks.SearchInput.Focus()
@@ -160,6 +167,7 @@ func TestDigitKeysDoNothingOnTheSelector(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoMemorysOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenTab // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Memory
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
@@ -170,6 +178,7 @@ func TestDigitDoesNotLeakIntoMemorysOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoTasksOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenTab // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Tasks
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
@@ -180,6 +189,7 @@ func TestDigitDoesNotLeakIntoTasksOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoEvidencesOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenTab // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Evidence
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("5")})
@@ -190,6 +200,7 @@ func TestDigitDoesNotLeakIntoEvidencesOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoRunbooksOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenTab // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Runbooks
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
@@ -200,6 +211,7 @@ func TestDigitDoesNotLeakIntoRunbooksOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoCloudsOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenTab // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Cloud
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
@@ -220,6 +232,7 @@ func TestDigitDoesNotLeakIntoCloudsOwnHandling(t *testing.T) {
 func TestZeroAndPAreAlsoSuspendedWhileCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
+	m.screen = screenTab // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Tasks
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()

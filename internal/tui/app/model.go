@@ -96,11 +96,12 @@ func New(mem data.MemoryReader, projects data.ProjectReader, task data.TaskReade
 	}
 
 	// If an initial project was provided, start on the dashboard;
-	// otherwise start on the selector.
+	// otherwise start on the selector (rfc-tui.md §9.1: "sin proyecto
+	// resoluble se abre S1").
 	if initialProject != "" {
 		m.screen = screenDashboard
 	} else {
-		m.screen = screenTab
+		m.screen = screenSelector
 	}
 
 	return m
@@ -118,6 +119,12 @@ func (m Model) Init() tea.Cmd {
 	// If starting on the dashboard, load it.
 	if m.screen == screenDashboard && m.project != "" {
 		cmds = append(cmds, loadDashboard(m.projects, m.project))
+	}
+	// If starting on the selector — no project was resolvable — load its
+	// card list too, so S1 shows real projects instead of an empty list
+	// until the user presses "r".
+	if m.screen == screenSelector {
+		cmds = append(cmds, loadSelector(m.projects))
 	}
 	cmds = append(cmds, tea.EnterAltScreen)
 	return tea.Batch(cmds...)

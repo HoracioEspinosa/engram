@@ -27,11 +27,21 @@ func TestNewSatisfiesTheBubbleteaModelContract(t *testing.T) {
 
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	out := sized.View()
+	if !strings.Contains(out, "Select a project") {
+		t.Fatalf("without a resolvable project the TUI should open on the selector (rfc-tui.md §9.1), got:\n%s", out)
+	}
+
+	// The selector carries no version banner of its own (rfc-tui.md §5's S1
+	// wireframe), so reach a tab screen — via the same NavigateMsg every
+	// cross-tab jump in the app uses — to confirm the version and the store
+	// New was given still reach the workspace underneath it.
+	tabbed, _ := sized.Update(tabs.NavigateMsg{Target: tabs.Memory})
+	out = tabbed.View()
 	if !strings.Contains(out, "engram 1.0.0-test") {
-		t.Fatalf("the dashboard should render the version it was built with, got:\n%s", out)
+		t.Fatalf("the memory dashboard should render the version it was built with, got:\n%s", out)
 	}
 	if !strings.Contains(out, "Actions") {
-		t.Fatal("the TUI should open on the memory dashboard")
+		t.Fatal("navigating to memory should show its own dashboard")
 	}
 }
 

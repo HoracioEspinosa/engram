@@ -11,6 +11,25 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// flattenBatch unwraps a tea.BatchMsg recursively into the plain messages
+// each of its commands produces, so a test can look for one particular
+// message without depending on how many commands tea.Batch happened to fold
+// together.
+func flattenBatch(msg tea.Msg) []tea.Msg {
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{msg}
+	}
+	var out []tea.Msg
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		out = append(out, flattenBatch(c())...)
+	}
+	return out
+}
+
 func testSelectorCards() []store.ProjectCardListItem {
 	return []store.ProjectCardListItem{
 		{
@@ -24,11 +43,54 @@ func testSelectorCards() []store.ProjectCardListItem {
 	}
 }
 
-// TestPKeyOpensSelectorAndLoadsCards checks the global "p" binding works from
-// the tab the workspace opens on, with no project active yet — the state
-// every real session starts from.
+// TestNewWithoutAResolvableProjectOpensTheSelector pins rfc-tui.md §9.1's
+// precedence chain reaching its floor: "sin proyecto resoluble se abre S1".
+// New used to leave screenTab (with active defaulting to Memory) in this
+// case — a comment on the same branch already said "otherwise start on the
+// selector", so the code disagreed with its own documentation.
+func TestNewWithoutAResolvableProjectOpensTheSelector(t *testing.T) {
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+
+	if m.screen != screenSelector {
+		t.Fatalf("screen = %v, want screenSelector", m.screen)
+	}
+}
+
+// TestInitLoadsTheSelectorWhenStartingOnIt pins the companion half of the
+// same fix: a cold start with no resolvable project must show real project
+// cards, not an empty list waiting for "r".
+func TestInitLoadsTheSelectorWhenStartingOnIt(t *testing.T) {
+	fake := &data.FakeProject{Cards: testSelectorCards()}
+	m := New(&data.FakeMemory{}, fake, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+
+	cmd := m.Init()
+	if cmd == nil {
+		t.Fatal("Init should return the startup batch")
+	}
+
+	found := false
+	for _, msg := range flattenBatch(cmd()) {
+		if loaded, ok := msg.(selectorLoadedMsg); ok {
+			found = true
+			if len(loaded.cards) != 2 {
+				t.Fatalf("selectorLoadedMsg.cards = %d, want 2", len(loaded.cards))
+			}
+		}
+	}
+	if !found {
+		t.Fatal("Init should load the selector's card list when starting on it")
+	}
+}
+
+// TestPKeyOpensSelectorAndLoadsCards checks the global "p" binding works
+// from a tab, with no project active yet: the same "p" shortcut a real
+// session reaches by pressing a digit before it has activated a project
+// (T-10.02: a cold start with no resolvable project opens the selector
+// directly, so this case sets screenTab explicitly to exercise "p" from a
+// tab instead of from the selector it would otherwise already be on).
 func TestPKeyOpensSelectorAndLoadsCards(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenTab
 	fake := &data.FakeProject{Cards: testSelectorCards()}
 	m.projects = fake
 	m.selector = newSelectorModel(fake)

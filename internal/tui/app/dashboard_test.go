@@ -49,6 +49,10 @@ func intp(v int) *int { return &v }
 
 func TestZeroKeyIsANoOpWithoutAnActiveProject(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is "0" pressed from a tab, so that is set
+	// explicitly rather than relied on as New's default.
+	m.screen = screenTab
 
 	m, cmd := step(t, m, tea.KeyMsg{Runes: []rune("0"), Type: tea.KeyRunes})
 	if m.screen != screenTab {
@@ -78,6 +82,10 @@ func TestZeroKeyShowsTheDashboardAndReloadsIt(t *testing.T) {
 	reader := testDashboardReader()
 	m.project = "nextcloud"
 	m.active = tabs.Cloud
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is "0" pressed from the Cloud tab, so that is set
+	// explicitly rather than relied on as New's default.
+	m.screen = screenTab
 	m.projects = reader
 	// applyLoaded only accepts a response whose slug matches m.dashboard's
 	// own, so a project set outside newDashboardModel — as New(initialProject)

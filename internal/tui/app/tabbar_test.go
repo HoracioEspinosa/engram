@@ -54,6 +54,9 @@ func TestTabBarCollapsesBelowTheBreakpoint(t *testing.T) {
 // bar renders full rather than guessing narrow.
 func TestTabBarDefaultsToFullFormWhenWidthIsUnknown(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is the tab bar showing over a tab screen.
+	m.screen = screenTab
 
 	if !strings.Contains(m.View(), "1 Memory") {
 		t.Fatalf("expected the full form when width is unknown, got:\n%s", m.View())

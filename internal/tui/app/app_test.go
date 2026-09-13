@@ -102,6 +102,9 @@ func TestWindowSizeReachesEveryTab(t *testing.T) {
 
 func TestKeysReachOnlyTheActiveTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is being on the Cloud tab already.
+	m.screen = screenTab
 	m.active = tabs.Cloud
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyDown})
@@ -121,6 +124,9 @@ func TestKeysReachOnlyTheActiveTab(t *testing.T) {
 // Evidence's detail screen alone, S7's own "p" (copy path) must win.
 func TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is being on Evidence's detail screen already.
+	m.screen = screenTab
 	m.active = tabs.Evidence
 	item := store.EvidenceListItem{Evidence: store.Evidence{ID: 1, Path: "ACME-1/a.png", SHA256: "abc"}}
 	m.evidence.Screen = evidence.ScreenDetail
@@ -142,6 +148,10 @@ func TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector(t *testing.T) {
 // the same footnote: S7 moves the project-selector shortcut to uppercase P.
 func TestEvidenceDetailCapitalPOpensTheProjectSelector(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is being on Evidence's detail screen already, not
+	// the selector "P" is supposed to open.
+	m.screen = screenTab
 	m.active = tabs.Evidence
 	item := store.EvidenceListItem{Evidence: store.Evidence{ID: 1, Path: "ACME-1/a.png"}}
 	m.evidence.Screen = evidence.ScreenDetail
@@ -158,6 +168,11 @@ func TestEvidenceDetailCapitalPOpensTheProjectSelector(t *testing.T) {
 // selector everywhere else, Evidence's own list (S6) included.
 func TestLowercasePStillOpensTheSelectorOutsideEvidenceDetail(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is being on the Tasks tab already, so the
+	// assertion actually exercises "p" reaching the global handler from a
+	// tab instead of trivially staying on the selector it never left.
+	m.screen = screenTab
 	m.active = tabs.Tasks
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
@@ -311,6 +326,9 @@ func TestNavigateToAnUnimplementedTabIsANoOp(t *testing.T) {
 
 func TestCloudRoundTripFromTheDashboard(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is starting on Memory's own dashboard.
+	m.screen = screenTab
 
 	// Walk the dashboard menu down to "Cloud sync settings".
 	for i := 0; i < 4; i++ {
@@ -353,6 +371,9 @@ func TestCloudRoundTripFromTheDashboard(t *testing.T) {
 
 func TestViewWrapsTheActiveTabInTheApplicationFrame(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is a tab's own body being on screen.
+	m.screen = screenTab
 
 	framed := m.View()
 	body := m.memory.View()
@@ -391,6 +412,9 @@ func assertFramedBody(t *testing.T, framed, body string) {
 
 func TestViewSurvivesAnUnregisteredActiveTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is an unregistered tab being the one on screen.
+	m.screen = screenTab
 	m.active = tabs.ID(99)
 
 	if !strings.Contains(m.View(), "Unknown tab") {
@@ -400,6 +424,11 @@ func TestViewSurvivesAnUnregisteredActiveTab(t *testing.T) {
 
 func TestUpdateWithAnUnregisteredActiveTabIsANoOp(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is an unregistered tab being active on screen, so
+	// the key actually reaches updateActive's tab branch instead of
+	// trivially no-opping on the selector.
+	m.screen = screenTab
 	m.active = tabs.ID(99)
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyDown})

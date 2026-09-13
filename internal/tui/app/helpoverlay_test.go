@@ -34,6 +34,9 @@ func TestQuestionMarkOpensTheHelpOverlay(t *testing.T) {
 func TestHelpOverlayContentTracksTheActiveScreen(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Tasks
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is being on a tab already.
+	m.screen = screenTab
 	m, _ = step(t, m, questionMark())
 	tasksHelp := m.View()
 	if !strings.Contains(tasksHelp, "state filter") {
@@ -140,6 +143,10 @@ func TestCtrlCStillQuitsWhileHelpIsShowing(t *testing.T) {
 func TestHelpIsSuspendedWhileCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Tasks
+	// New now opens the selector without a resolvable project (T-10.02);
+	// this case's premise is being on the Tasks tab already, so that is set
+	// explicitly rather than relied on as New's default.
+	m.screen = screenTab
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
 

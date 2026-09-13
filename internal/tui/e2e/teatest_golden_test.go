@@ -115,15 +115,11 @@ func teatestScreens() []teatestScreen {
 	return []teatestScreen{
 		{
 			name: "s1-project-selector",
-			// No project: the workspace opens on the Memory tab (see
-			// internal/tui/tui.go's own doc comment on New) — this task's
-			// report flags that as a discrepancy against rfc-tui.md
-			// §10.1's smoke row ("engram tui sin proyecto resoluble abre
-			// S1"). "p" is the global key that reaches the Selector
-			// regardless of which tab is active.
-			steps: []teatestStep{
-				{key: keyRune("p"), waitFor: "Acme Corp"},
-			},
+			// No project: app.New now opens straight on the selector
+			// (rfc-tui.md §9.1: "sin proyecto resoluble se abre S1"), and
+			// Init loads its card list without any key needed — no "p"
+			// step to reach it, unlike every other screen here.
+			initialWaitFor: "Acme Corp",
 		},
 		{
 			name:           "s2-project-dashboard",
