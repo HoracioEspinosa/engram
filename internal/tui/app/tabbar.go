@@ -25,6 +25,13 @@ type tabBarEntry struct {
 // this always shows all six slots: a build with a tab missing still owns a
 // digit for it (rfc-tui.md §7.1 fixes "1"…"5" to specific tabs, not to
 // whichever ones happen to be wired up).
+//
+// label is a fallback, not the label a registered tab actually shows:
+// tabBarLabel prefers tabs.Tab.Title() (rfc-tui.md §4.3: "label shown in the
+// tab bar") whenever this build has that tab wired up, so Title() stays the
+// one place a tab's name is spelled. label only surfaces for the Dashboard
+// slot, which has no Tab of its own, and for a tab this build does not
+// register at all.
 var tabBarEntries = []tabBarEntry{
 	{digit: "0", label: "Dashboard", isDashboard: true},
 	{digit: "1", label: "Memory", tab: tabs.Memory},
@@ -32,6 +39,20 @@ var tabBarEntries = []tabBarEntry{
 	{digit: "3", label: "Evidence", tab: tabs.Evidence},
 	{digit: "4", label: "Runbooks", tab: tabs.Runbooks},
 	{digit: "5", label: "Cloud", tab: tabs.Cloud},
+}
+
+// tabBarLabel resolves the text one bar slot shows: the Dashboard's literal
+// label, since it is not a tabs.Tab and so has no Title() to read; the
+// registered tab's own Title() otherwise; and the entry's literal label as a
+// last resort, for a build that does not implement that tab at all.
+func (m Model) tabBarLabel(e tabBarEntry) string {
+	if e.isDashboard {
+		return e.label
+	}
+	if tab := m.tab(e.tab); tab != nil {
+		return tab.Title()
+	}
+	return e.label
 }
 
 // activeTabBarDigit reports which slot is active: "0" while the Project
@@ -66,7 +87,7 @@ func (m Model) viewTabBar() string {
 	for _, e := range tabBarEntries {
 		text := e.digit
 		if !compact {
-			text = e.digit + " " + e.label
+			text = e.digit + " " + m.tabBarLabel(e)
 		}
 		if e.digit == active {
 			parts = append(parts, m.styles.TabActive.Render("["+text+"]"))

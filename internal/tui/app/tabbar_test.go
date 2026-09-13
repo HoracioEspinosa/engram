@@ -86,3 +86,38 @@ func TestTabBarIsHiddenOnTheSelector(t *testing.T) {
 		t.Fatalf("the selector should not show the persistent tab bar, got:\n%s", m.View())
 	}
 }
+
+// TestTabBarLabelsComeFromTitleNotTheEntryTable proves the bar's per-tab
+// labels are read from each tab's own Title() (rfc-tui.md §4.3: "label
+// shown in the tab bar") rather than from tabBarEntries' hand-written
+// label field. It corrupts every non-Dashboard entry's label — Dashboard
+// has no Title() of its own to read, so it keeps its literal — and checks
+// the render never shows the corruption: if the bar ever again renders
+// straight from tabBarEntries.label instead of calling Title(), this test
+// catches the two sources of truth diverging before a golden file would.
+func TestTabBarLabelsComeFromTitleNotTheEntryTable(t *testing.T) {
+	original := tabBarEntries
+	defer func() { tabBarEntries = original }()
+
+	corrupted := make([]tabBarEntry, len(original))
+	copy(corrupted, original)
+	for i := range corrupted {
+		if !corrupted[i].isDashboard {
+			corrupted[i].label = "WRONG-" + corrupted[i].label
+		}
+	}
+	tabBarEntries = corrupted
+
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.active = tabs.Tasks
+	m.screen = screenTab
+	m, _ = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	out := m.View()
+	if strings.Contains(out, "WRONG-") {
+		t.Fatalf("tab bar rendered tabBarEntries' hand-written label instead of the tab's own Title(), got:\n%s", out)
+	}
+	if want := "1 " + m.tab(tabs.Memory).Title(); !strings.Contains(out, want) {
+		t.Fatalf("expected the bar to read Memory's own Title() (%q), got:\n%s", want, out)
+	}
+}
