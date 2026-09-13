@@ -209,7 +209,7 @@ func (m Model) viewSearchResults() string {
 		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.Scroll+1, end, resultCount))
 	}
 
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter detail • c copy • t timeline • / search • esc back"))
+	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter detail • c copy • t timeline • L link to task • / search • esc back"))
 
 	return b.String()
 }
@@ -247,7 +247,7 @@ func (m Model) viewRecent() string {
 		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.Scroll+1, end, count))
 	}
 
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter detail • c copy • t timeline • esc back"))
+	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter detail • c copy • t timeline • L link to task • esc back"))
 
 	return b.String()
 }
@@ -355,7 +355,7 @@ func (m Model) viewObservationDetail() string {
 		b.WriteString(shared.RangeIndicator(m.styles, "line", m.DetailScroll+1, end, len(contentLines)))
 	}
 
-	b.WriteString(m.styles.Help.Render("\n  j/k scroll • c copy • t timeline • esc back"))
+	b.WriteString(m.styles.Help.Render("\n  j/k scroll • c copy • t timeline • L link to task • esc back"))
 
 	return b.String()
 }

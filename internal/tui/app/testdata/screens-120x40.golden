@@ -278,7 +278,7 @@
       Rendered bytes must survive a package move untouched.                                                             
                                                                                                                         
                                                                                                                         
-    j/k navigate • enter detail • c copy • t timeline • / search • esc back                                             
+    j/k navigate • enter detail • c copy • t timeline • L link to task • / search • esc back                            
                                                                                                                         
 ═══ search-results-scrolled ═══
                                                                                                                          
@@ -296,7 +296,7 @@
       Rendered bytes must survive a package move untouched.                                                              
                                                                                                                          
                                                                                                                          
-    j/k navigate • enter detail • c copy • t timeline • / search • esc back                                              
+    j/k navigate • enter detail • c copy • t timeline • L link to task • / search • esc back                             
                                                                                                                          
 ═══ search-results-empty ═══
                                                                      
@@ -330,7 +330,7 @@
       Rendered bytes must survive a package move untouched.                                                              
                                                                                                                          
                                                                                                                          
-    j/k navigate • enter detail • c copy • t timeline • esc back                                                         
+    j/k navigate • enter detail • c copy • t timeline • L link to task • esc back                                        
                                                                                                                          
 ═══ recent-empty ═══
                                                                      
@@ -364,7 +364,7 @@
       Rendered bytes must survive a package move untouched.                                                              
                                                                                                                          
                                                                                                                          
-    j/k navigate • enter detail • c copy • t timeline • esc back                                                         
+    j/k navigate • enter detail • c copy • t timeline • L link to task • esc back                                        
    ✓ Copied!                                                                                                             
                                                                                                                          
 ═══ observation-detail-loading ═══
@@ -405,7 +405,7 @@
     observations cannot appear.                                                                                       
                                                                                                                       
                                                                                                                       
-    j/k scroll • c copy • t timeline • esc back                                                                       
+    j/k scroll • c copy • t timeline • L link to task • esc back                                                      
                                                                                                                       
 ═══ observation-detail-scrolled ═══
                                                                                                                       
@@ -433,7 +433,7 @@
     observations cannot appear.                                                                                       
                                                                                                                       
                                                                                                                       
-    j/k scroll • c copy • t timeline • esc back                                                                       
+    j/k scroll • c copy • t timeline • L link to task • esc back                                                      
                                                                                                                       
 ═══ timeline-loading ═══
                                                                      

@@ -2,6 +2,7 @@ package memory
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -267,6 +268,32 @@ func TestCapturingTextIncludesTheLinkPicker(t *testing.T) {
 	m.LinkResults = []store.TaskListItem{{Task: store.Task{ID: 1}}}
 	if !m.CapturingText() {
 		t.Fatal("CapturingText() should stay true while browsing the picker's results, not just while typing")
+	}
+}
+
+// TestFootersAdvertiseTheLinkToTaskKey pins rfc-tui.md §5's S10 wireframe,
+// which lists "L link to task" in Search Results' footer alongside its
+// other keys — the same always-on hint line "c copy" and "t timeline"
+// already get, not only the "?" overlay's Help().
+func TestFootersAdvertiseTheLinkToTaskKey(t *testing.T) {
+	m := New(nil, "")
+
+	m.Screen = ScreenSearchResults
+	m.SearchResults = []store.SearchResult{{Observation: store.Observation{ID: 1}}}
+	if out := m.View(); !strings.Contains(out, "L link to task") {
+		t.Fatalf("search results footer = %q, want it to mention L", out)
+	}
+
+	m.Screen = ScreenRecent
+	m.RecentObservations = []store.Observation{{ID: 1}}
+	if out := m.View(); !strings.Contains(out, "L link to task") {
+		t.Fatalf("recent footer = %q, want it to mention L", out)
+	}
+
+	m.Screen = ScreenObservationDetail
+	m.SelectedObservation = &store.Observation{ID: 1}
+	if out := m.View(); !strings.Contains(out, "L link to task") {
+		t.Fatalf("observation detail footer = %q, want it to mention L", out)
 	}
 }
 
