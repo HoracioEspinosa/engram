@@ -358,6 +358,39 @@ func TestMarkdownViewReportsWhenTheFileIsNotClonedLocally(t *testing.T) {
 	if !containsFold(view, "not cloned locally") {
 		t.Fatalf("view = %q, want the clone instruction", view)
 	}
+	if containsFold(view, shared.VaultRootEnv) {
+		t.Fatalf("view = %q, must not name %s when the variable is configured — that instruction is only for the unconfigured case", view, shared.VaultRootEnv)
+	}
+}
+
+// TestMarkdownViewReportsWhenVaultRootIsNotSet pins ADR-053 §6: with
+// ENGRAM_VAULT_ROOT unset, S9 must name the variable instead of concluding
+// "not cloned locally" — the same on-disk absence (FileExists false) as
+// TestMarkdownViewReportsWhenTheFileIsNotClonedLocally, but with a message
+// that reads differently because the two situations need different fixes.
+func TestMarkdownViewReportsWhenVaultRootIsNotSet(t *testing.T) {
+	t.Setenv(shared.VaultRootEnv, "")
+	item := sampleRunbook("RB-003", "acme", "Preview endpoint slow", true)
+	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": {item}}}
+	m := newModel(fake, nil).WithProject("acme")
+	m, _ = step(t, m, run(t, m.Init()))
+
+	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = step(t, m, run(t, cmd))
+
+	if m.FileExists {
+		t.Fatal("no vault root is configured; FileExists should be false")
+	}
+	if m.ErrorMsg != "" {
+		t.Fatalf("ErrorMsg = %q, want none: this is documented on screen, not surfaced as the tab's error banner", m.ErrorMsg)
+	}
+	view := m.View()
+	if !containsFold(view, shared.VaultRootEnv) {
+		t.Fatalf("view = %q, want it to name %s", view, shared.VaultRootEnv)
+	}
+	if containsFold(view, "not cloned locally") {
+		t.Fatalf("view = %q, must not read \"not cloned locally\" when the variable was never set — that message implies a checkout is configured and simply missing the file", view)
+	}
 }
 
 // TestMarkdownLoadedGuardsAgainstAStaleSelection pins the same guard
@@ -378,6 +411,7 @@ func TestMarkdownLoadedGuardsAgainstAStaleSelection(t *testing.T) {
 }
 
 func TestEditorKeyUsesTheInjectableExecEditor(t *testing.T) {
+	t.Setenv(shared.VaultRootEnv, t.TempDir())
 	item := sampleRunbook("RB-003", "acme", "Preview endpoint slow", true)
 	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")
 	m.Screen = ScreenView
@@ -396,7 +430,11 @@ func TestEditorKeyUsesTheInjectableExecEditor(t *testing.T) {
 		t.Fatal("e should invoke execEditor")
 	}
 	run(t, cmd)
-	want := filepath.Join(shared.VaultRoot(), item.VaultPath)
+	root, ok := shared.VaultRoot()
+	if !ok {
+		t.Fatal("VaultRoot() ok = false, want true: the test just set the env var")
+	}
+	want := filepath.Join(root, item.VaultPath)
 	if gotPath != want {
 		t.Fatalf("opened path = %q, want %q", gotPath, want)
 	}
@@ -404,6 +442,34 @@ func TestEditorKeyUsesTheInjectableExecEditor(t *testing.T) {
 	m, _ = step(t, m, editorClosedMsg{err: errors.New("exec: \"vi\": executable file not found in $PATH")})
 	if m.ErrorMsg == "" {
 		t.Fatal("a failed $EDITOR launch should surface an error")
+	}
+}
+
+// TestEditorKeyReportsWhenVaultRootIsNotSet pins ADR-053 §6 on the "e" path:
+// with no checkout configured there is no path to hand $EDITOR, so it must
+// name the variable instead of either opening a bogus relative path or
+// invoking execEditor at all.
+func TestEditorKeyReportsWhenVaultRootIsNotSet(t *testing.T) {
+	t.Setenv(shared.VaultRootEnv, "")
+	item := sampleRunbook("RB-003", "acme", "Preview endpoint slow", true)
+	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")
+	m.Screen = ScreenView
+	m.Selected = &item
+
+	prev := execEditor
+	invoked := false
+	execEditor = func(path string) tea.Cmd {
+		invoked = true
+		return func() tea.Msg { return editorClosedMsg{} }
+	}
+	defer func() { execEditor = prev }()
+
+	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if invoked || cmd != nil {
+		t.Fatal("e must not invoke execEditor when ENGRAM_VAULT_ROOT is unset")
+	}
+	if !containsFold(m.ErrorMsg, shared.VaultRootEnv) {
+		t.Fatalf("ErrorMsg = %q, want it to name %s", m.ErrorMsg, shared.VaultRootEnv)
 	}
 }
 
@@ -424,6 +490,7 @@ func TestTKeyFromTheViewNavigatesToMemorySearch(t *testing.T) {
 }
 
 func TestOKeyOpensTheHubViaTheInjectableExecEditor(t *testing.T) {
+	t.Setenv(shared.VaultRootEnv, t.TempDir())
 	hub := "Services/nextcloud.md"
 	item := sampleRunbook("RB-003", "nextcloud", "Preview endpoint slow", true)
 	projects := &data.FakeProject{CardBySlug: map[string]store.ProjectCard{
@@ -450,9 +517,48 @@ func TestOKeyOpensTheHubViaTheInjectableExecEditor(t *testing.T) {
 		t.Fatal("resolving the hub should hand off to execEditor")
 	}
 	run(t, cmd)
-	want := filepath.Join(shared.VaultRoot(), hub)
+	root, ok := shared.VaultRoot()
+	if !ok {
+		t.Fatal("VaultRoot() ok = false, want true: the test just set the env var")
+	}
+	want := filepath.Join(root, hub)
 	if gotPath != want {
 		t.Fatalf("opened path = %q, want %q", gotPath, want)
+	}
+}
+
+// TestOKeyReportsWhenVaultRootIsNotSet pins ADR-053 §6 on the "o" path: a
+// project with a knowledge_hub_path configured is not enough to open it
+// without a vault checkout to resolve that path against.
+func TestOKeyReportsWhenVaultRootIsNotSet(t *testing.T) {
+	t.Setenv(shared.VaultRootEnv, "")
+	hub := "Services/nextcloud.md"
+	item := sampleRunbook("RB-003", "nextcloud", "Preview endpoint slow", true)
+	projects := &data.FakeProject{CardBySlug: map[string]store.ProjectCard{
+		"nextcloud": {Slug: "nextcloud", KnowledgeHubPath: &hub},
+	}}
+	m := newModel(&data.FakeRunbook{}, projects).WithProject("nextcloud")
+	m.Screen = ScreenView
+	m.Selected = &item
+
+	prev := execEditor
+	invoked := false
+	execEditor = func(path string) tea.Cmd {
+		invoked = true
+		return func() tea.Msg { return editorClosedMsg{} }
+	}
+	defer func() { execEditor = prev }()
+
+	_, cmd := m.handleViewKeys("o")
+	if cmd == nil {
+		t.Fatal("o should still resolve the hub path (the card has one)")
+	}
+	m, cmd = step(t, m, run(t, cmd))
+	if invoked || cmd != nil {
+		t.Fatal("resolving the hub must not invoke execEditor when ENGRAM_VAULT_ROOT is unset")
+	}
+	if !containsFold(m.ErrorMsg, shared.VaultRootEnv) {
+		t.Fatalf("ErrorMsg = %q, want it to name %s", m.ErrorMsg, shared.VaultRootEnv)
 	}
 }
 

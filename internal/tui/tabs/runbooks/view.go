@@ -159,9 +159,15 @@ func (m Model) viewMarkdown() string {
 
 	switch {
 	case !m.FileExists:
-		b.WriteString(m.styles.NoResults.Render(fmt.Sprintf(
-			"  %s is not cloned locally under %s — clone cd-knowledge-mcp there to read this runbook's body.",
-			item.VaultPath, shared.VaultRoot())))
+		if root, ok := shared.VaultRoot(); ok {
+			b.WriteString(m.styles.NoResults.Render(fmt.Sprintf(
+				"  %s is not cloned locally under %s — clone cd-knowledge-mcp there to read this runbook's body.",
+				item.VaultPath, root)))
+		} else {
+			b.WriteString(m.styles.Error.Render(fmt.Sprintf(
+				"  %s is not set — export it to your local checkout of cd-knowledge-mcp before reading a runbook's body.",
+				shared.VaultRootEnv)))
+		}
 		b.WriteString("\n")
 	default:
 		if m.MarkdownErr != "" {

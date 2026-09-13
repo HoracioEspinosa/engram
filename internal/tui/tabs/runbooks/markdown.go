@@ -27,18 +27,36 @@ const defaultRenderWidth = 80
 // comment), the same way tabs/evidence keeps manifest.json off
 // data.EvidenceReader — plain filesystem access with nothing to query the
 // store for belongs to the tab, not the reader.
-func absoluteVaultPath(vaultPath string) string {
-	return filepath.Join(shared.VaultRoot(), vaultPath)
+//
+// ok is false when ENGRAM_VAULT_ROOT is not configured, in which case path
+// is empty. There is no default to fall back to (ADR-053 §6): joining an
+// empty root would silently resolve against the process's working
+// directory, which is not the vault and would make readRunbookMarkdown read
+// the wrong file (or none) without saying why.
+func absoluteVaultPath(vaultPath string) (path string, ok bool) {
+	root, ok := shared.VaultRoot()
+	if !ok {
+		return "", false
+	}
+	return filepath.Join(root, vaultPath), true
 }
 
 // readRunbookMarkdown reads vaultPath's file relative to shared.VaultRoot().
 //
-// A missing file is not an error — rfc-tui.md §9.4 documents it as the
-// normal state of a checkout of cd-knowledge-mcp that was never cloned
-// locally — it is reported through exists=false so S9 can show the index
-// fields plus the instruction to clone instead of a raw I/O error.
+// Neither a missing file nor an unconfigured ENGRAM_VAULT_ROOT is reported
+// as err: a missing file is documented by rfc-tui.md §9.4 as the normal
+// state of a checkout of cd-knowledge-mcp that was never cloned locally, and
+// an unconfigured variable is a configuration gap S9 must name rather than
+// an I/O failure. Both come back through exists=false — the caller tells
+// them apart by calling shared.VaultRoot() itself, the same source of truth
+// this function consulted, which is exactly what lets S9 render the correct
+// one of the two instructions instead of a raw I/O error.
 func readRunbookMarkdown(vaultPath string) (content string, exists bool, err error) {
-	raw, err := os.ReadFile(absoluteVaultPath(vaultPath))
+	abs, ok := absoluteVaultPath(vaultPath)
+	if !ok {
+		return "", false, nil
+	}
+	raw, err := os.ReadFile(abs)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", false, nil

@@ -1240,11 +1240,11 @@ theme name falls back to the default and prints a warning instead of failing sil
 ### Runbooks and `ENGRAM_VAULT_ROOT`
 
 The Runbooks Markdown view resolves a runbook's file against `ENGRAM_VAULT_ROOT` (the local
-checkout of `cd-knowledge-mcp`); unset, it guesses
-`~/Projects/ClaroDrive/clarodrive-knowledge-mcp/vault/clarodrive`, a path that only matches one
-specific layout. On any other machine the guess resolves to nothing, and the view shows "not
-cloned locally" — indistinguishable from the vault genuinely being absent. Set
-`ENGRAM_VAULT_ROOT` explicitly rather than relying on the default.
+checkout of `cd-knowledge-mcp`). The variable is required and has no default: guessing a path that
+happens not to exist on a given machine would fail silently, reading as "the runbook isn't cloned"
+when the actual problem is that the variable was never set. Left unset, the view names the
+variable instead of guessing; set to a checkout that doesn't hold the file, it names that checkout
+and says the runbook "is not cloned locally" there — the two messages are deliberately distinct.
 
 ---
 

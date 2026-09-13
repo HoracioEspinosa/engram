@@ -1,6 +1,7 @@
 package runbooks
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -33,7 +34,11 @@ func openHub(projects data.ProjectReader, project string) tea.Cmd {
 		if card.KnowledgeHubPath == nil || strings.TrimSpace(*card.KnowledgeHubPath) == "" {
 			return hubResolvedMsg{}
 		}
-		return hubResolvedMsg{path: absoluteVaultPath(*card.KnowledgeHubPath)}
+		path, ok := absoluteVaultPath(*card.KnowledgeHubPath)
+		if !ok {
+			return hubResolvedMsg{err: fmt.Errorf("%s is not set", shared.VaultRootEnv)}
+		}
+		return hubResolvedMsg{path: path}
 	}
 }
 
@@ -261,7 +266,12 @@ func (m Model) handleViewKeys(key string) (tabs.Tab, tea.Cmd) {
 			m.ViewScroll = 0
 		}
 	case "e":
-		return m, execEditor(absoluteVaultPath(item.VaultPath))
+		path, ok := absoluteVaultPath(item.VaultPath)
+		if !ok {
+			m.ErrorMsg = shared.VaultRootEnv + " is not set"
+			return m, nil
+		}
+		return m, execEditor(path)
 	case "t":
 		return m, tabs.NavigateToMemorySearch("runbook/" + item.ID)
 	case "c":

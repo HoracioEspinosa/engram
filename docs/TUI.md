@@ -148,12 +148,13 @@ warning badge with its age in days:
 
 **`ENGRAM_VAULT_ROOT`**: this view reads the runbook's Markdown file from a local checkout of the
 knowledge vault (`cd-knowledge-mcp`), joined with the row's own `vault_path`. The checkout root is
-`ENGRAM_VAULT_ROOT` when set; otherwise the binary guesses
-`~/Projects/ClaroDrive/clarodrive-knowledge-mcp/vault/clarodrive`, which only matches a machine
-that happens to clone the vault at exactly that path. On any other layout the guess resolves to a
-directory that doesn't exist, and the view shows "not cloned locally" — a message that reads
-identically whether the vault genuinely isn't cloned or the guess was simply wrong. If your clone
-lives anywhere else, **set `ENGRAM_VAULT_ROOT` to it explicitly**; don't rely on the default.
+**required** — `ENGRAM_VAULT_ROOT` has no default. A guessed path that happens not to exist on a
+given machine would fail silently, reading as "the runbook isn't cloned" when the real problem is
+that the variable was never set. With the variable unset, this view says so by name instead of
+guessing; with it set to a checkout that doesn't hold the file, it names that path and says the
+runbook "is not cloned locally" there. The two messages are deliberately different — one is a
+configuration gap, the other is a missing checkout — so **set `ENGRAM_VAULT_ROOT`** to your clone
+of `cd-knowledge-mcp` before opening this view.
 
 Rendering also does not strip the note's own YAML frontmatter before handing it to `glamour`, so
 the block above the title (`id:`, `symptoms:`, `tags:`, …) repeats, as plain text, the same
@@ -213,8 +214,10 @@ of failing silently.
 ## Troubleshooting
 
 - **The Runbooks Markdown view says "not cloned locally" but I do have the vault cloned.** See
-  [`ENGRAM_VAULT_ROOT`](#runbooks) above — the default path is a guess, and yours almost certainly
-  lives somewhere else.
+  [`ENGRAM_VAULT_ROOT`](#runbooks) above — the message names the checkout it looked under; confirm
+  that's actually where your clone lives, and export the variable if it isn't.
+- **The Runbooks Markdown view says `ENGRAM_VAULT_ROOT` is not set.** It has no default; export it
+  to your local clone of `cd-knowledge-mcp` (see [`ENGRAM_VAULT_ROOT`](#runbooks) above).
 - **No screen renders, or it renders wrong.** Confirm which `engram` is actually running: a
   Homebrew-installed binary earlier on `$PATH` can shadow one you built from source. `engram
   version` prints exactly what you're running.

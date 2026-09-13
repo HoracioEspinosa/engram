@@ -1,29 +1,42 @@
 package shared
 
-import (
-	"os"
-	"path/filepath"
-	"testing"
-)
+import "testing"
 
 func TestVaultRootHonoursTheEnvOverride(t *testing.T) {
 	t.Setenv(VaultRootEnv, "/tmp/custom-vault")
 
-	if got := VaultRoot(); got != "/tmp/custom-vault" {
-		t.Fatalf("VaultRoot() = %q, want the env override", got)
+	root, ok := VaultRoot()
+	if !ok {
+		t.Fatal("VaultRoot() ok = false, want true when the env var is set")
+	}
+	if root != "/tmp/custom-vault" {
+		t.Fatalf("VaultRoot() root = %q, want the env override", root)
 	}
 }
 
-func TestVaultRootDefaultsUnderHome(t *testing.T) {
+// TestVaultRootReportsUnconfiguredWhenUnset pins ADR-053 §6: the variable
+// has no default to fall back to, so an unset ENGRAM_VAULT_ROOT must be
+// reported as "not configured" (ok=false) rather than resolved to a guessed
+// path that may or may not exist on this machine.
+func TestVaultRootReportsUnconfiguredWhenUnset(t *testing.T) {
 	t.Setenv(VaultRootEnv, "")
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Skip("no home directory available in this environment")
+	root, ok := VaultRoot()
+	if ok {
+		t.Fatalf("VaultRoot() ok = true, root = %q, want ok=false when the env var is unset", root)
 	}
-	want := filepath.Join(home, VaultRootDefault)
+	if root != "" {
+		t.Fatalf("VaultRoot() root = %q, want empty when unconfigured", root)
+	}
+}
 
-	if got := VaultRoot(); got != want {
-		t.Fatalf("VaultRoot() = %q, want %q", got, want)
+// TestVaultRootReportsUnconfiguredWhenBlank pins the same "not configured"
+// outcome for a variable set to whitespace only — indistinguishable from
+// unset from a reader's point of view, and from os.Getenv's.
+func TestVaultRootReportsUnconfiguredWhenBlank(t *testing.T) {
+	t.Setenv(VaultRootEnv, "   ")
+
+	if _, ok := VaultRoot(); ok {
+		t.Fatal("VaultRoot() ok = true, want false for a blank value")
 	}
 }

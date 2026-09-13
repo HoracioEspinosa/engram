@@ -2,31 +2,30 @@ package shared
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 )
 
-// VaultRootEnv and VaultRootDefault resolve the local clone of the knowledge
-// vault that runbook_index.vault_path (and project_cards.knowledge_hub_path)
-// are relative to (rfc-tui.md §9.1: "Ruta del vault"). Every developer's
-// clone of cd-knowledge-mcp can live at a different path, which is exactly
-// why the RFC documents an escape hatch instead of a single hardcoded
-// location.
-const (
-	VaultRootEnv     = "ENGRAM_VAULT_ROOT"
-	VaultRootDefault = "Projects/ClaroDrive/clarodrive-knowledge-mcp/vault/clarodrive"
-)
+// VaultRootEnv names the environment variable that points at the local
+// clone of the knowledge vault that runbook_index.vault_path (and
+// project_cards.knowledge_hub_path) are relative to (rfc-tui.md §9.1: "Ruta
+// del vault"). It has no default: every developer's clone of
+// cd-knowledge-mcp lives at a different path, and a guessed default that
+// happens not to exist on a given machine fails silently — the Runbooks
+// Markdown view (S9) would report the runbook as "not cloned locally" when
+// the actual problem is that the variable was never set. Making the
+// variable mandatory turns that silent failure into a named one.
+const VaultRootEnv = "ENGRAM_VAULT_ROOT"
 
-// VaultRoot resolves
-// ${ENGRAM_VAULT_ROOT:-~/Projects/ClaroDrive/clarodrive-knowledge-mcp/vault/clarodrive},
-// the same precedence EvidenceRoot applies for captured evidence.
-func VaultRoot() string {
-	if v := strings.TrimSpace(os.Getenv(VaultRootEnv)); v != "" {
-		return v
+// VaultRoot resolves ENGRAM_VAULT_ROOT. ok is false when the variable is
+// unset or blank, in which case root is empty and callers must not use it
+// to build a path. Distinguishing !ok ("not configured") from ok-but-the-
+// path-does-not-exist-on-disk ("configured, missing checkout") is left to
+// the caller, because only the caller — S9's viewMarkdown, for instance —
+// knows which of the two messages a reader needs.
+func VaultRoot() (root string, ok bool) {
+	v := strings.TrimSpace(os.Getenv(VaultRootEnv))
+	if v == "" {
+		return "", false
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return VaultRootDefault
-	}
-	return filepath.Join(home, VaultRootDefault)
+	return v, true
 }
