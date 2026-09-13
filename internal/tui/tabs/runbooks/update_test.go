@@ -470,6 +470,83 @@ func TestOKeyReportsWhenTheProjectHasNoHubConfigured(t *testing.T) {
 	}
 }
 
+// TestViewScrollKeysMoveAndClamp pins handleViewKeys' up/down/g/G branches,
+// none of which any test before this task drove: every existing S9 test
+// only exercised e/t/c/o/r/esc.
+func TestViewScrollKeysMoveAndClamp(t *testing.T) {
+	item := sampleRunbook("RB-003", "acme", "Preview endpoint slow", true)
+	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")
+	m.Screen = ScreenView
+	m.Selected = &item
+	m.Rendered = strings.Join([]string{"line0", "line1", "line2", "line3", "line4"}, "\n")
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	if m.ViewScroll != 1 {
+		t.Fatalf("ViewScroll = %d, want 1 after down", m.ViewScroll)
+	}
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyUp})
+	if m.ViewScroll != 0 {
+		t.Fatalf("ViewScroll = %d, want 0 after up", m.ViewScroll)
+	}
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyUp})
+	if m.ViewScroll != 0 {
+		t.Fatal("up at the top should not go negative")
+	}
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	if m.ViewScroll <= 0 {
+		t.Fatalf("ViewScroll = %d, want G to jump forward", m.ViewScroll)
+	}
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	if m.ViewScroll != 0 {
+		t.Fatalf("ViewScroll = %d, want g to reset to 0", m.ViewScroll)
+	}
+}
+
+// TestReloadKeyInTheViewReloadsMarkdown pins handleViewKeys' "r" branch,
+// distinct from Refresh() (model_test.go's own
+// TestRefreshReloadsTheMarkdownOnTheView): this is the key press path, the
+// one a user on S9 actually presses.
+func TestReloadKeyInTheViewReloadsMarkdown(t *testing.T) {
+	item := sampleRunbook("RB-003", "acme", "Preview endpoint slow", true)
+	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")
+	m.Screen = ScreenView
+	m.Selected = &item
+
+	_, cmd := m.handleViewKeys("r")
+	if cmd == nil {
+		t.Fatal("r should reload the markdown")
+	}
+	msg, ok := run(t, cmd).(markdownLoadedMsg)
+	if !ok || msg.id != "RB-003" {
+		t.Fatalf("r produced %+v (ok=%v), want a markdownLoadedMsg for RB-003", run(t, cmd), ok)
+	}
+}
+
+// TestViewKeysWithNoSelectionOnlyRespondToEscOrQ pins handleViewKeys' guard
+// for m.Selected == nil (reached only if the view is somehow shown before
+// any row was chosen): every key but esc/q must be a no-op, not a panic on
+// a nil dereference.
+func TestViewKeysWithNoSelectionOnlyRespondToEscOrQ(t *testing.T) {
+	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{
+		"acme": {sampleRunbook("RB-900", "acme", "Stale runbook", true)},
+	}}
+	m := newModel(fake, nil).WithProject("acme")
+	m.Screen = ScreenView
+
+	if _, cmd := m.handleViewKeys("j"); cmd != nil {
+		t.Fatal("a scroll key with nothing selected should be a no-op")
+	}
+
+	m2, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m2.Screen != ScreenIndex {
+		t.Fatalf("Screen = %v, want ScreenIndex", m2.Screen)
+	}
+	if cmd == nil {
+		t.Fatal("esc with nothing selected should still reload the index")
+	}
+}
+
 func TestEscFromTheViewReturnsToTheIndexAndReloads(t *testing.T) {
 	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{
 		"acme": {sampleRunbook("RB-900", "acme", "Stale runbook", true)},

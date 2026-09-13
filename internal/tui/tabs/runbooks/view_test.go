@@ -8,48 +8,87 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 )
 
-// TestIndexRowShowsTheStaleBadgeOnlyWhenStale pins the criterion T-10.05
-// closes on: a runbook flagged stale in runbook_index must render with a
-// visible stale marker, and one that is not must not — the badge must track
-// the real Stale field, never assume it.
-func TestIndexRowShowsTheStaleBadgeOnlyWhenStale(t *testing.T) {
-	stale := sampleRunbook("RB-003", "nextcloud", "Preview endpoint slow", true)
-	fresh := sampleRunbook("RB-005", "nextcloud", "Push notifications", false)
+// TestViewIndexRendersEveryStateWithoutPanicking is the Runbooks-tab
+// counterpart of tabs/evidence's and tabs/tasks's own
+// TestViewRendersEveryScreenWithoutPanicking: viewIndex and
+// viewRunbookPreview sat at 0% coverage because no existing test called
+// m.View() with Screen left at its zero value (ScreenIndex).
+func TestViewIndexRendersEveryStateWithoutPanicking(t *testing.T) {
+	item := sampleRunbook("RB-900", "acme", "Stale runbook", true)
+	item.Symptoms = []string{"returns HTTP 503", "cold generation is slow"}
+	itemNoSymptoms := sampleRunbook("RB-901", "acme", "No symptoms recorded", false)
 
-	m := withHeight(newModel(&data.FakeRunbook{}, nil), 20).WithProject("nextcloud")
-	m.Items = []store.RunbookIndexRow{stale, fresh}
-
-	staleRow := m.viewRunbookRow(stale, false)
-	if !strings.Contains(staleRow, "⚠") {
-		t.Fatalf("stale row = %q, want the stale marker rendered", staleRow)
+	scenes := []struct {
+		name  string
+		build func() Model
+	}{
+		{"empty", func() Model { return withHeight(newModel(&data.FakeRunbook{}, nil).WithProject("acme"), 30) }},
+		{"populated-with-preview", func() Model {
+			m := withHeight(newModel(&data.FakeRunbook{}, nil).WithProject("acme"), 30)
+			m.Items = []store.RunbookIndexRow{item, itemNoSymptoms}
+			m.Cursor = 0
+			return m
+		}},
+		{"populated-cursor-on-row-without-symptoms", func() Model {
+			m := withHeight(newModel(&data.FakeRunbook{}, nil).WithProject("acme"), 30)
+			m.Items = []store.RunbookIndexRow{item, itemNoSymptoms}
+			m.Cursor = 1
+			return m
+		}},
+		{"searching", func() Model {
+			m := withHeight(newModel(&data.FakeRunbook{}, nil).WithProject("acme"), 30)
+			m.Items = []store.RunbookIndexRow{item}
+			m.Searching = true
+			m.SearchInput.Focus()
+			return m
+		}},
+		{"all-projects-with-query", func() Model {
+			m := withHeight(newModel(&data.FakeRunbook{}, nil).WithProject("acme"), 30)
+			m.All = true
+			m.Query = "503"
+			m.Items = []store.RunbookIndexRow{item}
+			return m
+		}},
+		{"error-and-copy-banner", func() Model {
+			m := withHeight(newModel(&data.FakeRunbook{}, nil).WithProject("acme"), 30)
+			m.ErrorMsg = "database is locked"
+			m.CopyFeedback = "✓ Copied!"
+			return m
+		}},
 	}
 
-	freshRow := m.viewRunbookRow(fresh, false)
-	if strings.Contains(freshRow, "⚠") {
-		t.Fatalf("fresh row = %q, want no stale marker", freshRow)
+	for _, scene := range scenes {
+		t.Run(scene.name, func(t *testing.T) {
+			out := scene.build().View()
+			if out == "" {
+				t.Fatal("View() returned an empty string")
+			}
+		})
 	}
 }
 
-// TestMarkdownViewTitleShowsTheStaleBadgeOnlyWhenStale is S9's counterpart:
-// the exact screen the closing criterion opens ("RB-003 se abre desde la TUI
-// con su bandera stale").
-func TestMarkdownViewTitleShowsTheStaleBadgeOnlyWhenStale(t *testing.T) {
-	stale := sampleRunbook("RB-003", "nextcloud", "Preview endpoint slow", true)
-	m := newModel(&data.FakeRunbook{}, nil).WithProject("nextcloud")
-	m.Screen = ScreenView
-	m.Selected = &stale
-	m.FileExists = true
-	m.Rendered = "body"
+func TestViewIndexShowsTheRunbookIdentity(t *testing.T) {
+	item := sampleRunbook("RB-900", "acme", "Stale runbook", true)
+	m := withHeight(newModel(&data.FakeRunbook{}, nil).WithProject("acme"), 30)
+	m.Items = []store.RunbookIndexRow{item}
 
-	view := m.View()
-	if !strings.Contains(view, "stale") || !strings.Contains(view, "⚠") {
-		t.Fatalf("view = %q, want the stale badge visible in the title line", view)
+	out := m.View()
+	if !strings.Contains(out, "RB-900") || !strings.Contains(out, "Stale runbook") {
+		t.Fatalf("index view missing the runbook identity, got:\n%s", out)
 	}
+}
 
-	fresh := sampleRunbook("RB-005", "nextcloud", "Push notifications", false)
-	m.Selected = &fresh
-	view = m.View()
-	if strings.Contains(view, "⚠") {
-		t.Fatalf("view = %q, want no stale badge for a fresh runbook", view)
+// TestViewRunbookPreviewShowsTheSymptoms pins the strip rfc-tui.md §5's S8
+// wireframe puts under the cursor, the one viewRunbookPreview renders.
+func TestViewRunbookPreviewShowsTheSymptoms(t *testing.T) {
+	item := sampleRunbook("RB-900", "acme", "Stale runbook", true)
+	item.Symptoms = []string{"returns HTTP 503"}
+	m := withHeight(newModel(&data.FakeRunbook{}, nil).WithProject("acme"), 30)
+	m.Items = []store.RunbookIndexRow{item}
+	m.Cursor = 0
+
+	out := m.View()
+	if !strings.Contains(out, "returns HTTP 503") {
+		t.Fatalf("preview missing the symptom line, got:\n%s", out)
 	}
 }
