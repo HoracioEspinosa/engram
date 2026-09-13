@@ -7,7 +7,10 @@
 // to any concrete tab.
 package tabs
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 // ID identifies a workspace tab. The order is the order of the tab bar.
 type ID int
@@ -65,6 +68,18 @@ type Tab interface {
 	// Refresh reloads the data behind the current screen. The root calls it
 	// when the tab becomes active.
 	Refresh() tea.Cmd
+	// Help returns the key bindings the screen currently on display wants
+	// listed in the "?" overlay (rfc-tui.md §7.1): whichever internal screen
+	// is active, not a fixed per-tab list, so the overlay grows and shrinks
+	// with what is actually on screen.
+	Help() []key.Binding
+	// CapturingText reports whether the tab currently has a text input
+	// focused (a search box, the Tasks "link observation" prompt, ...). While
+	// true, the root suspends every global key it would otherwise intercept
+	// before the tab sees it — 1..5, Tab/Shift+Tab, "?", p, P and 0 — except
+	// Ctrl+C, matching rfc-tui.md §7.1: "cuando un textinput tiene el foco,
+	// las teclas globales se suspenden salvo Ctrl+C y Esc."
+	CapturingText() bool
 }
 
 // NavigateMsg asks the root to activate another tab. A tab emits it instead of
