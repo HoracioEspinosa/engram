@@ -25,6 +25,21 @@ jobs:
       - name: Run unit tests
         run: go test ./...
 
+  tui-coverage:
+    name: TUI Coverage Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.10"
+
+      - name: Enforce internal/tui coverage threshold
+        run: bash scripts/tui-coverage-gate.sh
+
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
