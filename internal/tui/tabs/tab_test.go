@@ -53,3 +53,46 @@ func TestNavigateEmitsNavigateMsg(t *testing.T) {
 		t.Fatalf("target = %v, want %v", msg.Target, Cloud)
 	}
 }
+
+// TestNavigateToTaskEvidenceEmitsAnEvidenceTargetWithTheTaskID pins the
+// dependency T-10.03's S4 "e" key left declared: rfc-tui.md §3.1 S6 filters
+// by task_id when reached from a task's detail, which needs a field
+// NavigateMsg did not have (only ObservationID, for the Memory deep link).
+func TestNavigateToTaskEvidenceEmitsAnEvidenceTargetWithTheTaskID(t *testing.T) {
+	cmd := NavigateToTaskEvidence(42)
+	if cmd == nil {
+		t.Fatal("NavigateToTaskEvidence should return a non-nil command")
+	}
+
+	msg, ok := cmd().(NavigateMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want NavigateMsg", cmd())
+	}
+	if msg.Target != Evidence {
+		t.Fatalf("target = %v, want %v", msg.Target, Evidence)
+	}
+	if msg.TaskID != 42 {
+		t.Fatalf("TaskID = %d, want 42", msg.TaskID)
+	}
+}
+
+// TestNavigateToTaskEmitsATasksTargetWithTheTaskID pins rfc-tui.md §3.1 S7's
+// "Enter" on an evidence file, which opens that file's task inside Tasks —
+// the mirror image of NavigateToTaskEvidence.
+func TestNavigateToTaskEmitsATasksTargetWithTheTaskID(t *testing.T) {
+	cmd := NavigateToTask(7)
+	if cmd == nil {
+		t.Fatal("NavigateToTask should return a non-nil command")
+	}
+
+	msg, ok := cmd().(NavigateMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want NavigateMsg", cmd())
+	}
+	if msg.Target != Tasks {
+		t.Fatalf("target = %v, want %v", msg.Target, Tasks)
+	}
+	if msg.TaskID != 7 {
+		t.Fatalf("TaskID = %d, want 7", msg.TaskID)
+	}
+}

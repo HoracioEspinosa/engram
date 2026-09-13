@@ -70,13 +70,18 @@ type Tab interface {
 // NavigateMsg asks the root to activate another tab. A tab emits it instead of
 // switching itself, which is what keeps tabs from importing each other.
 //
-// ObservationID is the one piece of cross-tab context v1 needs: rfc-tui.md
-// §3.1 S4 has Enter on a task's linked observation open that observation's
-// detail inside Memory. It is 0 for every other navigation, Target == Memory
-// being the only case the root inspects it for.
+// ObservationID and TaskID are the cross-tab context v1 needs, each 0 except
+// for the one navigation it carries a deep link for:
+//   - ObservationID: rfc-tui.md §3.1 S4 has Enter on a task's linked
+//     observation open that observation's detail inside Memory.
+//   - TaskID: §3.1 S4's "e" opens Evidence filtered to the task under view
+//     (S6's task_id filter), and §3.1 S7's "Enter" opens that evidence
+//     file's task inside Tasks — the same field serves both directions
+//     because Target already says which one applies.
 type NavigateMsg struct {
 	Target        ID
 	ObservationID int64
+	TaskID        int64
 }
 
 // Navigate returns the command that emits a NavigateMsg for target.
@@ -91,6 +96,22 @@ func Navigate(target ID) tea.Cmd {
 func NavigateToObservation(id int64) tea.Cmd {
 	return func() tea.Msg {
 		return NavigateMsg{Target: Memory, ObservationID: id}
+	}
+}
+
+// NavigateToTaskEvidence returns the command that asks the root to open the
+// Evidence tab filtered to taskID (rfc-tui.md §3.1 S4's "e" key).
+func NavigateToTaskEvidence(taskID int64) tea.Cmd {
+	return func() tea.Msg {
+		return NavigateMsg{Target: Evidence, TaskID: taskID}
+	}
+}
+
+// NavigateToTask returns the command that asks the root to open taskID's
+// detail inside the Tasks tab (rfc-tui.md §3.1 S7's "Enter" key).
+func NavigateToTask(taskID int64) tea.Cmd {
+	return func() tea.Msg {
+		return NavigateMsg{Target: Tasks, TaskID: taskID}
 	}
 }
 
