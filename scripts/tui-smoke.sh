@@ -118,8 +118,9 @@ wait_for_evidence() {
 # EXTRA_ENV is a single "KEY=VALUE" string prepended to the command, or ""
 # for none. Every case runs $BINARY (this checkout's own build, by absolute
 # path — never the bare "engram" command) from inside its own throwaway
-# data dir, never from ROOT_DIR, so detectProject(cwd) never resolves this
-# checkout itself as a project. Stderr is redirected into DATA_DIR/stderr.log
+# data dir, never from ROOT_DIR, so resolveTUIProject()'s cwd detection
+# never resolves this checkout itself as a project. Stderr is redirected
+# into DATA_DIR/stderr.log
 # so wait_for_evidence can see a warning printed before the alternate screen
 # takes over — see that function's own comment.
 #
@@ -213,42 +214,47 @@ run_case \
 
 # Case 2: `engram tui` with no --project flag and no ENGRAM_PROJECT.
 #
-# rfc-tui.md §10.1's smoke row says this opens S1 (the Project Selector).
-# T-10.02 fixed exactly the branch that decides this inside
-# internal/tui/app/model.go's New — confirmed directly:
-# app.New(mem, projects, task, ev, rb, version, styles, "") now sets
-# screenSelector (TestNewWithoutAResolvableProjectOpensTheSelector, and
-# internal/tui/e2e's "s1-project-selector" golden scene, which calls
-# app.New the exact same way with no project and no longer needs the "p"
-# workaround it used before this fix to land on the selector).
+# rfc-tui.md §10.1's smoke row says this opens S1 (the Project Selector), and
+# it now does — this case used to measure and document the opposite, real
+# result on purpose (see T-04.11 in this task's report for the full account
+# of what changed and why the discrepancy was real, not a script bug).
 #
-# But this case drives the real CLI, and between it and app.New sits
+# T-10.02 fixed the branch that decides the *screen* inside
+# internal/tui/app/model.go's New: app.New(mem, projects, task, ev, rb,
+# version, styles, "") sets screenSelector for an empty project
+# (TestNewWithoutAResolvableProjectOpensTheSelector, and internal/tui/e2e's
+# "s1-project-selector" golden scene). But that fix alone could not be
+# exercised through the real CLI: between it and app.New sits
 # cmd/engram/main.go's resolveTUIProject(), which — once --project and
-# ENGRAM_PROJECT are both empty — falls through to
-# internal/project.DetectProject(cwd). That function never returns "":
-# case2's own throwaway directory has no git remote, no git root and no
-# child repositories, so it hits Case 5 (dir_basename) and returns the
-# directory's own name, normalized — internal/project/detect.go's own
-# comment on the wrapper says why: "CLI compat: return basename rather
-# than empty string". So app.New's initialProject is never actually ""
-# through the real CLI run from a directory that exists on disk; S1 is
-# unreachable this way regardless of app.New's own fix. This is a defect
-# in resolveTUIProject reusing the CLI-compat detector for the TUI's
-# specific "no project" screen choice, not in app.New — outside T-10.02's
-# scope (rg -n 'screenTab' internal/tui/app/model.go, T-10.02's own
-# measurement, names only that file) and reported rather than patched
-# here. This case measures the REAL resulting behaviour instead of the
-# RFC's claim: the workspace opens the Project Dashboard (S2) for that
-# synthetic slug, which has no card in the empty throwaway store, so
-# store.ErrNoProjectCard's own literal text is what actually appears.
+# ENGRAM_PROJECT are both empty — fell through to
+# internal/project.DetectProject(cwd), a function whose own comment declared
+# it "never returns \"\"": case2's throwaway directory has no git remote, no
+# git root and no child repositories, so it hit Case 5 (dir_basename) and
+# returned the directory's own name, normalized, as if that guess were as
+# good as a fact. initialProject was therefore never actually "" through the
+# real CLI, and S1 was unreachable this way regardless of app.New's fix —
+# this is the exact gap T-04.11 (ADR-057) closes, one layer below the TUI.
+#
+# resolveTUIProject() now calls internal/project.DetectProjectFull(cwd) and
+# only accepts a git-backed source (project.IsGuessedSource rejects
+# dir_basename per ADR-057 §3); a bare directory-name guess is treated the
+# same as no detection at all, so initialProject reaches app.New empty and
+# it opens the Selector. The marker is the Selector's own title text
+# ("Select a project", internal/tui/app/selector.go's viewSelector),
+# confirmed to appear in exactly one scene of
+# internal/tui/e2e/testdata/screens-120x40.golden (`rg -a -c 'Select a
+# project'`), unlike case 2's old "no project card" marker, which this
+# task's own measurement never needed since a golden-scene collision on a
+# common word is exactly the mistake ADR-057 §1 documents about the
+# previous evidence for this row.
 #
 # ENGRAM_PROJECT is explicitly cleared so a developer's own shell env never
 # leaks a resolvable project into this case.
 run_case \
-  "engram tui with no --project/ENGRAM_PROJECT falls through cwd detection to S2, NOT S1 (see comment above)" \
+  "engram tui with no --project/ENGRAM_PROJECT opens S1 (Project Selector)" \
   "$WORK_DIR/case2" \
   "ENGRAM_PROJECT=" \
-  "no project card" \
+  "Select a project" \
   "$CASE_TIMEOUT"
 
 # Case 3: ENGRAM_TUI_THEME=kanagawa changes the palette without error.
@@ -256,14 +262,20 @@ run_case \
 # cleanly (the tab bar renders) — the palette *contract* itself (every
 # Styles field non-zero, contrast ratios) is theme/theme_test.go's job, not
 # this script's; verifying an exact rendered hex from a tmux capture would
-# just duplicate that test suite far more fragilely. ENGRAM_PROJECT is
-# cleared for the same reason as case 1.
+# just duplicate that test suite far more fragilely. Its "Dashboard.*Memory.*
+# Tasks" marker is the tab bar, which only S2 (the Dashboard) renders, so
+# --project nextcloud is now passed explicitly (this case predates T-04.11's
+# fix and used to land on the Dashboard anyway, via the same directory-name
+# guess case 2 measured — see that case's comment); without it, this case
+# would now open S1 (the Selector) instead, same as case 2, and never reach
+# the tab bar this assertion actually cares about.
 run_case \
   "ENGRAM_TUI_THEME=kanagawa boots without an unknown-theme warning" \
   "$WORK_DIR/case3" \
   "ENGRAM_PROJECT= ENGRAM_TUI_THEME=kanagawa" \
   "Dashboard.*Memory.*Tasks" \
-  "$CASE_TIMEOUT"
+  "$CASE_TIMEOUT" \
+  --project nextcloud
 
 # Case 4: --theme <unknown> falls back to the default with a warning.
 # The warning (cmd/engram/main.go's "engram: unknown theme %q, falling back
