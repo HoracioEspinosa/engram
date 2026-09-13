@@ -53,6 +53,12 @@ func printConflictsUsage() {
 // resolveConflictsProject returns the explicit project if non-empty, otherwise falls
 // back to detecting the project from the current working directory.
 // On detection failure, writes an error to stderr and calls exitFunc(1).
+//
+// `scan --apply` inserts conflict relation rows scoped to this project, so
+// cwd detection must be backed by a fact — a directory-name guess is
+// refused here too, even though list/stats (also sharing this resolver)
+// are read-only, because the guess is not trustworthy for either
+// (ADR-057 §3).
 func resolveConflictsProject(explicit string) string {
 	if strings.TrimSpace(explicit) != "" {
 		return strings.TrimSpace(explicit)
@@ -63,13 +69,23 @@ func resolveConflictsProject(explicit string) string {
 		fmt.Fprintln(os.Stderr, "hint: use --project to specify the project explicitly")
 		exitFunc(1)
 	}
-	detected := detectProject(cwd)
-	if detected == "" {
+	det := detectProjectFull(cwd)
+	if det.Error != nil {
+		fmt.Fprintf(os.Stderr, "error: cannot determine project: %v\n", det.Error)
+		fmt.Fprintln(os.Stderr, "hint: use --project to specify the project explicitly")
+		exitFunc(1)
+	}
+	if isGuessedProjectSource(det.Source) {
+		fmt.Fprintf(os.Stderr, "error: project is not resolvable from %q: only a directory-name guess was found\n", det.Path)
+		fmt.Fprintln(os.Stderr, "hint: use --project to specify the project explicitly")
+		exitFunc(1)
+	}
+	if det.Project == "" {
 		fmt.Fprintln(os.Stderr, "error: could not detect project from cwd")
 		fmt.Fprintln(os.Stderr, "hint: use --project to specify the project explicitly")
 		exitFunc(1)
 	}
-	return detected
+	return det.Project
 }
 
 // ─── list ─────────────────────────────────────────────────────────────────────
