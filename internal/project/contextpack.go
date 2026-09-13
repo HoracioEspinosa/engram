@@ -28,6 +28,15 @@ func jiraBaseURLFromEnv() string {
 	return v
 }
 
+// JiraBaseURL returns the configured Jira Cloud browse base URL, trailing
+// slash included. It is exported so every caller that needs to build a
+// task's Jira link — the context pack above and the TUI Tasks tab's "open
+// Jira" action (rfc-tui.md §3.1 S3/S4) — reads ENGRAM_JIRA_BASE_URL the same
+// way instead of each parsing the environment variable on its own.
+func JiraBaseURL() string {
+	return jiraBaseURL
+}
+
 // ContextPackOptions holds mem_context_pack's tunable parameters.
 type ContextPackOptions struct {
 	MaxChars          int
@@ -437,6 +446,15 @@ func taskKey(t store.Task) string {
 		return *t.SDDChange
 	}
 	return t.SyncID
+}
+
+// TaskKey is taskKey exported: the same jira_key -> sdd_change -> sync_id
+// precedence used to label a task everywhere else — the context pack's own
+// header above, and the TUI's Task detail and context-pack-to-file paths
+// (rfc-tui.md §3.1 S4/S5) — so the two never drift into naming a task
+// differently.
+func TaskKey(t store.Task) string {
+	return taskKey(t)
 }
 
 func isTaskStateStale(stateSyncedAt *string) bool {
