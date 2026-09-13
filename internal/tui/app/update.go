@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/evidence"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,6 +31,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.active = tabs.Memory
 			m.screen = screenTab
 			return m, m.memory.OpenObservation(msg.ObservationID)
+		}
+		if msg.Target == tabs.Tasks && msg.TaskID != 0 {
+			// The mirror image, for S7's "Enter" on an evidence file: open
+			// that file's task directly instead of landing on the list.
+			m.active = tabs.Tasks
+			m.screen = screenTab
+			return m, m.tasks.OpenTask(msg.TaskID)
+		}
+		if msg.Target == tabs.Evidence && msg.TaskID != 0 {
+			// S4's "e" key: filter Evidence to the task under view (S6's
+			// task_id filter) instead of showing every file in the project.
+			m.active = tabs.Evidence
+			m.screen = screenTab
+			return m, m.evidence.OpenForTask(msg.TaskID)
 		}
 		return m.activate(msg.Target)
 
@@ -71,14 +86,31 @@ func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenSelector:
 			return m.updateSelector(keyMsg)
 		default:
-			// Handle global keys from tabs (p = projects, 0 = dashboard)
-			if keyMsg.String() == "p" {
-				m.screen = screenSelector
-				return m, loadSelector(m.projects)
-			}
-			if keyMsg.String() == "0" && m.project != "" {
-				m.screen = screenDashboard
-				return m, loadDashboard(m.projects, m.project)
+			// Handle global keys from tabs (p = projects, 0 = dashboard).
+			//
+			// rfc-tui.md §7.2's footnote on S7 swaps this pair on purpose:
+			// "p copia la ruta y el selector de proyecto se abre con P" —
+			// Evidence's detail screen needs lowercase "p" for its own copy
+			// action more than the global shortcut does, so on that one
+			// screen the global binding moves to uppercase "P" instead and
+			// lowercase falls through to the tab below.
+			onEvidenceDetail := m.active == tabs.Evidence && m.evidence.Screen == evidence.ScreenDetail
+			switch keyMsg.String() {
+			case "p":
+				if !onEvidenceDetail {
+					m.screen = screenSelector
+					return m, loadSelector(m.projects)
+				}
+			case "P":
+				if onEvidenceDetail {
+					m.screen = screenSelector
+					return m, loadSelector(m.projects)
+				}
+			case "0":
+				if m.project != "" {
+					m.screen = screenDashboard
+					return m, loadDashboard(m.projects, m.project)
+				}
 			}
 		}
 	}
@@ -159,11 +191,12 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenDashboard
 			m.dashboard = newDashboardModel(m.projects, selected.Slug)
 			// Every project-scoped tab is rebuilt here, the same way the
-			// dashboard is: the Tasks tab's Refresh() has no project
-			// parameter of its own (tabs.Tab is a project-agnostic
-			// contract), so it has to already know the new slug before it
+			// dashboard is: neither Tasks' nor Evidence's Refresh() takes a
+			// project parameter of its own (tabs.Tab is a project-agnostic
+			// contract), so each has to already know the new slug before it
 			// is ever activated.
 			m.tasks = m.tasks.WithProject(selected.Slug)
+			m.evidence = m.evidence.WithProject(selected.Slug)
 			return m, loadDashboard(m.projects, selected.Slug)
 		}
 		return m, nil

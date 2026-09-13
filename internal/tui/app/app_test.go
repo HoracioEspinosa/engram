@@ -8,6 +8,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/evidence"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/memory"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
@@ -27,7 +28,7 @@ func step(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func TestNewStartsOnTheMemoryTab(t *testing.T) {
-	m := New(nil, nil, nil, "1.0.0-test", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "1.0.0-test", theme.New(theme.CatppuccinMocha()), "")
 
 	if m.active != tabs.Memory {
 		t.Fatalf("active tab = %v, want %v", m.active, tabs.Memory)
@@ -42,7 +43,7 @@ func TestNewStartsOnTheMemoryTab(t *testing.T) {
 
 func TestNewWiresTheMemoryReaderIntoTheMemoryTab(t *testing.T) {
 	reader := &data.FakeMemory{StatsResult: &store.Stats{TotalSessions: 3, TotalObservations: 7}}
-	m := New(reader, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(reader, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	// The dashboard reload runs against whichever reader the tab was built
 	// with; a tab wired to anything but the reader New received would either
@@ -59,14 +60,14 @@ func TestNewWiresTheMemoryReaderIntoTheMemoryTab(t *testing.T) {
 }
 
 func TestInitLoadsEveryTab(t *testing.T) {
-	if cmd := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "").Init(); cmd == nil {
+	if cmd := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "").Init(); cmd == nil {
 		t.Fatal("Init should return the startup batch")
 	}
 }
 
 func TestCtrlCQuitsFromAnyTab(t *testing.T) {
 	for _, active := range registered {
-		m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+		m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 		m.active = active
 
 		if _, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyCtrlC}); cmd == nil {
@@ -76,7 +77,7 @@ func TestCtrlCQuitsFromAnyTab(t *testing.T) {
 }
 
 func TestCtrlCQuitsEvenWithTheSearchInputFocused(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.memory.Screen = memory.ScreenSearch
 	m.memory.SearchInput.Focus()
 
@@ -86,7 +87,7 @@ func TestCtrlCQuitsEvenWithTheSearchInputFocused(t *testing.T) {
 }
 
 func TestWindowSizeReachesEveryTab(t *testing.T) {
-	m, cmd := step(t, New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), ""), tea.WindowSizeMsg{Width: 120, Height: 40})
+	m, cmd := step(t, New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), ""), tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	if cmd != nil {
 		t.Fatal("a window resize should not produce a command")
@@ -100,7 +101,7 @@ func TestWindowSizeReachesEveryTab(t *testing.T) {
 }
 
 func TestKeysReachOnlyTheActiveTab(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Cloud
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyDown})
@@ -113,8 +114,60 @@ func TestKeysReachOnlyTheActiveTab(t *testing.T) {
 	}
 }
 
+// TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector pins rfc-tui.md
+// §7.2's footnote on S7: "p copia la ruta y el selector de proyecto se abre
+// con P". Everywhere else lowercase "p" is the global project-selector
+// shortcut the root intercepts before the active tab ever sees it; on
+// Evidence's detail screen alone, S7's own "p" (copy path) must win.
+func TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector(t *testing.T) {
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.active = tabs.Evidence
+	item := store.EvidenceListItem{Evidence: store.Evidence{ID: 1, Path: "ACME-1/a.png", SHA256: "abc"}}
+	m.evidence.Screen = evidence.ScreenDetail
+	m.evidence.Selected = &item
+
+	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	if m.screen == screenSelector {
+		t.Fatal("S7's own \"p\" (copy path) must not be swallowed by the global project selector")
+	}
+	if cmd == nil {
+		t.Fatal("p on the evidence detail should copy the path")
+	}
+	if _, ok := cmd().(shared.CopiedMsg); !ok {
+		t.Fatalf("p produced %T, want shared.CopiedMsg", cmd())
+	}
+}
+
+// TestEvidenceDetailCapitalPOpensTheProjectSelector pins the other half of
+// the same footnote: S7 moves the project-selector shortcut to uppercase P.
+func TestEvidenceDetailCapitalPOpensTheProjectSelector(t *testing.T) {
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.active = tabs.Evidence
+	item := store.EvidenceListItem{Evidence: store.Evidence{ID: 1, Path: "ACME-1/a.png"}}
+	m.evidence.Screen = evidence.ScreenDetail
+	m.evidence.Selected = &item
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("P")})
+	if m.screen != screenSelector {
+		t.Fatalf("screen = %v, want screenSelector: S7 moves the global shortcut to capital P", m.screen)
+	}
+}
+
+// TestLowercasePStillOpensTheSelectorOutsideEvidenceDetail guards against
+// the S7 override leaking into every other screen: p keeps opening the
+// selector everywhere else, Evidence's own list (S6) included.
+func TestLowercasePStillOpensTheSelectorOutsideEvidenceDetail(t *testing.T) {
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.active = tabs.Tasks
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	if m.screen != screenSelector {
+		t.Fatalf("screen = %v, want screenSelector: p is the global shortcut everywhere but Evidence's S7", m.screen)
+	}
+}
+
 func TestBroadcastReachesAnInactiveTab(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.memory.CopyFeedback = "✓ Copied!"
 	m.active = tabs.Cloud
 
@@ -126,7 +179,7 @@ func TestBroadcastReachesAnInactiveTab(t *testing.T) {
 }
 
 func TestNavigateSwitchesTabsAndRefreshesTheTarget(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	m, cmd := step(t, m, tabs.NavigateMsg{Target: tabs.Cloud})
 	if m.active != tabs.Cloud {
@@ -150,7 +203,7 @@ func TestNavigateSwitchesTabsAndRefreshesTheTarget(t *testing.T) {
 // first screen once NavigateMsg targets it, the same contract
 // TestNavigateSwitchesTabsAndRefreshesTheTarget already pins for Cloud/Memory.
 func TestNavigateToTasksSwitchesTabsAndRefreshesIt(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	m, cmd := step(t, m, tabs.NavigateMsg{Target: tabs.Tasks})
 	if m.active != tabs.Tasks {
@@ -164,12 +217,65 @@ func TestNavigateToTasksSwitchesTabsAndRefreshesIt(t *testing.T) {
 	}
 }
 
+// TestNavigateToEvidenceSwitchesTabsAndRefreshesIt pins T-10.04's
+// registration of the Evidence tab: rfc-tui.md §3.1 S6's list must load like
+// any other tab's first screen once NavigateMsg targets it with no TaskID,
+// the same contract TestNavigateToTasksSwitchesTabsAndRefreshesIt pins for
+// Tasks.
+func TestNavigateToEvidenceSwitchesTabsAndRefreshesIt(t *testing.T) {
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+
+	m, cmd := step(t, m, tabs.NavigateMsg{Target: tabs.Evidence})
+	if m.active != tabs.Evidence {
+		t.Fatalf("active tab = %v, want %v", m.active, tabs.Evidence)
+	}
+	if m.screen != screenTab {
+		t.Fatalf("screen = %v, want screenTab", m.screen)
+	}
+	if cmd == nil {
+		t.Fatal("activating Evidence should reload its list")
+	}
+}
+
+// TestNavigateToTaskEvidenceFiltersTheEvidenceTab pins rfc-tui.md §3.1 S4's
+// "e" key: unlike a plain tab switch, a TaskID on the NavigateMsg must reach
+// the Evidence tab's OpenForTask instead of activate()'s generic Refresh(),
+// the same special-casing TestNavigateSwitchesTabsAndRefreshesTheTarget's
+// ObservationID sibling gets for Memory.
+func TestNavigateToTaskEvidenceFiltersTheEvidenceTab(t *testing.T) {
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+
+	m, cmd := step(t, m, tabs.NavigateMsg{Target: tabs.Evidence, TaskID: 9})
+	if m.active != tabs.Evidence || m.screen != screenTab {
+		t.Fatalf("active = %v screen = %v, want Evidence/screenTab", m.active, m.screen)
+	}
+	if cmd == nil {
+		t.Fatal("a task-scoped navigation should still issue a load")
+	}
+}
+
+// TestNavigateToTaskOpensTheTasksDetailDirectly pins rfc-tui.md §3.1 S7's
+// "Enter" on an evidence file: it must open that file's task detail inside
+// Tasks directly, not just switch to the Tasks tab's list.
+func TestNavigateToTaskOpensTheTasksDetailDirectly(t *testing.T) {
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.active = tabs.Evidence
+
+	m, cmd := step(t, m, tabs.NavigateMsg{Target: tabs.Tasks, TaskID: 9})
+	if m.active != tabs.Tasks || m.screen != screenTab {
+		t.Fatalf("active = %v screen = %v, want Tasks/screenTab", m.active, m.screen)
+	}
+	if cmd == nil {
+		t.Fatal("a task deep link should load that task's detail")
+	}
+}
+
 func TestNavigateToAnUnimplementedTabIsANoOp(t *testing.T) {
-	// tabs.Tasks moved out of this list once T-10.03 registered it — see
-	// TestNavigateToTasksSwitchesTabsAndRefreshesIt below, the Tasks
-	// equivalent of TestNavigateSwitchesTabsAndRefreshesTheTarget above.
-	for _, target := range []tabs.ID{tabs.Evidence, tabs.Runbooks, tabs.ID(99)} {
-		m, cmd := step(t, New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), ""), tabs.NavigateMsg{Target: target})
+	// tabs.Tasks and tabs.Evidence moved out of this list once T-10.03 and
+	// T-10.04 registered them — see TestNavigateToTasksSwitchesTabsAndRefreshesIt
+	// and TestNavigateToEvidenceSwitchesTabsAndRefreshesIt above.
+	for _, target := range []tabs.ID{tabs.Runbooks, tabs.ID(99)} {
+		m, cmd := step(t, New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), ""), tabs.NavigateMsg{Target: target})
 
 		if m.active != tabs.Memory {
 			t.Errorf("navigating to %v moved the workspace to %v", target, m.active)
@@ -181,7 +287,7 @@ func TestNavigateToAnUnimplementedTabIsANoOp(t *testing.T) {
 }
 
 func TestCloudRoundTripFromTheDashboard(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	// Walk the dashboard menu down to "Cloud sync settings".
 	for i := 0; i < 4; i++ {
@@ -223,7 +329,7 @@ func TestCloudRoundTripFromTheDashboard(t *testing.T) {
 }
 
 func TestViewWrapsTheActiveTabInTheApplicationFrame(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	framed := m.View()
 	body := m.memory.View()
@@ -261,7 +367,7 @@ func assertFramedBody(t *testing.T, framed, body string) {
 }
 
 func TestViewSurvivesAnUnregisteredActiveTab(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.ID(99)
 
 	if !strings.Contains(m.View(), "Unknown tab") {
@@ -270,7 +376,7 @@ func TestViewSurvivesAnUnregisteredActiveTab(t *testing.T) {
 }
 
 func TestUpdateWithAnUnregisteredActiveTabIsANoOp(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.ID(99)
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyDown})
@@ -283,7 +389,7 @@ func TestUpdateWithAnUnregisteredActiveTabIsANoOp(t *testing.T) {
 }
 
 func TestRegisteredTabsAreDistinctAndTitled(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
 	seen := map[string]bool{}
 	for _, id := range registered {
@@ -303,7 +409,7 @@ func TestRegisteredTabsAreDistinctAndTitled(t *testing.T) {
 }
 
 func TestWithTabIgnoresAMismatchedSubModel(t *testing.T) {
-	m := New(nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m := New(nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.memory.Cursor = 3
 
 	// Storing the cloud sub-model under the memory id must be refused rather

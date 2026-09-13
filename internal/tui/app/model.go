@@ -12,6 +12,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/cloud"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/evidence"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/memory"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/tasks"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
@@ -21,7 +22,7 @@ import (
 
 // registered lists the tabs this build implements, in tab-bar order. The IDs
 // tabs declares but that no sub-model implements yet are simply absent.
-var registered = []tabs.ID{tabs.Memory, tabs.Tasks, tabs.Cloud}
+var registered = []tabs.ID{tabs.Memory, tabs.Tasks, tabs.Evidence, tabs.Cloud}
 
 // screen is the active screen: either a tab from the bar, the project selector,
 // or the dashboard for the active project.
@@ -49,6 +50,7 @@ type Model struct {
 	screen   screen
 	memory   memory.Model
 	tasks    tasks.Model
+	evidence evidence.Model
 	cloud    cloud.Model
 	projects data.ProjectReader
 
@@ -59,15 +61,16 @@ type Model struct {
 
 // New builds the root workspace around the readers its screens consume: mem
 // feeds the Memory tab, projects feeds the selector and the dashboard, task
-// feeds the Tasks tab. initialProject, when set, opens the workspace on that
-// project's dashboard and scopes the Tasks tab to it — see tasks.Model's
-// WithProject, which the selector's "enter" key calls again on every later
-// project switch.
+// feeds the Tasks tab, evidenceReader feeds the Evidence tab. initialProject,
+// when set, opens the workspace on that project's dashboard and scopes the
+// Tasks and Evidence tabs to it — see tasks.Model's WithProject, which the
+// selector's "enter" key calls again on every later project switch, and
+// evidence.Model's own WithProject alongside it.
 //
 // The root never opens or wraps a store itself; whoever builds it decides
 // which store backs each reader, so a tab can never end up bound to a
 // different (or missing) store than its siblings.
-func New(mem data.MemoryReader, projects data.ProjectReader, task data.TaskReader, version string, styles theme.Styles, initialProject string) Model {
+func New(mem data.MemoryReader, projects data.ProjectReader, task data.TaskReader, evidenceReader data.EvidenceReader, version string, styles theme.Styles, initialProject string) Model {
 	m := Model{
 		styles:    styles,
 		version:   version,
@@ -76,6 +79,7 @@ func New(mem data.MemoryReader, projects data.ProjectReader, task data.TaskReade
 		project:   initialProject,
 		memory:    memory.New(mem, version),
 		tasks:     tasks.New(task).WithProject(initialProject),
+		evidence:  evidence.New(evidenceReader).WithProject(initialProject),
 		cloud:     cloud.New(),
 		selector:  newSelectorModel(projects),
 		dashboard: newDashboardModel(projects, initialProject),
@@ -117,6 +121,8 @@ func (m Model) tab(id tabs.ID) tabs.Tab {
 		return m.memory
 	case tabs.Tasks:
 		return m.tasks
+	case tabs.Evidence:
+		return m.evidence
 	case tabs.Cloud:
 		return m.cloud
 	}
@@ -135,6 +141,10 @@ func (m Model) withTab(id tabs.ID, t tabs.Tab) Model {
 	case tabs.Tasks:
 		if updated, ok := t.(tasks.Model); ok {
 			m.tasks = updated
+		}
+	case tabs.Evidence:
+		if updated, ok := t.(evidence.Model); ok {
+			m.evidence = updated
 		}
 	case tabs.Cloud:
 		if updated, ok := t.(cloud.Model); ok {

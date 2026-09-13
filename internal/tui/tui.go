@@ -28,6 +28,7 @@ func New(s *store.Store, version string, project string) Model {
 		data.NewMemoryReader(s),
 		data.NewProjectReader(s),
 		data.NewTaskReader(s),
+		data.NewEvidenceReader(s),
 		version,
 		theme.Default(),
 		project,
