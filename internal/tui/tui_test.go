@@ -19,7 +19,7 @@ import (
 // workspace model, and the store handed to New is the one every screen reads.
 
 func TestNewSatisfiesTheBubbleteaModelContract(t *testing.T) {
-	var m tea.Model = tui.New(nil, "1.0.0-test")
+	var m tea.Model = tui.New(nil, "1.0.0-test", "")
 
 	if cmd := m.Init(); cmd == nil {
 		t.Fatal("Init should return the startup batch")
@@ -81,7 +81,7 @@ func TestNewWiresTheStoreIntoTheMemoryTab(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	var m tea.Model = tui.New(s, "1.0.0-test")
+	var m tea.Model = tui.New(s, "1.0.0-test", "")
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	// Leaving and re-entering the Memory tab reloads the dashboard counters
@@ -97,5 +97,54 @@ func TestNewWiresTheStoreIntoTheMemoryTab(t *testing.T) {
 	out := m.View()
 	if !regexp.MustCompile(`\b1\s+sessions\b`).MatchString(out) {
 		t.Fatalf("the dashboard should render the counters of the store New was given, got:\n%s", out)
+	}
+}
+
+// TestNewOpensTheDashboardForAnExplicitProject pins rfc-tui.md §9.1's
+// "Semántica de --project": engram tui --project <slug> must open straight
+// on that project's Dashboard (S2) with its real counters, not on the Memory
+// tab or an empty Selector. Before this test, New took no project argument at
+// all, so `engram tui --project nextcloud` silently ignored the flag —
+// exactly the closing criterion roadmap task T-10.02 fixes.
+func TestNewOpensTheDashboardForAnExplicitProject(t *testing.T) {
+	s := newTestStore(t)
+	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: "clarodrive"}); err != nil {
+		t.Fatalf("seed project card: %v", err)
+	}
+
+	var m tea.Model = tui.New(s, "1.0.0-test", "clarodrive")
+
+	initCmd := m.Init()
+	if initCmd == nil {
+		t.Fatal("Init should return the startup batch")
+	}
+
+	// Init's startup commands arrive batched; unwrap tea.BatchMsg recursively
+	// so this test does not depend on whether tea.Batch folds a single
+	// remaining command instead of wrapping it.
+	var apply func(tea.Msg)
+	apply = func(msg tea.Msg) {
+		if msg == nil {
+			return
+		}
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			for _, c := range batch {
+				if c == nil {
+					continue
+				}
+				apply(run(t, c))
+			}
+			return
+		}
+		m, _ = m.Update(msg)
+	}
+	apply(run(t, initCmd))
+
+	out := m.View()
+	if !strings.Contains(out, "clarodrive") {
+		t.Fatalf("opening on an explicit project should render its dashboard, got:\n%s", out)
+	}
+	if strings.Contains(out, "Select a project") {
+		t.Fatalf("an explicit project must open its dashboard, not the selector, got:\n%s", out)
 	}
 }

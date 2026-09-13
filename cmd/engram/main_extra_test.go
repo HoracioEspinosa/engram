@@ -167,7 +167,7 @@ func stubRuntimeHooks(t *testing.T) {
 		return mcpserver.NewMCPServer("test", "0", mcpserver.WithRecovery())
 	}
 	serveMCP = func(_ *mcpserver.MCPServer, _ ...mcpserver.StdioOption) error { return nil }
-	newTUIModel = func(_ *store.Store) tui.Model { return tui.New(nil, "") }
+	newTUIModel = func(_ *store.Store, _ string) tui.Model { return tui.New(nil, "", "") }
 	newTeaProgram = func(tea.Model, ...tea.ProgramOption) *tea.Program { return &tea.Program{} }
 	runTeaProgram = func(*tea.Program) (tea.Model, error) { return nil, nil }
 	setupSupportedAgents = setup.SupportedAgents
@@ -546,6 +546,94 @@ func TestCmdMCPAndTUIBranches(t *testing.T) {
 	_, _, recovered = captureOutputAndRecover(t, func() { cmdTUI(cfg) })
 	if recovered != nil {
 		t.Fatalf("unexpected panic on successful tui: %v", recovered)
+	}
+}
+
+// TestCmdTUIResolvesProjectPrecedence pins rfc-tui.md §9.1's "Semántica de
+// --project": engram tui --project <slug> reuses the existing precedence
+// (explicit flag, then ENGRAM_PROJECT, then cwd detection). Before this
+// fix, cmdTUI never read os.Args at all — `engram tui --project nextcloud`
+// silently opened the workspace with no project, never the Dashboard, which
+// is exactly the closing criterion roadmap task T-10.02 fixes.
+func TestCmdTUIResolvesProjectPrecedence(t *testing.T) {
+	cfg := testConfig(t)
+	stubRuntimeHooks(t)
+
+	oldDetect := detectProject
+	detectProject = func(string) string { return "cwd-detected" }
+	t.Cleanup(func() { detectProject = oldDetect })
+
+	tests := []struct {
+		name string
+		args []string
+		env  string
+		want string
+	}{
+		{name: "explicit flag wins with no env or cwd", args: []string{"engram", "tui", "--project", "clarodrive"}, want: "clarodrive"},
+		{name: "equals form is accepted", args: []string{"engram", "tui", "--project=clarodrive"}, want: "clarodrive"},
+		{name: "ENGRAM_PROJECT is used without a flag", args: []string{"engram", "tui"}, env: "from-env", want: "from-env"},
+		{name: "an explicit flag overrides ENGRAM_PROJECT", args: []string{"engram", "tui", "--project", "flag-wins"}, env: "from-env", want: "flag-wins"},
+		{name: "cwd detection is the last resort", args: []string{"engram", "tui"}, want: "cwd-detected"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withArgs(t, tc.args...)
+			t.Setenv("ENGRAM_PROJECT", tc.env)
+
+			var gotProject string
+			sawCall := false
+			newTUIModel = func(_ *store.Store, project string) tui.Model {
+				sawCall = true
+				gotProject = project
+				return tui.New(nil, "", "")
+			}
+
+			_, _, recovered := captureOutputAndRecover(t, func() { cmdTUI(cfg) })
+			if recovered != nil {
+				t.Fatalf("cmdTUI panicked: %v", recovered)
+			}
+			if !sawCall {
+				t.Fatal("newTUIModel was never called")
+			}
+			if gotProject != tc.want {
+				t.Fatalf("project = %q, want %q", gotProject, tc.want)
+			}
+		})
+	}
+}
+
+// TestCmdTUILeavesProjectEmptyWhenNothingResolves pins the other half of
+// rfc-tui.md §9.1: "sin proyecto resoluble se abre S1" needs an empty
+// project, not a guess, once the flag, the env var and cwd detection all
+// come up empty.
+func TestCmdTUILeavesProjectEmptyWhenNothingResolves(t *testing.T) {
+	cfg := testConfig(t)
+	stubRuntimeHooks(t)
+	withArgs(t, "engram", "tui")
+	t.Setenv("ENGRAM_PROJECT", "")
+
+	oldDetect := detectProject
+	detectProject = func(string) string { return "" }
+	t.Cleanup(func() { detectProject = oldDetect })
+
+	var gotProject string
+	sawCall := false
+	newTUIModel = func(_ *store.Store, project string) tui.Model {
+		sawCall = true
+		gotProject = project
+		return tui.New(nil, "", "")
+	}
+
+	_, _, recovered := captureOutputAndRecover(t, func() { cmdTUI(cfg) })
+	if recovered != nil {
+		t.Fatalf("cmdTUI panicked: %v", recovered)
+	}
+	if !sawCall {
+		t.Fatal("newTUIModel was never called")
+	}
+	if gotProject != "" {
+		t.Fatalf("project = %q, want empty when nothing resolves", gotProject)
 	}
 }
 

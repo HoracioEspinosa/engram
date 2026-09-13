@@ -74,7 +74,7 @@ var (
 	// detectProject is injectable for testing; wraps project.DetectProject.
 	detectProject = project.DetectProject
 
-	newTUIModel   = func(s *store.Store) tui.Model { return tui.New(s, version) }
+	newTUIModel   = func(s *store.Store, project string) tui.Model { return tui.New(s, version, project) }
 	newTeaProgram = tea.NewProgram
 	runTeaProgram = (*tea.Program).Run
 
@@ -913,11 +913,45 @@ func cmdTUI(cfg store.Config) {
 	}
 	defer s.Close()
 
-	model := newTUIModel(s)
+	model := newTUIModel(s, resolveTUIProject())
 	p := newTeaProgram(model)
 	if _, err := runTeaProgram(p); err != nil {
 		fatal(err)
 	}
+}
+
+// resolveTUIProject resolves the project `engram tui` opens on, following
+// the precedence rfc-tui.md §9.1 fixes for --project: an explicit --project
+// (or --project=) flag first, then ENGRAM_PROJECT, then cwd detection. An
+// empty result means no project was resoluble, so the workspace opens on its
+// no-project home instead of a Dashboard.
+func resolveTUIProject() string {
+	project := ""
+	for i := 2; i < len(os.Args); i++ {
+		switch {
+		case os.Args[i] == "--project" && i+1 < len(os.Args):
+			project = os.Args[i+1]
+			i++
+		case strings.HasPrefix(os.Args[i], "--project="):
+			project = strings.TrimPrefix(os.Args[i], "--project=")
+		}
+	}
+	if project == "" {
+		project = strings.TrimSpace(os.Getenv("ENGRAM_PROJECT"))
+	}
+	if project == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			project = detectProject(cwd)
+		}
+	}
+	if project == "" {
+		return ""
+	}
+	normalized, warning := store.NormalizeProject(project)
+	if warning != "" {
+		fmt.Fprintln(os.Stderr, warning)
+	}
+	return normalized
 }
 
 func cmdSearch(cfg store.Config) {
