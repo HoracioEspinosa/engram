@@ -145,6 +145,20 @@ func New(r data.TaskReader) Model {
 	}
 }
 
+// WithStyles returns a copy of m painted with styles instead of the default
+// theme.New built it with — app.New calls this once, right after New, so
+// the tab renders under the same resolved palette as the workspace chrome
+// around it (rfc-tui.md §8.2's --theme / ENGRAM_TUI_THEME / tui.theme).
+func (m Model) WithStyles(styles theme.Styles) Model {
+	m.styles = styles
+	return m
+}
+
+// Styles exposes the tab's current style set for app-level tests that
+// assert every tab paints with the same resolved palette instead of its own
+// default.
+func (m Model) Styles() theme.Styles { return m.styles }
+
 // WithProject returns a copy of m scoped to project, its screen state reset
 // to the list. The root calls this whenever the active project changes, so
 // the next load queries the right project instead of replaying whatever the

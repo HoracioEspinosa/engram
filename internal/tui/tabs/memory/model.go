@@ -186,6 +186,24 @@ func New(r data.MemoryReader, version string) Model {
 	}
 }
 
+// WithStyles returns a copy of m painted with styles instead of the default
+// theme.New built it with — app.New calls this once, right after New, so
+// the tab renders under the same resolved palette as the workspace chrome
+// around it (rfc-tui.md §8.2's --theme / ENGRAM_TUI_THEME / tui.theme). The
+// spinner's own style is re-derived too: New bakes styles.Spinner into it at
+// construction time, so leaving it alone here would strand the spinner on
+// the palette New saw instead of the one the workspace resolved.
+func (m Model) WithStyles(styles theme.Styles) Model {
+	m.styles = styles
+	m.SetupSpinner.Style = styles.Spinner
+	return m
+}
+
+// Styles exposes the tab's current style set for app-level tests that
+// assert every tab paints with the same resolved palette instead of its own
+// default.
+func (m Model) Styles() theme.Styles { return m.styles }
+
 // Title is the label the tab bar shows for this tab.
 func (Model) Title() string { return "Memory" }
 
