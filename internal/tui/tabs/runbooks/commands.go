@@ -3,6 +3,7 @@ package runbooks
 import (
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -30,8 +31,10 @@ func searchRunbooks(r data.RunbookReader, project string, all bool, query string
 // loadMarkdown returns the command that reads item's Markdown file and
 // renders it with glamour (S9, rfc-tui.md §9.4). width is captured at call
 // time (the tab's current Width) so the render wraps to the terminal the
-// request was issued from.
-func loadMarkdown(item store.RunbookIndexRow, width int) tea.Cmd {
+// request was issued from; palette is the tab's active theme.Palette, so the
+// rendered Markdown matches whatever --theme / ENGRAM_TUI_THEME / tui.theme
+// resolved to.
+func loadMarkdown(item store.RunbookIndexRow, width int, palette theme.Palette) tea.Cmd {
 	return func() tea.Msg {
 		raw, exists, err := readRunbookMarkdown(item.VaultPath)
 		if err != nil {
@@ -40,7 +43,7 @@ func loadMarkdown(item store.RunbookIndexRow, width int) tea.Cmd {
 		if !exists {
 			return markdownLoadedMsg{id: item.ID, exists: false}
 		}
-		rendered, renderErr := renderMarkdown(raw, width)
+		rendered, renderErr := renderMarkdown(raw, width, palette)
 		msg := markdownLoadedMsg{id: item.ID, exists: true, raw: raw, rendered: rendered}
 		if renderErr != nil {
 			msg.renderErr = renderErr.Error()

@@ -179,7 +179,7 @@ func (m Model) handleIndexKeys(key string) (tabs.Tab, tea.Cmd) {
 			m.Rendered = ""
 			m.MarkdownErr = ""
 			m.ErrorMsg = ""
-			return m, loadMarkdown(item, m.Width)
+			return m, loadMarkdown(item, m.Width, m.styles.Palette)
 		}
 	case "c":
 		if len(m.Items) > 0 && m.Cursor < len(m.Items) {
@@ -269,7 +269,7 @@ func (m Model) handleViewKeys(key string) (tabs.Tab, tea.Cmd) {
 	case "o":
 		return m, openHub(m.projects, m.project)
 	case "r":
-		return m, loadMarkdown(item, m.Width)
+		return m, loadMarkdown(item, m.Width, m.styles.Palette)
 	case "esc", "q":
 		m.Screen = ScreenIndex
 		m.Selected = nil

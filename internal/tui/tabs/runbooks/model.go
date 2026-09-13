@@ -131,6 +131,22 @@ func New(reader data.RunbookReader, projects data.ProjectReader) Model {
 	}
 }
 
+// WithStyles returns a copy of m painted with styles instead of the default
+// theme.New built it with — app.New calls this once, right after New, so
+// the tab renders under the same resolved palette as the workspace chrome
+// around it (rfc-tui.md §8.2's --theme / ENGRAM_TUI_THEME / tui.theme). It
+// also carries into the ansi.StyleConfig markdown.go builds for glamour, so
+// a Markdown-rendered runbook matches the palette its own index screen uses.
+func (m Model) WithStyles(styles theme.Styles) Model {
+	m.styles = styles
+	return m
+}
+
+// Styles exposes the tab's current style set for app-level tests that
+// assert every tab paints with the same resolved palette instead of its own
+// default.
+func (m Model) Styles() theme.Styles { return m.styles }
+
 // WithProject returns a copy of m scoped to project, its screen state reset
 // to the index. The root calls this whenever the active project changes, so
 // the next load queries the right project instead of replaying whatever the
@@ -173,7 +189,7 @@ func (m Model) Init() tea.Cmd {
 // calls it on "r" and whenever this tab becomes active.
 func (m Model) Refresh() tea.Cmd {
 	if m.Screen == ScreenView && m.Selected != nil {
-		return loadMarkdown(*m.Selected, m.Width)
+		return loadMarkdown(*m.Selected, m.Width, m.styles.Palette)
 	}
 	if m.Query != "" {
 		return searchRunbooks(m.reader, m.project, m.All, m.Query, searchLimit)
