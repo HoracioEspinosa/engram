@@ -2275,6 +2275,9 @@ func handleMergeProjects(s *store.Store) server.ToolHandlerFunc {
 		for _, line := range result.TableSummaryLines() {
 			msg += "  " + line + "\n"
 		}
+		for _, line := range result.SourcesSkippedLines() {
+			msg += "  skipped " + line + "\n"
+		}
 
 		return mcp.NewToolResultText(msg), nil
 	}

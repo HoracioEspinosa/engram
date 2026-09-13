@@ -4723,6 +4723,18 @@ type MergeResult struct {
 	// that already owns a row there would violate that key. See
 	// mergeProjectScopedTableTx for which row survives and why.
 	TableRowsDropped map[string]int64 `json:"table_rows_dropped"`
+
+	// SourcesSkipped names every requested source that did not end up in
+	// SourcesMerged, keyed by the source exactly as the caller passed it
+	// (trimmed), with the reason it was left out. A source project name
+	// that drifted only by case or whitespace from canonical — "Pipas" vs
+	// "pipas" — is the tool's own documented reason for existing ("e.g.
+	// 'Engram' and 'engram' should be the same project"); reporting
+	// "Merged 0 source(s)" with no further detail when that exact case
+	// silently failed is what let a call that renamed nothing look
+	// identical to one that had nothing to rename. Every skip now carries
+	// its own reason instead of the two being indistinguishable.
+	SourcesSkipped map[string]string `json:"sources_skipped"`
 }
 
 // TableSummaryLines renders one line per table TableRowsMoved has an entry
@@ -4752,9 +4764,28 @@ func (r *MergeResult) TableSummaryLines() []string {
 	return lines
 }
 
+// SourcesSkippedLines renders one line per entry in SourcesSkipped, sorted
+// by source name, naming the exact source and why it was not merged —
+// counterpart to TableSummaryLines for the other half of the same report.
+func (r *MergeResult) SourcesSkippedLines() []string {
+	names := make([]string, 0, len(r.SourcesSkipped))
+	for name := range r.SourcesSkipped {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	lines := make([]string, 0, len(names))
+	for _, name := range names {
+		lines = append(lines, fmt.Sprintf("%s: %s", name, r.SourcesSkipped[name]))
+	}
+	return lines
+}
+
 // MergeProjects migrates all records from each source project name into the
-// canonical name. Sources that equal the canonical (after normalization) or
-// have no records are silently skipped — the operation is idempotent.
+// canonical name. A source identical to canonical, or one with no records
+// under any of its byte-for-byte variants, is skipped — see
+// MergeResult.SourcesSkipped for exactly which sources and why, rather than
+// a source silently vanishing from SourcesMerged with no explanation.
 // All updates are performed inside a single transaction for atomicity.
 func (s *Store) MergeProjects(sources []string, canonical string) (*MergeResult, error) {
 	canonical, _ = NormalizeProject(canonical)
@@ -4771,34 +4802,63 @@ func (s *Store) MergeProjects(sources []string, canonical string) (*MergeResult,
 		Canonical:        canonical,
 		TableRowsMoved:   make(map[string]int64, len(tables)),
 		TableRowsDropped: make(map[string]int64),
+		SourcesSkipped:   make(map[string]string),
 	}
 
 	err = s.withTx(func(tx *sql.Tx) error {
+		// Deduped by the trimmed raw input, not its normalized form: two
+		// requested sources that normalize the same way ("Pipas" and
+		// "PIPAS") can still name rows stored under genuinely different
+		// byte values in the "project" column, which is case-sensitive.
+		// Deduping by the normalized form would silently drop every
+		// occurrence after the first, the same class of defect this whole
+		// fix addresses for source-vs-canonical comparisons below.
 		seenSources := make(map[string]struct{})
 		for _, srcInput := range sources {
+			trimmedInput := strings.TrimSpace(srcInput)
 			srcNormalized, _ := NormalizeProject(srcInput)
-			if srcNormalized == "" || srcNormalized == canonical {
+			if srcNormalized == "" {
 				continue
 			}
-			if _, seen := seenSources[srcNormalized]; seen {
+			if _, seen := seenSources[trimmedInput]; seen {
 				continue
 			}
-			seenSources[srcNormalized] = struct{}{}
+			seenSources[trimmedInput] = struct{}{}
+
+			// The only source that is genuinely a no-op is one identical to
+			// canonical byte-for-byte. Comparing normalized forms instead —
+			// the bug this replaces — treated "Pipas" as already being
+			// "pipas" and skipped it before a single row was ever looked
+			// at, despite the two being stored under different, distinct
+			// values in every "project" column in the database.
+			if trimmedInput == canonical {
+				result.SourcesSkipped[trimmedInput] = "identical to canonical"
+				continue
+			}
 
 			sourceVariants := projectMergeSourceVariants(srcInput, srcNormalized, canonical)
 			if len(sourceVariants) == 0 {
+				result.SourcesSkipped[trimmedInput] = "no distinct project name variant to migrate"
 				continue
 			}
 
+			var sourceMoved, sourceDropped int64
 			for _, table := range tables {
 				moved, dropped, err := s.mergeProjectScopedTableTx(tx, table, canonical, sourceVariants)
 				if err != nil {
 					return fmt.Errorf("merge %s %q → %q: %w", table.name, srcNormalized, canonical, err)
 				}
 				result.TableRowsMoved[table.name] += moved
+				sourceMoved += moved
 				if dropped > 0 {
 					result.TableRowsDropped[table.name] += dropped
+					sourceDropped += dropped
 				}
+			}
+
+			if sourceMoved == 0 && sourceDropped == 0 {
+				result.SourcesSkipped[trimmedInput] = "no matching records found"
+				continue
 			}
 
 			result.SourcesMerged = append(result.SourcesMerged, srcNormalized)
@@ -4999,11 +5059,27 @@ func sqlPlaceholders(count int) string {
 	return strings.TrimRight(strings.Repeat("?,", count), ",")
 }
 
+// projectMergeSourceVariants returns every byte-for-byte project-name spelling
+// that should be folded into canonical for one requested source: rawSource
+// itself, its normalized form, and — when normalizedSource has more than one
+// word — that form rejoined with each separator NormalizeProject treats as
+// equivalent (space, hyphen, underscore), so "Engram Memory" also catches
+// "engram-memory" and "engram_memory" rows without the caller having to name
+// every spelling explicitly.
+//
+// A candidate is excluded only when it is canonical byte-for-byte — the one
+// case where migrating it would be a no-op UPDATE rewriting canonical rows
+// onto themselves. It is deliberately NOT excluded merely because
+// NormalizeProject(candidate) equals canonical: that used to be the filter
+// here, and it is what made "Pipas" invisible to a merge into "pipas" — the
+// SQL "project" column is case-sensitive, so a candidate can differ from
+// canonical in every row that matters while still normalizing to the same
+// string. Whether such a candidate turns out to have any matching rows is
+// for the caller to find out by actually querying; this function's job is
+// only to not withhold a spelling that might.
 func projectMergeSourceVariants(rawSource, normalizedSource, canonical string) []string {
 	seen := make(map[string]struct{})
 	variants := make([]string, 0, 5)
-	// Match both the historical raw project name and its normalized form so
-	// legacy rows are migrated without reintroducing canonical-source churn.
 	candidates := []string{strings.TrimSpace(rawSource), normalizedSource}
 	parts := strings.FieldsFunc(normalizedSource, func(r rune) bool {
 		return r == ' ' || r == '-' || r == '_'
@@ -5016,10 +5092,6 @@ func projectMergeSourceVariants(rawSource, normalizedSource, canonical string) [
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" || candidate == canonical {
-			continue
-		}
-		candidateNormalized, _ := NormalizeProject(candidate)
-		if candidateNormalized == canonical {
 			continue
 		}
 		if _, ok := seen[candidate]; ok {

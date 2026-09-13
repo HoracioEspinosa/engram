@@ -6748,6 +6748,197 @@ func TestMergeProjectsAliasVariantsDoNotRewriteCanonicalProject(t *testing.T) {
 	}
 }
 
+// TestProjectMergeSourceVariantsIncludesACaseOnlyDifference is the unit-level
+// pin for the actual bug: projectMergeSourceVariants used to drop a
+// candidate whenever NormalizeProject(candidate) equalled canonical, even
+// when the candidate itself — the value actually stored in the
+// case-sensitive "project" column — did not. "Pipas" must survive here so
+// that MergeProjects even has a variant to look for rows under.
+func TestProjectMergeSourceVariantsIncludesACaseOnlyDifference(t *testing.T) {
+	got := projectMergeSourceVariants("Pipas", "pipas", "pipas")
+	if len(got) != 1 || got[0] != "Pipas" {
+		t.Fatalf(`projectMergeSourceVariants("Pipas", "pipas", "pipas") = %v, want ["Pipas"]`, got)
+	}
+}
+
+// TestProjectMergeSourceVariantsExcludesTheCanonicalSpellingItself pins the
+// one exclusion that must remain: a candidate identical to canonical
+// byte-for-byte would make MergeProjects issue an UPDATE rewriting
+// canonical's own rows onto themselves, which is exactly the degenerate
+// case the byte-for-byte check (as opposed to the removed normalized-form
+// check) still exists to prevent.
+func TestProjectMergeSourceVariantsExcludesTheCanonicalSpellingItself(t *testing.T) {
+	got := projectMergeSourceVariants("pipas", "pipas", "pipas")
+	if len(got) != 0 {
+		t.Fatalf(`projectMergeSourceVariants("pipas", "pipas", "pipas") = %v, want none`, got)
+	}
+}
+
+// TestMergeProjectsMergesACaseOnlyVariant reproduces the exact defect found
+// against real data: "Pipas" (mixed case) and "pipas" (canonical) each had
+// their own rows, and MergeProjects([]string{"Pipas"}, "pipas") reported
+// "Merged 0 source(s)... Observations moved: 0" without error — the source
+// was skipped because NormalizeProject("Pipas") == "pipas" == canonical,
+// even though "Pipas" and "pipas" are different, distinct values in the
+// case-sensitive "project" column and neither one is the other. This is
+// precisely the case the tool's own MCP description names as its reason to
+// exist ("e.g. 'Engram' and 'engram' should be the same project").
+func TestMergeProjectsMergesACaseOnlyVariant(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(`INSERT INTO sessions (id, project, directory) VALUES (?, ?, ?)`, "pipas-mixed-session", "Pipas", "/work/pipas"); err != nil {
+		t.Fatalf("seed mixed-case session: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO observations (sync_id, session_id, type, title, content, project, scope, normalized_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"pipas-mixed-obs", "pipas-mixed-session", "decision", "mixed case", "content", "Pipas", "project", "pipas-mixed-hash",
+	); err != nil {
+		t.Fatalf("seed mixed-case observation: %v", err)
+	}
+	if err := s.CreateSession("pipas-canon-session", "pipas", "/work/pipas"); err != nil {
+		t.Fatalf("create canonical session: %v", err)
+	}
+	if _, err := s.AddObservation(AddObservationParams{
+		SessionID: "pipas-canon-session", Type: "decision", Title: "canonical", Content: "content",
+		Project: "pipas", Scope: "project",
+	}); err != nil {
+		t.Fatalf("add canonical observation: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"Pipas"}, "pipas")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+
+	if result.TableRowsMoved["sessions"] != 1 {
+		t.Errorf("TableRowsMoved[sessions] = %d, want 1", result.TableRowsMoved["sessions"])
+	}
+	if result.TableRowsMoved["observations"] != 1 {
+		t.Errorf("TableRowsMoved[observations] = %d, want 1", result.TableRowsMoved["observations"])
+	}
+	if len(result.SourcesMerged) != 1 || result.SourcesMerged[0] != "pipas" {
+		t.Errorf("SourcesMerged = %v, want [pipas]", result.SourcesMerged)
+	}
+	if len(result.SourcesSkipped) != 0 {
+		t.Errorf("SourcesSkipped = %v, want none — this source had real rows to move", result.SourcesSkipped)
+	}
+
+	var mixedCaseRemaining, canonicalTotal int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM observations WHERE project = ?`, "Pipas").Scan(&mixedCaseRemaining); err != nil {
+		t.Fatalf("count remaining mixed-case rows: %v", err)
+	}
+	if mixedCaseRemaining != 0 {
+		t.Fatalf("%d observation(s) still under \"Pipas\" after the merge", mixedCaseRemaining)
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM observations WHERE project = ?`, "pipas").Scan(&canonicalTotal); err != nil {
+		t.Fatalf("count canonical rows: %v", err)
+	}
+	if canonicalTotal != 2 {
+		t.Fatalf("canonical observations = %d, want 2 (1 pre-existing + 1 merged)", canonicalTotal)
+	}
+}
+
+// TestMergeProjectsProcessesDistinctRawCasingsIndependently pins that
+// deduping requested sources by their trimmed raw value — not by their
+// normalized form, which used to be the same bug as the source-vs-canonical
+// comparison — lets two differently-cased sources in the same call each
+// contribute their own rows instead of the second one being silently
+// swallowed because it "looked like" a duplicate of the first.
+func TestMergeProjectsProcessesDistinctRawCasingsIndependently(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(`INSERT INTO sessions (id, project, directory) VALUES (?, ?, ?)`, "pipas-session", "Pipas", "/work/pipas"); err != nil {
+		t.Fatalf("seed Pipas session: %v", err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO sessions (id, project, directory) VALUES (?, ?, ?)`, "PIPAS-session", "PIPAS", "/work/pipas"); err != nil {
+		t.Fatalf("seed PIPAS session: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"Pipas", "PIPAS"}, "pipas")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+	if result.TableRowsMoved["sessions"] != 2 {
+		t.Fatalf("TableRowsMoved[sessions] = %d, want 2 (both casings merged independently)", result.TableRowsMoved["sessions"])
+	}
+	// Both "Pipas" and "PIPAS" normalize to "pipas"; SourcesMerged records
+	// the normalized name once per successfully-merged raw source, so two
+	// independently-merged raw sources that share a normalized spelling
+	// appear as two "pipas" entries, not one.
+	if len(result.SourcesMerged) != 2 {
+		t.Fatalf("SourcesMerged = %v, want 2 entries (one per merged raw source)", result.SourcesMerged)
+	}
+	for _, name := range result.SourcesMerged {
+		if name != "pipas" {
+			t.Errorf("SourcesMerged entry = %q, want \"pipas\"", name)
+		}
+	}
+}
+
+// TestMergeProjectsDeduplicatesRepeatedRawSources pins that the exact same
+// raw source string listed twice in one call is only processed once,
+// distinguishing "the same string repeated" from "two different strings
+// that merely normalize the same way" (the case the previous test covers).
+func TestMergeProjectsDeduplicatesRepeatedRawSources(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(`INSERT INTO sessions (id, project, directory) VALUES (?, ?, ?)`, "pipas-session", "Pipas", "/work/pipas"); err != nil {
+		t.Fatalf("seed Pipas session: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"Pipas", "Pipas"}, "pipas")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+	if result.TableRowsMoved["sessions"] != 1 {
+		t.Fatalf("TableRowsMoved[sessions] = %d, want 1 — the repeated source must not be processed twice", result.TableRowsMoved["sessions"])
+	}
+	if len(result.SourcesMerged) != 1 {
+		t.Fatalf("SourcesMerged = %v, want exactly one entry for the deduplicated source", result.SourcesMerged)
+	}
+}
+
+// TestMergeProjectsSkipsASourceIdenticalToCanonicalAndSaysSo pins the one
+// case that must still be a no-op: a source that is canonical byte-for-byte
+// has nothing to migrate, and now says so by name instead of vanishing.
+func TestMergeProjectsSkipsASourceIdenticalToCanonicalAndSaysSo(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.CreateSession("s1", "pipas", "/work/pipas"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"pipas"}, "pipas")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+	if len(result.SourcesMerged) != 0 {
+		t.Fatalf("SourcesMerged = %v, want none", result.SourcesMerged)
+	}
+	if got := result.SourcesSkipped["pipas"]; got != "identical to canonical" {
+		t.Fatalf(`SourcesSkipped["pipas"] = %q, want "identical to canonical"`, got)
+	}
+}
+
+// TestMergeProjectsReportsASourceWithNoMatchingRecords pins the other named
+// reason: a source that is genuinely distinct from canonical but has no
+// rows anywhere is not an error, but it is no longer indistinguishable from
+// the primary-key-comparison bug this fix removes — both used to look like
+// "Merged 0 source(s)" with nothing further to go on.
+func TestMergeProjectsReportsASourceWithNoMatchingRecords(t *testing.T) {
+	s := newTestStore(t)
+
+	result, err := s.MergeProjects([]string{"ghost-project"}, "engram")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+	if len(result.SourcesMerged) != 0 {
+		t.Fatalf("SourcesMerged = %v, want none", result.SourcesMerged)
+	}
+	if got := result.SourcesSkipped["ghost-project"]; got != "no matching records found" {
+		t.Fatalf(`SourcesSkipped["ghost-project"] = %q, want "no matching records found"`, got)
+	}
+}
+
 // TestMergeResultTableSummaryLinesFormatsSortedTables pins the report format
 // every MergeProjects caller (MCP tool, CLI) now renders from instead of
 // naming three fields by hand: sorted by table name for a diffable report,
@@ -6781,6 +6972,30 @@ func TestMergeResultTableSummaryLinesFormatsSortedTables(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("TableSummaryLines()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestMergeResultSourcesSkippedLinesFormatsSortedReasons is
+// TableSummaryLines' counterpart test for the other half of the report.
+func TestMergeResultSourcesSkippedLinesFormatsSortedReasons(t *testing.T) {
+	result := &MergeResult{
+		SourcesSkipped: map[string]string{
+			"pipas":         "identical to canonical",
+			"ghost-project": "no matching records found",
+		},
+	}
+	got := result.SourcesSkippedLines()
+	want := []string{
+		"ghost-project: no matching records found",
+		"pipas: identical to canonical",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("SourcesSkippedLines() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("SourcesSkippedLines()[%d] = %q, want %q", i, got[i], want[i])
 		}
 	}
 }

@@ -2301,6 +2301,9 @@ func cmdProjectsConsolidate(cfg store.Config) {
 		for _, line := range result.TableSummaryLines() {
 			fmt.Printf("  %s\n", line)
 		}
+		for _, line := range result.SourcesSkippedLines() {
+			fmt.Printf("  skipped %s\n", line)
+		}
 		return
 	}
 
@@ -2414,6 +2417,9 @@ func cmdProjectsConsolidate(cfg store.Config) {
 		fmt.Printf("  Merged:\n")
 		for _, line := range result.TableSummaryLines() {
 			fmt.Printf("    %s\n", line)
+		}
+		for _, line := range result.SourcesSkippedLines() {
+			fmt.Printf("    skipped %s\n", line)
 		}
 		fmt.Println()
 	}
