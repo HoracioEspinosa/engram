@@ -11,18 +11,33 @@ import (
 // file) and S7's "m" (open its manifest.json).
 var openFile = defaultOpenFile
 
-// defaultOpenFile shells out to the OS's registered handler for a path:
-// `open` on macOS, `xdg-open` everywhere else (rfc-tui.md §9.3: "`o` abre el
-// archivo con `open`/`xdg-open`"). It only starts the process — it does not
-// wait for the viewer to exit — and reports whether that process could even
-// be launched; rfc-tui.md §9.3 documents that a terminal with neither binary
-// (an SSH session with no desktop) must degrade to "show the path and let
-// the user copy it", which is exactly what a non-nil error here drives in
-// update.go instead of silently doing nothing.
-func defaultOpenFile(path string) error {
-	name := "xdg-open"
-	if runtime.GOOS == "darwin" {
-		name = "open"
+// openerFor picks the OS's registered-handler binary for goos: `open` on
+// macOS, `xdg-open` everywhere else (rfc-tui.md §9.3: "`o` abre el archivo
+// con `open`/`xdg-open`"). It takes goos as a parameter rather than reading
+// runtime.GOOS itself so a test can exercise both branches on any single
+// platform — the coverage gate (scripts/tui-coverage-gate.sh) runs on every
+// CI platform, and a branch keyed off the real runtime.GOOS could only ever
+// show one of its two outcomes as covered on a given machine.
+func openerFor(goos string) string {
+	if goos == "darwin" {
+		return "open"
 	}
-	return exec.Command(name, path).Start()
+	return "xdg-open"
+}
+
+// defaultOpenFile shells out to openerFor(runtime.GOOS) for path. It only
+// starts the process — it does not wait for the viewer to exit — and
+// reports whether that process could even be launched; rfc-tui.md §9.3
+// documents that a terminal with neither binary (an SSH session with no
+// desktop) must degrade to "show the path and let the user copy it", which
+// is exactly what a non-nil error here drives in update.go instead of
+// silently doing nothing.
+//
+// This function itself is not covered by any test: exercising it for real
+// would spawn an actual `open`/`xdg-open` process (a real GUI viewer on
+// macOS, since "open" is always present there) as a side effect of running
+// `go test`. openerFor carries every branch this function has; this body is
+// the one line of unconditional process-spawning glue on top of it.
+func defaultOpenFile(path string) error {
+	return exec.Command(openerFor(runtime.GOOS), path).Start()
 }
