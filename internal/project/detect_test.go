@@ -9,6 +9,37 @@ import (
 	"testing"
 )
 
+// ─── IsGuessedSource unit tests ───────────────────────────────────────────────
+
+// TestIsGuessedSource pins the ADR-057 §3 contract: dir_basename is the only
+// source a write-deciding caller must treat as unresolved. Every other
+// source DetectProjectFull can produce — including ambiguous, which already
+// carries its own error and empty Project — must not be flagged as a guess,
+// so a caller cannot widen the check by accident and start refusing sources
+// that are already facts (git-backed) or already handled via res.Error.
+func TestIsGuessedSource(t *testing.T) {
+	tests := []struct {
+		source string
+		want   bool
+	}{
+		{SourceGitRemote, false},
+		{SourceGitRoot, false},
+		{SourceGitChild, false},
+		{SourceDirBasename, true},
+		{SourceAmbiguous, false},
+		{SourceExplicitOverride, false},
+		{SourceSessionProject, false},
+		{SourceConfig, false},
+		{SourceAllProjects, false},
+		{"", false},
+	}
+	for _, tc := range tests {
+		if got := IsGuessedSource(tc.source); got != tc.want {
+			t.Errorf("IsGuessedSource(%q) = %v, want %v", tc.source, got, tc.want)
+		}
+	}
+}
+
 // ─── extractRepoName unit tests ──────────────────────────────────────────────
 
 func TestExtractRepoName(t *testing.T) {

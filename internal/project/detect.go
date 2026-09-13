@@ -55,6 +55,16 @@ var noiseSet = map[string]bool{
 	".vscode":      true,
 }
 
+// IsGuessedSource reports whether source is a directory-name guess rather
+// than a fact the detector actually knows (a git-backed source, an explicit
+// override, session association, or config file). A caller that decides
+// where data lands must treat a guessed source as unresolved instead of
+// silently writing under it (ADR-057 §3): the guess is still useful for a
+// caller that only decides what to display, such as which TUI screen opens.
+func IsGuessedSource(source string) bool {
+	return source == SourceDirBasename
+}
+
 // DetectionResult carries the full output of DetectProjectFull.
 type DetectionResult struct {
 	// Project is the resolved project name. Empty when Error==ErrAmbiguousProject.
