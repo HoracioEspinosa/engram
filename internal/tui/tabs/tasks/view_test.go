@@ -95,6 +95,53 @@ func TestViewRendersEveryScreenWithoutPanicking(t *testing.T) {
 	}
 }
 
+// ─── Pure helpers ────────────────────────────────────────────────────────────
+
+func TestFilterLabel(t *testing.T) {
+	if got := filterLabel("", "active"); got != "active" {
+		t.Errorf("filterLabel(\"\", \"active\") = %q, want %q", got, "active")
+	}
+	if got := filterLabel("review", "active"); got != "review" {
+		t.Errorf("filterLabel(\"review\", \"active\") = %q, want the value unchanged", got)
+	}
+}
+
+func TestOrEmpty(t *testing.T) {
+	if got := orEmpty(nil); got != "" {
+		t.Errorf("orEmpty(nil) = %q, want \"\"", got)
+	}
+	v := "fix/ACME-1"
+	if got := orEmpty(&v); got != v {
+		t.Errorf("orEmpty(&v) = %q, want %q", got, v)
+	}
+}
+
+// TestViewTaskRowCoversTheNoBranchAndNoPRDefaults pins viewTaskRow's two
+// fallback labels: TestViewRendersEveryScreenWithoutPanicking's fixture task
+// always has a branch and never a PR, so neither default has ever rendered
+// before this.
+func TestViewTaskRowCoversTheNoBranchAndNoPRDefaults(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+	item := store.TaskListItem{Task: sampleTask(1, "ACME-1", "open")}
+	item.Branch = nil
+	item.PRUrl = nil
+
+	out := m.viewTaskRow(item, false)
+	if !strings.Contains(out, "no branch") {
+		t.Fatalf("row with no branch = %q, want it to say \"no branch\"", out)
+	}
+	if !strings.Contains(out, "no PR") {
+		t.Fatalf("row with no PR = %q, want it to say \"no PR\"", out)
+	}
+
+	item.Branch = strp("fix/ACME-1")
+	item.PRUrl = strp("https://github.com/acme/repo/pull/1")
+	out = m.viewTaskRow(item, true)
+	if !strings.Contains(out, "PR linked") {
+		t.Fatalf("row with a PR = %q, want it to say \"PR linked\"", out)
+	}
+}
+
 func TestViewListShowsTheJiraKeyAndTitle(t *testing.T) {
 	m := withHeight(New(&data.FakeTask{}).WithProject("acme"), 30)
 	m.Items = []store.TaskListItem{{Task: sampleTask(1, "ACME-1", "review")}}

@@ -683,6 +683,513 @@ func TestContextPackEscReturnsToDetail(t *testing.T) {
 	}
 }
 
+// ─── Update dispatch ─────────────────────────────────────────────────────────
+
+func TestUpdateAppliesWindowSize(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+
+	m, _ = step(t, m, tea.WindowSizeMsg{Width: 100, Height: 40})
+	if m.Width != 100 || m.Height != 40 {
+		t.Fatalf("Width/Height = %d/%d, want 100/40", m.Width, m.Height)
+	}
+}
+
+// TestUpdateRoutesKeyMsgToTheStatePickerAndContextPackHandlers pins Update's
+// own routing for two branches every other test reaches by calling the
+// handler directly: ChangingState on the detail screen, and ScreenContextPack.
+func TestUpdateRoutesKeyMsgToTheStatePickerAndContextPackHandlers(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.Screen = ScreenDetail
+	m.ChangingState = true
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if m.StateCursor != 1 {
+		t.Fatalf("Update did not route to handleStatePickerKeys: StateCursor = %d, want 1", m.StateCursor)
+	}
+
+	m.ChangingState = false
+	m.Screen = ScreenContextPack
+	m.ContextPack = "# pack"
+	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	if cmd == nil {
+		t.Fatal("Update did not route to handleContextPackKeys")
+	}
+	if _, ok := run(t, cmd).(shared.CopiedMsg); !ok {
+		t.Fatalf("routed command produced %T, want shared.CopiedMsg", run(t, cmd))
+	}
+}
+
+func TestUpdateOnCopiedMsgSetsFeedbackAndSchedulesItsClear(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+
+	m, cmd := step(t, m, shared.CopiedMsg{Sequence: "seq"})
+	if m.CopyFeedback == "" {
+		t.Fatal("a CopiedMsg should set the clipboard confirmation banner")
+	}
+	if cmd == nil {
+		t.Fatal("a CopiedMsg should schedule clearing the banner")
+	}
+}
+
+func TestUpdateOnClearFeedbackMsgClearsTheBanner(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+	m.CopyFeedback = "✓ Copied!"
+
+	m, _ = step(t, m, shared.ClearFeedbackMsg{})
+	if m.CopyFeedback != "" {
+		t.Fatalf("CopyFeedback = %q, want cleared", m.CopyFeedback)
+	}
+}
+
+func TestTasksLoadedClampsAnOutOfRangeCursor(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+	m.Cursor, m.Scroll = 5, 3
+
+	m, _ = step(t, m, tasksLoadedMsg{items: []store.TaskListItem{{Task: sampleTask(1, "ACME-1", "open")}}})
+	if m.Cursor != 0 || m.Scroll != 0 {
+		t.Fatalf("Cursor/Scroll = %d/%d, want reset to 0/0 once the reload is shorter", m.Cursor, m.Scroll)
+	}
+}
+
+func TestTaskDetailLoadedClampsAnOutOfRangeDetailCursor(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	m.DetailCursor, m.DetailScroll = 5, 3
+
+	m, _ = step(t, m, taskDetailLoadedMsg{detail: sampleDetail(task, 42)})
+	if m.DetailCursor != 0 || m.DetailScroll != 0 {
+		t.Fatalf("DetailCursor/DetailScroll = %d/%d, want reset to 0/0", m.DetailCursor, m.DetailScroll)
+	}
+}
+
+func TestStateUpdatedSurfacesAnError(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.ChangingState = true
+
+	m, cmd := step(t, m, stateUpdatedMsg{id: 1, err: errors.New("database is locked")})
+	if m.ChangingState {
+		t.Fatal("a failed state update should still close the picker")
+	}
+	if m.ErrorMsg == "" {
+		t.Fatal("a failed state update should surface an error")
+	}
+	if cmd != nil {
+		t.Fatal("a failed state update must not reload the detail")
+	}
+}
+
+// TestStateUpdatedForATaskTheUserHasSinceLeftDoesNotReload pins the guard
+// mirroring evidence's manifestLoadedMsg one: a write completing for a task
+// that is no longer on screen (or for which Detail was never set) must not
+// issue a reload the current screen has nothing to do with.
+func TestStateUpdatedForATaskTheUserHasSinceLeftDoesNotReload(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+
+	m, cmd := step(t, m, stateUpdatedMsg{id: 1})
+	if cmd != nil {
+		t.Fatal("a state update with no matching Detail on screen must not reload anything")
+	}
+	if m.ErrorMsg != "" {
+		t.Fatalf("ErrorMsg = %q, want none on a successful update", m.ErrorMsg)
+	}
+}
+
+func TestObservationLinkedSurfacesAnError(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.Linking = true
+	m.LinkInput.SetValue("42")
+	m.LinkInput.Focus()
+
+	m, cmd := step(t, m, observationLinkedMsg{taskID: 1, err: errors.New("observation not found")})
+	if m.Linking {
+		t.Fatal("a failed link should still close the input")
+	}
+	if m.ErrorMsg == "" {
+		t.Fatal("a failed link should surface an error")
+	}
+	if cmd != nil {
+		t.Fatal("a failed link must not reload the detail")
+	}
+}
+
+func TestContextPackLoadedSurfacesAnError(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+
+	m, _ = step(t, m, contextPackLoadedMsg{taskID: 1, err: errors.New("task has no observations")})
+	if m.ErrorMsg == "" {
+		t.Fatal("a failed context pack build should surface an error")
+	}
+	if m.Screen == ScreenContextPack {
+		t.Fatal("a failed build must not switch to the context pack screen")
+	}
+}
+
+// ─── Search input (S3 overlay) ────────────────────────────────────────────────
+
+func TestHandleSearchInputKeysEscBlursAndClearsTheQuery(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+	m.Searching = true
+	m.SearchInput.Focus()
+	m.SearchInput.SetValue("api")
+
+	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("esc from the search input must not reload anything")
+	}
+	if m.Searching || m.SearchInput.Focused() {
+		t.Fatal("esc should close and blur the search input")
+	}
+	if m.SearchInput.Value() != "" {
+		t.Fatalf("SearchInput.Value() = %q, want cleared on esc", m.SearchInput.Value())
+	}
+}
+
+// TestHandleSearchInputKeysTypingUpdatesTheValue pins the passthrough branch
+// (any key that is neither enter nor esc) that hands the keystroke to the
+// underlying textinput.Model.
+func TestHandleSearchInputKeysTypingUpdatesTheValue(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+	m.Searching = true
+	m.SearchInput.Focus()
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if m.SearchInput.Value() != "a" {
+		t.Fatalf("SearchInput.Value() = %q, want the typed rune", m.SearchInput.Value())
+	}
+}
+
+// ─── Link input (S4 overlay) ─────────────────────────────────────────────────
+
+func TestHandleLinkInputKeysEscBlursAndClearsTheValue(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.Linking = true
+	m.LinkInput.Focus()
+	m.LinkInput.SetValue("42")
+
+	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("esc from the link input must not link anything")
+	}
+	if m.Linking || m.LinkInput.Focused() {
+		t.Fatal("esc should close and blur the link input")
+	}
+	if m.LinkInput.Value() != "" {
+		t.Fatalf("LinkInput.Value() = %q, want cleared on esc", m.LinkInput.Value())
+	}
+}
+
+func TestHandleLinkInputKeysTypingUpdatesTheValue(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.Linking = true
+	m.LinkInput.Focus()
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
+	if m.LinkInput.Value() != "4" {
+		t.Fatalf("LinkInput.Value() = %q, want the typed rune", m.LinkInput.Value())
+	}
+}
+
+// TestHandleLinkInputKeysEnterWithNoDetailClosesWithoutLinking pins the
+// defensive branch in handleLinkInputKeys: the input closed underneath it
+// (e.g. esc on the detail screen) before enter landed.
+func TestHandleLinkInputKeysEnterWithNoDetailClosesWithoutLinking(t *testing.T) {
+	fake := &data.FakeTask{}
+	m := New(fake).WithProject("acme")
+	m.Linking = true
+	m.LinkInput.Focus()
+	m.LinkInput.SetValue("42")
+
+	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatal("enter with no Detail on screen must not attempt to link")
+	}
+	if m.Linking {
+		t.Fatal("the input should still close")
+	}
+	if len(fake.LinkCalls) != 0 {
+		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls)
+	}
+}
+
+// ─── State picker (S4 overlay) ────────────────────────────────────────────────
+
+func TestHandleStatePickerKeysUpClampsAtZero(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.ChangingState = true
+	m.StateCursor = 0
+
+	updated, _ := m.handleStatePickerKeys("up")
+	m = updated.(Model)
+	if m.StateCursor != 0 {
+		t.Fatalf("StateCursor = %d, want clamped to 0", m.StateCursor)
+	}
+
+	m.StateCursor = 1
+	updated, _ = m.handleStatePickerKeys("k")
+	m = updated.(Model)
+	if m.StateCursor != 0 {
+		t.Fatalf("StateCursor = %d, want 0 after k", m.StateCursor)
+	}
+}
+
+// TestHandleStatePickerKeysEnterWithNoDetailClosesWithoutWriting pins the
+// defensive branch symmetrical to handleLinkInputKeys's: Detail went away
+// underneath the picker before enter landed.
+func TestHandleStatePickerKeysEnterWithNoDetailClosesWithoutWriting(t *testing.T) {
+	fake := &data.FakeTask{}
+	m := New(fake).WithProject("acme")
+	m.ChangingState = true
+
+	updated, cmd := m.handleStatePickerKeys("enter")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("enter with no Detail on screen must not write a state")
+	}
+	if m.ChangingState {
+		t.Fatal("the picker should still close")
+	}
+}
+
+// ─── Detail (S4) — remaining keys ─────────────────────────────────────────────
+
+func TestDetailUKeyOpensThePR(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	task.PRUrl = strp("https://github.com/acme/repo/pull/1")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.Screen = ScreenDetail
+
+	var gotURL string
+	prev := openURL
+	openURL = func(url string) error { gotURL = url; return nil }
+	defer func() { openURL = prev }()
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	if gotURL != *task.PRUrl {
+		t.Fatalf("opened URL = %q, want the pr_url %q", gotURL, *task.PRUrl)
+	}
+	if m.ErrorMsg != "" {
+		t.Fatalf("ErrorMsg = %q, want none on a successful open", m.ErrorMsg)
+	}
+}
+
+func TestDetailUKeyWithNoPRReportsAnErrorInsteadOfOpeningNothing(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	task.PRUrl = nil
+	m := New(&data.FakeTask{}).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.Screen = ScreenDetail
+
+	called := false
+	prev := openURL
+	openURL = func(string) error { called = true; return nil }
+	defer func() { openURL = prev }()
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	if called {
+		t.Fatal("a task with no pr_url must not attempt to open a URL")
+	}
+	if m.ErrorMsg == "" {
+		t.Fatal("expected an error explaining there is no pr_url")
+	}
+}
+
+func TestDetailUKeyOpenFailureFallsBackToShowingTheURL(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	task.PRUrl = strp("https://github.com/acme/repo/pull/1")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.Screen = ScreenDetail
+
+	prev := openURL
+	openURL = func(string) error { return errors.New("exec: \"xdg-open\": executable file not found in $PATH") }
+	defer func() { openURL = prev }()
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	if m.ErrorMsg == "" {
+		t.Fatal("a failed open should surface the URL so it can be copied instead")
+	}
+}
+
+func TestDetailRKeyReloadsTheTask(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	fake := &data.FakeTask{DetailByID: map[int64]data.TaskDetail{1: sampleDetail(task, 7)}}
+	m := New(fake).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.Screen = ScreenDetail
+
+	_, cmd := m.handleDetailKeys("r")
+	if cmd == nil {
+		t.Fatal("r should reload the task detail")
+	}
+	m, _ = step(t, m, run(t, cmd))
+	if m.Detail == nil || len(m.Detail.Observations) != 1 {
+		t.Fatalf("Detail after r = %+v, want the reloaded observation", m.Detail)
+	}
+}
+
+// ─── Context pack (S5) — remaining keys ───────────────────────────────────────
+
+func TestHandleContextPackKeysScrolls(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+	m.Screen = ScreenContextPack
+	m.ContextPack = "# pack"
+	m.ContextPackScroll = 0
+
+	updated, _ := m.handleContextPackKeys("down")
+	m = updated.(Model)
+	if m.ContextPackScroll != 1 {
+		t.Fatalf("ContextPackScroll = %d, want 1 after down", m.ContextPackScroll)
+	}
+	updated, _ = m.handleContextPackKeys("up")
+	m = updated.(Model)
+	if m.ContextPackScroll != 0 {
+		t.Fatalf("ContextPackScroll = %d, want 0 after up", m.ContextPackScroll)
+	}
+	// Up at the top must not go negative.
+	updated, _ = m.handleContextPackKeys("up")
+	m = updated.(Model)
+	if m.ContextPackScroll != 0 {
+		t.Fatalf("ContextPackScroll = %d, want clamped to 0", m.ContextPackScroll)
+	}
+}
+
+func TestHandleContextPackKeysRRebuildsWhenDetailIsPresent(t *testing.T) {
+	task := sampleTask(1, "ACME-1", "open")
+	fake := &data.FakeTask{ContextPackByID: map[int64]string{1: "# rebuilt"}}
+	m := New(fake).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.Screen = ScreenContextPack
+	m.ContextPack = "# stale"
+
+	_, cmd := m.handleContextPackKeys("r")
+	if cmd == nil {
+		t.Fatal("r with a task loaded should rebuild the context pack")
+	}
+	m, _ = step(t, m, run(t, cmd))
+	if m.ContextPack != "# rebuilt" {
+		t.Fatalf("ContextPack = %q, want the rebuilt pack", m.ContextPack)
+	}
+}
+
+// TestContextPackWriteWithNothingLoadedIsANoOp pins writeContextPack's early
+// return: "w" pressed before a pack (or a task) has actually loaded must not
+// try to resolve a path or touch the filesystem at all.
+func TestContextPackWriteWithNothingLoadedIsANoOp(t *testing.T) {
+	m := New(&data.FakeTask{}).WithProject("acme")
+	m.Screen = ScreenContextPack
+
+	updated, cmd := m.handleContextPackKeys("w")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("w with no context pack loaded must not schedule anything")
+	}
+	if m.ErrorMsg != "" || m.CopyFeedback != "" {
+		t.Fatalf("m = %+v, want no error and no feedback", m)
+	}
+}
+
+// TestContextPackWriteReportsAMkdirAllFailure forces a real, non-mocked
+// os.MkdirAll error: "acme" already exists as a plain file, so it cannot
+// also be created as the directory writeContextPack needs on the path to
+// context-pack.md.
+func TestContextPackWriteReportsAMkdirAllFailure(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "acme"), []byte("not a directory"), 0o644); err != nil {
+		t.Fatalf("seeding the blocking file: %v", err)
+	}
+	t.Setenv("CD_EVIDENCE_DIR", root)
+
+	task := sampleTask(1, "ACME-1", "open")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	m.Screen = ScreenContextPack
+	m.ContextPack = "# pack"
+	detail := sampleDetail(task)
+	m.Detail = &detail
+
+	updated, cmd := m.handleContextPackKeys("w")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("a MkdirAll failure must not schedule clearing a save banner that never appeared")
+	}
+	if m.ErrorMsg == "" {
+		t.Fatal("a MkdirAll failure should surface an error instead of silently doing nothing")
+	}
+	if m.CopyFeedback != "" {
+		t.Fatalf("CopyFeedback = %q, want none on a failed write", m.CopyFeedback)
+	}
+}
+
+// TestContextPackWriteReportsAWriteFileFailure forces a real os.WriteFile
+// error the same way: context-pack.md already exists as a directory, so it
+// cannot also be written as a regular file.
+func TestContextPackWriteReportsAWriteFileFailure(t *testing.T) {
+	root := t.TempDir()
+	blocked := filepath.Join(root, "acme", "ACME-1", "context-pack.md")
+	if err := os.MkdirAll(blocked, 0o755); err != nil {
+		t.Fatalf("seeding the blocking directory: %v", err)
+	}
+	t.Setenv("CD_EVIDENCE_DIR", root)
+
+	task := sampleTask(1, "ACME-1", "open")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	m.Screen = ScreenContextPack
+	m.ContextPack = "# pack"
+	detail := sampleDetail(task)
+	m.Detail = &detail
+
+	updated, cmd := m.handleContextPackKeys("w")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("a WriteFile failure must not schedule clearing a save banner that never appeared")
+	}
+	if m.ErrorMsg == "" {
+		t.Fatal("a WriteFile failure should surface an error instead of silently doing nothing")
+	}
+}
+
+// ─── Pure helpers ────────────────────────────────────────────────────────────
+
+// TestNextStateWithAnUnrecognizedCurrentValueDefaultsToActive pins
+// nextState's fallback branch: a current value store.TaskListFilter never
+// actually produces (not "" and not one of stateOptions) still returns to
+// "" instead of getting stuck, the same fail-safe nextKind's wrap-around
+// gives a value already in kindOptions.
+func TestNextStateWithAnUnrecognizedCurrentValueDefaultsToActive(t *testing.T) {
+	if got := nextState("not-a-real-state"); got != "" {
+		t.Fatalf("nextState(garbage) = %q, want \"\" (active)", got)
+	}
+}
+
+func TestNextKindWithAnUnrecognizedCurrentValueDefaultsToAll(t *testing.T) {
+	if got := nextKind("not-a-real-kind"); got != "" {
+		t.Fatalf("nextKind(garbage) = %q, want \"\" (all)", got)
+	}
+}
+
 // ─── Project switching ────────────────────────────────────────────────────────
 
 func TestWithProjectResetsListAndDetailState(t *testing.T) {
