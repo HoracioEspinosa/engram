@@ -204,6 +204,16 @@ func (m Model) Refresh() tea.Cmd {
 	return m.refreshScreen(m.Screen)
 }
 
+// OpenObservation returns the command that loads id's detail. It is what the
+// root drives when another tab asks to deep-link into an observation
+// (rfc-tui.md §3.1 S4: Enter on a task's linked observation opens it here) —
+// the same command loadObservationDetail already issues on the "enter" key
+// from every list screen, exposed so a message from outside this package can
+// trigger it too.
+func (m Model) OpenObservation(id int64) tea.Cmd {
+	return loadObservationDetail(m.reader, id)
+}
+
 // ─── Commands (data loading) ─────────────────────────────────────────────────
 
 func checkForUpdate(v string) tea.Cmd {

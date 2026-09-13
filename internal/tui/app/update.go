@@ -22,6 +22,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateActive(msg)
 
 	case tabs.NavigateMsg:
+		if msg.Target == tabs.Memory && msg.ObservationID != 0 {
+			// A deep-link into one observation (rfc-tui.md §3.1 S4's "Enter
+			// opens the observation in Memory"), not a plain tab switch: skip
+			// activate()'s generic tab.Refresh() and load that observation's
+			// detail directly instead.
+			m.active = tabs.Memory
+			m.screen = screenTab
+			return m, m.memory.OpenObservation(msg.ObservationID)
+		}
 		return m.activate(msg.Target)
 
 	case tabs.HomeMsg:
@@ -149,6 +158,12 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.project = selected.Slug
 			m.screen = screenDashboard
 			m.dashboard = newDashboardModel(m.projects, selected.Slug)
+			// Every project-scoped tab is rebuilt here, the same way the
+			// dashboard is: the Tasks tab's Refresh() has no project
+			// parameter of its own (tabs.Tab is a project-agnostic
+			// contract), so it has to already know the new slug before it
+			// is ever activated.
+			m.tasks = m.tasks.WithProject(selected.Slug)
 			return m, loadDashboard(m.projects, selected.Slug)
 		}
 		return m, nil

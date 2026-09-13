@@ -69,14 +69,28 @@ type Tab interface {
 
 // NavigateMsg asks the root to activate another tab. A tab emits it instead of
 // switching itself, which is what keeps tabs from importing each other.
+//
+// ObservationID is the one piece of cross-tab context v1 needs: rfc-tui.md
+// §3.1 S4 has Enter on a task's linked observation open that observation's
+// detail inside Memory. It is 0 for every other navigation, Target == Memory
+// being the only case the root inspects it for.
 type NavigateMsg struct {
-	Target ID
+	Target        ID
+	ObservationID int64
 }
 
 // Navigate returns the command that emits a NavigateMsg for target.
 func Navigate(target ID) tea.Cmd {
 	return func() tea.Msg {
 		return NavigateMsg{Target: target}
+	}
+}
+
+// NavigateToObservation returns the command that asks the root to open id's
+// detail inside the Memory tab.
+func NavigateToObservation(id int64) tea.Cmd {
+	return func() tea.Msg {
+		return NavigateMsg{Target: Memory, ObservationID: id}
 	}
 }
 

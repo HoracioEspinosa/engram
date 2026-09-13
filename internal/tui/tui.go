@@ -27,6 +27,7 @@ func New(s *store.Store, version string, project string) Model {
 	return app.New(
 		data.NewMemoryReader(s),
 		data.NewProjectReader(s),
+		data.NewTaskReader(s),
 		version,
 		theme.Default(),
 		project,
