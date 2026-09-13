@@ -211,26 +211,44 @@ run_case \
   "$CASE_TIMEOUT" \
   --project nextcloud
 
-# Case 2: `engram tui` with no resolvable project.
+# Case 2: `engram tui` with no --project flag and no ENGRAM_PROJECT.
 #
-# rfc-tui.md §10.1's smoke row states this opens S1 (the Project Selector).
-# It does not: internal/tui/tui.go's own doc comment on New, and
-# internal/tui/app/model.go's New (`if initialProject != "" { screenDashboard
-# } else { screenTab }` — screenTab is Memory, not screenSelector) both say a
-# workspace with no project opens on the Memory tab; nothing on this path
-# ever opens the Selector automatically — only pressing "p" does. This case
-# asserts the REAL behaviour (Memory's own stats card, whose "observations"
-# label no other screen this script reaches prints bare) and calls the
-# discrepancy out here rather than asserting the RFC's claim and silently
-# failing every run.
+# rfc-tui.md §10.1's smoke row says this opens S1 (the Project Selector).
+# T-10.02 fixed exactly the branch that decides this inside
+# internal/tui/app/model.go's New — confirmed directly:
+# app.New(mem, projects, task, ev, rb, version, styles, "") now sets
+# screenSelector (TestNewWithoutAResolvableProjectOpensTheSelector, and
+# internal/tui/e2e's "s1-project-selector" golden scene, which calls
+# app.New the exact same way with no project and no longer needs the "p"
+# workaround it used before this fix to land on the selector).
+#
+# But this case drives the real CLI, and between it and app.New sits
+# cmd/engram/main.go's resolveTUIProject(), which — once --project and
+# ENGRAM_PROJECT are both empty — falls through to
+# internal/project.DetectProject(cwd). That function never returns "":
+# case2's own throwaway directory has no git remote, no git root and no
+# child repositories, so it hits Case 5 (dir_basename) and returns the
+# directory's own name, normalized — internal/project/detect.go's own
+# comment on the wrapper says why: "CLI compat: return basename rather
+# than empty string". So app.New's initialProject is never actually ""
+# through the real CLI run from a directory that exists on disk; S1 is
+# unreachable this way regardless of app.New's own fix. This is a defect
+# in resolveTUIProject reusing the CLI-compat detector for the TUI's
+# specific "no project" screen choice, not in app.New — outside T-10.02's
+# scope (rg -n 'screenTab' internal/tui/app/model.go, T-10.02's own
+# measurement, names only that file) and reported rather than patched
+# here. This case measures the REAL resulting behaviour instead of the
+# RFC's claim: the workspace opens the Project Dashboard (S2) for that
+# synthetic slug, which has no card in the empty throwaway store, so
+# store.ErrNoProjectCard's own literal text is what actually appears.
 #
 # ENGRAM_PROJECT is explicitly cleared so a developer's own shell env never
 # leaks a resolvable project into this case.
 run_case \
-  "engram tui with no resolvable project opens Memory, NOT S1 (see comment above)" \
+  "engram tui with no --project/ENGRAM_PROJECT falls through cwd detection to S2, NOT S1 (see comment above)" \
   "$WORK_DIR/case2" \
   "ENGRAM_PROJECT=" \
-  "observations" \
+  "no project card" \
   "$CASE_TIMEOUT"
 
 # Case 3: ENGRAM_TUI_THEME=kanagawa changes the palette without error.
