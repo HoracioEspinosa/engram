@@ -337,6 +337,15 @@ func (m Model) handleSearchResultsKeys(key string) (tabs.Tab, tea.Cmd) {
 				m.Scroll = m.Cursor - visibleItems + 1
 			}
 		}
+	case "g":
+		m.Cursor, m.Scroll = 0, 0
+	case "G":
+		if len(m.SearchResults) > 0 {
+			m.Cursor = len(m.SearchResults) - 1
+			if m.Cursor >= visibleItems {
+				m.Scroll = m.Cursor - visibleItems + 1
+			}
+		}
 	case "enter":
 		if len(m.SearchResults) > 0 && m.Cursor < len(m.SearchResults) {
 			obsID := m.SearchResults[m.Cursor].ID
@@ -387,6 +396,15 @@ func (m Model) handleRecentKeys(key string) (tabs.Tab, tea.Cmd) {
 		if m.Cursor < len(m.RecentObservations)-1 {
 			m.Cursor++
 			if m.Cursor >= m.Scroll+visibleItems {
+				m.Scroll = m.Cursor - visibleItems + 1
+			}
+		}
+	case "g":
+		m.Cursor, m.Scroll = 0, 0
+	case "G":
+		if len(m.RecentObservations) > 0 {
+			m.Cursor = len(m.RecentObservations) - 1
+			if m.Cursor >= visibleItems {
 				m.Scroll = m.Cursor - visibleItems + 1
 			}
 		}
@@ -499,6 +517,15 @@ func (m Model) handleSessionsKeys(key string) (tabs.Tab, tea.Cmd) {
 		if m.Cursor < len(m.Sessions)-1 {
 			m.Cursor++
 			if m.Cursor >= m.Scroll+visibleItems {
+				m.Scroll = m.Cursor - visibleItems + 1
+			}
+		}
+	case "g":
+		m.Cursor, m.Scroll = 0, 0
+	case "G":
+		if len(m.Sessions) > 0 {
+			m.Cursor = len(m.Sessions) - 1
+			if m.Cursor >= visibleItems {
 				m.Scroll = m.Cursor - visibleItems + 1
 			}
 		}

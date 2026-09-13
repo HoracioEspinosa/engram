@@ -16,6 +16,7 @@ func (m Model) Help() []key.Binding {
 	case ScreenSearchResults:
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("j/k", "navigate")),
+			key.NewBinding(key.WithKeys("g", "G"), key.WithHelp("g/G", "top/bottom")),
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "detail")),
 			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
@@ -25,6 +26,7 @@ func (m Model) Help() []key.Binding {
 	case ScreenRecent:
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("j/k", "navigate")),
+			key.NewBinding(key.WithKeys("g", "G"), key.WithHelp("g/G", "top/bottom")),
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "detail")),
 			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
@@ -51,6 +53,7 @@ func (m Model) Help() []key.Binding {
 		}
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("j/k", "navigate")),
+			key.NewBinding(key.WithKeys("g", "G"), key.WithHelp("g/G", "top/bottom")),
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "view session")),
 			key.NewBinding(key.WithKeys("d", "D"), key.WithHelp("d", "delete")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
