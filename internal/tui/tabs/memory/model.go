@@ -284,7 +284,7 @@ func (m Model) OpenObservation(id int64) tea.Cmd {
 // results screen once it comes back — it is what the root drives when
 // another tab asks Memory to open pre-searched (rfc-tui.md §3.1 S8/S9's "t":
 // executions recorded against a runbook live at topic_key
-// "runbook/RB-NNN/exec/<CDBS-key>", so searching "runbook/RB-NNN" surfaces
+// "runbook/RB-NNN/exec/<task-key>", so searching "runbook/RB-NNN" surfaces
 // them). It issues the exact same searchMemories command the "/" key does
 // from ScreenSearch — searchResultsMsg's handler in update.go already sets
 // Screen to ScreenSearchResults regardless of who asked, the same way

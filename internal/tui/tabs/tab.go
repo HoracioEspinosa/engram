@@ -95,7 +95,7 @@ type Tab interface {
 //     because Target already says which one applies.
 //   - Query: §3.1 S8/S9's "t" opens Memory pre-searched for
 //     "runbook/RB-NNN", the executions recorded against that runbook
-//     (D-09's `runbook/RB-NNN/exec/<CDBS-key>` topic_key convention).
+//     (D-09's `runbook/RB-NNN/exec/<task-key>` topic_key convention).
 type NavigateMsg struct {
 	Target        ID
 	ObservationID int64

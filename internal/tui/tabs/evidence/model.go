@@ -167,11 +167,11 @@ func (m Model) OpenForTask(taskID int64) tea.Cmd {
 // absolutePath resolves a stored evidence path — relative to
 // ${CD_EVIDENCE_DIR:-~/.clarodrive/evidence}, per the store's own documented
 // contract (internal/mcp/projects_tools.go's `path` argument description) —
-// to a real filesystem path. Real registered evidence (task CDBS-10555, the
-// only clarodrive task with any today) confirms the contract: its rows'
-// `path` values resolve correctly with no project-slug segment in between,
-// unlike this same root's context-pack.md convention in tabs/tasks/write.go,
-// which nests one deliberately for a file the TUI itself writes.
+// to a real filesystem path. Real registered evidence confirms the
+// contract: its rows' `path` values resolve correctly with no project-slug
+// segment in between, unlike this same root's context-pack.md convention in
+// tabs/tasks/write.go, which nests one deliberately for a file the TUI
+// itself writes.
 func absolutePath(relative string) string {
 	return filepath.Join(shared.EvidenceRoot(), relative)
 }

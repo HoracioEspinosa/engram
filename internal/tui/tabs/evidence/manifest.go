@@ -46,11 +46,11 @@ func manifestPath(evidencePath string) string {
 // readManifestEntry looks for manifest.json next to evidencePath and returns
 // the entry whose "file" matches its basename.
 //
-// A missing manifest.json is not an error — every one of the 10 evidence
-// rows registered for clarodrive today (task CDBS-10555) has manifest_path
-// NULL and no manifest.json on disk next to it, `.snapshot.json` sidecars
-// with an unrelated shape instead — it is reported through exists=false so
-// S7 can say so plainly instead of silently showing nothing. A manifest.json
+// A missing manifest.json is not an error — registered evidence rows
+// routinely have manifest_path NULL and no manifest.json on disk next to it,
+// `.snapshot.json` sidecars with an unrelated shape instead — it is reported
+// through exists=false so S7 can say so plainly instead of silently showing
+// nothing. A manifest.json
 // that exists but carries no entry for this file is likewise not an error:
 // exists is true, entry is nil.
 func readManifestEntry(evidencePath string) (entry *ManifestEntry, exists bool, err error) {
