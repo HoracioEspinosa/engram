@@ -9,9 +9,15 @@ import (
 
 // Evidence mirrors the evidence row (RFC §5.6).
 type Evidence struct {
-	ID                    int64   `json:"id"`
-	SyncID                string  `json:"sync_id"`
-	Project               string  `json:"project"`
+	ID      int64  `json:"id"`
+	SyncID  string `json:"sync_id"`
+	Project string `json:"project"`
+	// TaskID is the tasks table's numeric primary key, exposed alongside
+	// TaskSyncID (the cross-machine identity mem_evidence_list and the sync
+	// pipeline filter by) so the TUI's Evidence tab can filter and deep-link
+	// by the same local row id tabs.NavigateMsg already carries for
+	// observations (rfc-tui.md §9.2's S6 query: `e.task_id = ?2`).
+	TaskID                int64   `json:"task_id"`
 	TaskSyncID            string  `json:"task_sync_id"`
 	Path                  string  `json:"path"`
 	SHA256                string  `json:"sha256"`
@@ -25,13 +31,13 @@ type Evidence struct {
 	ManifestPath          *string `json:"manifest_path,omitempty"`
 }
 
-const evidenceSelectColumns = `id, sync_id, project, task_sync_id, path, sha256, kind, proves, config_stamp,
+const evidenceSelectColumns = `id, sync_id, project, task_id, task_sync_id, path, sha256, kind, proves, config_stamp,
 	captured_at, attached_jira, attached_confluence_url, size_bytes, manifest_path`
 
 func scanEvidence(row interface{ Scan(dest ...any) error }) (Evidence, error) {
 	var e Evidence
 	var attachedJira int
-	err := row.Scan(&e.ID, &e.SyncID, &e.Project, &e.TaskSyncID, &e.Path, &e.SHA256, &e.Kind, &e.Proves,
+	err := row.Scan(&e.ID, &e.SyncID, &e.Project, &e.TaskID, &e.TaskSyncID, &e.Path, &e.SHA256, &e.Kind, &e.Proves,
 		&e.ConfigStamp, &e.CapturedAt, &attachedJira, &e.AttachedConfluenceURL, &e.SizeBytes, &e.ManifestPath)
 	e.AttachedJira = attachedJira == 1
 	return e, err
@@ -162,7 +168,14 @@ func (s *Store) evidenceLimitsForTask(taskSyncID, extraKind string, extraSize in
 
 // EvidenceListFilter holds mem_evidence_list's filter parameters.
 type EvidenceListFilter struct {
-	TaskSyncID   string // "" lists the whole project
+	TaskSyncID string // "" lists the whole project
+	// TaskID scopes the list to one task by its numeric row id instead of
+	// its sync_id. mem_evidence_list never sets it (TaskSyncID is the
+	// cross-machine identity the MCP tool resolves task refs to); it exists
+	// for the TUI's Evidence tab, whose deep link from a task's detail
+	// screen carries only the row id tabs.NavigateMsg.TaskID gives it. 0
+	// means "no task filter", matching TaskSyncID's "" convention.
+	TaskID       int64
 	AttachedJira *bool
 	Kind         string
 	Limit        int
@@ -184,6 +197,10 @@ func (s *Store) ListEvidence(project string, f EvidenceListFilter) ([]EvidenceLi
 	if f.TaskSyncID != "" {
 		where = append(where, "e.task_sync_id = ?")
 		args = append(args, f.TaskSyncID)
+	}
+	if f.TaskID != 0 {
+		where = append(where, "e.task_id = ?")
+		args = append(args, f.TaskID)
 	}
 	if f.AttachedJira != nil {
 		v := 0
@@ -212,7 +229,7 @@ func (s *Store) ListEvidence(project string, f EvidenceListFilter) ([]EvidenceLi
 	}
 	listArgs := append(append([]any{}, args...), limit, f.Offset)
 	rows, err := s.db.Query(`
-		SELECT e.id, e.sync_id, e.project, e.task_sync_id, e.path, e.sha256, e.kind, e.proves, e.config_stamp,
+		SELECT e.id, e.sync_id, e.project, e.task_id, e.task_sync_id, e.path, e.sha256, e.kind, e.proves, e.config_stamp,
 		       e.captured_at, e.attached_jira, e.attached_confluence_url, e.size_bytes, e.manifest_path,
 		       t.jira_key, t.title
 		FROM evidence e
@@ -228,7 +245,7 @@ func (s *Store) ListEvidence(project string, f EvidenceListFilter) ([]EvidenceLi
 	for rows.Next() {
 		var item EvidenceListItem
 		var attachedJira int
-		if err := rows.Scan(&item.ID, &item.SyncID, &item.Project, &item.TaskSyncID, &item.Path, &item.SHA256,
+		if err := rows.Scan(&item.ID, &item.SyncID, &item.Project, &item.TaskID, &item.TaskSyncID, &item.Path, &item.SHA256,
 			&item.Kind, &item.Proves, &item.ConfigStamp, &item.CapturedAt, &attachedJira,
 			&item.AttachedConfluenceURL, &item.SizeBytes, &item.ManifestPath, &item.JiraKey, &item.TaskTitle,
 		); err != nil {

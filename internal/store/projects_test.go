@@ -421,6 +421,51 @@ func TestListEvidence(t *testing.T) {
 	if items[0].JiraKey == nil || *items[0].JiraKey != "PROJ-1" {
 		t.Fatalf("expected jira_key joined from task, got %+v", items[0].JiraKey)
 	}
+	// rfc-tui.md §9.2's S6 query filters by e.task_id directly (the TUI's
+	// Evidence tab deep-links from a task's numeric row id, the same way
+	// tabs.NavigateMsg.ObservationID already does for Memory); TaskSyncID
+	// alone cannot serve that without a second lookup.
+	if items[0].TaskID != r.Task.ID {
+		t.Fatalf("expected task_id joined from the insert, got %d want %d", items[0].TaskID, r.Task.ID)
+	}
+}
+
+// TestListEvidenceFiltersByTaskID pins rfc-tui.md §9.2's S6 query
+// (`e.task_id = ?2`): the Evidence tab's tabs.NavigateMsg.TaskID deep link
+// (from S4's "e" key) filters by the numeric task id, not by TaskSyncID.
+func TestListEvidenceFiltersByTaskID(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	r1, err := s.UpsertTask(UpsertTaskParams{Project: "nextcloud", JiraKey: strp("PROJ-1"), Title: strp("t1"), Kind: strp("incident")})
+	if err != nil {
+		t.Fatalf("UpsertTask 1: %v", err)
+	}
+	r2, err := s.UpsertTask(UpsertTaskParams{Project: "nextcloud", JiraKey: strp("PROJ-2"), Title: strp("t2"), Kind: strp("incident")})
+	if err != nil {
+		t.Fatalf("UpsertTask 2: %v", err)
+	}
+	if _, _, _, err := s.AddEvidence(AddEvidenceParams{
+		Task: r1.Task, Path: "a.png", SHA256: "9f2b1c0a7e4d5b6c8a1f3e2d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c3b",
+		Kind: "png", Proves: "p1",
+	}); err != nil {
+		t.Fatalf("AddEvidence (task 1): %v", err)
+	}
+	if _, _, _, err := s.AddEvidence(AddEvidenceParams{
+		Task: r2.Task, Path: "b.png", SHA256: "8f2b1c0a7e4d5b6c8a1f3e2d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c4c",
+		Kind: "png", Proves: "p2",
+	}); err != nil {
+		t.Fatalf("AddEvidence (task 2): %v", err)
+	}
+
+	items, total, _, err := s.ListEvidence("nextcloud", EvidenceListFilter{TaskID: r1.Task.ID})
+	if err != nil {
+		t.Fatalf("ListEvidence: %v", err)
+	}
+	if total != 1 || len(items) != 1 {
+		t.Fatalf("expected 1 evidence item scoped to task 1, got total=%d items=%d", total, len(items))
+	}
+	if items[0].Path != "a.png" {
+		t.Fatalf("expected task 1's evidence only, got %+v", items[0])
+	}
 }
 
 func TestSyncRunbookIndex_SkipsTemplatesAndInvalidStatus(t *testing.T) {
