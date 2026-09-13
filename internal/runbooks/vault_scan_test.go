@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/HoracioEspinosa/engram/internal/store"
 )
 
 // fixedNow pins the clock so age_days assertions are deterministic.
@@ -115,6 +117,56 @@ last_updated: 2026-08-30
 	}
 	if e.NeedsReview == nil || *e.NeedsReview {
 		t.Fatalf("a 6-day-old note must not be stale, got %v", e.NeedsReview)
+	}
+}
+
+// The staleness boundary comes from store.RunbookStaleAgeDays, not from a
+// literal duplicated in this package. Pinning these dates to the constant
+// instead of to the number 90 means a future change to the threshold cannot
+// silently leave this package out of sync with the store — the exact
+// mistake of keeping the same number written in two places.
+func TestScanVault_StalenessBoundaryMatchesStoreConstant(t *testing.T) {
+	atThreshold := fixedNow.AddDate(0, 0, -store.RunbookStaleAgeDays).Format("2006-01-02")
+	pastThreshold := fixedNow.AddDate(0, 0, -(store.RunbookStaleAgeDays + 1)).Format("2006-01-02")
+
+	root := writeVault(t, map[string]string{
+		"Runbooks/RB-200 At Threshold.md": "---\n" +
+			"type: runbook\n" +
+			"id: RB-200\n" +
+			"title: At threshold\n" +
+			"service: nextcloud\n" +
+			"category: auth\n" +
+			"status: verified\n" +
+			"last_updated: " + atThreshold + "\n" +
+			"---\n",
+		"Runbooks/RB-201 Past Threshold.md": "---\n" +
+			"type: runbook\n" +
+			"id: RB-201\n" +
+			"title: Past threshold\n" +
+			"service: nextcloud\n" +
+			"category: auth\n" +
+			"status: verified\n" +
+			"last_updated: " + pastThreshold + "\n" +
+			"---\n",
+	})
+
+	result, err := ScanVault(root, fixedNow)
+	if err != nil {
+		t.Fatalf("ScanVault: %v", err)
+	}
+
+	byID := map[string]store.RunbookIndexEntryInput{}
+	for _, e := range result.Entries {
+		byID[e.ID] = e
+	}
+
+	at := byID["RB-200"]
+	if at.NeedsReview == nil || *at.NeedsReview {
+		t.Fatalf("a note exactly at the threshold must not be stale, got %v (age=%v)", at.NeedsReview, at.AgeDays)
+	}
+	past := byID["RB-201"]
+	if past.NeedsReview == nil || !*past.NeedsReview {
+		t.Fatalf("a note one day past the threshold must be stale, got %v (age=%v)", past.NeedsReview, past.AgeDays)
 	}
 }
 

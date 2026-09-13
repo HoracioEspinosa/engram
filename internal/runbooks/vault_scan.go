@@ -24,9 +24,6 @@ const templatesPrefix = runbooksDir + "/Templates/"
 // megabyte attachment from being slurped into memory.
 const maxNoteBytes = 256 * 1024
 
-// staleAgeDays is D-11's freshness threshold for a filesystem-sourced entry.
-const staleAgeDays = 90
-
 // ScanResult is the outcome of walking a vault checkout.
 type ScanResult struct {
 	// Scanned counts the markdown notes under Runbooks/ that were opened.
@@ -153,7 +150,7 @@ func classify(fm frontmatter, vaultPath string, now time.Time) (*store.RunbookIn
 
 	if age, ok := ageDays(fm, now); ok {
 		entry.AgeDays = &age
-		stale := age > staleAgeDays
+		stale := age > store.RunbookStaleAgeDays
 		entry.NeedsReview = &stale
 	}
 	return &entry, nil
@@ -162,22 +159,14 @@ func classify(fm frontmatter, vaultPath string, now time.Time) (*store.RunbookIn
 // ageDays derives how old a note is from the freshest date its header
 // carries. `last_verified` wins over `last_updated`, which wins over
 // `last_occurrence`: the first two record maintenance, the third only records
-// when the incident last happened.
+// when the incident last happened. The date-to-age arithmetic itself lives in
+// store.RunbookAgeDays, the same function SyncRunbookIndex falls back to for
+// the "knowledge-mcp" source, so a runbook's age is computed in one place.
 func ageDays(fm frontmatter, now time.Time) (int, bool) {
 	for _, key := range []string{"last_verified", "last_updated", "last_occurrence"} {
-		raw := strings.TrimSpace(fm.str(key))
-		if len(raw) < 10 {
-			continue
+		if days, ok := store.RunbookAgeDays(fm.str(key), now); ok {
+			return days, true
 		}
-		t, err := time.Parse("2006-01-02", raw[:10])
-		if err != nil {
-			continue
-		}
-		days := int(now.UTC().Sub(t.UTC()).Hours() / 24)
-		if days < 0 {
-			days = 0
-		}
-		return days, true
 	}
 	return 0, false
 }

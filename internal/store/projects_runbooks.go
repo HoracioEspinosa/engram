@@ -6,11 +6,43 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var runbookIDPattern = regexp.MustCompile(`^RB-[0-9]{3}$`)
 
 var runbookValidStatuses = map[string]bool{"draft": true, "verified": true, "outdated": true}
+
+// RunbookStaleAgeDays is D-11's freshness threshold: a runbook entry older
+// than this many days is stale regardless of what its source claims. It is
+// the single source of truth for the threshold — internal/runbooks reuses it
+// instead of keeping a second copy that could drift out of sync with this
+// one.
+const RunbookStaleAgeDays = 90
+
+// RunbookAgeDays parses a "YYYY-MM-DD"-prefixed date string and reports how
+// many whole days have elapsed since then, relative to now. ok is false when
+// raw carries no parseable date.
+//
+// It is the single place that turns a stored date into an age in days: the
+// vault scanner (internal/runbooks) derives entry.AgeDays through it, and
+// SyncRunbookIndex falls back to it below, so a runbook's age is never
+// computed two different ways.
+func RunbookAgeDays(raw string, now time.Time) (int, bool) {
+	raw = strings.TrimSpace(raw)
+	if len(raw) < 10 {
+		return 0, false
+	}
+	t, err := time.Parse("2006-01-02", raw[:10])
+	if err != nil {
+		return 0, false
+	}
+	days := int(now.UTC().Sub(t.UTC()).Hours() / 24)
+	if days < 0 {
+		days = 0
+	}
+	return days, true
+}
 
 // RunbookIndexEntryInput is one entry of mem_runbook_index_sync's `entries`
 // array (RFC §5.8).
@@ -29,8 +61,12 @@ type RunbookIndexEntryInput struct {
 	AutomationLevel string
 	LastUpdated     string
 	LastVerified    string
-	NeedsReview     *bool
-	AgeDays         *int
+	// NeedsReview is the "knowledge-mcp" source's own freshness claim. A
+	// non-nil value — true or false — is honored as-is; nil means the source
+	// made no claim at all and SyncRunbookIndex falls back to the age
+	// derived from LastUpdated instead of treating the absence as "fresh".
+	NeedsReview *bool
+	AgeDays     *int
 }
 
 // RunbookIndexSyncParams holds mem_runbook_index_sync's input.
@@ -105,11 +141,21 @@ func (s *Store) SyncRunbookIndex(p RunbookIndexSyncParams) (RunbookSyncResult, e
 		stale := 0
 		switch p.Source {
 		case "vault-fs":
-			if e.AgeDays != nil && *e.AgeDays > 90 {
+			if e.AgeDays != nil && *e.AgeDays > RunbookStaleAgeDays {
 				stale = 1
 			}
 		default: // "knowledge-mcp"
-			if e.NeedsReview != nil && *e.NeedsReview {
+			if e.NeedsReview != nil {
+				// An explicit claim from the source is honored as-is: only
+				// an explicit true marks the row stale.
+				if *e.NeedsReview {
+					stale = 1
+				}
+			} else if age, ok := RunbookAgeDays(e.LastUpdated, time.Now()); ok && age > RunbookStaleAgeDays {
+				// No explicit claim was made. Absence of needs_review is not
+				// itself a freshness claim, so fall back to the age computed
+				// from last_updated — the same rule vault-fs applies to its
+				// own age_days.
 				stale = 1
 			}
 		}
