@@ -1,5 +1,7 @@
 ═══ dashboard-loading ═══
                                                                         
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud     
+                                                                        
   ╔══════════════════════════════════════════════════════════════════╗  
   ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
   ║                                                                  ║  
@@ -32,6 +34,8 @@
     j/k navigate • enter select • s search • q quit                     
                                                                         
 ═══ dashboard ═══
+                                                                        
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud     
                                                                         
   ╔══════════════════════════════════════════════════════════════════╗  
   ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
@@ -77,6 +81,8 @@
     j/k navigate • enter select • s search • q quit                     
                                                                         
 ═══ dashboard-update-available ═══
+                                                                        
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud     
                                                                         
   ╔══════════════════════════════════════════════════════════════════╗  
   ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
@@ -125,6 +131,8 @@
                                                                         
 ═══ dashboard-update-failed ═══
                                                                         
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud     
+                                                                        
   ╔══════════════════════════════════════════════════════════════════╗  
   ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
   ║                                                                  ║  
@@ -172,6 +180,8 @@
                                                                         
 ═══ dashboard-with-error ═══
                                                                         
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud     
+                                                                        
   ╔══════════════════════════════════════════════════════════════════╗  
   ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
   ║                                                                  ║  
@@ -217,21 +227,25 @@
    Error: database is locked                                            
                                                                         
 ═══ search-empty-input ═══
-                                                                    
-    Search Memories                                                 
-                                                                    
-  ─────────────────                                                 
-                                                                    
-                                                                    
-  ┌──────────────────────────────────────────────────────────────┐  
-  │ > Search memories...                                         │  
-  └──────────────────────────────────────────────────────────────┘  
-                                                                    
-                                                                    
-                                                                    
-    Type a query and press enter • esc go back                      
-                                                                    
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Search Memories                                                  
+                                                                     
+  ─────────────────                                                  
+                                                                     
+                                                                     
+  ┌──────────────────────────────────────────────────────────────┐   
+  │ > Search memories...                                         │   
+  └──────────────────────────────────────────────────────────────┘   
+                                                                     
+                                                                     
+                                                                     
+    Type a query and press enter • esc go back                       
+                                                                     
 ═══ search-typed-query ═══
+                                                                       
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud    
                                                                        
     Search Memories                                                    
                                                                        
@@ -247,6 +261,8 @@
     Type a query and press enter • esc go back                         
                                                                        
 ═══ search-results ═══
+                                                                                                                        
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                     
                                                                                                                         
     Search: "wal" — 4 results                                                                                           
                                                                                                                         
@@ -266,6 +282,8 @@
                                                                                                                         
 ═══ search-results-scrolled ═══
                                                                                                                          
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
+                                                                                                                         
     Search: "wal" — 4 results                                                                                            
                                                                                                                          
   ───────────────────────────                                                                                            
@@ -281,18 +299,22 @@
     j/k navigate • enter detail • c copy • t timeline • / search • esc back                                              
                                                                                                                          
 ═══ search-results-empty ═══
-                                               
-    Search: "no-such-thing" — 0 results        
-                                               
-  ─────────────────────────────────────        
-                                               
-                                               
-    No memories found. Try a different query.  
-                                               
-                                               
-    / new search • esc back                    
-                                               
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Search: "no-such-thing" — 0 results                              
+                                                                     
+  ─────────────────────────────────────                              
+                                                                     
+                                                                     
+    No memories found. Try a different query.                        
+                                                                     
+                                                                     
+    / new search • esc back                                          
+                                                                     
 ═══ recent ═══
+                                                                                                                         
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
                                                                                                                          
     Recent Observations — 4 total                                                                                        
                                                                                                                          
@@ -311,18 +333,22 @@
     j/k navigate • enter detail • c copy • t timeline • esc back                                                         
                                                                                                                          
 ═══ recent-empty ═══
-                                   
-    Recent Observations — 0 total  
-                                   
-  ───────────────────────────────  
-                                   
-                                   
-    No observations yet.           
-                                   
-                                   
-    esc back                       
-                                   
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Recent Observations — 0 total                                    
+                                                                     
+  ───────────────────────────────                                    
+                                                                     
+                                                                     
+    No observations yet.                                             
+                                                                     
+                                                                     
+    esc back                                                         
+                                                                     
 ═══ recent-copy-feedback ═══
+                                                                                                                         
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
                                                                                                                          
     Recent Observations — 4 total                                                                                        
                                                                                                                          
@@ -342,15 +368,19 @@
    ✓ Copied!                                                                                                             
                                                                                                                          
 ═══ observation-detail-loading ═══
-                        
-    Observation Detail  
-                        
-  ────────────────────  
-                        
-                        
-    Loading...          
-                        
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Observation Detail                                               
+                                                                     
+  ────────────────────                                               
+                                                                     
+                                                                     
+    Loading...                                                       
+                                                                     
 ═══ observation-detail ═══
+                                                                                                                      
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                   
                                                                                                                       
     Observation #102                                                                                                  
                                                                                                                       
@@ -379,6 +409,8 @@
                                                                                                                       
 ═══ observation-detail-scrolled ═══
                                                                                                                       
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                   
+                                                                                                                      
     Observation #102                                                                                                  
                                                                                                                       
   ──────────────────                                                                                                  
@@ -404,15 +436,19 @@
     j/k scroll • c copy • t timeline • esc back                                                                       
                                                                                                                       
 ═══ timeline-loading ═══
-                
-    Timeline    
-                
-  ──────────    
-                
-                
-    Loading...  
-                
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Timeline                                                         
+                                                                     
+  ──────────                                                         
+                                                                     
+                                                                     
+    Loading...                                                       
+                                                                     
 ═══ timeline ═══
+                                                                                    
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                 
                                                                                     
     Timeline — Observation #102 (3 total in session)                                
                                                                                     
@@ -440,6 +476,8 @@
                                                                                     
 ═══ sessions ═══
                                                                                                      
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                  
+                                                                                                     
     Sessions — 4 total                                                                               
                                                                                                      
   ────────────────────                                                                               
@@ -453,18 +491,22 @@
     j/k navigate • enter view session • d delete • esc back                                          
                                                                                                      
 ═══ sessions-empty ═══
-                        
-    Sessions — 0 total  
-                        
-  ────────────────────  
-                        
-                        
-    No sessions yet.    
-                        
-                        
-    esc back            
-                        
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Sessions — 0 total                                               
+                                                                     
+  ────────────────────                                               
+                                                                     
+                                                                     
+    No sessions yet.                                                 
+                                                                     
+                                                                     
+    esc back                                                         
+                                                                     
 ═══ sessions-delete-prompt ═══
+                                                                                      
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                   
                                                                                       
     Sessions — 4 total                                                                
                                                                                       
@@ -482,20 +524,24 @@
     [y] Delete  [n] Cancel  [esc] Cancel                                              
                                                                                       
 ═══ sessions-deleting ═══
-                                          
-    Sessions — 4 total                    
-                                          
-  ────────────────────                    
-                                          
-                                          
-                                          
-    Deleting Session                      
-                                          
-                                          
-      Deleting session "session-beta"...  
-                                          
-                                          
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Sessions — 4 total                                               
+                                                                     
+  ────────────────────                                               
+                                                                     
+                                                                     
+                                                                     
+    Deleting Session                                                 
+                                                                     
+                                                                     
+      Deleting session "session-beta"...                             
+                                                                     
+                                                                     
 ═══ session-detail ═══
+                                                                                                                        
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                     
                                                                                                                         
     Session: engram — 2026-01-15 09:00:00                                                                               
                                                                                                                         
@@ -519,74 +565,86 @@
     j/k navigate • enter detail • c copy • t timeline • esc back                                                        
                                                                                                                         
 ═══ session-detail-empty ═══
-                                               
-    Session: clarodrive — 2026-01-16 07:40:00  
-                                               
-  ───────────────────────────────────────────  
-                                               
-                                               
-    Observations (0)                           
-                                               
-                                               
-    No observations in this session.           
-                                               
-                                               
-    esc back                                   
-                                               
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Session: clarodrive — 2026-01-16 07:40:00                        
+                                                                     
+  ───────────────────────────────────────────                        
+                                                                     
+                                                                     
+    Observations (0)                                                 
+                                                                     
+                                                                     
+    No observations in this session.                                 
+                                                                     
+                                                                     
+    esc back                                                         
+                                                                     
 ═══ session-detail-not-found ═══
-                        
-    Session Detail      
-                        
-  ────────────────      
-                        
-                        
-    Session not found.  
-                        
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Session Detail                                                   
+                                                                     
+  ────────────────                                                   
+                                                                     
+                                                                     
+    Session not found.                                               
+                                                                     
 ═══ setup-select ═══
-                                                            
-    Setup — Install Agent Plugin                            
-                                                            
-  ──────────────────────────────                            
-                                                            
-                                                            
-    Select an agent to set up                               
-                                                            
-                                                            
-   ▸ Claude Code                                            
-          Install to:  /Users/dev/.claude/plugins           
-                                                            
-      OpenCode                                              
-          Install to:  /Users/dev/.config/opencode/plugins  
-                                                            
-                                                            
-                                                            
-    j/k navigate • enter install • esc back                 
-                                                            
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Setup — Install Agent Plugin                                     
+                                                                     
+  ──────────────────────────────                                     
+                                                                     
+                                                                     
+    Select an agent to set up                                        
+                                                                     
+                                                                     
+   ▸ Claude Code                                                     
+          Install to:  /Users/dev/.claude/plugins                    
+                                                                     
+      OpenCode                                                       
+          Install to:  /Users/dev/.config/opencode/plugins           
+                                                                     
+                                                                     
+                                                                     
+    j/k navigate • enter install • esc back                          
+                                                                     
 ═══ setup-installing-opencode ═══
-                                              
-    Setup — Install Agent Plugin              
-                                              
-  ──────────────────────────────              
-                                              
-                                              
-    ⣾  Installing opencode plugin...          
-                                              
-    Copying plugin file to plugins directory  
-                                              
-                                              
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Setup — Install Agent Plugin                                     
+                                                                     
+  ──────────────────────────────                                     
+                                                                     
+                                                                     
+    ⣾  Installing opencode plugin...                                 
+                                                                     
+    Copying plugin file to plugins directory                         
+                                                                     
+                                                                     
 ═══ setup-installing-claude-code ═══
-                                                     
-    Setup — Install Agent Plugin                     
-                                                     
-  ──────────────────────────────                     
-                                                     
-                                                     
-    ⣾  Installing claude-code plugin...              
-                                                     
-    Running claude plugin marketplace add + install  
-                                                     
-                                                     
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Setup — Install Agent Plugin                                     
+                                                                     
+  ──────────────────────────────                                     
+                                                                     
+                                                                     
+    ⣾  Installing claude-code plugin...                              
+                                                                     
+    Running claude plugin marketplace add + install                  
+                                                                     
+                                                                     
 ═══ setup-allowlist-prompt ═══
+                                                                          
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud       
                                                                           
     Setup — Install Agent Plugin                                          
                                                                           
@@ -606,91 +664,103 @@
     [y] Yes  [n] No                                                       
                                                                           
 ═══ setup-done-opencode ═══
-                                                                 
-    Setup — Install Agent Plugin                                 
-                                                                 
-  ──────────────────────────────                                 
-                                                                 
-    ✓ Installed opencode plugin (2 files)                        
-        Location:  /Users/dev/.config/opencode/plugins           
-                                                                 
-                                                                 
-    Next Steps                                                   
-                                                                 
-    1. Restart OpenCode                                          
-    2. Plugin is auto-loaded from ~/.config/opencode/plugins/    
-    3. Make sure 'engram' is in your MCP config (opencode.json)  
-                                                                 
-                                                                 
-    enter/esc back to dashboard                                  
-                                                                 
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Setup — Install Agent Plugin                                     
+                                                                     
+  ──────────────────────────────                                     
+                                                                     
+    ✓ Installed opencode plugin (2 files)                            
+        Location:  /Users/dev/.config/opencode/plugins               
+                                                                     
+                                                                     
+    Next Steps                                                       
+                                                                     
+    1. Restart OpenCode                                              
+    2. Plugin is auto-loaded from ~/.config/opencode/plugins/        
+    3. Make sure 'engram' is in your MCP config (opencode.json)      
+                                                                     
+                                                                     
+    enter/esc back to dashboard                                      
+                                                                     
 ═══ setup-done-claude-allowlisted ═══
-                                                               
-    Setup — Install Agent Plugin                               
-                                                               
-  ──────────────────────────────                               
-                                                               
-    ✓ Installed claude-code plugin                             
-        Location:  claude plugin system                        
-                                                               
-                                                               
-    Next Steps                                                 
-                                                               
-    ✓   Engram tools added to allowlist                        
-    1. Restart Claude Code — the plugin is active immediately  
-    2. Verify with: claude plugin list                         
-                                                               
-                                                               
-    enter/esc back to dashboard                                
-                                                               
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Setup — Install Agent Plugin                                     
+                                                                     
+  ──────────────────────────────                                     
+                                                                     
+    ✓ Installed claude-code plugin                                   
+        Location:  claude plugin system                              
+                                                                     
+                                                                     
+    Next Steps                                                       
+                                                                     
+    ✓   Engram tools added to allowlist                              
+    1. Restart Claude Code — the plugin is active immediately        
+    2. Verify with: claude plugin list                               
+                                                                     
+                                                                     
+    enter/esc back to dashboard                                      
+                                                                     
 ═══ setup-done-claude-allowlist-error ═══
-                                                                    
-    Setup — Install Agent Plugin                                    
-                                                                    
-  ──────────────────────────────                                    
-                                                                    
-    ✓ Installed claude-code plugin                                  
-        Location:  claude plugin system                             
-                                                                    
-                                                                    
-    Next Steps                                                      
-                                                                    
-    ✗   Allowlist update failed: permission denied                  
-      Add manually to permissions.allow in ~/.claude/settings.json  
-    1. Restart Claude Code — the plugin is active immediately       
-    2. Verify with: claude plugin list                              
-                                                                    
-                                                                    
-    enter/esc back to dashboard                                     
-                                                                    
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Setup — Install Agent Plugin                                     
+                                                                     
+  ──────────────────────────────                                     
+                                                                     
+    ✓ Installed claude-code plugin                                   
+        Location:  claude plugin system                              
+                                                                     
+                                                                     
+    Next Steps                                                       
+                                                                     
+    ✗   Allowlist update failed: permission denied                   
+      Add manually to permissions.allow in ~/.claude/settings.json   
+    1. Restart Claude Code — the plugin is active immediately        
+    2. Verify with: claude plugin list                               
+                                                                     
+                                                                     
+    enter/esc back to dashboard                                      
+                                                                     
 ═══ setup-failed ═══
-                                                  
-    Setup — Install Agent Plugin                  
-                                                  
-  ──────────────────────────────                  
-                                                  
-     ✗ Installation failed: network unreachable   
-                                                  
-                                                  
-                                                  
-    enter/esc back to dashboard                   
-                                                  
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+    Setup — Install Agent Plugin                                     
+                                                                     
+  ──────────────────────────────                                     
+                                                                     
+     ✗ Installation failed: network unreachable                      
+                                                                     
+                                                                     
+                                                                     
+    enter/esc back to dashboard                                      
+                                                                     
 ═══ cloud-settings ═══
-                                              
-    Cloud sync settings                       
-                                              
-  ─────────────────────                       
-                                              
-                                              
-      Configure server                        
-      View status                             
-   ▸ Enroll projects                          
-      Back                                    
-                                              
-                                              
-    j/k navigate • enter select • esc/q back  
-                                              
+                                                                     
+  0 Dashboard  1 Memory  2 Tasks  3 Evidence  4 Runbooks  [5 Cloud]  
+                                                                     
+    Cloud sync settings                                              
+                                                                     
+  ─────────────────────                                              
+                                                                     
+                                                                     
+      Configure server                                               
+      View status                                                    
+   ▸ Enroll projects                                                 
+      Back                                                           
+                                                                     
+                                                                     
+    j/k navigate • enter select • esc/q back                         
+                                                                     
 ═══ unknown-screen ═══
-                  
-  Unknown screen  
-                  
+                                                                     
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
+                                                                     
+  Unknown screen                                                     
+                                                                     

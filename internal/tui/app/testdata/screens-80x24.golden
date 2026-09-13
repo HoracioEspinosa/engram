@@ -1,5 +1,7 @@
 ═══ dashboard-loading ═══
                                                                         
+  0  [1]  2  3  4  5                                                    
+                                                                        
   ╔══════════════════════════════════════════════════════════════════╗  
   ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
   ║                                                                  ║  
@@ -32,6 +34,8 @@
     j/k navigate • enter select • s search • q quit                     
                                                                         
 ═══ dashboard ═══
+                                                                        
+  0  [1]  2  3  4  5                                                    
                                                                         
   ╔══════════════════════════════════════════════════════════════════╗  
   ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
@@ -77,6 +81,8 @@
     j/k navigate • enter select • s search • q quit                     
                                                                         
 ═══ dashboard-update-available ═══
+                                                                        
+  0  [1]  2  3  4  5                                                    
                                                                         
   ╔══════════════════════════════════════════════════════════════════╗  
   ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
@@ -125,6 +131,8 @@
                                                                         
 ═══ dashboard-update-failed ═══
                                                                         
+  0  [1]  2  3  4  5                                                    
+                                                                        
   ╔══════════════════════════════════════════════════════════════════╗  
   ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
   ║                                                                  ║  
@@ -172,6 +180,8 @@
                                                                         
 ═══ dashboard-with-error ═══
                                                                         
+  0  [1]  2  3  4  5                                                    
+                                                                        
   ╔══════════════════════════════════════════════════════════════════╗  
   ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
   ║                                                                  ║  
@@ -218,6 +228,8 @@
                                                                         
 ═══ search-empty-input ═══
                                                                     
+  0  [1]  2  3  4  5                                                
+                                                                    
     Search Memories                                                 
                                                                     
   ─────────────────                                                 
@@ -233,6 +245,8 @@
                                                                     
 ═══ search-typed-query ═══
                                                                        
+  0  [1]  2  3  4  5                                                   
+                                                                       
     Search Memories                                                    
                                                                        
   ─────────────────                                                    
@@ -247,6 +261,8 @@
     Type a query and press enter • esc go back                         
                                                                        
 ═══ search-results ═══
+                                                                                                                        
+  0  [1]  2  3  4  5                                                                                                    
                                                                                                                         
     Search: "wal" — 4 results                                                                                           
                                                                                                                         
@@ -266,6 +282,8 @@
                                                                                                                         
 ═══ search-results-scrolled ═══
                                                                                                                          
+  0  [1]  2  3  4  5                                                                                                     
+                                                                                                                         
     Search: "wal" — 4 results                                                                                            
                                                                                                                          
   ───────────────────────────                                                                                            
@@ -282,6 +300,8 @@
                                                                                                                          
 ═══ search-results-empty ═══
                                                
+  0  [1]  2  3  4  5                           
+                                               
     Search: "no-such-thing" — 0 results        
                                                
   ─────────────────────────────────────        
@@ -293,6 +313,8 @@
     / new search • esc back                    
                                                
 ═══ recent ═══
+                                                                                                                         
+  0  [1]  2  3  4  5                                                                                                     
                                                                                                                          
     Recent Observations — 4 total                                                                                        
                                                                                                                          
@@ -312,6 +334,8 @@
                                                                                                                          
 ═══ recent-empty ═══
                                    
+  0  [1]  2  3  4  5               
+                                   
     Recent Observations — 0 total  
                                    
   ───────────────────────────────  
@@ -323,6 +347,8 @@
     esc back                       
                                    
 ═══ recent-copy-feedback ═══
+                                                                                                                         
+  0  [1]  2  3  4  5                                                                                                     
                                                                                                                          
     Recent Observations — 4 total                                                                                        
                                                                                                                          
@@ -343,6 +369,8 @@
                                                                                                                          
 ═══ observation-detail-loading ═══
                         
+  0  [1]  2  3  4  5    
+                        
     Observation Detail  
                         
   ────────────────────  
@@ -351,6 +379,8 @@
     Loading...          
                         
 ═══ observation-detail ═══
+                                                                              
+  0  [1]  2  3  4  5                                                          
                                                                               
     Observation #102                                                          
                                                                               
@@ -381,6 +411,8 @@
                                                                               
 ═══ observation-detail-scrolled ═══
                                                                               
+  0  [1]  2  3  4  5                                                          
+                                                                              
     Observation #102                                                          
                                                                               
   ──────────────────                                                          
@@ -408,15 +440,19 @@
     j/k scroll • c copy • t timeline • esc back                               
                                                                               
 ═══ timeline-loading ═══
-                
-    Timeline    
-                
-  ──────────    
-                
-                
-    Loading...  
-                
+                      
+  0  [1]  2  3  4  5  
+                      
+    Timeline          
+                      
+  ──────────          
+                      
+                      
+    Loading...        
+                      
 ═══ timeline ═══
+                                                                                    
+  0  [1]  2  3  4  5                                                                
                                                                                     
     Timeline — Observation #102 (3 total in session)                                
                                                                                     
@@ -444,6 +480,8 @@
                                                                                     
 ═══ sessions ═══
                                                                                                      
+  0  [1]  2  3  4  5                                                                                 
+                                                                                                     
     Sessions — 4 total                                                                               
                                                                                                      
   ────────────────────                                                                               
@@ -458,6 +496,8 @@
                                                                                                      
 ═══ sessions-empty ═══
                         
+  0  [1]  2  3  4  5    
+                        
     Sessions — 0 total  
                         
   ────────────────────  
@@ -469,6 +509,8 @@
     esc back            
                         
 ═══ sessions-delete-prompt ═══
+                                                                                      
+  0  [1]  2  3  4  5                                                                  
                                                                                       
     Sessions — 4 total                                                                
                                                                                       
@@ -487,6 +529,8 @@
                                                                                       
 ═══ sessions-deleting ═══
                                           
+  0  [1]  2  3  4  5                      
+                                          
     Sessions — 4 total                    
                                           
   ────────────────────                    
@@ -500,6 +544,8 @@
                                           
                                           
 ═══ session-detail ═══
+                                                                                                                        
+  0  [1]  2  3  4  5                                                                                                    
                                                                                                                         
     Session: engram — 2026-01-15 09:00:00                                                                               
                                                                                                                         
@@ -524,6 +570,8 @@
                                                                                                                         
 ═══ session-detail-empty ═══
                                                
+  0  [1]  2  3  4  5                           
+                                               
     Session: clarodrive — 2026-01-16 07:40:00  
                                                
   ───────────────────────────────────────────  
@@ -539,6 +587,8 @@
                                                
 ═══ session-detail-not-found ═══
                         
+  0  [1]  2  3  4  5    
+                        
     Session Detail      
                         
   ────────────────      
@@ -547,6 +597,8 @@
     Session not found.  
                         
 ═══ setup-select ═══
+                                                            
+  0  [1]  2  3  4  5                                        
                                                             
     Setup — Install Agent Plugin                            
                                                             
@@ -568,6 +620,8 @@
                                                             
 ═══ setup-installing-opencode ═══
                                               
+  0  [1]  2  3  4  5                          
+                                              
     Setup — Install Agent Plugin              
                                               
   ──────────────────────────────              
@@ -580,6 +634,8 @@
                                               
 ═══ setup-installing-claude-code ═══
                                                      
+  0  [1]  2  3  4  5                                 
+                                                     
     Setup — Install Agent Plugin                     
                                                      
   ──────────────────────────────                     
@@ -591,6 +647,8 @@
                                                      
                                                      
 ═══ setup-allowlist-prompt ═══
+                                                                          
+  0  [1]  2  3  4  5                                                      
                                                                           
     Setup — Install Agent Plugin                                          
                                                                           
@@ -611,6 +669,8 @@
                                                                           
 ═══ setup-done-opencode ═══
                                                                  
+  0  [1]  2  3  4  5                                             
+                                                                 
     Setup — Install Agent Plugin                                 
                                                                  
   ──────────────────────────────                                 
@@ -630,6 +690,8 @@
                                                                  
 ═══ setup-done-claude-allowlisted ═══
                                                                
+  0  [1]  2  3  4  5                                           
+                                                               
     Setup — Install Agent Plugin                               
                                                                
   ──────────────────────────────                               
@@ -648,6 +710,8 @@
     enter/esc back to dashboard                                
                                                                
 ═══ setup-done-claude-allowlist-error ═══
+                                                                    
+  0  [1]  2  3  4  5                                                
                                                                     
     Setup — Install Agent Plugin                                    
                                                                     
@@ -669,6 +733,8 @@
                                                                     
 ═══ setup-failed ═══
                                                   
+  0  [1]  2  3  4  5                              
+                                                  
     Setup — Install Agent Plugin                  
                                                   
   ──────────────────────────────                  
@@ -680,6 +746,8 @@
     enter/esc back to dashboard                   
                                                   
 ═══ cloud-settings ═══
+                                              
+  0  1  2  3  4  [5]                          
                                               
     Cloud sync settings                       
                                               
@@ -695,6 +763,8 @@
     j/k navigate • enter select • esc/q back  
                                               
 ═══ unknown-screen ═══
-                  
-  Unknown screen  
-                  
+                      
+  0  [1]  2  3  4  5  
+                      
+  Unknown screen      
+                      

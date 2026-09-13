@@ -262,6 +262,14 @@ type Styles struct {
 	Notice       lipgloss.Style
 	UpdateBanner lipgloss.Style
 
+	// TabBar is the persistent tab bar's container (rfc-tui.md §7's chrome);
+	// TabActive and TabInactive style, respectively, the tab under the
+	// cursor and every other one, so the bar always paints with the active
+	// palette instead of a default one.
+	TabBar      lipgloss.Style
+	TabActive   lipgloss.Style
+	TabInactive lipgloss.Style
+
 	// Dashboard.
 	StatNumber   lipgloss.Style
 	StatLabel    lipgloss.Style
@@ -348,6 +356,16 @@ func New(p Palette) Styles {
 		Foreground(p.Warning).
 		Bold(true).
 		Padding(0, 1)
+
+	s.TabBar = lipgloss.NewStyle().
+		MarginBottom(1)
+
+	s.TabActive = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(p.Primary)
+
+	s.TabInactive = lipgloss.NewStyle().
+		Foreground(p.Subtext)
 
 	s.StatNumber = lipgloss.NewStyle().
 		Bold(true).
