@@ -13,6 +13,7 @@
   <a href="docs/AGENT-SETUP.md">Agent Setup</a> &bull;
   <a href="docs/CODEBASE-GUIDE.md">Codebase Guide</a> &bull;
   <a href="docs/ARCHITECTURE.md">Architecture</a> &bull;
+  <a href="docs/TUI.md">TUI</a> &bull;
   <a href="docs/PLUGINS.md">Plugins</a> &bull;
   <a href="docs/TEAM-USAGE.md">Team Usage</a> &bull;
   <a href="CONTRIBUTING.md">Contributing</a> &bull;
@@ -158,14 +159,21 @@ Full tool reference with parameters → [DOCS.md#mcp-tools-20-tools](DOCS.md#mcp
 engram tui
 ```
 
+A project workspace, not just a memory browser: a project selector and per-project dashboard, plus
+five tabs — Memory, Tasks, Evidence, Runbooks, Cloud — over the same SQLite store.
+
 <p align="center">
-<img src="assets/tui-dashboard.png" alt="TUI Dashboard" width="400" />
-  <img width="400" alt="image" src="https://github.com/user-attachments/assets/0308991a-58bb-4ad8-9aa2-201c059f8b64" />
-  <img src="assets/tui-detail.png" alt="TUI Observation Detail" width="400" />
-  <img src="assets/tui-search.png" alt="TUI Search Results" width="400" />
+  <img src="assets/tui-s2-project-dashboard.png" alt="TUI Project Dashboard" width="400" />
+  <img src="assets/tui-s3-tasks-list.png" alt="TUI Tasks List" width="400" />
 </p>
 
-**Navigation**: `j/k` vim keys, `Enter` to drill in, `c` to copy content to clipboard (OSC 52), `/` to search, `Esc` back. Catppuccin Mocha theme.
+**Navigation**: `1`–`5` jump to a tab, `Tab`/`Shift+Tab` cycle them, `0` returns to the Dashboard,
+`p` opens the project selector, `j/k` move, `Enter` drills in, `c` copies to clipboard (OSC 52),
+`/` searches, `?` shows the current screen's keys, `Esc`/`q` go back. Three themes —
+`catppuccin-mocha` (default), `kanagawa`, `elephant` — via `--theme`, `ENGRAM_TUI_THEME`, or
+`tui.theme` in `~/.engram/config.json`.
+
+Full walkthrough, every screen, and the two things that aren't obvious the first time → [docs/TUI.md](docs/TUI.md)
 
 ## Git Sync
 

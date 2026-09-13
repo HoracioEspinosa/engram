@@ -1190,37 +1190,61 @@ Since v1.15.3, `mem_save` can also best-effort attach the current user prompt wh
 
 ## Terminal UI (TUI)
 
-Interactive Bubbletea-based terminal UI. Launch with `engram tui`.
+Interactive Bubbletea-based project workspace. Launch with `engram tui [--project NAME] [--theme
+NAME]`. Full walkthrough with screenshots: [docs/TUI.md](docs/TUI.md).
 
 ### Screens
 
-| Screen                  | Description                                                       |
-| ----------------------- | ----------------------------------------------------------------- |
-| **Dashboard**           | Stats overview (sessions, observations, prompts, projects) + menu |
-| **Search**              | FTS5 text search with text input                                  |
-| **Search Results**      | Browsable results list from search                                |
-| **Recent Observations** | Browse all observations, newest first                             |
-| **Observation Detail**  | Full content of a single observation, scrollable                  |
-| **Timeline**            | Chronological context around an observation (before/after)        |
-| **Sessions**            | Browse all sessions                                               |
-| **Session Detail**      | Observations within a specific session                            |
+Eleven screens across a project selector plus five tabs:
+
+| Tab / screen | Description |
+| --- | --- |
+| — **Project Selector** | Enrolled projects with health counters; `Enter` activates one |
+| — **Project Dashboard** | Project card, counters, recent tasks, stale runbooks, latest evidence |
+| **Memory** | The original engram screens: Search, Search Results, Recent, Observation Detail, Timeline, Sessions, Session Detail, Setup |
+| **Tasks** — list | `tasks` filtered by state/kind, searchable via `tasks_fts` |
+| **Tasks** — detail | Fields, linked observations, linked evidence |
+| **Tasks** — Context Pack | `mem_context_pack`'s bundle, rendered, copyable, writable to disk |
+| **Evidence** — list | `evidence` for the project, optionally filtered to one task |
+| **Evidence** — detail | Path, sha256, size, what it proves, Jira attachment state |
+| **Runbooks** — index | `runbook_index` with `stale` flag and age in days |
+| **Runbooks** — Markdown | The runbook's body, read from the knowledge vault and rendered with `glamour` |
+| **Cloud** | The existing cloud sync settings screen |
 
 ### Navigation
 
+Global (processed by the root before the active tab):
+
+- `0` — Project Dashboard
+- `1`…`5` — Jump to Memory / Tasks / Evidence / Runbooks / Cloud, refreshing it
+- `Tab` / `Shift+Tab` — Next / previous tab
+- `p` — Project Selector
+- `r` — Refresh the current screen
+- `?` — Help overlay for the current screen's own keys
+- `g` / `G` — Top / bottom of the current list
 - `j/k` or arrow keys — Navigate lists
 - `Enter` — Select / drill into detail
-- `c` — Copy observation content to clipboard (OSC 52; works in search results, recent list, detail, and session views)
-- `t` — View timeline for selected observation
-- `s` or `/` — Quick search from any screen
-- `Esc` or `q` — Go back / quit
-- `Ctrl+C` — Force quit
+- `c` — Copy to clipboard (OSC 52)
+- `/` — Search the active tab
+- `Esc` — Go back a level, never quits
+- `q` — Go back a level; quits from the Dashboard
+- `Ctrl+C` — Force quit, from anywhere
 
-### Visual Features
+### Themes
 
-- **Catppuccin Mocha** color palette
-- **`(active)` badge** — shown next to sessions and observations from active sessions, sorted to top
-- **Scroll indicators** — position in long lists (e.g. "showing 1-20 of 50")
-- **2-line items** — each observation shows title + content preview
+Three palettes: `catppuccin-mocha` (default), `kanagawa`, `elephant` (the original hardcoded
+look). Precedence: `--theme` flag, then `ENGRAM_TUI_THEME`, then `tui.theme` in
+`$ENGRAM_DATA_DIR/config.json` (`~/.engram/config.json` by default), then the default. An unknown
+theme name falls back to the default and prints a warning instead of failing silently.
+
+### Runbooks and `ENGRAM_VAULT_ROOT`
+
+The Runbooks Markdown view resolves a runbook's file against `ENGRAM_VAULT_ROOT` (the local
+checkout of `cd-knowledge-mcp`); unset, it guesses
+`~/Projects/ClaroDrive/clarodrive-knowledge-mcp/vault/clarodrive`, a path that only matches one
+specific layout. On any other machine the guess resolves to nothing, and the view shows "not
+cloned locally" — indistinguishable from the vault genuinely being absent. Set
+`ENGRAM_VAULT_ROOT` explicitly rather than relying on the default.
 
 ---
 
