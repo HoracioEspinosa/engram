@@ -437,7 +437,7 @@ func cmdProjectTasksUpsert(cfg store.Config, slug string, args []string) {
 	f := projNewFlags("engram project tasks upsert")
 	jsonOut := f.fs.Bool("json", false, "print the JSON envelope")
 	syncID := f.fs.String("sync-id", "", "existing task sync id (task-<16 hex>)")
-	jiraKey := f.fs.String("jira", "", "Jira key, e.g. CDBS-10336")
+	jiraKey := f.fs.String("jira", "", "Jira key, e.g. ACME-101")
 	sddChange := f.fs.String("sdd-change", "", "SDD change slug")
 	title := f.fs.String("title", "", "task title (required when creating)")
 	kind := f.fs.String("kind", "", "task kind (required when creating)")

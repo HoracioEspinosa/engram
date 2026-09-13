@@ -174,7 +174,7 @@ func knowledgeRefToolError(err error) *mcp.CallToolResult {
 			map[string]any{"hint": "point knowledge_ref at a curated document; 90 - Engram/ holds engram's own export"})
 	case errors.Is(err, store.ErrKnowledgeRefAbsolute):
 		return projectToolError("absolute_path_rejected", err.Error(),
-			map[string]any{"hint": "use the vault-relative form the knowledge tools return, e.g. Services/Nextcloud/Architecture.md"})
+			map[string]any{"hint": "use the vault-relative form the knowledge tools return, e.g. Services/AcmeSync/Architecture.md"})
 	case errors.Is(err, store.ErrKnowledgeRefInvalid):
 		return projectToolError("invalid_knowledge_ref", err.Error(),
 			map[string]any{"hint": "a knowledge_ref is a vault-relative .md path with an optional #Anchor"})

@@ -578,11 +578,11 @@ Subcommands:
                                 --knowledge-ref <path> [--allow-unpinned] [--allow-any-type]
 
 Examples:
-  engram project nextcloud card --graph-summary
-  engram project nextcloud graph sync --repo-dir .
-  engram project nextcloud tasks list --state active --stale-after 24h
-  engram project nextcloud context CDBS-10336 --max-chars 6000 --copy
-  engram project nextcloud promote list --json
-  engram project nextcloud promote stamp obs-1a2b3c --knowledge-ref "Services/Nextcloud/Previews.md"
+  engram project acme-sync card --graph-summary
+  engram project acme-sync graph sync --repo-dir .
+  engram project acme-sync tasks list --state active --stale-after 24h
+  engram project acme-sync context ACME-101 --max-chars 6000 --copy
+  engram project acme-sync promote list --json
+  engram project acme-sync promote stamp obs-1a2b3c --knowledge-ref "Services/AcmeSync/Previews.md"
 `)
 }
