@@ -606,3 +606,138 @@ func TestFakeEvidenceErrShortCircuits(t *testing.T) {
 		t.Errorf("ListEvidence error = %v", err)
 	}
 }
+
+// TestSQLiteRunbookReaderCoversTheContract is the RunbookReader counterpart
+// of TestSQLiteEvidenceReaderCoversTheContract: it drives NewRunbookReader
+// against a real store instead of data.FakeRunbook, which is what every
+// Runbooks Update test uses. seedProject already flags RB-900 as stale for
+// "acme"; a second project's runbook (unflagged) proves both the "a" (all
+// projects) toggle and the plain single-project scope actually filter,
+// rather than a fake echoing back whatever the test seeded.
+func TestSQLiteRunbookReaderCoversTheContract(t *testing.T) {
+	s := newTestStore(t)
+	const slug = "acme"
+	seedProject(t, s, slug)
+
+	if _, err := s.SyncRunbookIndex(store.RunbookIndexSyncParams{
+		Source: "knowledge-mcp",
+		Entries: []store.RunbookIndexEntryInput{
+			{
+				ID: "RB-901", VaultPath: "Runbooks/RB-901.md", Title: "Unrelated middleware issue",
+				Service: "middleware", Category: "registration", Status: "verified",
+				Symptoms: []string{"BSS state desync between systems"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SyncRunbookIndex (second project): %v", err)
+	}
+
+	r := NewRunbookReader(s)
+
+	scoped, err := r.ListRunbooks(slug, false)
+	if err != nil {
+		t.Fatalf("ListRunbooks (scoped): %v", err)
+	}
+	if len(scoped) != 1 || scoped[0].ID != "RB-900" || !scoped[0].Stale {
+		t.Fatalf("ListRunbooks(%q, false) = %+v, want only the stale RB-900", slug, scoped)
+	}
+
+	all, err := r.ListRunbooks(slug, true)
+	if err != nil {
+		t.Fatalf("ListRunbooks (all projects): %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("ListRunbooks(%q, true) = %+v, want both RB-900 and RB-901", slug, all)
+	}
+
+	found, err := r.SearchRunbooks(slug, false, "stale runbook", 10)
+	if err != nil {
+		t.Fatalf("SearchRunbooks (scoped): %v", err)
+	}
+	if len(found) != 1 || found[0].ID != "RB-900" {
+		t.Fatalf("SearchRunbooks(%q, false, ...) = %+v, want only RB-900", slug, found)
+	}
+
+	crossProject, err := r.SearchRunbooks(slug, true, "desync", 10)
+	if err != nil {
+		t.Fatalf("SearchRunbooks (all projects): %v", err)
+	}
+	if len(crossProject) != 1 || crossProject[0].ID != "RB-901" {
+		t.Fatalf("SearchRunbooks(%q, true, %q, ...) = %+v, want RB-901 even though it belongs to middleware",
+			slug, "desync", crossProject)
+	}
+}
+
+func TestSQLiteRunbookReaderWithoutAStoreReportsIt(t *testing.T) {
+	r := NewRunbookReader(nil)
+
+	if _, err := r.ListRunbooks("acme", false); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("ListRunbooks error = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := r.SearchRunbooks("acme", false, "preview", 10); !errors.Is(err, ErrStoreUnavailable) {
+		t.Errorf("SearchRunbooks error = %v, want ErrStoreUnavailable", err)
+	}
+}
+
+func TestFakeRunbookFiltersByProjectAndAllToggle(t *testing.T) {
+	acme := store.RunbookIndexRow{ID: "RB-900", Project: "acme", Title: "Stale runbook"}
+	other := store.RunbookIndexRow{ID: "RB-901", Project: "middleware", Title: "Unrelated"}
+	f := &FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{
+		"acme":       {acme},
+		"middleware": {other},
+	}}
+
+	scoped, err := f.ListRunbooks("acme", false)
+	if err != nil {
+		t.Fatalf("ListRunbooks: %v", err)
+	}
+	if len(scoped) != 1 || scoped[0].ID != "RB-900" {
+		t.Fatalf("scoped = %+v, want only RB-900", scoped)
+	}
+	if f.LastListAll {
+		t.Fatalf("LastListAll = true, want false to have been recorded")
+	}
+
+	all, err := f.ListRunbooks("acme", true)
+	if err != nil {
+		t.Fatalf("ListRunbooks (all): %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("all = %+v, want both rows", all)
+	}
+	if !f.LastListAll {
+		t.Fatalf("LastListAll = false, want true to have been recorded")
+	}
+}
+
+func TestFakeRunbookSearchMatchesTitleAndSymptoms(t *testing.T) {
+	byTitle := store.RunbookIndexRow{ID: "RB-900", Project: "acme", Title: "Preview endpoint slow"}
+	bySymptom := store.RunbookIndexRow{ID: "RB-901", Project: "acme", Title: "Unrelated", Symptoms: []string{"returns HTTP 503"}}
+	noMatch := store.RunbookIndexRow{ID: "RB-902", Project: "acme", Title: "Nothing in common"}
+	f := &FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{
+		"acme": {byTitle, bySymptom, noMatch},
+	}}
+
+	results, err := f.SearchRunbooks("acme", false, "503", 10)
+	if err != nil {
+		t.Fatalf("SearchRunbooks: %v", err)
+	}
+	if len(results) != 1 || results[0].ID != "RB-901" {
+		t.Fatalf("results = %+v, want only the symptom match RB-901", results)
+	}
+	if f.LastSearch.Project != "acme" || f.LastSearch.Query != "503" || f.LastSearch.Limit != 10 {
+		t.Fatalf("LastSearch = %+v, want the issued filter recorded", f.LastSearch)
+	}
+}
+
+func TestFakeRunbookErrShortCircuits(t *testing.T) {
+	boom := errors.New("boom")
+	f := &FakeRunbook{Err: boom}
+
+	if _, err := f.ListRunbooks("acme", false); !errors.Is(err, boom) {
+		t.Errorf("ListRunbooks error = %v", err)
+	}
+	if _, err := f.SearchRunbooks("acme", false, "q", 10); !errors.Is(err, boom) {
+		t.Errorf("SearchRunbooks error = %v", err)
+	}
+}

@@ -329,3 +329,96 @@ func (f *FakeEvidence) ListEvidence(project string, filter store.EvidenceListFil
 	}
 	return filtered, nil
 }
+
+// FakeRunbook is an in-memory RunbookReader for tests: set the fields you
+// care about, leave the rest zero.
+//
+// Err short-circuits every method, which is how a test drives the error
+// banner without a broken database. Unlike FakeTask's ListTasks, both
+// ListRunbooks and SearchRunbooks apply their own filtering here — a fake
+// that just echoed the seeded rows back would let a broken "a" toggle or a
+// broken search pass — the same convention FakeEvidence follows.
+type FakeRunbook struct {
+	ItemsByProject map[string][]store.RunbookIndexRow
+
+	// Err is returned by every method when set.
+	Err error
+
+	// LastListAll and LastSearch record what the tab most recently asked
+	// for, the same convention FakeTask.LastListFilter follows.
+	LastListAll bool
+	LastSearch  struct {
+		Project string
+		All     bool
+		Query   string
+		Limit   int
+	}
+}
+
+var _ RunbookReader = (*FakeRunbook)(nil)
+
+// allRunbooks flattens every project's seeded rows, in map iteration order —
+// callers needing a stable order sort the result themselves, same as a real
+// SQL query would require an ORDER BY of its own.
+func (f *FakeRunbook) allRunbooks() []store.RunbookIndexRow {
+	var all []store.RunbookIndexRow
+	for _, items := range f.ItemsByProject {
+		all = append(all, items...)
+	}
+	return all
+}
+
+func (f *FakeRunbook) ListRunbooks(project string, all bool) ([]store.RunbookIndexRow, error) {
+	f.LastListAll = all
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	if all {
+		return f.allRunbooks(), nil
+	}
+	return f.ItemsByProject[project], nil
+}
+
+func (f *FakeRunbook) SearchRunbooks(project string, all bool, query string, limit int) ([]store.RunbookIndexRow, error) {
+	f.LastSearch.Project = project
+	f.LastSearch.All = all
+	f.LastSearch.Query = query
+	f.LastSearch.Limit = limit
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	pool := f.ItemsByProject[project]
+	if all {
+		pool = f.allRunbooks()
+	}
+	var matched []store.RunbookIndexRow
+	for _, r := range pool {
+		if matchesRunbookQuery(r, query) {
+			matched = append(matched, r)
+		}
+	}
+	if limit > 0 && len(matched) > limit {
+		matched = matched[:limit]
+	}
+	return matched, nil
+}
+
+// matchesRunbookQuery is FakeRunbook's stand-in for runbook_index_fts: a
+// case-insensitive substring match against the title and every symptom line,
+// good enough to drive an Update test's assertion on which rows a search
+// keeps without pulling FTS5 into a fake.
+func matchesRunbookQuery(r store.RunbookIndexRow, query string) bool {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return true
+	}
+	if strings.Contains(strings.ToLower(r.Title), q) {
+		return true
+	}
+	for _, s := range r.Symptoms {
+		if strings.Contains(strings.ToLower(s), q) {
+			return true
+		}
+	}
+	return false
+}

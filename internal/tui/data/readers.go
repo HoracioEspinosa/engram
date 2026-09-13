@@ -90,6 +90,31 @@ type EvidenceReader interface {
 	ListEvidence(project string, f store.EvidenceListFilter) ([]store.EvidenceListItem, error)
 }
 
+// RunbookReader is the surface the Runbooks tab needs: the browsable index
+// scoped to a project or every project (S8's "a" toggle), and the same
+// shape ranked by symptoms (S8's "/" search).
+//
+// ListRunbooks and SearchRunbooks share the RunbookIndexRow shape on
+// purpose — the Runbooks tab renders both in the exact same table, so a
+// single Items field can hold either result — unlike FindRunbooks
+// (mem_runbook_find's thinner item for the MCP envelope), which this reader
+// does not expose.
+//
+// Reading a runbook's Markdown file is not part of this interface: like
+// Evidence's manifest.json (see EvidenceReader's doc comment), it is a plain
+// filesystem read with nothing to query the store for, so the Runbooks tab
+// does it directly against shared.VaultRoot(), the same way the Evidence tab
+// reads manifest.json directly against shared.EvidenceRoot().
+type RunbookReader interface {
+	// ListRunbooks lists the runbook index, scoped to project unless all is
+	// true, most-stale-first (rfc-tui.md §9.2's "S8 Runbooks index" query).
+	ListRunbooks(project string, all bool) ([]store.RunbookIndexRow, error)
+	// SearchRunbooks searches the index by title and symptoms via
+	// runbook_index_fts, scoped to project unless all is true, ranked by
+	// BM25 (rfc-tui.md §9.2's "S8 search by symptoms" query).
+	SearchRunbooks(project string, all bool, query string, limit int) ([]store.RunbookIndexRow, error)
+}
+
 // MemoryReader is the surface the Memory tab needs: the observation, session
 // and timeline queries behind engram's memory screens, plus the one destructive
 // operation those screens expose.

@@ -243,6 +243,42 @@ func (r sqliteEvidence) ListEvidence(project string, f store.EvidenceListFilter)
 	return items, err
 }
 
+// sqliteRunbook adapts the engram SQLite store to RunbookReader.
+//
+// The TUI shares the single *store.Store that cmd/engram already opened; it
+// does not open a connection of its own.
+type sqliteRunbook struct {
+	store *store.Store
+}
+
+// NewRunbookReader wraps an engram store as the Runbooks tab's reader.
+//
+// A nil store yields a reader whose queries report ErrStoreUnavailable.
+func NewRunbookReader(s *store.Store) RunbookReader {
+	return sqliteRunbook{store: s}
+}
+
+func (r sqliteRunbook) ListRunbooks(project string, all bool) ([]store.RunbookIndexRow, error) {
+	if r.store == nil {
+		return nil, ErrStoreUnavailable
+	}
+	if all {
+		project = ""
+	}
+	items, _, err := r.store.ListRunbookIndex(project, store.RunbookListFilter{})
+	return items, err
+}
+
+func (r sqliteRunbook) SearchRunbooks(project string, all bool, query string, limit int) ([]store.RunbookIndexRow, error) {
+	if r.store == nil {
+		return nil, ErrStoreUnavailable
+	}
+	if all {
+		project = ""
+	}
+	return r.store.SearchRunbookIndex(query, project, limit)
+}
+
 // TaskKey returns the label a task is identified by everywhere in the TUI:
 // its Jira key, falling back to its SDD change slug, falling back to its
 // sync_id. It is the same precedence internal/project.BuildContextPack uses
