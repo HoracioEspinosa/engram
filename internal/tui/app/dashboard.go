@@ -176,6 +176,21 @@ func (m dashboardModel) moveCursor(delta int) dashboardModel {
 	return m
 }
 
+// moveCursorTo jumps the block cursor straight to target, clamped to the
+// valid range — rfc-tui.md §7.1's "g/G van al inicio y al fin de cada
+// lista", applied to the Dashboard's own three-block cursor the same way
+// moveCursor already applies j/k/h/l to it.
+func (m dashboardModel) moveCursorTo(target dashBlock) dashboardModel {
+	m.cursor = target
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	if m.cursor >= dashBlockCount {
+		m.cursor = dashBlockCount - 1
+	}
+	return m
+}
+
 // ─── View ────────────────────────────────────────────────────────────────────
 
 func (m Model) viewDashboard() string {

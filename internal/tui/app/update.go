@@ -83,6 +83,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.broadcast(msg)
 }
 
+// digitTabs maps rfc-tui.md §7.1's "1"…"5" to the tab each activates, in tab
+// bar order.
+var digitTabs = map[string]tabs.ID{
+	"1": tabs.Memory,
+	"2": tabs.Tasks,
+	"3": tabs.Evidence,
+	"4": tabs.Runbooks,
+	"5": tabs.Cloud,
+}
+
 // updateActive forwards a message to the active tab only, or to the dashboard/
 // selector if one of those screens is active.
 func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -94,30 +104,45 @@ func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenSelector:
 			return m.updateSelector(keyMsg)
 		default:
-			// Handle global keys from tabs (p = projects, 0 = dashboard).
-			//
-			// rfc-tui.md §7.2's footnote on S7 swaps this pair on purpose:
-			// "p copia la ruta y el selector de proyecto se abre con P" —
-			// Evidence's detail screen needs lowercase "p" for its own copy
-			// action more than the global shortcut does, so on that one
-			// screen the global binding moves to uppercase "P" instead and
-			// lowercase falls through to the tab below.
-			onEvidenceDetail := m.active == tabs.Evidence && m.evidence.Screen == evidence.ScreenDetail
-			switch keyMsg.String() {
-			case "p":
-				if !onEvidenceDetail {
-					m.screen = screenSelector
-					return m, loadSelector(m.projects)
+			// Every global key below is suspended while the active tab is
+			// capturing text (rfc-tui.md §7.1: "cuando un textinput tiene el
+			// foco, las teclas globales se suspenden salvo Ctrl+C y Esc" —
+			// Ctrl+C is handled in Update, before updateActive is ever
+			// called, and Esc is not one of these keys at all).
+			if tab := m.tab(m.active); tab == nil || !tab.CapturingText() {
+				// rfc-tui.md §7.2's footnote on S7 swaps this pair on
+				// purpose: "p copia la ruta y el selector de proyecto se
+				// abre con P" — Evidence's detail screen needs lowercase
+				// "p" for its own copy action more than the global
+				// shortcut does, so on that one screen the global binding
+				// moves to uppercase "P" instead and lowercase falls
+				// through to the tab below.
+				onEvidenceDetail := m.active == tabs.Evidence && m.evidence.Screen == evidence.ScreenDetail
+				switch keyMsg.String() {
+				case "p":
+					if !onEvidenceDetail {
+						m.screen = screenSelector
+						return m, loadSelector(m.projects)
+					}
+				case "P":
+					if onEvidenceDetail {
+						m.screen = screenSelector
+						return m, loadSelector(m.projects)
+					}
+				case "0":
+					if m.project != "" {
+						m.screen = screenDashboard
+						return m, loadDashboard(m.projects, m.project)
+					}
 				}
-			case "P":
-				if onEvidenceDetail {
-					m.screen = screenSelector
-					return m, loadSelector(m.projects)
+				if target, ok := digitTabs[keyMsg.String()]; ok {
+					return m.activate(target)
 				}
-			case "0":
-				if m.project != "" {
-					m.screen = screenDashboard
-					return m, loadDashboard(m.projects, m.project)
+				switch keyMsg.Type {
+				case tea.KeyTab:
+					return m.activateRelative(1)
+				case tea.KeyShiftTab:
+					return m.activateRelative(-1)
 				}
 			}
 		}
@@ -131,7 +156,34 @@ func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.withTab(m.active, updated), cmd
 }
 
-// updateDashboard handles key presses while the dashboard is active.
+// activateRelative moves delta slots through registered, wrapping at either
+// end, and activates whatever tab lands there (rfc-tui.md §7.1's
+// "Tab / Shift+Tab | Pestaña siguiente / anterior"). delta is +1 for Tab, -1
+// for Shift+Tab; registered is never empty, so the modulo below always has a
+// tab to land on.
+func (m Model) activateRelative(delta int) (tea.Model, tea.Cmd) {
+	current := -1
+	for i, id := range registered {
+		if id == m.active {
+			current = i
+			break
+		}
+	}
+	// Not on a registered tab at all (e.g. the Dashboard): Tab starts the
+	// cycle at the first tab, Shift+Tab at the last one.
+	if current == -1 {
+		if delta > 0 {
+			return m.activate(registered[0])
+		}
+		return m.activate(registered[len(registered)-1])
+	}
+	next := (current + delta + len(registered)) % len(registered)
+	return m.activate(registered[next])
+}
+
+// updateDashboard handles key presses while the dashboard is active. The
+// Dashboard has no text input of its own, so unlike updateActive's tab
+// branch none of these need a CapturingText guard.
 func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "j", "l":
@@ -141,6 +193,12 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "k", "h":
 		m.dashboard = m.dashboard.moveCursor(-1)
+		return m, nil
+	case "g":
+		m.dashboard = m.dashboard.moveCursorTo(dashBlockTasks)
+		return m, nil
+	case "G":
+		m.dashboard = m.dashboard.moveCursorTo(dashBlockCount - 1)
 		return m, nil
 	case "enter":
 		// activate() already knows which tabs this build registers, so route
@@ -156,6 +214,17 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, loadDashboard(m.projects, m.project)
 	case "q":
 		return m, tea.Quit
+	}
+	// rfc-tui.md §5's S2 footer: "1-5 tabs" — the Dashboard switches tabs by
+	// digit exactly like any tab screen does.
+	if target, ok := digitTabs[msg.String()]; ok {
+		return m.activate(target)
+	}
+	switch msg.Type {
+	case tea.KeyTab:
+		return m.activateRelative(1)
+	case tea.KeyShiftTab:
+		return m.activateRelative(-1)
 	}
 	return m, nil
 }
@@ -188,6 +257,12 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "k":
 		m.selector = m.selector.moveCursor(-1)
+		return m, nil
+	case "g":
+		m.selector = m.selector.moveCursorToStart()
+		return m, nil
+	case "G":
+		m.selector = m.selector.moveCursorToEnd()
 		return m, nil
 	case "i":
 		m.selector = m.selector.toggleHealthSort()

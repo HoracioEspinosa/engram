@@ -158,6 +158,20 @@ func (m selectorModel) moveCursor(delta int) selectorModel {
 	return m
 }
 
+// moveCursorToStart and moveCursorToEnd are rfc-tui.md §7.1's "g/G van al
+// inicio y al fin de cada lista", applied to S1's project list.
+func (m selectorModel) moveCursorToStart() selectorModel {
+	m.cursor = 0
+	return m
+}
+
+func (m selectorModel) moveCursorToEnd() selectorModel {
+	if len(m.filtered) > 0 {
+		m.cursor = len(m.filtered) - 1
+	}
+	return m
+}
+
 // selected returns the card under the cursor, or nil when the filtered list
 // is empty (nothing loaded yet, or the filter matches nothing).
 func (m selectorModel) selected() *store.ProjectCardListItem {
