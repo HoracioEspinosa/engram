@@ -96,6 +96,93 @@ func TestViewListShowsTheFileAndTaskIdentity(t *testing.T) {
 	}
 }
 
+// ─── Pure helpers ────────────────────────────────────────────────────────────
+
+func TestFormatBytesCoversEveryUnit(t *testing.T) {
+	i64 := func(v int64) *int64 { return &v }
+
+	tests := []struct {
+		name string
+		v    *int64
+		want string
+	}{
+		{"nil", nil, "unknown"},
+		{"bytes", i64(512), "512 B"},
+		{"kilobytes", i64(2048), "2.0 KB"},
+		{"megabytes", i64(3 * 1 << 20), "3.0 MB"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatBytes(tt.v); got != tt.want {
+				t.Errorf("formatBytes(%v) = %q, want %q", tt.v, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOrDash(t *testing.T) {
+	if got := orDash(""); got != "—" {
+		t.Errorf("orDash(\"\") = %q, want an em dash", got)
+	}
+	if got := orDash("p"); got != "p" {
+		t.Errorf("orDash(%q) = %q, want the value unchanged", "p", got)
+	}
+}
+
+func TestOrEmptyStr(t *testing.T) {
+	if got := orEmptyStr(nil); got != "" {
+		t.Errorf("orEmptyStr(nil) = %q, want \"\"", got)
+	}
+	v := "2026-08-23"
+	if got := orEmptyStr(&v); got != v {
+		t.Errorf("orEmptyStr(&v) = %q, want %q", got, v)
+	}
+}
+
+func TestFilepathBase(t *testing.T) {
+	if got := filepathBase("ACME-9/a.png"); got != "a.png" {
+		t.Errorf("filepathBase with a slash = %q, want %q", got, "a.png")
+	}
+	if got := filepathBase("a.png"); got != "a.png" {
+		t.Errorf("filepathBase with no slash = %q, want the path unchanged", got)
+	}
+}
+
+func TestTaskFilterLabel(t *testing.T) {
+	withKey := sampleItem(1, 9, "ACME-9", "ACME-9/a.png", false)
+	withoutKey := sampleItem(2, 10, "", "ACME-10/b.png", false)
+	withoutKey.JiraKey = nil
+
+	tests := []struct {
+		name  string
+		items []store.EvidenceListItem
+		f     store.EvidenceListFilter
+		want  string
+	}{
+		{"unfiltered", nil, store.EvidenceListFilter{}, "all"},
+		{"matches a jira key", []store.EvidenceListItem{withKey}, store.EvidenceListFilter{TaskID: 9}, "ACME-9"},
+		{"matches an sdd-only task", []store.EvidenceListItem{withoutKey}, store.EvidenceListFilter{TaskID: 10}, "task-sync"},
+		{"no row carries the filtered task", []store.EvidenceListItem{withKey}, store.EvidenceListFilter{TaskID: 404}, "#404"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := taskFilterLabel(tt.items, tt.f); got != tt.want {
+				t.Errorf("taskFilterLabel(...) = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAttachedFilterLabel(t *testing.T) {
+	yes := true
+	if got := attachedFilterLabel(store.EvidenceListFilter{}); got != "all attached states" {
+		t.Errorf("attachedFilterLabel(unset) = %q, want %q", got, "all attached states")
+	}
+	if got := attachedFilterLabel(store.EvidenceListFilter{AttachedJira: &yes}); got != "attached only" {
+		t.Errorf("attachedFilterLabel(attached) = %q, want %q", got, "attached only")
+	}
+}
+
 func TestViewDetailShowsThePathAndSha256(t *testing.T) {
 	item := sampleItem(1, 9, "ACME-9", "ACME-9/a.png", true)
 	m := New(&data.FakeEvidence{}).WithProject("acme")

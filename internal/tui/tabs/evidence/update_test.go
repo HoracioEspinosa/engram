@@ -369,6 +369,68 @@ func TestDetailMKeyOpensTheManifestWhenItExists(t *testing.T) {
 	}
 }
 
+// TestDetailKeysWithNoSelectionOnlyAcceptsEscOrQ pins handleDetailKeys's
+// guard for a detail screen shown before its manifest/selection landed (or
+// after Selected was cleared underneath it): every key but esc/q must be a
+// no-op instead of panicking on the nil dereference *m.Selected further down.
+func TestDetailKeysWithNoSelectionOnlyAcceptsEscOrQ(t *testing.T) {
+	m := New(&data.FakeEvidence{}).WithProject("acme")
+	m.Screen = ScreenDetail
+
+	updated, cmd := m.handleDetailKeys("o")
+	m2 := updated.(Model)
+	if cmd != nil || m2.Screen != ScreenDetail {
+		t.Fatalf("a non-esc/q key with no selection should be a no-op, got cmd=%v screen=%v", cmd, m2.Screen)
+	}
+
+	updated, cmd = m.handleDetailKeys("esc")
+	m2 = updated.(Model)
+	if cmd == nil {
+		t.Fatal("esc with no selection should still reload the list")
+	}
+	if m2.Screen != ScreenList {
+		t.Fatalf("Screen = %v, want ScreenList", m2.Screen)
+	}
+}
+
+func TestDetailOKeyOpensTheFileWithTheInjectableOpener(t *testing.T) {
+	t.Setenv(shared.EvidenceDirEnv, "/evidence-root")
+	item := sampleItem(1, 9, "ACME-9", "ACME-9/a.png", false)
+	m := detailModel(t, item)
+
+	var gotPath string
+	prev := openFile
+	openFile = func(path string) error { gotPath = path; return nil }
+	defer func() { openFile = prev }()
+
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	if gotPath != filepath.Join("/evidence-root", item.Path) {
+		t.Fatalf("opened path = %q, want the resolved absolute path", gotPath)
+	}
+	if m.ErrorMsg != "" {
+		t.Fatalf("ErrorMsg = %q, want none on a successful open", m.ErrorMsg)
+	}
+}
+
+func TestDetailRKeyReloadsTheManifest(t *testing.T) {
+	item := sampleItem(1, 9, "ACME-9", "ACME-9/a.png", false)
+	m := detailModel(t, item)
+	m.ManifestChecked = true
+
+	updated, cmd := m.handleDetailKeys("r")
+	m2 := updated.(Model)
+	if m2.ManifestChecked {
+		t.Fatal("r should mark the manifest unchecked while the reload is in flight")
+	}
+	if cmd == nil {
+		t.Fatal("r should reload the manifest")
+	}
+	msg, ok := run(t, cmd).(manifestLoadedMsg)
+	if !ok || msg.evidenceID != item.ID {
+		t.Fatalf("r's command produced %+v, want a manifestLoadedMsg for id %d", run(t, cmd), item.ID)
+	}
+}
+
 func TestDetailEscReturnsToTheListAndReloads(t *testing.T) {
 	fake := &data.FakeEvidence{ItemsByProject: map[string][]store.EvidenceListItem{
 		"acme": {sampleItem(1, 9, "ACME-9", "ACME-9/a.png", false)},
@@ -432,6 +494,88 @@ func TestEvidenceLoadedIgnoresAResponseForAnAbandonedProject(t *testing.T) {
 
 	if len(m.Items) != 1 {
 		t.Fatal("a load response for a project the user left must not clobber the current list")
+	}
+}
+
+// ─── Update dispatch ─────────────────────────────────────────────────────────
+
+func TestUpdateAppliesWindowSize(t *testing.T) {
+	m := New(&data.FakeEvidence{}).WithProject("acme")
+
+	m, _ = step(t, m, tea.WindowSizeMsg{Width: 100, Height: 40})
+	if m.Width != 100 || m.Height != 40 {
+		t.Fatalf("Width/Height = %d/%d, want 100/40", m.Width, m.Height)
+	}
+}
+
+// TestUpdateRoutesKeyMsgToTheDetailHandlerWhenOnTheDetailScreen pins Update's
+// own screen-based routing (the other tests exercise handleDetailKeys
+// directly, which never runs this switch statement's ScreenDetail case).
+func TestUpdateRoutesKeyMsgToTheDetailHandlerWhenOnTheDetailScreen(t *testing.T) {
+	item := sampleItem(1, 9, "ACME-9", "ACME-9/a.png", false)
+	m := detailModel(t, item)
+
+	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	if cmd == nil {
+		t.Fatal("Update on the detail screen should route \"c\" to handleDetailKeys (copy sha256)")
+	}
+	msg, ok := run(t, cmd).(shared.CopiedMsg)
+	if !ok || msg.Sequence != shared.OSC52Sequence(item.SHA256) {
+		t.Fatalf("Update routed \"c\" somewhere other than handleDetailKeys: got %+v", run(t, cmd))
+	}
+}
+
+func TestUpdateOnCopiedMsgSetsFeedbackAndSchedulesItsClear(t *testing.T) {
+	m := New(&data.FakeEvidence{}).WithProject("acme")
+
+	m, cmd := step(t, m, shared.CopiedMsg{Sequence: "seq"})
+	if m.CopyFeedback == "" {
+		t.Fatal("a CopiedMsg should set the clipboard confirmation banner")
+	}
+	if cmd == nil {
+		t.Fatal("a CopiedMsg should schedule clearing the banner")
+	}
+}
+
+func TestUpdateOnClearFeedbackMsgClearsTheBanner(t *testing.T) {
+	m := New(&data.FakeEvidence{}).WithProject("acme")
+	m.CopyFeedback = "✓ Copied!"
+
+	m, _ = step(t, m, shared.ClearFeedbackMsg{})
+	if m.CopyFeedback != "" {
+		t.Fatalf("CopyFeedback = %q, want cleared", m.CopyFeedback)
+	}
+}
+
+// TestEvidenceLoadedClampsAnOutOfRangeCursor pins the guard evidenceLoadedMsg
+// applies when a reload comes back shorter than the cursor left it (e.g. a
+// filter narrowing the list): the cursor and scroll must reset to the top
+// instead of pointing past the end of Items.
+func TestEvidenceLoadedClampsAnOutOfRangeCursor(t *testing.T) {
+	m := New(&data.FakeEvidence{}).WithProject("acme")
+	m.Cursor = 5
+	m.Scroll = 3
+
+	m, _ = step(t, m, evidenceLoadedMsg{
+		project: "acme",
+		items:   []store.EvidenceListItem{sampleItem(1, 9, "ACME-9", "a.png", false)},
+	})
+	if m.Cursor != 0 || m.Scroll != 0 {
+		t.Fatalf("Cursor/Scroll = %d/%d, want reset to 0/0 once the reload is shorter", m.Cursor, m.Scroll)
+	}
+}
+
+func TestManifestLoadedSurfacesAnErrorAndClearsAnyPriorManifest(t *testing.T) {
+	item := sampleItem(1, 9, "ACME-9", "ACME-9/a.png", false)
+	m := detailModel(t, item)
+	m.Manifest = &ManifestEntry{File: "a.png"}
+
+	m, _ = step(t, m, manifestLoadedMsg{evidenceID: 1, err: errors.New("parse manifest.json: unexpected end of JSON input")})
+	if m.ManifestErr == "" {
+		t.Fatal("a failing manifest read should surface an error")
+	}
+	if m.Manifest != nil {
+		t.Fatal("a failed read must not keep a stale manifest around")
 	}
 }
 
