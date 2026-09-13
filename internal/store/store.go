@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,16 @@ var openDB = sql.Open
 // constraint violation (SQLITE_CONSTRAINT_FOREIGNKEY = 787).
 // See https://www.sqlite.org/rescode.html#constraint_foreignkey
 const sqliteConstraintForeignKey = 787
+
+// sqliteConstraintPrimaryKey and sqliteConstraintUnique are the extended
+// SQLite result codes for a duplicate primary key (1555) and a duplicate
+// value under a plain UNIQUE constraint or index (2067), respectively.
+// See https://www.sqlite.org/rescode.html#constraint_primarykey and
+// https://www.sqlite.org/rescode.html#constraint_unique
+const (
+	sqliteConstraintPrimaryKey = 1555
+	sqliteConstraintUnique     = 2067
+)
 
 const (
 	sqlitePrimaryBusy   = 5
@@ -4692,6 +4703,53 @@ type MergeResult struct {
 	ObservationsUpdated int64    `json:"observations_updated"`
 	SessionsUpdated     int64    `json:"sessions_updated"`
 	PromptsUpdated      int64    `json:"prompts_updated"`
+
+	// TableRowsMoved reports every project-scoped table MergeProjects
+	// touched, keyed by table name — including observations, sessions and
+	// user_prompts, which the three fields above also mirror for existing
+	// callers. The table set comes from projectScopedTables, not a
+	// hand-written list: that distinction is the fix. A table absent from
+	// this map had zero matching rows for this call; it is never silently
+	// missing the way evidence, tasks, sync_enrolled_projects,
+	// cloud_upgrade_state, runbook_index, prompt_tombstones and
+	// sync_mutations used to be, while the merge still reported success.
+	TableRowsMoved map[string]int64 `json:"table_rows_moved"`
+
+	// TableRowsDropped reports rows removed instead of renamed. It only
+	// ever gets an entry for a table whose "project" column is (part of)
+	// the primary key — sync_enrolled_projects, cloud_upgrade_state as of
+	// this writing, discovered the same schema-driven way as
+	// TableRowsMoved — where renaming a source row to a canonical value
+	// that already owns a row there would violate that key. See
+	// mergeProjectScopedTableTx for which row survives and why.
+	TableRowsDropped map[string]int64 `json:"table_rows_dropped"`
+}
+
+// TableSummaryLines renders one line per table TableRowsMoved has an entry
+// for, sorted by table name so the report is deterministic and diffable.
+// This is the detail whose absence let a merge that left rows behind still
+// print as a clean success: three named fields told a caller about
+// observations, sessions and prompts and nothing else, so a report that
+// looked complete was not. Every caller that prints or logs a MergeResult
+// (the MCP tool, the CLI, a future one) should use this instead of naming
+// fields by hand, for the same reason MergeProjects itself no longer names
+// tables by hand.
+func (r *MergeResult) TableSummaryLines() []string {
+	names := make([]string, 0, len(r.TableRowsMoved))
+	for name := range r.TableRowsMoved {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	lines := make([]string, 0, len(names))
+	for _, name := range names {
+		line := fmt.Sprintf("%s: %d moved", name, r.TableRowsMoved[name])
+		if dropped := r.TableRowsDropped[name]; dropped > 0 {
+			line += fmt.Sprintf(", %d dropped (a canonical row already existed there)", dropped)
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 // MergeProjects migrates all records from each source project name into the
@@ -4704,9 +4762,18 @@ func (s *Store) MergeProjects(sources []string, canonical string) (*MergeResult,
 		return nil, fmt.Errorf("canonical project name must not be empty")
 	}
 
-	result := &MergeResult{Canonical: canonical}
+	tables, err := s.projectScopedTables()
+	if err != nil {
+		return nil, fmt.Errorf("discover project-scoped tables: %w", err)
+	}
 
-	err := s.withTx(func(tx *sql.Tx) error {
+	result := &MergeResult{
+		Canonical:        canonical,
+		TableRowsMoved:   make(map[string]int64, len(tables)),
+		TableRowsDropped: make(map[string]int64),
+	}
+
+	err = s.withTx(func(tx *sql.Tx) error {
 		seenSources := make(map[string]struct{})
 		for _, srcInput := range sources {
 			srcNormalized, _ := NormalizeProject(srcInput)
@@ -4723,33 +4790,16 @@ func (s *Store) MergeProjects(sources []string, canonical string) (*MergeResult,
 				continue
 			}
 
-			placeholders := sqlPlaceholders(len(sourceVariants))
-			args := make([]any, 0, len(sourceVariants)+1)
-			args = append(args, canonical)
-			for _, variant := range sourceVariants {
-				args = append(args, variant)
+			for _, table := range tables {
+				moved, dropped, err := s.mergeProjectScopedTableTx(tx, table, canonical, sourceVariants)
+				if err != nil {
+					return fmt.Errorf("merge %s %q → %q: %w", table.name, srcNormalized, canonical, err)
+				}
+				result.TableRowsMoved[table.name] += moved
+				if dropped > 0 {
+					result.TableRowsDropped[table.name] += dropped
+				}
 			}
-
-			res, err := s.execHook(tx, `UPDATE observations SET project = ? WHERE project IN (`+placeholders+`)`, args...)
-			if err != nil {
-				return fmt.Errorf("merge observations %q → %q: %w", srcNormalized, canonical, err)
-			}
-			n, _ := res.RowsAffected()
-			result.ObservationsUpdated += n
-
-			res, err = s.execHook(tx, `UPDATE sessions SET project = ? WHERE project IN (`+placeholders+`)`, args...)
-			if err != nil {
-				return fmt.Errorf("merge sessions %q → %q: %w", srcNormalized, canonical, err)
-			}
-			n, _ = res.RowsAffected()
-			result.SessionsUpdated += n
-
-			res, err = s.execHook(tx, `UPDATE user_prompts SET project = ? WHERE project IN (`+placeholders+`)`, args...)
-			if err != nil {
-				return fmt.Errorf("merge prompts %q → %q: %w", srcNormalized, canonical, err)
-			}
-			n, _ = res.RowsAffected()
-			result.PromptsUpdated += n
 
 			result.SourcesMerged = append(result.SourcesMerged, srcNormalized)
 		}
@@ -4761,7 +4811,185 @@ func (s *Store) MergeProjects(sources []string, canonical string) (*MergeResult,
 		return nil, err
 	}
 
+	// Preserved for callers written against the pre-existing shape (the MCP
+	// tool, the CLI, the HTTP API) — now derived from TableRowsMoved instead
+	// of accumulated separately, so there is exactly one place that counts.
+	result.ObservationsUpdated = result.TableRowsMoved["observations"]
+	result.SessionsUpdated = result.TableRowsMoved["sessions"]
+	result.PromptsUpdated = result.TableRowsMoved["user_prompts"]
+
 	return result, nil
+}
+
+// projectScopedTable is one ordinary SQLite table with a column literally
+// named "project", as discovered by projectScopedTables. projectPK records
+// whether that column is (part of) the table's primary key, which decides
+// how mergeProjectScopedTableTx must migrate it: an ordinary column
+// tolerates a plain UPDATE, a primary-key column can collide with a row the
+// canonical project already owns.
+type projectScopedTable struct {
+	name      string
+	projectPK bool
+}
+
+// projectScopedTables inspects sqlite_master and PRAGMA table_info to list
+// every ordinary table with a "project" column, so MergeProjects has
+// nothing to keep manually in sync with the schema. A hand-written table
+// list is exactly how MergeProjects fell behind before this: it moved
+// observations, sessions and user_prompts while evidence, tasks,
+// sync_enrolled_projects, cloud_upgrade_state, runbook_index,
+// prompt_tombstones and sync_mutations went untouched — seven tables, not
+// the six visible from a casual read of the schema, because sync_mutations'
+// project column is easy to miss among its other nine columns. The merge
+// still reported clean success throughout, because nothing checked the
+// hand-written list against the schema it was supposed to cover.
+//
+// FTS5 virtual tables (observations_fts, prompts_fts, tasks_fts,
+// runbook_index_fts) are deliberately excluded even though PRAGMA
+// table_info reports a "project" column for them too: they are
+// external-content indexes kept in sync by triggers on their content table
+// (obs_fts_update, tasks_fts_update, ...), and issuing a raw UPDATE against
+// one directly would fight those triggers instead of relying on them. They
+// are told apart by sqlite_master.sql: a virtual table's DDL starts with
+// "CREATE VIRTUAL TABLE"; an ordinary table's does not, including an FTS5
+// module's own internal _data/_idx/_docsize/_config shadow tables, none of
+// which declare a "project" column in the first place.
+func (s *Store) projectScopedTables() ([]projectScopedTable, error) {
+	rows, err := s.db.Query(`
+		SELECT name FROM sqlite_master
+		WHERE type = 'table'
+		  AND name NOT LIKE 'sqlite_%'
+		  AND upper(ltrim(sql)) NOT LIKE 'CREATE VIRTUAL TABLE%'
+		ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("list tables: %w", err)
+	}
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, closeRowsWithError(rows, fmt.Errorf("scan table name: %w", err))
+		}
+		names = append(names, name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("list tables: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list tables: %w", err)
+	}
+
+	tables := make([]projectScopedTable, 0, len(names))
+	for _, name := range names {
+		// PRAGMA does not accept bound parameters for its target — name
+		// comes from sqlite_master itself, never from caller input, so
+		// this is schema introspection, not string-built user SQL.
+		info, err := s.db.Query(fmt.Sprintf("PRAGMA table_info(%q)", name))
+		if err != nil {
+			return nil, fmt.Errorf("table_info(%s): %w", name, err)
+		}
+		hasProject, projectPK := false, false
+		for info.Next() {
+			var cid, notnull, pk int
+			var colName, colType string
+			var dflt any
+			if err := info.Scan(&cid, &colName, &colType, &notnull, &dflt, &pk); err != nil {
+				return nil, closeRowsWithError(info, fmt.Errorf("scan table_info(%s): %w", name, err))
+			}
+			if colName == "project" {
+				hasProject = true
+				projectPK = pk > 0
+			}
+		}
+		if err := info.Close(); err != nil {
+			return nil, fmt.Errorf("table_info(%s): %w", name, err)
+		}
+		if err := info.Err(); err != nil {
+			return nil, fmt.Errorf("table_info(%s): %w", name, err)
+		}
+		if hasProject {
+			tables = append(tables, projectScopedTable{name: name, projectPK: projectPK})
+		}
+	}
+	return tables, nil
+}
+
+// mergeProjectScopedTableTx migrates table's rows from sourceVariants to
+// canonical, inside MergeProjects' transaction. moved counts rows whose
+// project column changed in place; dropped counts rows removed instead.
+//
+// For an ordinary column, a single UPDATE ... WHERE project IN (...) does
+// the whole job, the same as before this table was discoverable.
+//
+// For a column that is (part of) the primary key, that UPDATE can collide:
+// canonical may already own its own row (sync_enrolled_projects and
+// cloud_upgrade_state both do for "cd-knowledge-mcp" vs "knowledge-mcp" as
+// of this writing — a real, reproducible conflict, not a hypothetical one).
+// Each source variant is renamed individually so one collision does not
+// block the others; on a primary-key (or unique) conflict the source row is
+// deleted instead of overwriting the canonical row's operational state
+// (cloud enrollment, upgrade/repair stage) with a row that was tracking a
+// name nothing will query by again after this merge. The alternative —
+// letting the UPDATE's constraint violation bubble up — is exactly the
+// failure mode this fix must not have: the whole merge transaction rolling
+// back and reporting nothing moved, when every other table's rename should
+// still go through.
+func (s *Store) mergeProjectScopedTableTx(tx *sql.Tx, table projectScopedTable, canonical string, sourceVariants []string) (moved, dropped int64, err error) {
+	if !table.projectPK {
+		placeholders := sqlPlaceholders(len(sourceVariants))
+		args := make([]any, 0, len(sourceVariants)+1)
+		args = append(args, canonical)
+		for _, variant := range sourceVariants {
+			args = append(args, variant)
+		}
+		res, err := s.execHook(tx, fmt.Sprintf(`UPDATE %s SET project = ? WHERE project IN (%s)`, table.name, placeholders), args...)
+		if err != nil {
+			return 0, 0, err
+		}
+		n, _ := res.RowsAffected()
+		return n, 0, nil
+	}
+
+	for _, variant := range sourceVariants {
+		res, renameErr := s.execHook(tx, fmt.Sprintf(`UPDATE %s SET project = ? WHERE project = ?`, table.name), canonical, variant)
+		if renameErr == nil {
+			n, _ := res.RowsAffected()
+			moved += n
+			continue
+		}
+		if !isPrimaryKeyConflict(renameErr) {
+			return moved, dropped, renameErr
+		}
+		res, err := s.execHook(tx, fmt.Sprintf(`DELETE FROM %s WHERE project = ?`, table.name), variant)
+		if err != nil {
+			return moved, dropped, err
+		}
+		n, _ := res.RowsAffected()
+		dropped += n
+	}
+	return moved, dropped, nil
+}
+
+// isPrimaryKeyConflict reports whether err is a SQLite primary-key or
+// unique-constraint violation — the shape a rename hits when canonical
+// already owns a row in a table where "project" is (part of) the key. See
+// https://www.sqlite.org/rescode.html#constraint_primarykey and
+// #constraint_unique. Confirmed against modernc.org/sqlite v1.45.0: a
+// duplicate TEXT PRIMARY KEY raises the primary-key code specifically
+// (1555), not the more general unique code; unique is checked too as a
+// forward-compatible fallback for a project-scoped table that enforces
+// uniqueness through an index instead of its primary key.
+func isPrimaryKeyConflict(err error) bool {
+	var sqliteErr *sqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	switch sqliteErr.Code() {
+	case sqliteConstraintPrimaryKey, sqliteConstraintUnique:
+		return true
+	default:
+		return false
+	}
 }
 
 // sqlPlaceholders returns a comma-separated list of parameter markers only.

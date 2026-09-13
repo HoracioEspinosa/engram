@@ -2934,8 +2934,8 @@ func TestHandleMergeProjects(t *testing.T) {
 	if !strings.Contains(text, "engram") {
 		t.Fatalf("expected merge result mentioning canonical project, got %q", text)
 	}
-	if !strings.Contains(text, "Observations moved") {
-		t.Fatalf("expected observations count in result, got %q", text)
+	if !strings.Contains(text, "observations: 1 moved") {
+		t.Fatalf("expected a per-table observations count in result, got %q", text)
 	}
 
 	// Verify that engram-memory observations are now under "engram"

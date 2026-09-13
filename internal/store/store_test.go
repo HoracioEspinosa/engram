@@ -6748,6 +6748,387 @@ func TestMergeProjectsAliasVariantsDoNotRewriteCanonicalProject(t *testing.T) {
 	}
 }
 
+// TestMergeResultTableSummaryLinesFormatsSortedTables pins the report format
+// every MergeProjects caller (MCP tool, CLI) now renders from instead of
+// naming three fields by hand: sorted by table name for a diffable report,
+// "N moved" always present, and a ", N dropped" suffix appended only when a
+// primary-key conflict actually dropped a row — a table with an explicit
+// zero in TableRowsDropped (no conflict occurred) must not print one.
+func TestMergeResultTableSummaryLinesFormatsSortedTables(t *testing.T) {
+	result := &MergeResult{
+		TableRowsMoved: map[string]int64{
+			"sessions":               2,
+			"observations":           5,
+			"cloud_upgrade_state":    0,
+			"sync_enrolled_projects": 0,
+		},
+		TableRowsDropped: map[string]int64{
+			"cloud_upgrade_state":    1,
+			"sync_enrolled_projects": 0,
+		},
+	}
+
+	got := result.TableSummaryLines()
+	want := []string{
+		"cloud_upgrade_state: 0 moved, 1 dropped (a canonical row already existed there)",
+		"observations: 5 moved",
+		"sessions: 2 moved",
+		"sync_enrolled_projects: 0 moved",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("TableSummaryLines() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("TableSummaryLines()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestIsPrimaryKeyConflict covers the two branches reachable without a real
+// database round trip. The true branch — an actual *sqlite.Error carrying
+// the primary-key or unique result code — is exercised end-to-end by
+// TestMergeProjectsResolvesPrimaryKeyConflictBySurvivingTheTransaction
+// instead of constructed here: sqlite.Error's fields are unexported, so a
+// real constraint violation is the only way to produce one.
+func TestIsPrimaryKeyConflict(t *testing.T) {
+	if isPrimaryKeyConflict(nil) {
+		t.Error("nil error must not be treated as a primary-key conflict")
+	}
+	if isPrimaryKeyConflict(errors.New("boom")) {
+		t.Error("a non-sqlite error must not be treated as a primary-key conflict")
+	}
+}
+
+// seedProjectCard inserts the minimal project_cards row evidence, tasks and
+// runbook_index need to satisfy their FK to project_cards(slug) under
+// PRAGMA foreign_keys = ON (New enables it, and SetMaxOpenConns(1) keeps it
+// enabled for the store's one physical connection).
+func seedProjectCard(t *testing.T, s *Store, slug string) {
+	t.Helper()
+	if _, err := s.db.Exec(
+		`INSERT INTO project_cards (slug, sync_id, display_name) VALUES (?, ?, ?)`,
+		slug, "card-"+slug, slug,
+	); err != nil {
+		t.Fatalf("seed project_cards %q: %v", slug, err)
+	}
+}
+
+// TestProjectScopedTablesMatchesTheLiveSchema pins the exact set of
+// project-scoped tables projectScopedTables discovers as of this schema, and
+// that it tells apart an ordinary "project" column (safe for a plain
+// UPDATE) from one that is part of the primary key (sync_enrolled_projects,
+// cloud_upgrade_state — needs the conflict-aware path in
+// mergeProjectScopedTableTx). A future migration that adds a "project"
+// column to a new table changes this list automatically; a migration that
+// still hand-writes an UPDATE somewhere else instead of relying on this
+// discovery does not, and this test is what would need updating to notice
+// that regression.
+func TestProjectScopedTablesMatchesTheLiveSchema(t *testing.T) {
+	s := newTestStore(t)
+
+	tables, err := s.projectScopedTables()
+	if err != nil {
+		t.Fatalf("projectScopedTables: %v", err)
+	}
+
+	got := make(map[string]bool, len(tables))
+	gotPK := make(map[string]bool, len(tables))
+	for _, table := range tables {
+		got[table.name] = true
+		gotPK[table.name] = table.projectPK
+	}
+
+	want := map[string]bool{
+		"cloud_upgrade_state":    true, // PK
+		"evidence":               false,
+		"observations":           false,
+		"prompt_tombstones":      false,
+		"runbook_index":          false,
+		"sessions":               false,
+		"sync_enrolled_projects": true, // PK
+		"sync_mutations":         false,
+		"tasks":                  false,
+		"user_prompts":           false,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("projectScopedTables returned %d table(s) %v, want %d %v", len(got), got, len(want), want)
+	}
+	for name, wantPK := range want {
+		if !got[name] {
+			t.Errorf("projectScopedTables is missing %q", name)
+			continue
+		}
+		if gotPK[name] != wantPK {
+			t.Errorf("projectScopedTables[%q].projectPK = %v, want %v", name, gotPK[name], wantPK)
+		}
+	}
+
+	// The FTS5 virtual tables declare "project" as one of their own indexed
+	// columns (see projects_schema.go and store.go's FTS5 DDL), which would
+	// make a naive PRAGMA table_info scan mistake them for project-scoped
+	// tables too. They must never appear here — see projectScopedTables'
+	// doc comment for why an UPDATE against one directly would be wrong.
+	for _, ftsTable := range []string{"observations_fts", "prompts_fts", "tasks_fts", "runbook_index_fts"} {
+		if got[ftsTable] {
+			t.Errorf("projectScopedTables must exclude the FTS5 virtual table %q", ftsTable)
+		}
+	}
+}
+
+// TestMergeProjectsCoversEveryProjectScopedTable is the schema-driven
+// coverage test the fix calls for: it asks the schema itself which tables
+// have a "project" column and asserts MergeProjects reports a
+// TableRowsMoved entry for every single one, rather than trusting a
+// hand-maintained subset. Before this fix, this same assertion would have
+// failed: only observations, sessions and user_prompts were ever reported,
+// silently leaving evidence, tasks, sync_enrolled_projects,
+// cloud_upgrade_state, runbook_index, prompt_tombstones and sync_mutations
+// out of both the migration and the report that was supposed to catch it.
+func TestMergeProjectsCoversEveryProjectScopedTable(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.CreateSession("s1", "old-project", "/work"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	tables, err := s.projectScopedTables()
+	if err != nil {
+		t.Fatalf("projectScopedTables: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"old-project"}, "new-project")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+
+	if len(result.TableRowsMoved) != len(tables) {
+		t.Fatalf("TableRowsMoved has %d table(s) %v, want one entry per table %v",
+			len(result.TableRowsMoved), result.TableRowsMoved, tables)
+	}
+	for _, table := range tables {
+		if _, ok := result.TableRowsMoved[table.name]; !ok {
+			t.Errorf("TableRowsMoved is missing %q — MergeProjects skipped a table the schema has", table.name)
+		}
+	}
+}
+
+// TestMergeProjectsMovesEvidenceTasksRunbooksAndTombstones exercises the
+// four ordinary-column tables ADR-060's consolidation actually found rows
+// stranded in: evidence (10 rows), tasks (1 row), plus runbook_index and
+// prompt_tombstones, which have zero rows in production today but the same
+// gap in the code. It also confirms tasks_fts and runbook_index_fts — kept
+// in sync by triggers on their content table rather than touched directly
+// (see projectScopedTables) — actually followed the rename, so excluding
+// them from the table list did not quietly break search.
+func TestMergeProjectsMovesEvidenceTasksRunbooksAndTombstones(t *testing.T) {
+	s := newTestStore(t)
+	seedProjectCard(t, s, "old-project")
+	seedProjectCard(t, s, "new-project")
+
+	if _, err := s.db.Exec(
+		`INSERT INTO tasks (id, sync_id, project, jira_key, title, kind) VALUES (1, 'task-1', 'old-project', 'PROJ-100', 'fix upload', 'bugfix')`,
+	); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO evidence (sync_id, project, task_id, task_sync_id, path, sha256, kind, proves, captured_at)
+		 VALUES ('ev-1', 'old-project', 1, 'task-1', 'shots/one.png', ?, 'png', 'upload works', datetime('now'))`,
+		strings.Repeat("a", 64),
+	); err != nil {
+		t.Fatalf("seed evidence: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO runbook_index (id, project, vault_path, title, category, status)
+		 VALUES ('RB-001', 'old-project', 'Runbooks/RB-001.md', 'Upload fails', 'network', 'verified')`,
+	); err != nil {
+		t.Fatalf("seed runbook_index: %v", err)
+	}
+	// session_id is '' rather than NULL: every write path that produces a
+	// tombstone carries a plain Go string (see syncPromptPayload.SessionID),
+	// so a driver-level NULL here is not a state this table's production
+	// writers can reach — a literal NULL would additionally hit an
+	// unrelated, pre-existing gap in backfillPromptSyncMutationsTx's
+	// tombstone query, which has no ifnull() guard on session_id the way
+	// its own live-prompts query above it does.
+	if _, err := s.db.Exec(
+		`INSERT INTO prompt_tombstones (sync_id, session_id, project, deleted_at) VALUES ('pt-1', '', 'old-project', datetime('now'))`,
+	); err != nil {
+		t.Fatalf("seed prompt_tombstones: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"old-project"}, "new-project")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+
+	for _, table := range []struct {
+		name string
+		want int64
+	}{
+		{"tasks", 1},
+		{"evidence", 1},
+		{"runbook_index", 1},
+		{"prompt_tombstones", 1},
+	} {
+		if got := result.TableRowsMoved[table.name]; got != table.want {
+			t.Errorf("TableRowsMoved[%q] = %d, want %d", table.name, got, table.want)
+		}
+		var remaining int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM `+table.name+` WHERE project = ?`, "old-project").Scan(&remaining); err != nil {
+			t.Fatalf("count remaining %s rows: %v", table.name, err)
+		}
+		if remaining != 0 {
+			t.Errorf("%s still has %d row(s) under the merged-away project", table.name, remaining)
+		}
+	}
+
+	var tasksFTSProject, runbookFTSProject string
+	if err := s.db.QueryRow(`SELECT project FROM tasks_fts WHERE rowid = 1`).Scan(&tasksFTSProject); err != nil {
+		t.Fatalf("read tasks_fts: %v", err)
+	}
+	if tasksFTSProject != "new-project" {
+		t.Errorf("tasks_fts.project = %q, want the trigger to have followed the rename to %q", tasksFTSProject, "new-project")
+	}
+	if err := s.db.QueryRow(`SELECT project FROM runbook_index_fts WHERE rowid = (SELECT seq FROM runbook_index WHERE id = 'RB-001')`).Scan(&runbookFTSProject); err != nil {
+		t.Fatalf("read runbook_index_fts: %v", err)
+	}
+	if runbookFTSProject != "new-project" {
+		t.Errorf("runbook_index_fts.project = %q, want the trigger to have followed the rename to %q", runbookFTSProject, "new-project")
+	}
+}
+
+// TestMergeProjectsRenamesSyncMutationsRows pins the table this fix found
+// that even the manual defect report missed: sync_mutations has a "project"
+// column (added for project-scoped sync) buried among nine others, and
+// MergeProjects never touched it. An un-acked mutation left tagged with the
+// merged-away name would make "pending mutations for <canonical>" queries
+// (see projectNeedsBackfill) undercount, the same class of silent gap as
+// the tables named in the report.
+func TestMergeProjectsRenamesSyncMutationsRows(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(
+		`INSERT INTO sync_mutations (target_key, entity, entity_key, op, payload, source, project)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		DefaultSyncTargetKey, SyncEntityEvidence, "ev-1", SyncOpUpsert, `{}`, SyncSourceLocal, "old-project",
+	); err != nil {
+		t.Fatalf("seed sync_mutations: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"old-project"}, "new-project")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+	if result.TableRowsMoved["sync_mutations"] != 1 {
+		t.Fatalf("TableRowsMoved[sync_mutations] = %d, want 1", result.TableRowsMoved["sync_mutations"])
+	}
+	var remaining int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sync_mutations WHERE project = ?`, "old-project").Scan(&remaining); err != nil {
+		t.Fatalf("count remaining sync_mutations rows: %v", err)
+	}
+	if remaining != 0 {
+		t.Fatalf("sync_mutations still has %d row(s) under the merged-away project", remaining)
+	}
+}
+
+// TestMergeProjectsRenamesAPrimaryKeyTableWhenCanonicalHasNoRowYet covers
+// the non-conflicting half of the primary-key path: when canonical does not
+// already own a row, the source row is renamed in place (preserving its
+// other columns) rather than dropped — dropping would lose real state
+// (enrolled_at here) for no reason.
+func TestMergeProjectsRenamesAPrimaryKeyTableWhenCanonicalHasNoRowYet(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(`INSERT INTO sync_enrolled_projects (project, enrolled_at) VALUES ('old-project', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("seed sync_enrolled_projects: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"old-project"}, "new-project")
+	if err != nil {
+		t.Fatalf("MergeProjects: %v", err)
+	}
+	if result.TableRowsMoved["sync_enrolled_projects"] != 1 {
+		t.Fatalf("TableRowsMoved[sync_enrolled_projects] = %d, want 1", result.TableRowsMoved["sync_enrolled_projects"])
+	}
+	if dropped := result.TableRowsDropped["sync_enrolled_projects"]; dropped != 0 {
+		t.Fatalf("TableRowsDropped[sync_enrolled_projects] = %d, want 0 (no conflict to resolve)", dropped)
+	}
+
+	var enrolledAt string
+	if err := s.db.QueryRow(`SELECT enrolled_at FROM sync_enrolled_projects WHERE project = ?`, "new-project").Scan(&enrolledAt); err != nil {
+		t.Fatalf("read renamed row: %v", err)
+	}
+	if enrolledAt != "2026-01-01T00:00:00Z" {
+		t.Fatalf("enrolled_at = %q, want the source row's original value preserved by the rename", enrolledAt)
+	}
+}
+
+// TestMergeProjectsResolvesPrimaryKeyConflictBySurvivingTheTransaction is
+// the reproducible conflict from the bug report: cd-knowledge-mcp and
+// knowledge-mcp — stand-ins here as "old-project" and "new-project" — each
+// already have their own row in sync_enrolled_projects and
+// cloud_upgrade_state, so a plain UPDATE's rename collides with a primary
+// key. The whole merge transaction must still succeed (this is exactly the
+// "cannot leave the merge half-done" requirement), the canonical row's own
+// state must survive untouched, and the source's duplicate row must be
+// gone — not left behind under a name nothing will ever query again.
+func TestMergeProjectsResolvesPrimaryKeyConflictBySurvivingTheTransaction(t *testing.T) {
+	s := newTestStore(t)
+
+	if _, err := s.db.Exec(`INSERT INTO sync_enrolled_projects (project) VALUES ('old-project')`); err != nil {
+		t.Fatalf("seed source sync_enrolled_projects: %v", err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO sync_enrolled_projects (project) VALUES ('new-project')`); err != nil {
+		t.Fatalf("seed canonical sync_enrolled_projects: %v", err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO cloud_upgrade_state (project, stage) VALUES ('old-project', 'repair_applied')`); err != nil {
+		t.Fatalf("seed source cloud_upgrade_state: %v", err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO cloud_upgrade_state (project, stage) VALUES ('new-project', 'doctor_ready')`); err != nil {
+		t.Fatalf("seed canonical cloud_upgrade_state: %v", err)
+	}
+	// A non-conflicting, ordinary-column table merges in the same call, to
+	// prove the primary-key conflict above does not abort or roll back
+	// work in the rest of the transaction.
+	if err := s.CreateSession("s1", "old-project", "/work"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	result, err := s.MergeProjects([]string{"old-project"}, "new-project")
+	if err != nil {
+		t.Fatalf("MergeProjects must not fail on a primary-key conflict: %v", err)
+	}
+
+	for _, table := range []string{"sync_enrolled_projects", "cloud_upgrade_state"} {
+		if got := result.TableRowsDropped[table]; got != 1 {
+			t.Errorf("TableRowsDropped[%q] = %d, want 1", table, got)
+		}
+		if got := result.TableRowsMoved[table]; got != 0 {
+			t.Errorf("TableRowsMoved[%q] = %d, want 0 (the row was dropped, not renamed)", table, got)
+		}
+		var remaining int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE project = ?`, "old-project").Scan(&remaining); err != nil {
+			t.Fatalf("count remaining %s rows: %v", table, err)
+		}
+		if remaining != 0 {
+			t.Errorf("%s still has the source's duplicate row", table)
+		}
+	}
+
+	var stage string
+	if err := s.db.QueryRow(`SELECT stage FROM cloud_upgrade_state WHERE project = ?`, "new-project").Scan(&stage); err != nil {
+		t.Fatalf("read canonical cloud_upgrade_state: %v", err)
+	}
+	if stage != "doctor_ready" {
+		t.Fatalf("cloud_upgrade_state.stage = %q, want the canonical row's own state preserved, not overwritten by the source's %q", stage, "repair_applied")
+	}
+
+	if result.SessionsUpdated != 1 {
+		t.Fatalf("SessionsUpdated = %d, want 1 — a primary-key conflict elsewhere must not block the rest of the merge", result.SessionsUpdated)
+	}
+}
+
 func TestNewLimitsSQLiteConnectionPoolToSingleOpenConnection(t *testing.T) {
 	s := newTestStore(t)
 	stats := s.db.Stats()

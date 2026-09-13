@@ -2298,9 +2298,9 @@ func cmdProjectsConsolidate(cfg store.Config) {
 		}
 
 		fmt.Printf("Done! Merged into %q:\n", result.Canonical)
-		fmt.Printf("  Observations: %d\n", result.ObservationsUpdated)
-		fmt.Printf("  Sessions:     %d\n", result.SessionsUpdated)
-		fmt.Printf("  Prompts:      %d\n", result.PromptsUpdated)
+		for _, line := range result.TableSummaryLines() {
+			fmt.Printf("  %s\n", line)
+		}
 		return
 	}
 
@@ -2411,8 +2411,11 @@ func cmdProjectsConsolidate(cfg store.Config) {
 			fmt.Println()
 			continue
 		}
-		fmt.Printf("  Merged: %d obs, %d sessions, %d prompts\n\n",
-			result.ObservationsUpdated, result.SessionsUpdated, result.PromptsUpdated)
+		fmt.Printf("  Merged:\n")
+		for _, line := range result.TableSummaryLines() {
+			fmt.Printf("    %s\n", line)
+		}
+		fmt.Println()
 	}
 }
 

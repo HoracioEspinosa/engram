@@ -2272,9 +2272,9 @@ func handleMergeProjects(s *store.Store) server.ToolHandlerFunc {
 		}
 
 		msg := fmt.Sprintf("Merged %d source(s) into %q:\n", len(result.SourcesMerged), result.Canonical)
-		msg += fmt.Sprintf("  Observations moved: %d\n", result.ObservationsUpdated)
-		msg += fmt.Sprintf("  Sessions moved:     %d\n", result.SessionsUpdated)
-		msg += fmt.Sprintf("  Prompts moved:      %d\n", result.PromptsUpdated)
+		for _, line := range result.TableSummaryLines() {
+			msg += "  " + line + "\n"
+		}
 
 		return mcp.NewToolResultText(msg), nil
 	}
