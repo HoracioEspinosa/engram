@@ -242,6 +242,50 @@ func TestSelectorMoveCursorClampsAtTheEdges(t *testing.T) {
 	}
 }
 
+// TestSelectorIKeyTogglesHealthSort pins rfc-tui.md §7.2's Selector row: "i
+// invertir orden (salud primero)". A card with more stale runbooks and more
+// open tasks needs attention first, even when it does not lead the store's
+// natural (updated_at) order.
+func TestSelectorIKeyTogglesHealthSort(t *testing.T) {
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	cards := []store.ProjectCardListItem{
+		{ProjectCard: store.ProjectCard{Slug: "healthy"}, Counts: &store.ProjectCardCounts{RunbooksStale: 0, TasksActive: 1}},
+		{ProjectCard: store.ProjectCard{Slug: "risky"}, Counts: &store.ProjectCardCounts{RunbooksStale: 3, TasksActive: 9}},
+	}
+	m.selector = newSelectorModel(nil).applyLoaded(selectorLoadedMsg{cards: cards})
+	m.screen = screenSelector
+
+	if m.selector.filtered[0].Slug != "healthy" {
+		t.Fatalf("filtered[0] = %q, want the incoming order before sorting", m.selector.filtered[0].Slug)
+	}
+
+	m, _ = step(t, m, tea.KeyMsg{Runes: []rune("i"), Type: tea.KeyRunes})
+	if m.selector.filtered[0].Slug != "risky" {
+		t.Fatalf("filtered[0] = %q, want the unhealthiest card first after i", m.selector.filtered[0].Slug)
+	}
+
+	m, _ = step(t, m, tea.KeyMsg{Runes: []rune("i"), Type: tea.KeyRunes})
+	if m.selector.filtered[0].Slug != "healthy" {
+		t.Fatalf("filtered[0] = %q, want a second i to toggle back to the incoming order", m.selector.filtered[0].Slug)
+	}
+}
+
+// TestSelectorIKeyIsTypedIntoTheFocusedFilter is the same regression
+// TestGlobalKeysReachTheFilterInputWhileItIsFocused pins for digits, applied
+// to the per-screen "i" shortcut: it must not steal the letter from someone
+// filtering by a name containing "i".
+func TestSelectorIKeyIsTypedIntoTheFocusedFilter(t *testing.T) {
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.selector = newSelectorModel(nil).applyLoaded(selectorLoadedMsg{cards: testSelectorCards()})
+	m.screen = screenSelector
+	m.selector.filterInput.Focus()
+
+	m, _ = step(t, m, tea.KeyMsg{Runes: []rune("i"), Type: tea.KeyRunes})
+	if m.selector.filterInput.Value() != "i" {
+		t.Fatalf("filter value = %q, want the letter typed instead of the sort toggled", m.selector.filterInput.Value())
+	}
+}
+
 func TestSelectorMoveCursorOnAnEmptyListIsANoOp(t *testing.T) {
 	sel := newSelectorModel(nil)
 	sel = sel.moveCursor(1)

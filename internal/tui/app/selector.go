@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -29,6 +30,11 @@ type selectorModel struct {
 	cursor   int
 
 	filterInput textinput.Model
+
+	// healthSort toggles rfc-tui.md §7.2's "i invertir orden (salud
+	// primero)": false keeps the store's natural (updated_at) order, true
+	// ranks the cards that need attention first.
+	healthSort bool
 
 	loaded bool
 	err    string
@@ -81,7 +87,7 @@ func (m selectorModel) applyLoaded(msg selectorLoadedMsg) selectorModel {
 func (m selectorModel) applyFilter() selectorModel {
 	query := strings.ToLower(strings.TrimSpace(m.filterInput.Value()))
 	if query == "" {
-		m.filtered = m.cards
+		m.filtered = append([]store.ProjectCardListItem{}, m.cards...)
 	} else {
 		filtered := make([]store.ProjectCardListItem, 0, len(m.cards))
 		for _, c := range m.cards {
@@ -92,6 +98,11 @@ func (m selectorModel) applyFilter() selectorModel {
 		}
 		m.filtered = filtered
 	}
+	if m.healthSort {
+		sort.SliceStable(m.filtered, func(i, j int) bool {
+			return worseHealthThan(m.filtered[i], m.filtered[j])
+		})
+	}
 	if m.cursor >= len(m.filtered) {
 		m.cursor = len(m.filtered) - 1
 	}
@@ -99,6 +110,37 @@ func (m selectorModel) applyFilter() selectorModel {
 		m.cursor = 0
 	}
 	return m
+}
+
+// toggleHealthSort flips healthSort and re-applies it, so "i" is a plain
+// toggle rather than a one-way switch — rfc-tui.md §7.2 names it "invertir
+// orden", not just "ordenar".
+func (m selectorModel) toggleHealthSort() selectorModel {
+	m.healthSort = !m.healthSort
+	return m.applyFilter()
+}
+
+// worseHealthThan reports whether a needs attention before b: more stale
+// runbooks first, then more open tasks, then more observations as a final
+// deterministic tiebreak. A card with no counters loaded (Counts is nil,
+// e.g. ListCards was called without includeCounts) ranks as perfectly
+// healthy rather than panicking.
+func worseHealthThan(a, b store.ProjectCardListItem) bool {
+	ac, bc := cardCounts(a), cardCounts(b)
+	if ac.RunbooksStale != bc.RunbooksStale {
+		return ac.RunbooksStale > bc.RunbooksStale
+	}
+	if ac.TasksActive != bc.TasksActive {
+		return ac.TasksActive > bc.TasksActive
+	}
+	return ac.Observations > bc.Observations
+}
+
+func cardCounts(c store.ProjectCardListItem) store.ProjectCardCounts {
+	if c.Counts == nil {
+		return store.ProjectCardCounts{}
+	}
+	return *c.Counts
 }
 
 // moveCursor shifts the cursor by delta, clamped to the filtered list.
@@ -156,7 +198,7 @@ func (m Model) viewSelector() string {
 		}
 	}
 
-	b.WriteString(m.styles.Help.Render("  j/k move • enter open • / filter • r refresh • q quit"))
+	b.WriteString(m.styles.Help.Render("  j/k move • enter open • / filter • i sort by health • r refresh • q quit"))
 	return b.String()
 }
 

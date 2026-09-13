@@ -159,6 +159,23 @@ func TestDashboardCursorMovesAcrossAllThreeBlocks(t *testing.T) {
 	}
 }
 
+// TestDashboardHLAreAliasesForCursorMovement pins rfc-tui.md §7.2's
+// Dashboard row: "h/l mover entre bloques", alongside the j/k pair
+// TestDashboardCursorMovesAcrossAllThreeBlocks already covers.
+func TestDashboardHLAreAliasesForCursorMovement(t *testing.T) {
+	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.screen = screenDashboard
+
+	m, _ = step(t, m, tea.KeyMsg{Runes: []rune("l"), Type: tea.KeyRunes})
+	if m.dashboard.cursor != dashBlockRunbooks {
+		t.Fatalf("cursor = %v, want dashBlockRunbooks after l (alias for j)", m.dashboard.cursor)
+	}
+	m, _ = step(t, m, tea.KeyMsg{Runes: []rune("h"), Type: tea.KeyRunes})
+	if m.dashboard.cursor != dashBlockTasks {
+		t.Fatalf("cursor = %v, want dashBlockTasks after h (alias for k)", m.dashboard.cursor)
+	}
+}
+
 func TestDashboardQQuits(t *testing.T) {
 	m := New(nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenDashboard

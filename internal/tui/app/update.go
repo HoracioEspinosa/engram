@@ -85,10 +85,12 @@ func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 // updateDashboard handles key presses while the dashboard is active.
 func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "j":
+	case "j", "l":
+		// rfc-tui.md §7.2: h/l are the Dashboard's own aliases for j/k,
+		// alongside the vim-style pair every other screen already uses.
 		m.dashboard = m.dashboard.moveCursor(1)
 		return m, nil
-	case "k":
+	case "k", "h":
 		m.dashboard = m.dashboard.moveCursor(-1)
 		return m, nil
 	case "enter":
@@ -137,6 +139,9 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "k":
 		m.selector = m.selector.moveCursor(-1)
+		return m, nil
+	case "i":
+		m.selector = m.selector.toggleHealthSort()
 		return m, nil
 	case "enter":
 		selected := m.selector.selected()
