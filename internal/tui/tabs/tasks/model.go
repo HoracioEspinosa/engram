@@ -174,6 +174,15 @@ func (m Model) Init() tea.Cmd {
 	return loadTasks(m.reader, m.project, m.Filter)
 }
 
+// OpenTask returns the command that loads id's detail. It is what the root
+// drives when another tab asks to deep-link into a task (rfc-tui.md §3.1
+// S7: Enter on an evidence file opens its task here) — the same command
+// loadTaskDetail already issues on the "enter" key from the list screen,
+// exposed so a message from outside this package can trigger it too.
+func (m Model) OpenTask(id int64) tea.Cmd {
+	return loadTaskDetail(m.reader, id)
+}
+
 // Refresh reloads the data behind the current screen: the filtered list on
 // S3, the task (and its observations/evidence) on S4, or the context pack on
 // S5. The root calls it on "r" and whenever this tab becomes active.

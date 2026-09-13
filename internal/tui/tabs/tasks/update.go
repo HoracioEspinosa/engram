@@ -290,13 +290,9 @@ func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 			return m, tabs.NavigateToObservation(obsID)
 		}
 	case "e":
-		// Evidence (T-10.04) is not registered yet: tabs.Navigate degrades
-		// to app.Model.activate's documented no-op for an unimplemented
-		// target, exactly as the Dashboard's own "recent tasks" block does
-		// today. Pre-filtering that tab by this task needs a TaskID field on
-		// tabs.NavigateMsg (mirroring the ObservationID one added for this
-		// task), which is Evidence's to add, not this one's.
-		return m, tabs.Navigate(tabs.Evidence)
+		// rfc-tui.md §3.1: S4's "e" opens Evidence filtered to this task
+		// (S6's task_id filter), carried through tabs.NavigateMsg.TaskID.
+		return m, tabs.NavigateToTaskEvidence(task.ID)
 	case "x":
 		return m, loadContextPack(m.reader, task.ID)
 	case "s":

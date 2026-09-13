@@ -97,6 +97,30 @@ func TestInitLoadsTasksWhenAProjectIsAlreadyActive(t *testing.T) {
 	}
 }
 
+// TestOpenTaskLoadsTheGivenTasksDetail pins rfc-tui.md §3.1 S7's "Enter" on
+// an evidence file: the root drives this the same way it drives
+// memory.Model.OpenObservation for the Memory deep link, so a message from
+// outside this package (tabs.NavigateMsg.TaskID) can open a task's detail
+// without the Tasks tab importing tabs/evidence.
+func TestOpenTaskLoadsTheGivenTasksDetail(t *testing.T) {
+	fake := &data.FakeTask{DetailByID: map[int64]data.TaskDetail{
+		9: sampleDetail(sampleTask(9, "ACME-9", "open")),
+	}}
+	m := New(fake).WithProject("acme")
+
+	cmd := m.OpenTask(9)
+	if cmd == nil {
+		t.Fatal("OpenTask should return a non-nil command")
+	}
+	m, _ = step(t, m, run(t, cmd))
+	if m.Screen != ScreenDetail {
+		t.Fatalf("Screen = %v, want ScreenDetail", m.Screen)
+	}
+	if m.Detail == nil || m.Detail.Task.ID != 9 {
+		t.Fatalf("Detail = %+v, want task 9's detail", m.Detail)
+	}
+}
+
 func TestListCursorMovesAndClampsScroll(t *testing.T) {
 	fake := &data.FakeTask{ItemsByProject: map[string][]store.TaskListItem{
 		"acme": {
@@ -298,6 +322,30 @@ func TestDetailEnterOnAnObservationNavigatesToMemory(t *testing.T) {
 	}
 	if msg.Target != tabs.Memory || msg.ObservationID != 1460 {
 		t.Fatalf("NavigateMsg = %+v, want Memory/1460", msg)
+	}
+}
+
+// TestDetailEvidenceKeyNavigatesToEvidenceFilteredByTheTask pins T-10.04's
+// dependency: rfc-tui.md §3.1 S4's "e" must filter the Evidence tab down to
+// the task under view (S6's task_id filter), which needs TaskID on
+// tabs.NavigateMsg — until T-10.04 the key only switched tabs with no filter.
+func TestDetailEvidenceKeyNavigatesToEvidenceFilteredByTheTask(t *testing.T) {
+	task := sampleTask(9, "ACME-9", "open")
+	m := New(&data.FakeTask{}).WithProject("acme")
+	detail := sampleDetail(task)
+	m.Detail = &detail
+	m.Screen = ScreenDetail
+
+	_, cmd := m.handleDetailKeys("e")
+	if cmd == nil {
+		t.Fatal("e should navigate to Evidence")
+	}
+	msg, ok := run(t, cmd).(tabs.NavigateMsg)
+	if !ok {
+		t.Fatalf("cmd produced %T, want tabs.NavigateMsg", run(t, cmd))
+	}
+	if msg.Target != tabs.Evidence || msg.TaskID != 9 {
+		t.Fatalf("NavigateMsg = %+v, want Evidence/9", msg)
 	}
 }
 
