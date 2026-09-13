@@ -12,6 +12,7 @@ import (
 
 	"github.com/HoracioEspinosa/engram/internal/mcp"
 	"github.com/HoracioEspinosa/engram/internal/obsidian"
+	"github.com/HoracioEspinosa/engram/internal/project"
 	"github.com/HoracioEspinosa/engram/internal/setup"
 	"github.com/HoracioEspinosa/engram/internal/store"
 	engramsync "github.com/HoracioEspinosa/engram/internal/sync"
@@ -596,7 +597,12 @@ func TestCmdSyncStatusExportAndImport(t *testing.T) {
 
 	mustSeedObservation(t, exportCfg, "s-sync", "sync-project", "note", "sync title", "sync content", "project")
 
-	withArgs(t, "engram", "sync", "--status")
+	// workDir has no git repo, so cwd detection would only ever produce a
+	// directory-name guess; an explicit --project is required since
+	// resolveWriteProject-equivalent detection now refuses that guess
+	// (ADR-057 §3). It also keeps this round trip scoped to the project the
+	// observation was actually seeded under.
+	withArgs(t, "engram", "sync", "--status", "--project", "sync-project")
 	statusOut, statusErr := captureOutput(t, func() { cmdSync(exportCfg) })
 	if statusErr != "" {
 		t.Fatalf("expected no stderr from status, got: %q", statusErr)
@@ -633,6 +639,16 @@ func TestCmdSyncStatusExportAndImport(t *testing.T) {
 	}
 }
 
+// TestCmdSyncDefaultProjectNoData used to pin that a plain, non-git
+// directory's basename ("repo-name") became the default sync project. That
+// was exactly the ADR-057 defect: local export decides where data lands,
+// and a directory-name guess is not a fact — "repo-name" could easily not
+// be the project's real name (a clone under a renamed folder, a worktree,
+// a tarball extracted under a different name). It now pins the opposite:
+// without --project, ENGRAM_PROJECT, or a git-backed cwd, export refuses
+// instead of silently guessing (TestCmdSyncRejectsDirBasenameGuess covers
+// the same refusal directly against resolveTUIProject's sibling resolver).
+// An explicit --project still reaches the same "nothing to sync" message.
 func TestCmdSyncDefaultProjectNoData(t *testing.T) {
 	workDir := filepath.Join(t.TempDir(), "repo-name")
 	if err := os.MkdirAll(workDir, 0755); err != nil {
@@ -640,18 +656,40 @@ func TestCmdSyncDefaultProjectNoData(t *testing.T) {
 	}
 	withCwd(t, workDir)
 
-	cfg := testConfig(t)
-	withArgs(t, "engram", "sync")
-	stdout, stderr := captureOutput(t, func() { cmdSync(cfg) })
-	if stderr != "" {
-		t.Fatalf("expected no stderr, got: %q", stderr)
-	}
-	if !strings.Contains(stdout, `Exporting memories for project "repo-name"`) {
-		t.Fatalf("expected default project message, got: %q", stdout)
-	}
-	if !strings.Contains(stdout, `Nothing new to sync for project "repo-name"`) {
-		t.Fatalf("expected no-data sync message, got: %q", stdout)
-	}
+	t.Run("refuses the directory-name guess", func(t *testing.T) {
+		cfg := testConfig(t)
+		var exitCode int
+		oldExit := exitFunc
+		t.Cleanup(func() { exitFunc = oldExit })
+		exitFunc = func(code int) { exitCode = code; panic("exit") }
+
+		withArgs(t, "engram", "sync")
+		_, stderr := captureOutput(t, func() {
+			defer func() { recover() }() //nolint:errcheck
+			cmdSync(cfg)
+		})
+		if exitCode != 1 {
+			t.Fatalf("expected exitFunc(1), got %d", exitCode)
+		}
+		if !strings.Contains(stderr, "directory-name guess") {
+			t.Fatalf("expected a directory-name-guess refusal on stderr, got: %q", stderr)
+		}
+	})
+
+	t.Run("an explicit --project still syncs", func(t *testing.T) {
+		cfg := testConfig(t)
+		withArgs(t, "engram", "sync", "--project", "repo-name")
+		stdout, stderr := captureOutput(t, func() { cmdSync(cfg) })
+		if stderr != "" {
+			t.Fatalf("expected no stderr, got: %q", stderr)
+		}
+		if !strings.Contains(stdout, `Exporting memories for project "repo-name"`) {
+			t.Fatalf("expected explicit project message, got: %q", stdout)
+		}
+		if !strings.Contains(stdout, `Nothing new to sync for project "repo-name"`) {
+			t.Fatalf("expected no-data sync message, got: %q", stdout)
+		}
+	})
 }
 
 func TestMainVersionAndHelpAliases(t *testing.T) {
@@ -891,10 +929,14 @@ func TestCmdProjectsConsolidateNoSimilar(t *testing.T) {
 	}
 	withCwd(t, workDir)
 
-	// Stub detectProject to return the known canonical
-	old := detectProject
-	detectProject = func(string) string { return "unique-project" }
-	t.Cleanup(func() { detectProject = old })
+	// Stub detectProjectFull to return the known canonical from a git-backed
+	// source: consolidation picks the merge target from cwd detection, which
+	// must be a fact and not a directory-name guess (ADR-057 §3).
+	old := detectProjectFull
+	detectProjectFull = func(string) project.DetectionResult {
+		return project.DetectionResult{Project: "unique-project", Source: project.SourceGitRoot}
+	}
+	t.Cleanup(func() { detectProjectFull = old })
 
 	withArgs(t, "engram", "projects", "consolidate")
 	stdout, stderr := captureOutput(t, func() { cmdProjectsConsolidate(cfg) })
@@ -913,9 +955,11 @@ func TestCmdProjectsConsolidateDryRun(t *testing.T) {
 	mustSeedObservation(t, cfg, "s-eng", "engram", "note", "eng note", "content", "project")
 	mustSeedObservation(t, cfg, "s-engm", "engram-memory", "note", "engm note", "content", "project")
 
-	old := detectProject
-	detectProject = func(string) string { return "engram" }
-	t.Cleanup(func() { detectProject = old })
+	old := detectProjectFull
+	detectProjectFull = func(string) project.DetectionResult {
+		return project.DetectionResult{Project: "engram", Source: project.SourceGitRoot}
+	}
+	t.Cleanup(func() { detectProjectFull = old })
 
 	withArgs(t, "engram", "projects", "consolidate", "--dry-run")
 	stdout, stderr := captureOutput(t, func() { cmdProjectsConsolidate(cfg) })
@@ -948,9 +992,11 @@ func TestCmdProjectsConsolidateSingleProject(t *testing.T) {
 	mustSeedObservation(t, cfg, "s-eng", "engram", "note", "eng note", "content", "project")
 	mustSeedObservation(t, cfg, "s-engm", "engram-memory", "note", "engm note", "content", "project")
 
-	old := detectProject
-	detectProject = func(string) string { return "engram" }
-	t.Cleanup(func() { detectProject = old })
+	old := detectProjectFull
+	detectProjectFull = func(string) project.DetectionResult {
+		return project.DetectionResult{Project: "engram", Source: project.SourceGitRoot}
+	}
+	t.Cleanup(func() { detectProjectFull = old })
 
 	// Stub scanInputLine to answer "all"
 	oldScan := scanInputLine
@@ -983,6 +1029,34 @@ func TestCmdProjectsConsolidateSingleProject(t *testing.T) {
 	}
 	if len(names) != 1 || names[0] != "engram" {
 		t.Fatalf("expected only 'engram' after merge, got: %v", names)
+	}
+}
+
+// TestCmdProjectsConsolidateRejectsDirBasenameGuess: single-project mode has
+// no --project flag at all, so a directory-name guess used to be the only
+// way it ever picked a merge target. Consolidation moves every "similar"
+// existing project's memories into that target, which is exactly the class
+// of write ADR-057 §3 says must not accept a guess in silence.
+func TestCmdProjectsConsolidateRejectsDirBasenameGuess(t *testing.T) {
+	cfg := testConfig(t)
+	workDir := t.TempDir()
+	withCwd(t, workDir)
+
+	var exitCode int
+	oldExit := exitFunc
+	t.Cleanup(func() { exitFunc = oldExit })
+	exitFunc = func(code int) { exitCode = code; panic("exit") }
+
+	withArgs(t, "engram", "projects", "consolidate")
+	_, stderr := captureOutput(t, func() {
+		defer func() { recover() }() //nolint:errcheck
+		cmdProjectsConsolidate(cfg)
+	})
+	if exitCode != 1 {
+		t.Fatalf("expected exitFunc(1), got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "directory-name guess") {
+		t.Fatalf("expected a directory-name-guess refusal on stderr, got: %q", stderr)
 	}
 }
 
@@ -1105,16 +1179,23 @@ func TestCmdMCPDetectsProjectFromGit(t *testing.T) {
 	}
 }
 
+// TestCmdSyncUsesDetectProject pins that cmdSync's default (no --project, no
+// --all) project comes from detectProjectFull, not filepath.Base. It mocks
+// detectProjectFull with a git-backed source (SourceGitRoot): per ADR-057
+// §3, sync decides where data lands, so only a fact-backed source may be
+// used silently — a directory-name guess is refused instead (see
+// TestCmdSyncRejectsDirBasenameGuess).
 func TestCmdSyncUsesDetectProject(t *testing.T) {
 	workDir := t.TempDir()
 	withCwd(t, workDir)
 
 	cfg := testConfig(t)
 
-	// Stub detectProject to verify it's called instead of filepath.Base
-	old := detectProject
-	t.Cleanup(func() { detectProject = old })
-	detectProject = func(dir string) string { return "git-detected-project" }
+	old := detectProjectFull
+	t.Cleanup(func() { detectProjectFull = old })
+	detectProjectFull = func(dir string) project.DetectionResult {
+		return project.DetectionResult{Project: "git-detected-project", Source: project.SourceGitRoot}
+	}
 
 	withArgs(t, "engram", "sync")
 	stdout, stderr := captureOutput(t, func() { cmdSync(cfg) })
@@ -1122,7 +1203,41 @@ func TestCmdSyncUsesDetectProject(t *testing.T) {
 		t.Fatalf("expected no stderr, got: %q", stderr)
 	}
 	if !strings.Contains(stdout, "git-detected-project") {
-		t.Fatalf("expected detectProject result in output, got: %q", stdout)
+		t.Fatalf("expected detectProjectFull result in output, got: %q", stdout)
+	}
+}
+
+// TestCmdSyncRejectsDirBasenameGuess ties the ADR-057 write-decider rule to
+// the CLI's local sync path named explicitly in that decision: without
+// --project, --all, or a git-backed cwd, `engram sync` must refuse to scope
+// an export/import to a directory-name guess instead of silently using it.
+func TestCmdSyncRejectsDirBasenameGuess(t *testing.T) {
+	workDir := t.TempDir()
+	withCwd(t, workDir)
+
+	cfg := testConfig(t)
+
+	old := detectProjectFull
+	t.Cleanup(func() { detectProjectFull = old })
+	detectProjectFull = func(dir string) project.DetectionResult {
+		return project.DetectionResult{Project: "guessed-from-dir", Source: project.SourceDirBasename, Path: dir}
+	}
+
+	var exitCode int
+	oldExit := exitFunc
+	t.Cleanup(func() { exitFunc = oldExit })
+	exitFunc = func(code int) { exitCode = code; panic("exit") }
+
+	withArgs(t, "engram", "sync")
+	_, stderr := captureOutput(t, func() {
+		defer func() { recover() }() //nolint:errcheck
+		cmdSync(cfg)
+	})
+	if exitCode != 1 {
+		t.Fatalf("expected exitFunc(1), got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "directory-name guess") {
+		t.Fatalf("expected a directory-name-guess refusal on stderr, got: %q", stderr)
 	}
 }
 

@@ -933,33 +933,52 @@ func cmdTUI(cfg store.Config) {
 // (or --project=) flag first, then ENGRAM_PROJECT, then cwd detection. An
 // empty result means no project was resoluble, so the workspace opens on its
 // no-project home instead of a Dashboard.
+//
+// cwd detection only counts as resoluble when project.DetectProjectFull backs
+// it with a fact (a git-derived source or repo config) — a directory-name
+// guess (project.SourceDirBasename) is deliberately treated the same as no
+// detection at all, per ADR-057 §3: without this, DetectProject's bare
+// string never came back empty, so a non-git directory always looked
+// resoluble and rfc-tui.md §9.1's Selector fallback could never be reached.
 func resolveTUIProject() string {
-	project := ""
+	resolved := ""
 	for i := 2; i < len(os.Args); i++ {
 		switch {
 		case os.Args[i] == "--project" && i+1 < len(os.Args):
-			project = os.Args[i+1]
+			resolved = os.Args[i+1]
 			i++
 		case strings.HasPrefix(os.Args[i], "--project="):
-			project = strings.TrimPrefix(os.Args[i], "--project=")
+			resolved = strings.TrimPrefix(os.Args[i], "--project=")
 		}
 	}
-	if project == "" {
-		project = strings.TrimSpace(os.Getenv("ENGRAM_PROJECT"))
+	if resolved == "" {
+		resolved = strings.TrimSpace(os.Getenv("ENGRAM_PROJECT"))
 	}
-	if project == "" {
+	if resolved == "" {
 		if cwd, err := os.Getwd(); err == nil {
-			project = detectProject(cwd)
+			if det := detectProjectFull(cwd); det.Error == nil && !project.IsGuessedSource(det.Source) {
+				resolved = det.Project
+			}
 		}
 	}
-	if project == "" {
+	if resolved == "" {
 		return ""
 	}
-	normalized, warning := store.NormalizeProject(project)
+	normalized, warning := store.NormalizeProject(resolved)
 	if warning != "" {
 		fmt.Fprintln(os.Stderr, warning)
 	}
 	return normalized
+}
+
+// isGuessedProjectSource reports whether a detectProjectFull source is a
+// directory-name guess rather than a fact the detector actually knows
+// (ADR-057 §3). It exists as a plain function, not a direct
+// project.IsGuessedSource call, because several call sites below name a
+// local "project" variable that would otherwise shadow the project package
+// import.
+func isGuessedProjectSource(source string) bool {
+	return project.IsGuessedSource(source)
 }
 
 // resolveTUITheme extracts the three raw candidates rfc-tui.md §8.2's
@@ -1557,9 +1576,28 @@ func cmdSync(cfg store.Config) {
 	// Default project using git detection (so sync only exports
 	// memories for THIS project, not everything in the global DB).
 	// --all skips project filtering entirely — exports everything.
+	//
+	// Local export is the one operation below that actually uses project to
+	// decide where data lands (it filters which memories go into the
+	// exported chunk); --status and --import do not consume it at all for
+	// local sync. So cwd detection failing here is remembered, not fataled
+	// immediately: cloud sync already demands an explicit --project on its
+	// own (below), and a plain --status/--import must not be refused over a
+	// project value it was never going to use. Only the export path checks
+	// projectResolutionErr before it would silently scope to a
+	// directory-name guess (ADR-057 §3).
+	var projectResolutionErr error
 	if !doAll && project == "" {
 		if cwd, err := os.Getwd(); err == nil {
-			project = detectProject(cwd)
+			det := detectProjectFull(cwd)
+			switch {
+			case det.Error != nil:
+				projectResolutionErr = fmt.Errorf("cannot determine project for sync: %w (use --project or --all)", det.Error)
+			case isGuessedProjectSource(det.Source):
+				projectResolutionErr = fmt.Errorf("project is not resolvable from %q: only a directory-name guess was found; use --project, set ENGRAM_PROJECT, or --all", det.Path)
+			default:
+				project = det.Project
+			}
 		}
 	}
 	if project != "" {
@@ -1695,7 +1733,12 @@ func cmdSync(cfg store.Config) {
 		return
 	}
 
-	// Export: DB → new chunk
+	// Export: DB → new chunk. This is the operation project actually scopes
+	// for local sync, so a detection failure remembered above is fatal here
+	// and not before (see the comment where projectResolutionErr is set).
+	if !doAll && projectResolutionErr != nil {
+		fatal(projectResolutionErr)
+	}
 	username := engramsync.GetUsername()
 	if doAll {
 		fmt.Println("Exporting ALL memories (all projects)...")
@@ -2121,12 +2164,23 @@ func cmdProjectsConsolidate(cfg store.Config) {
 	defer s.Close()
 
 	if !doAll {
-		// Single-project mode: detect canonical project for cwd, find variants
+		// Single-project mode: detect canonical project for cwd, find variants.
+		// Consolidation decides where a whole set of existing memories lands
+		// (everything similar to "canonical" is merged into it), so cwd
+		// detection must be backed by a fact — a directory-name guess is
+		// refused instead of silently naming the merge target (ADR-057 §3).
 		cwd, err := os.Getwd()
 		if err != nil {
 			fatal(err)
 		}
-		canonical := detectProject(cwd)
+		det := detectProjectFull(cwd)
+		if det.Error != nil {
+			fatal(fmt.Errorf("cannot determine the canonical project to consolidate: %w (use --all, or run from a resolvable project directory)", det.Error))
+		}
+		if isGuessedProjectSource(det.Source) {
+			fatal(fmt.Errorf("project is not resolvable from %q: only a directory-name guess was found; run from inside a git repository, or use --all", det.Path))
+		}
+		canonical := det.Project
 
 		allNames, err := s.ListProjectNames()
 		if err != nil {

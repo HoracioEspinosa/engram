@@ -21,6 +21,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/cloud/constants"
 	"github.com/HoracioEspinosa/engram/internal/cloud/remote"
 	"github.com/HoracioEspinosa/engram/internal/mcp"
+	projectpkg "github.com/HoracioEspinosa/engram/internal/project"
 	engramsrv "github.com/HoracioEspinosa/engram/internal/server"
 	"github.com/HoracioEspinosa/engram/internal/setup"
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -558,13 +559,21 @@ func TestCmdMCPAndTUIBranches(t *testing.T) {
 // fix, cmdTUI never read os.Args at all — `engram tui --project nextcloud`
 // silently opened the workspace with no project, never the Dashboard, which
 // is exactly the closing criterion roadmap task T-10.02 fixes.
+//
+// The cwd-detection case mocks detectProjectFull with a git-backed source
+// (SourceGitRoot), not the bare detectProject wrapper: per ADR-057 §3, cwd
+// detection only counts as resoluble when it is backed by a fact, and a
+// mock that could never come from the real detector would not exercise
+// that distinction.
 func TestCmdTUIResolvesProjectPrecedence(t *testing.T) {
 	cfg := testConfig(t)
 	stubRuntimeHooks(t)
 
-	oldDetect := detectProject
-	detectProject = func(string) string { return "cwd-detected" }
-	t.Cleanup(func() { detectProject = oldDetect })
+	oldDetectFull := detectProjectFull
+	detectProjectFull = func(string) projectpkg.DetectionResult {
+		return projectpkg.DetectionResult{Project: "cwd-detected", Source: projectpkg.SourceGitRoot}
+	}
+	t.Cleanup(func() { detectProjectFull = oldDetectFull })
 
 	tests := []struct {
 		name string
@@ -610,33 +619,63 @@ func TestCmdTUIResolvesProjectPrecedence(t *testing.T) {
 // rfc-tui.md §9.1: "sin proyecto resoluble se abre S1" needs an empty
 // project, not a guess, once the flag, the env var and cwd detection all
 // come up empty.
+//
+// Both subtests mock detectProjectFull, not the bare detectProject wrapper:
+// project.DetectProject never returns "" (it falls back to a directory-name
+// guess, and "unknown" as a last resort), so a mock returning "" described a
+// case the real detector can never produce and never exercised rfc-tui.md
+// §9.1's Selector fallback end to end. "guess only" is the realistic shape
+// of "nothing resolves" — ADR-057 §3 is what makes it count as unresolved
+// here; ambiguous is the other real case (DetectProjectFull.Error != nil).
 func TestCmdTUILeavesProjectEmptyWhenNothingResolves(t *testing.T) {
-	cfg := testConfig(t)
-	stubRuntimeHooks(t)
-	withArgs(t, "engram", "tui")
-	t.Setenv("ENGRAM_PROJECT", "")
-
-	oldDetect := detectProject
-	detectProject = func(string) string { return "" }
-	t.Cleanup(func() { detectProject = oldDetect })
-
-	var gotProject string
-	sawCall := false
-	newTUIModel = func(_ *store.Store, project string, _ theme.Palette) tui.Model {
-		sawCall = true
-		gotProject = project
-		return tui.New(nil, "", "", theme.CatppuccinMocha())
+	cases := []struct {
+		name string
+		det  func(string) projectpkg.DetectionResult
+	}{
+		{
+			name: "only a directory-name guess is available",
+			det: func(string) projectpkg.DetectionResult {
+				return projectpkg.DetectionResult{Project: "guessed-from-dir", Source: projectpkg.SourceDirBasename}
+			},
+		},
+		{
+			name: "cwd is ambiguous",
+			det: func(string) projectpkg.DetectionResult {
+				return projectpkg.DetectionResult{Source: projectpkg.SourceAmbiguous, Error: projectpkg.ErrAmbiguousProject}
+			},
+		},
 	}
 
-	_, _, recovered := captureOutputAndRecover(t, func() { cmdTUI(cfg) })
-	if recovered != nil {
-		t.Fatalf("cmdTUI panicked: %v", recovered)
-	}
-	if !sawCall {
-		t.Fatal("newTUIModel was never called")
-	}
-	if gotProject != "" {
-		t.Fatalf("project = %q, want empty when nothing resolves", gotProject)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testConfig(t)
+			stubRuntimeHooks(t)
+			withArgs(t, "engram", "tui")
+			t.Setenv("ENGRAM_PROJECT", "")
+
+			oldDetectFull := detectProjectFull
+			detectProjectFull = tc.det
+			t.Cleanup(func() { detectProjectFull = oldDetectFull })
+
+			var gotProject string
+			sawCall := false
+			newTUIModel = func(_ *store.Store, project string, _ theme.Palette) tui.Model {
+				sawCall = true
+				gotProject = project
+				return tui.New(nil, "", "", theme.CatppuccinMocha())
+			}
+
+			_, _, recovered := captureOutputAndRecover(t, func() { cmdTUI(cfg) })
+			if recovered != nil {
+				t.Fatalf("cmdTUI panicked: %v", recovered)
+			}
+			if !sawCall {
+				t.Fatal("newTUIModel was never called")
+			}
+			if gotProject != "" {
+				t.Fatalf("project = %q, want empty when nothing resolves", gotProject)
+			}
+		})
 	}
 }
 
@@ -2942,7 +2981,10 @@ func TestCmdSyncAdditionalBranches(t *testing.T) {
 			t.Fatalf("write manifest: %v", err)
 		}
 
-		withArgs(t, "engram", "sync")
+		// workDir has no git repo; export is the one sync path that consumes
+		// project (ADR-057 §3), so an explicit --project is required to reach
+		// the manifest-parsing code this subtest actually exercises.
+		withArgs(t, "engram", "sync", "--project", "export-parse-error-project")
 		_, stderr, recovered := captureOutputAndRecover(t, func() { cmdSync(cfg) })
 		if _, ok := recovered.(exitCode); !ok {
 			t.Fatalf("expected fatal exit, got %v", recovered)
