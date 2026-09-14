@@ -1,0 +1,57 @@
+package shared
+
+import (
+	"strings"
+
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
+
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/x/ansi"
+)
+
+// hintSeparator joins the hints of a footer.
+const hintSeparator = " • "
+
+// hintIndent aligns the footer with the two-space gutter every list row uses.
+const hintIndent = "  "
+
+// HintsFrom renders a screen's footer from the bindings it declares.
+//
+// A screen declares its keys once, in Help(), and the footer is derived from
+// that declaration instead of being written out a second time by hand: a
+// footer maintained separately drifts from the keys the screen answers to,
+// and the reader trusts the footer.
+//
+// budget is the width in cells the footer may occupy. Hints are dropped from
+// the end until the line fits, and an ellipsis says that more exist — the
+// first hints are the ones a screen leads with, so they are the ones worth
+// keeping. A budget of zero or less means no limit.
+func HintsFrom(st theme.Styles, bindings []key.Binding, budget int) string {
+	hints := make([]string, 0, len(bindings))
+	for _, b := range bindings {
+		h := b.Help()
+		if !b.Enabled() || h.Key == "" || h.Desc == "" {
+			continue
+		}
+		hints = append(hints, h.Key+" "+h.Desc)
+	}
+	if len(hints) == 0 {
+		return ""
+	}
+
+	line := hintIndent + strings.Join(hints, hintSeparator)
+	if budget > 0 && ansi.StringWidth(line) > budget {
+		for len(hints) > 1 {
+			hints = hints[:len(hints)-1]
+			line = hintIndent + strings.Join(hints, hintSeparator) + hintSeparator + "…"
+			if ansi.StringWidth(line) <= budget {
+				break
+			}
+		}
+		if len(hints) == 1 {
+			line = Truncate(hintIndent+hints[0], budget)
+		}
+	}
+
+	return st.Help.Render(line)
+}

@@ -150,8 +150,10 @@ func TestViewRendersTheMenu(t *testing.T) {
 	if !strings.Contains(out, "▸ View status") {
 		t.Fatal("view should mark the item under the cursor")
 	}
-	if !strings.Contains(out, "esc/q back") {
-		t.Fatal("view should render the help footer")
+	// The footer belongs to the root frame now: the tab declares its keys in
+	// Help() and prints none of them itself.
+	if strings.Contains(out, "esc/q back") {
+		t.Fatal("the tab should declare its keys, not print a footer of its own")
 	}
 }
 

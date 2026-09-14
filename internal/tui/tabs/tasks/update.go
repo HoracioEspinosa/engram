@@ -182,10 +182,7 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 		// short, since that is the only "was this the last page" signal
 		// store.ListTasks gives back through TaskReader (rfc-tui.md §9.2's
 		// list query carries no total, only LIMIT/OFFSET).
-		limit := m.Filter.Limit
-		if limit <= 0 {
-			limit = pageSize
-		}
+		limit := m.pageLimit()
 		if len(m.Items) < limit {
 			m.Filter.Offset = 0
 		} else {
@@ -193,7 +190,20 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 		}
 		m.Filter.Limit = limit
 		return m, loadTasks(m.reader, m.project, m.Filter)
-	case "r":
+	case "p":
+		// Step one page back. Unlike "n" this needs no total: the offset
+		// alone says whether there is a page behind this one, and the first
+		// page stays put rather than wrapping round to an end nobody can
+		// locate without a count.
+		limit := m.pageLimit()
+		if m.Filter.Offset == 0 {
+			return m, nil
+		}
+		m.Filter.Offset -= limit
+		if m.Filter.Offset < 0 {
+			m.Filter.Offset = 0
+		}
+		m.Filter.Limit = limit
 		return m, loadTasks(m.reader, m.project, m.Filter)
 	case "esc", "q":
 		return m, tabs.Home()
@@ -328,8 +338,6 @@ func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 			return m, nil
 		}
 		return m, shared.Copy(*task.Branch)
-	case "r":
-		return m, loadTaskDetail(m.reader, task.ID)
 	case "esc", "q":
 		m.Screen = ScreenList
 		return m, loadTasks(m.reader, m.project, m.Filter)
@@ -413,10 +421,6 @@ func (m Model) handleContextPackKeys(key string) (tabs.Tab, tea.Cmd) {
 		return m, shared.Copy(m.ContextPack)
 	case "w":
 		return m.writeContextPack()
-	case "r":
-		if m.Detail != nil {
-			return m, loadContextPack(m.reader, m.Detail.Task.ID)
-		}
 	case "esc", "q":
 		m.Screen = ScreenDetail
 	}

@@ -90,6 +90,13 @@ type dashboardLoadedMsg struct {
 // other two blocks so one project with a long tail never dwarfs the screen.
 const dashboardBlockLimit = 5
 
+// Widths of the task row's three leading columns, in terminal cells.
+const (
+	dashKeyCells   = 12
+	dashKindCells  = 10
+	dashStateCells = 16
+)
+
 // loadDashboard returns the command that loads every block of the Dashboard
 // for slug. The card fetch is load-bearing — without it there is no project
 // to show, so its error short-circuits the rest — but the four queries after
@@ -203,7 +210,6 @@ func (m Model) viewDashboard() string {
 	if !m.dashboard.loaded {
 		b.WriteString(m.styles.StatCard.Render("Loading " + m.project + "..."))
 		b.WriteString("\n")
-		b.WriteString(m.styles.Help.Render("  p project • q quit"))
 		return b.String()
 	}
 
@@ -213,7 +219,6 @@ func (m Model) viewDashboard() string {
 	b.WriteString(m.viewDashboardBlock("stale runbooks", dashBlockRunbooks, m.viewDashboardRunbooks()))
 	b.WriteString(m.viewDashboardBlock("latest evidence", dashBlockEvidence, m.viewDashboardEvidence()))
 
-	b.WriteString(m.styles.Help.Render("\n  1-5 tabs • j/k/h/l block • enter open block • p project • r refresh • q quit"))
 	return b.String()
 }
 
@@ -290,14 +295,10 @@ func (m Model) viewDashboardTasks() string {
 	}
 	var b strings.Builder
 	for _, t := range m.dashboard.tasks {
-		key := t.SyncID
-		if t.JiraKey != nil {
-			key = *t.JiraKey
-		}
 		b.WriteString(fmt.Sprintf("  %s %s %s %s\n",
-			m.styles.ID.Render(fmt.Sprintf("%-12s", key)),
-			m.styles.TypeBadge.Render(fmt.Sprintf("%-10s", t.Kind)),
-			m.styles.DetailValue.Render(fmt.Sprintf("%-16s", t.State)),
+			m.styles.ID.Render(shared.PadCells(shared.CutCells(t.Key(), dashKeyCells), dashKeyCells)),
+			m.styles.TypeBadge.Render(shared.PadCells(t.Kind, dashKindCells)),
+			m.styles.DetailValue.Render(shared.PadCells(t.State, dashStateCells)),
 			shared.Truncate(t.Title, 50)))
 	}
 	return b.String()

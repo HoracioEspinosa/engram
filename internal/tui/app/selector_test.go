@@ -82,20 +82,19 @@ func TestInitLoadsTheSelectorWhenStartingOnIt(t *testing.T) {
 	}
 }
 
-// TestPKeyOpensSelectorAndLoadsCards checks the global "p" binding works
-// from a tab, with no project active yet: the same "p" shortcut a real
-// session reaches by pressing a digit before it has activated a project
-// (T-10.02: a cold start with no resolvable project opens the selector
-// directly, so this case sets screenTab explicitly to exercise "p" from a
-// tab instead of from the selector it would otherwise already be on).
-func TestPKeyOpensSelectorAndLoadsCards(t *testing.T) {
+// TestProjectSelectorKeyOpensSelectorAndLoadsCards checks the global
+// ctrl+p binding works from a tab, with no project active yet (T-10.02: a
+// cold start with no resolvable project opens the selector directly, so this
+// case sets screenTab explicitly to exercise the binding from a tab instead
+// of from the selector it would otherwise already be on).
+func TestProjectSelectorKeyOpensSelectorAndLoadsCards(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenTab
 	fake := &data.FakeProject{Cards: testSelectorCards()}
 	m.projects = fake
 	m.selector = newSelectorModel(fake)
 
-	m, cmd := step(t, m, tea.KeyMsg{Runes: []rune("p"), Type: tea.KeyRunes})
+	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyCtrlP})
 	if m.screen != screenSelector {
 		t.Fatalf("screen = %v, want screenSelector", m.screen)
 	}

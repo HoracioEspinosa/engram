@@ -45,11 +45,20 @@ var stateOptions = append(append([]string{}, tasksdomain.ActiveStates...), tasks
 // accepts; "" means no kind filter (rfc-tui.md §3.1 S3's "k filtro kind").
 var kindOptions = []string{"", "feature", "bugfix", "refactor", "incident", "migration", "spike"}
 
-// pageSize is how many tasks S3's "n" (next page) advances by. rfc-tui.md
-// §9.2's list query never fixes a page size; store.TaskListFilter defaults
-// to 20 when Limit is unset, so paging by the same number keeps one "page"
-// meaning the same thing whether or not the user ever presses "n".
+// pageSize is how many tasks the page keys move by. rfc-tui.md §9.2's list
+// query never fixes a page size; store.TaskListFilter defaults to 20 when
+// Limit is unset, so paging by the same number keeps one "page" meaning the
+// same thing whether or not the user ever presses a page key.
 const pageSize = 20
+
+// pageLimit is the page size in force: the filter's own, or the default when
+// it has none.
+func (m Model) pageLimit() int {
+	if m.Filter.Limit > 0 {
+		return m.Filter.Limit
+	}
+	return pageSize
+}
 
 // ─── messages (data loaded) ─────────────────────────────────────────────────
 

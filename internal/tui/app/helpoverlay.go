@@ -22,8 +22,9 @@ func (k rootHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{k.global, k.screen}
 }
 
-// selectorHelp lists S1's own bindings (rfc-tui.md §7.2), the same ones
-// viewSelector's footer already prints, plus "g"/"G".
+// selectorHelp lists S1's own bindings (rfc-tui.md §7.2). Both the "?"
+// overlay and the footer are rendered from it, so what the screen answers to
+// and what it advertises are one declaration.
 func selectorHelp() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("j/k", "move")),
@@ -36,13 +37,15 @@ func selectorHelp() []key.Binding {
 	}
 }
 
-// dashboardHelp lists S2's own bindings (rfc-tui.md §7.2), the same ones
-// viewDashboard's footer already prints, plus "g"/"G".
+// dashboardHelp lists S2's own bindings (rfc-tui.md §7.2). The blocks are
+// stacked, so only the vertical pair moves between them: h and l are reserved
+// for horizontal focus and do nothing here.
 func dashboardHelp() []key.Binding {
 	return []key.Binding{
-		key.NewBinding(key.WithKeys("up", "k", "down", "j", "h", "l"), key.WithHelp("j/k/h/l", "move block")),
+		key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("j/k", "move block")),
 		key.NewBinding(key.WithKeys("g", "G"), key.WithHelp("g/G", "top/bottom")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open block")),
+		key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 }

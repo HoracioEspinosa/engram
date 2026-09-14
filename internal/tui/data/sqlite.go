@@ -695,15 +695,12 @@ func (r sqliteRunbook) SearchRunbooks(project string, all bool, query string, li
 	return r.store.SearchRunbookIndex(query, project, limit)
 }
 
-// TaskKey returns the label a task is identified by everywhere in the TUI:
-// its Jira key, falling back to its SDD change slug, falling back to its
-// sync_id. It is the same precedence internal/project.BuildContextPack uses
-// for the context pack's own header, exported through data (rather than
-// tabs/tasks importing internal/project directly) so every tab stays on the
+// TaskKey returns the label a task is identified by everywhere in the TUI.
+// The store owns the precedence; data re-exports it so every tab stays on the
 // dependency rule in rfc-tui.md §4.1: a tab imports only data, theme and
 // shared.
 func TaskKey(t store.Task) string {
-	return project.TaskKey(t)
+	return t.Key()
 }
 
 // JiraURL returns the browse URL for a Jira key, using the same

@@ -8,6 +8,10 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 )
 
+// observationTypeCells is the width of the type badge shared by every
+// observation list, in terminal cells.
+const observationTypeCells = 12
+
 // ObservationLine is one row of the two-line observation list: an identity
 // line with badges and a dimmed content preview underneath.
 type ObservationLine struct {
@@ -51,7 +55,7 @@ func ObservationListItem(st theme.Styles, line ObservationLine) string {
 	rendered := fmt.Sprintf("%s%s %s%s%s %s%s  %s\n",
 		cursor,
 		st.ID.Render(fmt.Sprintf("#%-5d", line.ID)),
-		st.TypeBadge.Render(fmt.Sprintf("[%-12s]", line.Type)),
+		st.TypeBadge.Render("["+PadCells(line.Type, observationTypeCells)+"]"),
 		stateBadge,
 		pinBadge,
 		titleStyle.Render(Truncate(line.Title, 50)),

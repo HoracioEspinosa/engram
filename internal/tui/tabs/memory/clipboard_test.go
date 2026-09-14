@@ -233,60 +233,26 @@ func TestViewDoesNotShowCopyFeedbackWhenEmpty(t *testing.T) {
 	}
 }
 
-// ─── View: help text includes 'c copy' on relevant screens ───────────────────
+// ─── Help declares 'c copy' on every screen that answers it ──────────────────
 
-func TestViewRecentHelpTextIncludesCopy(t *testing.T) {
-	m := New(nil, "")
-	m.Width = 80
-	m.Height = 24
-	m.Screen = ScreenRecent
-	m.RecentObservations = []store.Observation{{ID: 1, Type: "decision", Title: "t", Content: "c"}}
+// TestHelpDeclaresCopyOnEveryScreenThatAnswersIt checks the declaration the
+// footer is rendered from. The screens print no footer of their own any more:
+// the root draws one from Help(), so a key that works and a key the user is
+// told about are the same list.
+func TestHelpDeclaresCopyOnEveryScreenThatAnswersIt(t *testing.T) {
+	for _, screen := range []Screen{ScreenRecent, ScreenSearchResults, ScreenObservationDetail, ScreenSessionDetail} {
+		m := New(nil, "")
+		m.Screen = screen
 
-	view := m.viewRecent()
-	if !strings.Contains(view, "c copy") {
-		t.Fatalf("recent screen help text should include 'c copy', got: %q", view[strings.LastIndex(view, "\n")-100:])
-	}
-}
-
-func TestViewSearchResultsHelpTextIncludesCopy(t *testing.T) {
-	m := New(nil, "")
-	m.Width = 80
-	m.Height = 24
-	m.Screen = ScreenSearchResults
-	m.SearchResults = []store.SearchResult{{Observation: store.Observation{ID: 1}}}
-
-	view := m.viewSearchResults()
-	if !strings.Contains(view, "c copy") {
-		t.Fatalf("search results help text should include 'c copy'")
-	}
-}
-
-func TestViewObservationDetailHelpTextIncludesCopy(t *testing.T) {
-	m := New(nil, "")
-	m.Width = 80
-	m.Height = 24
-	m.Screen = ScreenObservationDetail
-	m.SelectedObservation = &store.Observation{
-		ID: 1, Type: "decision", Title: "t", Content: "content",
-	}
-
-	view := m.viewObservationDetail()
-	if !strings.Contains(view, "c copy") {
-		t.Fatalf("observation detail help text should include 'c copy'")
-	}
-}
-
-func TestViewSessionDetailHelpTextIncludesCopy(t *testing.T) {
-	m := New(nil, "")
-	m.Width = 80
-	m.Height = 24
-	m.Screen = ScreenSessionDetail
-	m.Sessions = []store.SessionSummary{{ID: "s1", Project: "engram"}}
-	m.SelectedSessionIdx = 0
-	m.SessionObservations = []store.Observation{{ID: 1, Type: "decision", Title: "t", Content: "c"}}
-
-	view := m.viewSessionDetail()
-	if !strings.Contains(view, "c copy") {
-		t.Fatalf("session detail help text should include 'c copy'")
+		found := false
+		for _, b := range m.Help() {
+			if b.Help().Key == "c" && b.Help().Desc == "copy" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("screen %v answers \"c\" but does not declare it", screen)
+		}
 	}
 }

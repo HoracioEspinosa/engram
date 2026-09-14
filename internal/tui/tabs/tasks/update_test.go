@@ -292,6 +292,46 @@ func TestListNextPageAdvancesOffsetThenWrapsOnAShortPage(t *testing.T) {
 	}
 }
 
+// TestListPreviousPageStepsBackAndStopsAtTheFirst covers the other half of
+// the page pair. Unlike "n" it needs no total: the offset alone says whether
+// there is a page behind this one, so the first page stays put instead of
+// wrapping round to an end the reader cannot locate.
+func TestListPreviousPageStepsBackAndStopsAtTheFirst(t *testing.T) {
+	items := make([]store.TaskListItem, pageSize+5)
+	for i := range items {
+		items[i] = store.TaskListItem{Task: sampleTask(int64(i+1), fmt.Sprintf("ACME-%d", i+1), "open")}
+	}
+	fake := &data.FakeTask{ItemsByProject: map[string][]store.TaskListItem{"acme": items}}
+	m := New(fake).WithProject("acme")
+	m, _ = step(t, m, run(t, m.Init()))
+
+	updated, cmd := m.handleListKeys("n")
+	m = updated.(Model)
+	m, _ = step(t, m, run(t, cmd))
+	if m.Filter.Offset != pageSize {
+		t.Fatalf("offset after n = %d, want %d", m.Filter.Offset, pageSize)
+	}
+
+	updated, cmd = m.handleListKeys("p")
+	m = updated.(Model)
+	m, _ = step(t, m, run(t, cmd))
+	if m.Filter.Offset != 0 {
+		t.Fatalf("offset after p = %d, want back on the first page", m.Filter.Offset)
+	}
+	if len(m.Items) != pageSize {
+		t.Fatalf("first page = %d items, want the full %d back", len(m.Items), pageSize)
+	}
+
+	updated, cmd = m.handleListKeys("p")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("p on the first page should not re-query the store")
+	}
+	if m.Filter.Offset != 0 {
+		t.Fatalf("offset = %d, want the first page left alone", m.Filter.Offset)
+	}
+}
+
 func TestListEscGoesHome(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")
 	_, cmd := m.handleListKeys("esc")
@@ -1040,9 +1080,9 @@ func TestDetailRKeyReloadsTheTask(t *testing.T) {
 	m.Detail = &detail
 	m.Screen = ScreenDetail
 
-	_, cmd := m.handleDetailKeys("r")
+	cmd := m.Refresh()
 	if cmd == nil {
-		t.Fatal("r should reload the task detail")
+		t.Fatal("Refresh on the detail should reload the task")
 	}
 	m, _ = step(t, m, run(t, cmd))
 	if m.Detail == nil || len(m.Detail.Observations) != 1 {
@@ -1085,9 +1125,9 @@ func TestHandleContextPackKeysRRebuildsWhenDetailIsPresent(t *testing.T) {
 	m.Screen = ScreenContextPack
 	m.ContextPack = "# stale"
 
-	_, cmd := m.handleContextPackKeys("r")
+	cmd := m.Refresh()
 	if cmd == nil {
-		t.Fatal("r with a task loaded should rebuild the context pack")
+		t.Fatal("Refresh with a task loaded should rebuild the context pack")
 	}
 	m, _ = step(t, m, run(t, cmd))
 	if m.ContextPack != "# rebuilt" {

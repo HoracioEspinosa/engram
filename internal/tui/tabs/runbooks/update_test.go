@@ -619,13 +619,13 @@ func TestReloadKeyInTheViewReloadsMarkdown(t *testing.T) {
 	m.Screen = ScreenView
 	m.Selected = &item
 
-	_, cmd := m.handleViewKeys("r")
+	cmd := m.Refresh()
 	if cmd == nil {
-		t.Fatal("r should reload the markdown")
+		t.Fatal("Refresh on the view screen should reload the markdown")
 	}
 	msg, ok := run(t, cmd).(markdownLoadedMsg)
 	if !ok || msg.id != "RB-003" {
-		t.Fatalf("r produced %+v (ok=%v), want a markdownLoadedMsg for RB-003", run(t, cmd), ok)
+		t.Fatalf("Refresh produced %+v (ok=%v), want a markdownLoadedMsg for RB-003", run(t, cmd), ok)
 	}
 }
 

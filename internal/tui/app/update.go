@@ -2,7 +2,6 @@ package app
 
 import (
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
-	"github.com/HoracioEspinosa/engram/internal/tui/tabs/evidence"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -121,43 +120,8 @@ func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Ctrl+C is handled in Update, before updateActive is ever
 			// called, and Esc is not one of these keys at all).
 			if tab := m.tab(m.active); tab == nil || !tab.CapturingText() {
-				// rfc-tui.md §7.2's footnote on S7 swaps this pair on
-				// purpose: "p copia la ruta y el selector de proyecto se
-				// abre con P" — Evidence's detail screen needs lowercase
-				// "p" for its own copy action more than the global
-				// shortcut does, so on that one screen the global binding
-				// moves to uppercase "P" instead and lowercase falls
-				// through to the tab below.
-				onEvidenceDetail := m.active == tabs.Evidence && m.evidence.Screen == evidence.ScreenDetail
-				switch keyMsg.String() {
-				case "p":
-					if !onEvidenceDetail {
-						m.screen = screenSelector
-						return m, loadSelector(m.projects)
-					}
-				case "P":
-					if onEvidenceDetail {
-						m.screen = screenSelector
-						return m, loadSelector(m.projects)
-					}
-				case "0":
-					if m.project != "" {
-						m.screen = screenDashboard
-						return m, loadDashboard(m.projects, m.project)
-					}
-				}
-				if target, ok := digitTabs[keyMsg.String()]; ok {
-					return m.activate(target)
-				}
-				switch keyMsg.Type {
-				case tea.KeyTab:
-					return m.activateRelative(1)
-				case tea.KeyShiftTab:
-					return m.activateRelative(-1)
-				}
-				if keyMsg.String() == "?" {
-					m.showHelp = true
-					return m, nil
+				if handled, model, cmd := m.matchGlobal(keyMsg); handled {
+					return model, cmd
 				}
 			}
 		}
@@ -169,6 +133,74 @@ func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	updated, cmd := tab.Update(msg)
 	return m.withTab(m.active, updated), cmd
+}
+
+// matchGlobal answers the key bindings the root owns, for every screen.
+//
+// Every one of them goes through key.Matches against globalKeys: the keymap
+// is the declaration of what the root answers to, so a binding changed there
+// changes the behaviour, the "?" overlay and the footer at once. A literal
+// comparison here would let the three drift apart, which is what the keymap
+// existed to prevent.
+//
+// handled is false when the key belongs to the screen below, which is then
+// left to decide what it means.
+func (m Model) matchGlobal(msg tea.KeyMsg) (handled bool, model tea.Model, cmd tea.Cmd) {
+	switch {
+	case key.Matches(msg, globalKeys.ProjectSelector):
+		m.screen = screenSelector
+		return true, m, loadSelector(m.projects)
+
+	case key.Matches(msg, globalKeys.Dashboard):
+		if m.project == "" {
+			// Nothing to show a dashboard for. Swallow it anyway: the
+			// digit is the root's, and handing it to a tab would make it
+			// mean something else on one screen.
+			return true, m, nil
+		}
+		m.screen = screenDashboard
+		return true, m, loadDashboard(m.projects, m.project)
+
+	case key.Matches(msg, globalKeys.SwitchTab):
+		if target, ok := digitTabs[msg.String()]; ok {
+			model, cmd = m.activate(target)
+			return true, model, cmd
+		}
+		return true, m, nil
+
+	case key.Matches(msg, globalKeys.NextTab):
+		model, cmd = m.activateRelative(1)
+		return true, model, cmd
+
+	case key.Matches(msg, globalKeys.PrevTab):
+		model, cmd = m.activateRelative(-1)
+		return true, model, cmd
+
+	case key.Matches(msg, globalKeys.Refresh):
+		return true, m, m.refreshActiveScreen()
+
+	case key.Matches(msg, globalKeys.Help):
+		m.showHelp = true
+		return true, m, nil
+	}
+	return false, m, nil
+}
+
+// refreshActiveScreen returns the command that reloads whatever is on
+// display. Every screen owns a Refresh of its own; the root decides when it
+// runs, so "r" means the same thing everywhere instead of being reimplemented
+// once per screen.
+func (m Model) refreshActiveScreen() tea.Cmd {
+	switch m.screen {
+	case screenDashboard:
+		return loadDashboard(m.projects, m.project)
+	case screenSelector:
+		return loadSelector(m.projects)
+	}
+	if tab := m.tab(m.active); tab != nil {
+		return tab.Refresh()
+	}
+	return nil
 }
 
 // activateRelative moves delta slots through registered, wrapping at either
@@ -200,13 +232,17 @@ func (m Model) activateRelative(delta int) (tea.Model, tea.Cmd) {
 // Dashboard has no text input of its own, so unlike updateActive's tab
 // branch none of these need a CapturingText guard.
 func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if handled, model, cmd := m.matchGlobal(msg); handled {
+		return model, cmd
+	}
+
 	switch msg.String() {
-	case "j", "l":
-		// rfc-tui.md §7.2: h/l are the Dashboard's own aliases for j/k,
-		// alongside the vim-style pair every other screen already uses.
+	case "j":
+		// The blocks are stacked, so the vertical pair moves between them.
+		// h/l are reserved for horizontal focus and mean nothing here.
 		m.dashboard = m.dashboard.moveCursor(1)
 		return m, nil
-	case "k", "h":
+	case "k":
 		m.dashboard = m.dashboard.moveCursor(-1)
 		return m, nil
 	case "g":
@@ -220,29 +256,8 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// through it instead of guessing here: a block whose tab does not
 		// exist yet leaves the dashboard exactly as it was.
 		return m.activate(m.dashboard.cursor.target())
-	case "0":
-		return m, loadDashboard(m.projects, m.project)
-	case "p":
-		m.screen = screenSelector
-		return m, loadSelector(m.projects)
-	case "r":
-		return m, loadDashboard(m.projects, m.project)
-	case "?":
-		m.showHelp = true
-		return m, nil
 	case "q":
 		return m, tea.Quit
-	}
-	// rfc-tui.md §5's S2 footer: "1-5 tabs" — the Dashboard switches tabs by
-	// digit exactly like any tab screen does.
-	if target, ok := digitTabs[msg.String()]; ok {
-		return m.activate(target)
-	}
-	switch msg.Type {
-	case tea.KeyTab:
-		return m.activateRelative(1)
-	case tea.KeyShiftTab:
-		return m.activateRelative(-1)
 	}
 	return m, nil
 }
@@ -267,6 +282,17 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.selector = m.selector.applyFilter()
 			return m, cmd
 		}
+	}
+
+	// The Selector answers two of the root's bindings and no more: there is
+	// no project yet to number tabs for. Both go through the keymap so the
+	// footer and the "?" overlay keep naming the keys that actually work.
+	switch {
+	case key.Matches(msg, globalKeys.Refresh):
+		return m, loadSelector(m.projects)
+	case key.Matches(msg, globalKeys.Help):
+		m.showHelp = true
+		return m, nil
 	}
 
 	switch msg.String() {
@@ -317,11 +343,6 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenDashboard
 			return m, nil
 		}
-		return m, nil
-	case "r":
-		return m, loadSelector(m.projects)
-	case "?":
-		m.showHelp = true
 		return m, nil
 	case "q":
 		return m, tea.Quit

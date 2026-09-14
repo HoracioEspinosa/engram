@@ -2,7 +2,6 @@ package memory
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -271,29 +270,25 @@ func TestCapturingTextIncludesTheLinkPicker(t *testing.T) {
 	}
 }
 
-// TestFootersAdvertiseTheLinkToTaskKey pins rfc-tui.md §5's S10 wireframe,
-// which lists "L link to task" in Search Results' footer alongside its
-// other keys — the same always-on hint line "c copy" and "t timeline"
-// already get, not only the "?" overlay's Help().
-func TestFootersAdvertiseTheLinkToTaskKey(t *testing.T) {
-	m := New(nil, "")
+// TestHelpAdvertisesTheLinkToTaskKey pins rfc-tui.md §5's S10 wireframe,
+// which lists "L link to task" alongside the screen's other keys. The root
+// renders the footer from this declaration, so declaring it is what puts it
+// on the always-on hint line as well as in the "?" overlay.
+func TestHelpAdvertisesTheLinkToTaskKey(t *testing.T) {
+	for _, screen := range []Screen{ScreenSearchResults, ScreenRecent, ScreenObservationDetail} {
+		m := New(nil, "")
+		m.Screen = screen
 
-	m.Screen = ScreenSearchResults
-	m.SearchResults = []store.SearchResult{{Observation: store.Observation{ID: 1}}}
-	if out := m.View(); !strings.Contains(out, "L link to task") {
-		t.Fatalf("search results footer = %q, want it to mention L", out)
-	}
-
-	m.Screen = ScreenRecent
-	m.RecentObservations = []store.Observation{{ID: 1}}
-	if out := m.View(); !strings.Contains(out, "L link to task") {
-		t.Fatalf("recent footer = %q, want it to mention L", out)
-	}
-
-	m.Screen = ScreenObservationDetail
-	m.SelectedObservation = &store.Observation{ID: 1}
-	if out := m.View(); !strings.Contains(out, "L link to task") {
-		t.Fatalf("observation detail footer = %q, want it to mention L", out)
+		found := false
+		for _, b := range m.Help() {
+			if b.Help().Key == "L" && b.Help().Desc == "link to task" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("screen %v answers \"L\" but does not declare it", screen)
+		}
 	}
 }
 

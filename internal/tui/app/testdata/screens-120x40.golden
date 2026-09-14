@@ -30,7 +30,6 @@
       Cloud sync settings                                               
       Quit                                                              
                                                                         
-                                                                        
     j/k navigate • enter select • s search • q quit                     
                                                                         
 ═══ dashboard ═══
@@ -76,7 +75,6 @@
       Setup agent plugin                                                
       Cloud sync settings                                               
       Quit                                                              
-                                                                        
                                                                         
     j/k navigate • enter select • s search • q quit                     
                                                                         
@@ -126,7 +124,6 @@
       Cloud sync settings                                               
       Quit                                                              
                                                                         
-                                                                        
     j/k navigate • enter select • s search • q quit                     
                                                                         
 ═══ dashboard-update-failed ═══
@@ -175,7 +172,6 @@
       Cloud sync settings                                               
       Quit                                                              
                                                                         
-                                                                        
     j/k navigate • enter select • s search • q quit                     
                                                                         
 ═══ dashboard-with-error ═══
@@ -222,9 +218,9 @@
       Cloud sync settings                                               
       Quit                                                              
                                                                         
+   Error: database is locked                                            
                                                                         
     j/k navigate • enter select • s search • q quit                     
-   Error: database is locked                                            
                                                                         
 ═══ search-empty-input ═══
                                                                      
@@ -240,8 +236,7 @@
   └──────────────────────────────────────────────────────────────┘   
                                                                      
                                                                      
-                                                                     
-    Type a query and press enter • esc go back                       
+    enter search • esc back                                          
                                                                      
 ═══ search-typed-query ═══
                                                                        
@@ -257,8 +252,7 @@
   └─────────────────────────────────────────────────────────────────┘  
                                                                        
                                                                        
-                                                                       
-    Type a query and press enter • esc go back                         
+    enter search • esc back                                            
                                                                        
 ═══ search-results ═══
                                                                                                                         
@@ -277,8 +271,7 @@
     #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                   
       Rendered bytes must survive a package move untouched.                                                             
                                                                                                                         
-                                                                                                                        
-    j/k navigate • enter detail • c copy • t timeline • L link to task • / search • esc back                            
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • / search again • esc/q back   
                                                                                                                         
 ═══ search-results-scrolled ═══
                                                                                                                          
@@ -295,23 +288,21 @@
   ▸ #104   [note        ]  Golden files are the refactor oracle  2026-01-16 08:00:00                                     
       Rendered bytes must survive a package move untouched.                                                              
                                                                                                                          
-                                                                                                                         
-    j/k navigate • enter detail • c copy • t timeline • L link to task • / search • esc back                             
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • / search again • esc/q back    
                                                                                                                          
 ═══ search-results-empty ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Search: "no-such-thing" — 0 results                              
-                                                                     
-  ─────────────────────────────────────                              
-                                                                     
-                                                                     
-    No memories found. Try a different query.                        
-                                                                     
-                                                                     
-    / new search • esc back                                          
-                                                                     
+                                                                                                                       
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                    
+                                                                                                                       
+    Search: "no-such-thing" — 0 results                                                                                
+                                                                                                                       
+  ─────────────────────────────────────                                                                                
+                                                                                                                       
+                                                                                                                       
+    No memories found. Try a different query.                                                                          
+                                                                                                                       
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • / search again • esc/q back  
+                                                                                                                       
 ═══ recent ═══
                                                                                                                          
   0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
@@ -329,23 +320,21 @@
     #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                    
       Rendered bytes must survive a package move untouched.                                                              
                                                                                                                          
-                                                                                                                         
-    j/k navigate • enter detail • c copy • t timeline • L link to task • esc back                                        
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • esc/q back                     
                                                                                                                          
 ═══ recent-empty ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Recent Observations — 0 total                                    
-                                                                     
-  ───────────────────────────────                                    
-                                                                     
-                                                                     
-    No observations yet.                                             
-                                                                     
-                                                                     
-    esc back                                                         
-                                                                     
+                                                                                                      
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                   
+                                                                                                      
+    Recent Observations — 0 total                                                                     
+                                                                                                      
+  ───────────────────────────────                                                                     
+                                                                                                      
+                                                                                                      
+    No observations yet.                                                                              
+                                                                                                      
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • esc/q back  
+                                                                                                      
 ═══ recent-copy-feedback ═══
                                                                                                                          
   0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
@@ -363,9 +352,9 @@
     #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                    
       Rendered bytes must survive a package move untouched.                                                              
                                                                                                                          
-                                                                                                                         
-    j/k navigate • enter detail • c copy • t timeline • L link to task • esc back                                        
    ✓ Copied!                                                                                                             
+                                                                                                                         
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • esc/q back                     
                                                                                                                          
 ═══ observation-detail-loading ═══
                                                                      
@@ -377,6 +366,8 @@
                                                                      
                                                                      
     Loading...                                                       
+                                                                     
+    j/k scroll • c copy • t timeline • L link to task • esc/q back   
                                                                      
 ═══ observation-detail ═══
                                                                                                                       
@@ -404,8 +395,7 @@
     cannot appear. Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan        
     observations cannot appear.                                                                                       
                                                                                                                       
-                                                                                                                      
-    j/k scroll • c copy • t timeline • L link to task • esc back                                                      
+    j/k scroll • c copy • t timeline • L link to task • esc/q back                                                    
                                                                                                                       
 ═══ observation-detail-scrolled ═══
                                                                                                                       
@@ -432,8 +422,7 @@
     cannot appear. Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan        
     observations cannot appear.                                                                                       
                                                                                                                       
-                                                                                                                      
-    j/k scroll • c copy • t timeline • L link to task • esc back                                                      
+    j/k scroll • c copy • t timeline • L link to task • esc/q back                                                    
                                                                                                                       
 ═══ timeline-loading ═══
                                                                      
@@ -445,6 +434,8 @@
                                                                      
                                                                      
     Loading...                                                       
+                                                                     
+    j/k scroll • esc/q back                                          
                                                                      
 ═══ timeline ═══
                                                                                     
@@ -471,8 +462,7 @@
                                                                                     
     │ #103  [pattern     ]    Two-line list item                                    
                                                                                     
-                                                                                    
-    j/k scroll • esc back                                                           
+    j/k scroll • esc/q back                                                         
                                                                                     
 ═══ sessions ═══
                                                                                                      
@@ -487,23 +477,21 @@
     middleware            2026-01-17 12:15:00        11 obs    Traced the recovery lookup            
     portal                2026-01-18 16:20:00         1 obs                                          
                                                                                                      
-                                                                                                     
-    j/k navigate • enter view session • d delete • esc back                                          
+    j/k navigate • g/G top/bottom • enter view session • d delete • esc/q back                       
                                                                                                      
 ═══ sessions-empty ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Sessions — 0 total                                               
-                                                                     
-  ────────────────────                                               
-                                                                     
-                                                                     
-    No sessions yet.                                                 
-                                                                     
-                                                                     
-    esc back                                                         
-                                                                     
+                                                                                
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud             
+                                                                                
+    Sessions — 0 total                                                          
+                                                                                
+  ────────────────────                                                          
+                                                                                
+                                                                                
+    No sessions yet.                                                            
+                                                                                
+    j/k navigate • g/G top/bottom • enter view session • d delete • esc/q back  
+                                                                                
 ═══ sessions-delete-prompt ═══
                                                                                       
   0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                   
@@ -520,25 +508,25 @@
       Delete session "session-beta" from project "clarodrive"?                        
     Sessions with observations cannot be deleted; Engram will refuse unsafe deletes.  
                                                                                       
-                                                                                      
-    [y] Delete  [n] Cancel  [esc] Cancel                                              
+    y delete • n/esc cancel                                                           
                                                                                       
 ═══ sessions-deleting ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Sessions — 4 total                                               
-                                                                     
-  ────────────────────                                               
-                                                                     
-                                                                     
-                                                                     
-    Deleting Session                                                 
-                                                                     
-                                                                     
-      Deleting session "session-beta"...                             
-                                                                     
-                                                                     
+                                                                                
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud             
+                                                                                
+    Sessions — 4 total                                                          
+                                                                                
+  ────────────────────                                                          
+                                                                                
+                                                                                
+                                                                                
+    Deleting Session                                                            
+                                                                                
+                                                                                
+      Deleting session "session-beta"...                                        
+                                                                                
+    j/k navigate • g/G top/bottom • enter view session • d delete • esc/q back  
+                                                                                
 ═══ session-detail ═══
                                                                                                                         
   0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                     
@@ -561,8 +549,7 @@
     #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                   
       Rendered bytes must survive a package move untouched.                                                             
                                                                                                                         
-                                                                                                                        
-    j/k navigate • enter detail • c copy • t timeline • esc back                                                        
+    j/k navigate • enter detail • c copy • t timeline • esc/q back                                                      
                                                                                                                         
 ═══ session-detail-empty ═══
                                                                      
@@ -578,8 +565,7 @@
                                                                      
     No observations in this session.                                 
                                                                      
-                                                                     
-    esc back                                                         
+    j/k navigate • enter detail • c copy • t timeline • esc/q back   
                                                                      
 ═══ session-detail-not-found ═══
                                                                      
@@ -591,6 +577,8 @@
                                                                      
                                                                      
     Session not found.                                               
+                                                                     
+    j/k navigate • enter detail • c copy • t timeline • esc/q back   
                                                                      
 ═══ setup-select ═══
                                                                      
@@ -610,9 +598,7 @@
       OpenCode                                                       
           Install to:  /Users/dev/.config/opencode/plugins           
                                                                      
-                                                                     
-                                                                     
-    j/k navigate • enter install • esc back                          
+    j/k navigate • enter install • esc/q back                        
                                                                      
 ═══ setup-installing-opencode ═══
                                                                      
@@ -627,6 +613,7 @@
                                                                      
     Copying plugin file to plugins directory                         
                                                                      
+    j/k navigate • enter install • esc/q back                        
                                                                      
 ═══ setup-installing-claude-code ═══
                                                                      
@@ -641,6 +628,7 @@
                                                                      
     Running claude plugin marketplace add + install                  
                                                                      
+    j/k navigate • enter install • esc/q back                        
                                                                      
 ═══ setup-allowlist-prompt ═══
                                                                           
@@ -660,8 +648,7 @@
       Add engram tools to ~/.claude/settings.json allowlist?              
     This prevents Claude Code from asking permission on every tool call.  
                                                                           
-                                                                          
-    [y] Yes  [n] No                                                       
+    y allowlist • n/esc skip                                              
                                                                           
 ═══ setup-done-opencode ═══
                                                                      
@@ -681,8 +668,7 @@
     2. Plugin is auto-loaded from ~/.config/opencode/plugins/        
     3. Make sure 'engram' is in your MCP config (opencode.json)      
                                                                      
-                                                                     
-    enter/esc back to dashboard                                      
+    esc/q/enter back to dashboard                                    
                                                                      
 ═══ setup-done-claude-allowlisted ═══
                                                                      
@@ -702,8 +688,7 @@
     1. Restart Claude Code — the plugin is active immediately        
     2. Verify with: claude plugin list                               
                                                                      
-                                                                     
-    enter/esc back to dashboard                                      
+    esc/q/enter back to dashboard                                    
                                                                      
 ═══ setup-done-claude-allowlist-error ═══
                                                                      
@@ -724,8 +709,7 @@
     1. Restart Claude Code — the plugin is active immediately        
     2. Verify with: claude plugin list                               
                                                                      
-                                                                     
-    enter/esc back to dashboard                                      
+    esc/q/enter back to dashboard                                    
                                                                      
 ═══ setup-failed ═══
                                                                      
@@ -737,9 +721,7 @@
                                                                      
      ✗ Installation failed: network unreachable                      
                                                                      
-                                                                     
-                                                                     
-    enter/esc back to dashboard                                      
+    esc/q/enter back to dashboard                                    
                                                                      
 ═══ cloud-settings ═══
                                                                      
@@ -755,7 +737,6 @@
    ▸ Enroll projects                                                 
       Back                                                           
                                                                      
-                                                                     
     j/k navigate • enter select • esc/q back                         
                                                                      
 ═══ unknown-screen ═══
@@ -763,4 +744,6 @@
   0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
                                                                      
   Unknown screen                                                     
+                                                                     
+    j/k navigate • enter select • s search • q quit                  
                                                                      

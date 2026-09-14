@@ -1,10 +1,22 @@
 package memory
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/key"
 )
+
+// helpKeys renders a screen's declaration the way the footer does, so a test
+// can assert on what the user is told in one string.
+func helpKeys(bindings []key.Binding) string {
+	hints := make([]string, 0, len(bindings))
+	for _, b := range bindings {
+		h := b.Help()
+		hints = append(hints, h.Key+" "+h.Desc)
+	}
+	return strings.Join(hints, " • ")
+}
 
 // TestHelpVariesAcrossScreens pins that the "?" overlay (rfc-tui.md §7.1)
 // tracks whichever of Memory's nine screens is on display, not a fixed list.
