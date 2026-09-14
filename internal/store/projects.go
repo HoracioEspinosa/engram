@@ -61,6 +61,27 @@ type ProjectCard struct {
 	Owner            *string `json:"owner,omitempty"`
 	CreatedAt        string  `json:"created_at"`
 	UpdatedAt        string  `json:"updated_at"`
+
+	// ParentSlug and Depth place the card in the project tree. Only
+	// SetProjectParent writes them, so the pair stays consistent with the
+	// subtree below it.
+	ParentSlug *string `json:"parent_slug,omitempty"`
+	Depth      int     `json:"depth"`
+	// Kind, Description, Icon, Color and Tags are what a person chooses about
+	// a project. Colour is a role token or an #rrggbb triple; the renderer
+	// resolves the token against whichever palette is active.
+	Kind        string  `json:"kind"`
+	Description *string `json:"description,omitempty"`
+	Icon        *string `json:"icon,omitempty"`
+	Color       *string `json:"color,omitempty"`
+	Tags        *string `json:"tags,omitempty"`
+	// GraphStaleReason, GraphChangedFiles and GraphCheckedAt record the last
+	// staleness verdict for this checkout. They never replicate: a graph is
+	// fresh or stale relative to the working copy on this machine, and another
+	// replica's answer says nothing about this one.
+	GraphStaleReason  *string `json:"graph_stale_reason,omitempty"`
+	GraphChangedFiles *int    `json:"graph_changed_files,omitempty"`
+	GraphCheckedAt    *string `json:"graph_checked_at,omitempty"`
 }
 
 // ProjectCardCounts backs the `counts` section of mem_project_card.
@@ -90,6 +111,9 @@ const cloudSyncTargetKeyPrefix = "cloud"
 // UpsertProjectCardParams holds the optional fields of mem_project_upsert.
 // A nil pointer means "omitted": UpsertProjectCard leaves that column
 // untouched on update, or applies its schema default on create.
+// The parent is deliberately absent: it is set through SetProjectParent, which
+// is the only path that can walk the ancestors, reject a cycle and rewrite the
+// depth of everything below the card.
 type UpsertProjectCardParams struct {
 	Slug             string
 	DisplayName      *string
@@ -100,6 +124,11 @@ type UpsertProjectCardParams struct {
 	KnowledgeHubPath *string
 	Owner            *string
 	GraphPath        *string
+	Kind             *string
+	Description      *string
+	Icon             *string
+	Color            *string
+	Tags             *string
 }
 
 // UpsertProjectCard creates or updates a project_cards row. It is idempotent:
@@ -148,14 +177,20 @@ func (s *Store) UpsertProjectCard(p UpsertProjectCardParams) (ProjectCard, bool,
 		// card can never exist locally without the mutation that replicates it
 		// (nor the other way round). This is the same atomicity contract
 		// mem_save already gives observations.
+		kind := "repo"
+		if p.Kind != nil && strings.TrimSpace(*p.Kind) != "" {
+			kind = strings.TrimSpace(*p.Kind)
+		}
 		if err := s.withTx(func(tx *sql.Tx) error {
 			if _, err := s.execHook(tx, `
 				INSERT INTO project_cards
 					(slug, sync_id, display_name, repo_url, default_branch, jira_project,
-					 jira_component, knowledge_hub_path, graph_path, owner, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					 jira_component, knowledge_hub_path, graph_path, owner, created_at, updated_at,
+					 kind, description, icon, color, tags)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				p.Slug, newSyncID("proj"), displayName, nullableStr(p.RepoURL), defaultBranch, jiraProject,
 				nullableStr(p.JiraComponent), nullableStr(p.KnowledgeHubPath), graphPath, nullableStr(p.Owner), now, now,
+				kind, nullableStr(p.Description), nullableStr(p.Icon), nullableStr(p.Color), nullableStr(p.Tags),
 			); err != nil {
 				return fmt.Errorf("engram-projects: insert project card: %w", err)
 			}
@@ -181,6 +216,11 @@ func (s *Store) UpsertProjectCard(p UpsertProjectCardParams) (ProjectCard, bool,
 		addSet("knowledge_hub_path", p.KnowledgeHubPath)
 		addSet("graph_path", p.GraphPath)
 		addSet("owner", p.Owner)
+		addSet("kind", p.Kind)
+		addSet("description", p.Description)
+		addSet("icon", p.Icon)
+		addSet("color", p.Color)
+		addSet("tags", p.Tags)
 		args = append(args, p.Slug)
 		if err := s.withTx(func(tx *sql.Tx) error {
 			if _, err := s.execHook(tx,
@@ -202,17 +242,27 @@ func (s *Store) UpsertProjectCard(p UpsertProjectCardParams) (ProjectCard, bool,
 	return card, created, nil
 }
 
+// projectCardSelectColumns is the read projection of a card, spelled once so a
+// column added to the row cannot reach one reader and miss another.
+const projectCardSelectColumns = `slug, display_name, repo_url, default_branch, jira_project,
+	jira_component, knowledge_hub_path, graph_path, graph_commit, graph_built_at, graph_summary,
+	owner, created_at, updated_at, parent_slug, depth, kind, description, icon, color, tags,
+	graph_stale_reason, graph_changed_files, graph_checked_at`
+
+func scanProjectCard(row interface{ Scan(dest ...any) error }) (ProjectCard, error) {
+	var c ProjectCard
+	err := row.Scan(&c.Slug, &c.DisplayName, &c.RepoURL, &c.DefaultBranch, &c.JiraProject,
+		&c.JiraComponent, &c.KnowledgeHubPath, &c.GraphPath, &c.GraphCommit, &c.GraphBuiltAt,
+		&c.GraphSummary, &c.Owner, &c.CreatedAt, &c.UpdatedAt, &c.ParentSlug, &c.Depth, &c.Kind,
+		&c.Description, &c.Icon, &c.Color, &c.Tags, &c.GraphStaleReason, &c.GraphChangedFiles,
+		&c.GraphCheckedAt)
+	return c, err
+}
+
 // GetProjectCard returns ErrNoProjectCard when the slug has no card yet.
 func (s *Store) GetProjectCard(slug string) (ProjectCard, error) {
-	var c ProjectCard
-	err := s.db.QueryRow(`
-		SELECT slug, display_name, repo_url, default_branch, jira_project, jira_component,
-		       knowledge_hub_path, graph_path, graph_commit, graph_built_at, graph_summary,
-		       owner, created_at, updated_at
-		FROM project_cards WHERE slug = ? AND deleted_at IS NULL`, slug,
-	).Scan(&c.Slug, &c.DisplayName, &c.RepoURL, &c.DefaultBranch, &c.JiraProject, &c.JiraComponent,
-		&c.KnowledgeHubPath, &c.GraphPath, &c.GraphCommit, &c.GraphBuiltAt, &c.GraphSummary,
-		&c.Owner, &c.CreatedAt, &c.UpdatedAt)
+	c, err := scanProjectCard(s.db.QueryRow(
+		`SELECT `+projectCardSelectColumns+` FROM project_cards WHERE slug = ? AND deleted_at IS NULL`, slug))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ProjectCard{}, ErrNoProjectCard
 	}
@@ -427,6 +477,39 @@ func (s *Store) StampProjectGraph(slug, graphCommit, graphBuiltAt string, graphS
 	})
 }
 
+// StampGraphStaleness persists the verdict of the last graph staleness check:
+// why the graph is or is not current, how many code files changed since it was
+// built, and when the question was asked.
+//
+// The three columns never leave this machine, so unlike StampProjectGraph this
+// writes no sync mutation and does not move updated_at: a local check is not an
+// edit of the card, and replicating it would let one checkout's answer overwrite
+// another's.
+//
+// It takes the fields rather than a GraphStaleness value for the same reason
+// StampProjectGraph takes a pre-rendered summary: the type that computes them
+// lives in internal/project, which already imports this package.
+func (s *Store) StampGraphStaleness(slug, reason string, changedFiles int, checkedAt string) error {
+	if _, err := s.execHook(s.db,
+		`UPDATE project_cards SET graph_stale_reason = ?, graph_changed_files = ?, graph_checked_at = ?
+		 WHERE slug = ?`,
+		nullableStr(trimToNil(reason)), changedFiles, nullableStr(trimToNil(checkedAt)), slug,
+	); err != nil {
+		return fmt.Errorf("engram-projects: stamp graph staleness: %w", err)
+	}
+	return nil
+}
+
+// trimToNil turns a blank string into a NULL column rather than an empty one,
+// so "not checked" and "checked, no reason" stay distinguishable.
+func trimToNil(v string) *string {
+	trimmed := strings.TrimSpace(v)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
 // nowUTC returns the current UTC time formatted like SQLite's datetime('now'),
 // for Go-side timestamps that must match store column formatting exactly.
 func (s *Store) nowUTC() string {
@@ -454,10 +537,7 @@ type ProjectCardListItem struct {
 // eight aggregate queries per card, which the TUI selector wants and a plain
 // pointer lookup does not.
 func (s *Store) ListProjectCards(includeCounts bool) ([]ProjectCardListItem, int, error) {
-	rows, err := s.db.Query(`
-		SELECT slug, display_name, repo_url, default_branch, jira_project, jira_component,
-		       knowledge_hub_path, graph_path, graph_commit, graph_built_at, graph_summary,
-		       owner, created_at, updated_at
+	rows, err := s.db.Query(`SELECT ` + projectCardSelectColumns + `
 		FROM project_cards WHERE deleted_at IS NULL ORDER BY updated_at DESC, slug ASC`)
 	if err != nil {
 		return nil, 0, fmt.Errorf("engram-projects: list project cards: %w", err)
@@ -467,10 +547,8 @@ func (s *Store) ListProjectCards(includeCounts bool) ([]ProjectCardListItem, int
 	// otherwise they block forever waiting for the connection it holds.
 	var cards []ProjectCard
 	for rows.Next() {
-		var c ProjectCard
-		if err := rows.Scan(&c.Slug, &c.DisplayName, &c.RepoURL, &c.DefaultBranch, &c.JiraProject,
-			&c.JiraComponent, &c.KnowledgeHubPath, &c.GraphPath, &c.GraphCommit, &c.GraphBuiltAt,
-			&c.GraphSummary, &c.Owner, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		c, err := scanProjectCard(rows)
+		if err != nil {
 			rows.Close()
 			return nil, 0, fmt.Errorf("engram-projects: scan project card: %w", err)
 		}

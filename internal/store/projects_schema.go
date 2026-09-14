@@ -12,7 +12,76 @@ import (
 // anything else, so this pragma is reserved exclusively for this
 // extension and is safe to read from outside the store package (see
 // ProjectsSchemaStatus).
-const ProjectsSchemaVersion = 2
+//
+// Version 3 adds the workspace shape on top of version 2: the project
+// hierarchy, project aliases, vault-aware tasks, categorised evidence and
+// task-scoped benchmarks. The stamp is a diagnostic label, not a precondition:
+// which steps still have to run is decided by the migration ledger, one row per
+// step, so a database that stops halfway resumes exactly where it stopped.
+const ProjectsSchemaVersion = 3
+
+// projectsMigrationIDs lists the ledger ids of the engram-projects steps that
+// take a version-2 database to version 3, in the order they must run.
+const (
+	// projCardsHierarchyID adds the parent/kind/appearance columns to
+	// project_cards, plus the three local columns that record the last graph
+	// staleness check.
+	projCardsHierarchyID = "proj-0001-cards-hierarchy"
+)
+
+// projectsHierarchyDDL is the proj-0001-cards-hierarchy step. It is written as
+// ALTER TABLE rather than folded into projectsSchemaDDL because an existing
+// database must gain the columns without its rows being rewritten: a card is
+// the anchor of every task, evidence row and runbook, and a rebuild here would
+// cost a full-file backup for nine columns that all have a default.
+//
+// The CHECK on icon and color is spelled as a pair of GLOBs rather than one,
+// because GLOB's `*` matches any run of characters rather than repeating the
+// class before it. `name GLOB '[a-z]*'` fixes the first character and
+// `name NOT GLOB '*[^a-z0-9-]*'` rejects every character outside the set, which
+// together say what a single regular expression would.
+const projectsHierarchyDDL = `
+ALTER TABLE project_cards ADD COLUMN parent_slug TEXT
+    REFERENCES project_cards(slug) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE project_cards ADD COLUMN depth INTEGER NOT NULL DEFAULT 0
+    CHECK (depth BETWEEN 0 AND 3);
+ALTER TABLE project_cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'repo'
+    CHECK (kind IN ('umbrella','repo','instance','service','dataset','knowledge'));
+ALTER TABLE project_cards ADD COLUMN description TEXT
+    CHECK (description IS NULL OR length(description) <= 1000);
+ALTER TABLE project_cards ADD COLUMN icon TEXT
+    CHECK (icon IS NULL OR (icon GLOB '[a-z]*' AND icon NOT GLOB '*[^a-z0-9-]*'));
+ALTER TABLE project_cards ADD COLUMN color TEXT
+    CHECK (color IS NULL
+           OR color GLOB '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
+           OR (color GLOB '[a-z]*' AND color NOT GLOB '*[^a-z0-9-]*'));
+ALTER TABLE project_cards ADD COLUMN tags TEXT
+    CHECK (tags IS NULL OR (json_valid(tags) AND json_type(tags) = 'array'));
+ALTER TABLE project_cards ADD COLUMN graph_stale_reason TEXT;
+ALTER TABLE project_cards ADD COLUMN graph_changed_files INTEGER;
+ALTER TABLE project_cards ADD COLUMN graph_checked_at TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_project_cards_parent ON project_cards(parent_slug, slug);
+CREATE INDEX IF NOT EXISTS idx_project_cards_kind   ON project_cards(kind, updated_at DESC);
+
+-- Safety net for a parent written by raw SQL. The real cycle check lives in
+-- SetProjectParent: SQLite has no WITH RECURSIVE inside a trigger, so a trigger
+-- can only see one level and would let a longer cycle through.
+CREATE TRIGGER IF NOT EXISTS project_cards_depth_ck
+BEFORE UPDATE OF parent_slug, depth ON project_cards
+BEGIN
+    SELECT RAISE(ABORT, 'project_cards: a card cannot be its own parent')
+    WHERE new.parent_slug IS NOT NULL AND new.parent_slug = new.slug;
+
+    SELECT RAISE(ABORT, 'project_cards: a card without a parent is at depth 0')
+    WHERE new.parent_slug IS NULL AND new.depth <> 0;
+
+    SELECT RAISE(ABORT, 'project_cards: depth must be the parent depth plus one')
+    WHERE new.parent_slug IS NOT NULL
+      AND new.depth <> (SELECT parent.depth + 1 FROM project_cards parent
+                        WHERE parent.slug = new.parent_slug);
+END;
+`
 
 // projectsSchemaTriggers lists every FTS5 sync trigger created by
 // projectsSchemaDDL. migrateProjects verifies each one exists after
@@ -255,6 +324,10 @@ func (s *Store) migrateProjects() error {
 		return fmt.Errorf("engram-projects: apply schema: %w", err)
 	}
 
+	if err := s.migrateProjectsToV3(); err != nil {
+		return err
+	}
+
 	for _, trigger := range projectsSchemaTriggers {
 		var name string
 		err := s.db.QueryRow(
@@ -280,11 +353,23 @@ func (s *Store) migrateProjects() error {
 	return nil
 }
 
+// migrateProjectsToV3 applies the steps that take the version-2 schema to
+// version 3. Each one is guarded by the migration ledger, so a fresh database
+// (which projectsSchemaDDL just created in its version-2 shape) and an existing
+// one both walk the same path exactly once.
+func (s *Store) migrateProjectsToV3() error {
+	return s.once(projCardsHierarchyID, func() error {
+		_, err := s.execHook(s.db, projectsHierarchyDDL)
+		return err
+	})
+}
+
 // projectsSchemaDropDDL removes every engram-projects object in dependency
 // order: FTS5 sync triggers first, then the FTS5 virtual tables, then the
 // contract and auxiliary tables (children before parents so foreign keys
 // never block the drop). No upstream table is touched.
 const projectsSchemaDropDDL = `
+DROP TRIGGER IF EXISTS project_cards_depth_ck;
 DROP TRIGGER IF EXISTS runbook_fts_update;
 DROP TRIGGER IF EXISTS runbook_fts_delete;
 DROP TRIGGER IF EXISTS runbook_fts_insert;
@@ -312,6 +397,13 @@ DROP TABLE IF EXISTS project_cards;
 func (s *Store) DropProjectsSchema() error {
 	if _, err := s.execHook(s.db, projectsSchemaDropDDL); err != nil {
 		return fmt.Errorf("engram-projects: drop schema: %w", err)
+	}
+	// The ledger rows go with the tables they describe. Leaving them behind
+	// would tell the next migration that a step whose table no longer exists
+	// has already run, and the schema would come back in its version-2 shape
+	// with none of the columns the code expects.
+	if _, err := s.execHook(s.db, `DELETE FROM schema_migrations WHERE id LIKE 'proj-%'`); err != nil {
+		return fmt.Errorf("engram-projects: clear migration ledger: %w", err)
 	}
 	if _, err := s.execHook(s.db, "PRAGMA user_version = 0"); err != nil {
 		return fmt.Errorf("engram-projects: reset user_version: %w", err)
