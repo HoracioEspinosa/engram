@@ -510,7 +510,10 @@ func (s *Store) MaxObservationLength() int {
 // ─── Store ───────────────────────────────────────────────────────────────────
 
 type Store struct {
-	db    *sql.DB
+	db *sql.DB
+	// rdb is the read-only pool pure reads go through. Nil when the pool is
+	// disabled, in which case readDB falls back to db. See readpool.go.
+	rdb   *sql.DB
 	cfg   Config
 	hooks storeHooks
 }
@@ -641,32 +644,50 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("engram: create data dir: %w", err)
 	}
 
+	s, err := openStore(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repairEnrolledProjectSyncMutations(); err != nil {
+		return nil, fmt.Errorf("engram: repair enrolled sync journal: %w", err)
+	}
+
+	return s, nil
+}
+
+// openStore opens the write connection, migrates it, and attaches the read
+// pool. The read pool is opened last so its connections only ever see a
+// migrated schema on a file whose journal mode is already WAL.
+func openStore(cfg Config) (*Store, error) {
 	dbPath := filepath.Join(cfg.DataDir, "engram.db")
-	db, err := openDB("sqlite", dbPath)
+	db, err := openDB("sqlite", sqliteDSN(dbPath, writePragmas))
 	if err != nil {
 		return nil, fmt.Errorf("engram: open database: %w", err)
 	}
+	// SQLite serialises writers, so a second write connection would only
+	// turn a wait into a SQLITE_BUSY. Reads get their own pool instead.
 	db.SetMaxOpenConns(1)
 
-	// SQLite performance pragmas
-	pragmas := []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000",
-		"PRAGMA synchronous = NORMAL",
-		"PRAGMA foreign_keys = ON",
-	}
-	for _, p := range pragmas {
-		if _, err := db.Exec(p); err != nil {
-			return nil, fmt.Errorf("engram: pragma %q: %w", p, err)
-		}
+	// The pragmas ride on the DSN and are applied when the driver opens a
+	// connection, which sql.Open defers. Ping forces that open so a rejected
+	// pragma is reported here rather than at the first query.
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("engram: open database: %w", err)
 	}
 
 	s := &Store{db: db, cfg: cfg, hooks: defaultStoreHooks()}
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("engram: migration: %w", err)
 	}
-	if err := s.repairEnrolledProjectSyncMutations(); err != nil {
-		return nil, fmt.Errorf("engram: repair enrolled sync journal: %w", err)
+
+	if readPoolEnabled() {
+		rdb, err := openReadPool(dbPath, readPoolSize())
+		if err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+		s.rdb = rdb
 	}
 
 	return s, nil
@@ -682,34 +703,23 @@ func newWithoutRepair(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("engram: create data dir: %w", err)
 	}
 
-	dbPath := filepath.Join(cfg.DataDir, "engram.db")
-	db, err := openDB("sqlite", dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("engram: open database: %w", err)
-	}
-	db.SetMaxOpenConns(1)
-
-	pragmas := []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000",
-		"PRAGMA synchronous = NORMAL",
-		"PRAGMA foreign_keys = ON",
-	}
-	for _, p := range pragmas {
-		if _, err := db.Exec(p); err != nil {
-			return nil, fmt.Errorf("engram: pragma %q: %w", p, err)
-		}
-	}
-
-	s := &Store{db: db, cfg: cfg, hooks: defaultStoreHooks()}
-	if err := s.migrate(); err != nil {
-		return nil, fmt.Errorf("engram: migration: %w", err)
-	}
-	return s, nil
+	return openStore(cfg)
 }
 
+// Close releases both pools. The read pool goes first: it holds nothing the
+// writer needs, and closing it before the writer lets the writer's connection
+// be the last one out, which is when SQLite checkpoints the WAL.
 func (s *Store) Close() error {
-	return s.db.Close()
+	var errs []error
+	if s.rdb != nil {
+		if err := s.rdb.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := s.db.Close(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // ─── Migrations ──────────────────────────────────────────────────────────────
@@ -2785,7 +2795,7 @@ func (s *Store) SearchPrompts(query string, project string, limit int) ([]Prompt
 	sql += " ORDER BY fts.rank LIMIT ?"
 	args = append(args, limit)
 
-	rows, err := s.queryItHook(s.db, sql, args...)
+	rows, err := s.queryItHook(s.readDB(), sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search prompts: %w", err)
 	}
@@ -2929,7 +2939,7 @@ func (s *Store) DeletePrompt(id int64) error {
 // ─── Get Single Observation ──────────────────────────────────────────────────
 
 func (s *Store) GetObservation(id int64) (*Observation, error) {
-	row := s.db.QueryRow(
+	row := s.readDB().QueryRow(
 		`SELECT `+observationSelectColumns+`
 		 FROM observations WHERE id = ? AND deleted_at IS NULL`, id,
 	)
@@ -3097,8 +3107,10 @@ func (s *Store) Timeline(observationID int64, before, after int) (*TimelineResul
 		session = nil
 	}
 
+	rdb := s.readDB()
+
 	// 3. Get observations BEFORE the focus (same session, older, chronological order)
-	beforeRows, err := s.queryItHook(s.db, `
+	beforeRows, err := s.queryItHook(rdb, `
 		SELECT id, session_id, type, title, content, tool_name, project,
 		       scope, topic_key, revision_count, duplicate_count, last_seen_at, created_at, updated_at, deleted_at
 		FROM observations
@@ -3132,7 +3144,7 @@ func (s *Store) Timeline(observationID int64, before, after int) (*TimelineResul
 	}
 
 	// 4. Get observations AFTER the focus (same session, newer, chronological order)
-	afterRows, err := s.queryItHook(s.db, `
+	afterRows, err := s.queryItHook(rdb, `
 		SELECT id, session_id, type, title, content, tool_name, project,
 		       scope, topic_key, revision_count, duplicate_count, last_seen_at, created_at, updated_at, deleted_at
 		FROM observations
@@ -3163,7 +3175,7 @@ func (s *Store) Timeline(observationID int64, before, after int) (*TimelineResul
 
 	// 5. Count total observations in the session for context
 	var totalInRange int
-	s.db.QueryRow(
+	rdb.QueryRow(
 		"SELECT COUNT(*) FROM observations WHERE session_id = ? AND deleted_at IS NULL", focus.SessionID,
 	).Scan(&totalInRange)
 
@@ -3223,7 +3235,7 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 		tkSQL += " ORDER BY updated_at DESC LIMIT ?"
 		tkArgs = append(tkArgs, limit)
 
-		tkRows, err := s.queryItHook(s.db, tkSQL, tkArgs...)
+		tkRows, err := s.queryItHook(s.readDB(), tkSQL, tkArgs...)
 		if err == nil {
 			defer tkRows.Close()
 			for tkRows.Next() {
@@ -3277,7 +3289,7 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 	sqlQ += " ORDER BY rank LIMIT ?"
 	args = append(args, limit)
 
-	rows, err := s.queryItHook(s.db, sqlQ, args...)
+	rows, err := s.queryItHook(s.readDB(), sqlQ, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
@@ -3318,12 +3330,13 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 
 func (s *Store) Stats() (*Stats, error) {
 	stats := &Stats{}
+	rdb := s.readDB()
 
-	s.db.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&stats.TotalSessions)
-	s.db.QueryRow("SELECT COUNT(*) FROM observations WHERE deleted_at IS NULL").Scan(&stats.TotalObservations)
-	s.db.QueryRow("SELECT COUNT(*) FROM user_prompts").Scan(&stats.TotalPrompts)
+	rdb.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&stats.TotalSessions)
+	rdb.QueryRow("SELECT COUNT(*) FROM observations WHERE deleted_at IS NULL").Scan(&stats.TotalObservations)
+	rdb.QueryRow("SELECT COUNT(*) FROM user_prompts").Scan(&stats.TotalPrompts)
 
-	rows, err := s.queryItHook(s.db, "SELECT project FROM observations WHERE project IS NOT NULL AND deleted_at IS NULL GROUP BY project ORDER BY MAX(created_at) DESC")
+	rows, err := s.queryItHook(rdb, "SELECT project FROM observations WHERE project IS NOT NULL AND deleted_at IS NULL GROUP BY project ORDER BY MAX(created_at) DESC")
 	if err != nil {
 		return stats, nil
 	}

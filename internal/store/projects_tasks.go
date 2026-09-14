@@ -440,8 +440,10 @@ func (s *Store) ListTasks(project string, f TaskListFilter) ([]TaskListItem, int
 	}
 	whereSQL := strings.Join(where, " AND ")
 
+	rdb := s.readDB()
+
 	var total int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE `+whereSQL, args...).Scan(&total); err != nil {
+	if err := rdb.QueryRow(`SELECT COUNT(*) FROM tasks WHERE `+whereSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("engram-projects: count tasks: %w", err)
 	}
 
@@ -450,15 +452,16 @@ func (s *Store) ListTasks(project string, f TaskListFilter) ([]TaskListItem, int
 		limit = 20
 	}
 	listArgs := append(append([]any{}, args...), limit, f.Offset)
-	rows, err := s.db.Query(`SELECT `+taskSelectColumns+` FROM tasks WHERE `+whereSQL+
+	rows, err := rdb.Query(`SELECT `+taskSelectColumns+` FROM tasks WHERE `+whereSQL+
 		` ORDER BY updated_at DESC LIMIT ? OFFSET ?`, listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("engram-projects: list tasks: %w", err)
 	}
-	// The store pool is capped at one connection (Store.New), so every row
-	// must be drained and rows.Close()d before issuing the nested per-task
-	// count queries below — otherwise the second query blocks forever
-	// waiting for a connection this same open cursor is holding.
+	// Reads come from the dedicated pool (readpool.go), which has room for
+	// this cursor and the nested per-task counts at the same time. Every row
+	// is still drained and rows.Close()d up front rather than nested: the
+	// pool is small, and holding one of its connections open across two count
+	// queries per task would starve every other reader.
 	var tasksPage []Task
 	for rows.Next() {
 		t, err := scanTask(rows)
@@ -482,11 +485,11 @@ func (s *Store) ListTasks(project string, f TaskListFilter) ([]TaskListItem, int
 	items := make([]TaskListItem, 0, len(tasksPage))
 	for _, t := range tasksPage {
 		item := TaskListItem{Task: t}
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM task_observations WHERE task_id = ?`, t.ID).
+		if err := rdb.QueryRow(`SELECT COUNT(*) FROM task_observations WHERE task_id = ?`, t.ID).
 			Scan(&item.Observations); err != nil {
 			return nil, 0, err
 		}
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM evidence WHERE task_id = ? AND deleted_at IS NULL`, t.ID).
+		if err := rdb.QueryRow(`SELECT COUNT(*) FROM evidence WHERE task_id = ? AND deleted_at IS NULL`, t.ID).
 			Scan(&item.Evidence); err != nil {
 			return nil, 0, err
 		}

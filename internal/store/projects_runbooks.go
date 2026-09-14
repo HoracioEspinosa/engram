@@ -400,9 +400,11 @@ func (s *Store) FindRunbooks(p RunbookFindParams) ([]RunbookFindItem, int, error
 		limit = 5
 	}
 
+	rdb := s.readDB()
+
 	var total int
 	countArgs := append([]any{}, args...)
-	if err := s.db.QueryRow(
+	if err := rdb.QueryRow(
 		`SELECT COUNT(*) FROM runbook_index_fts JOIN runbook_index ri ON ri.seq = runbook_index_fts.rowid WHERE `+whereSQL,
 		countArgs...,
 	).Scan(&total); err != nil {
@@ -410,7 +412,7 @@ func (s *Store) FindRunbooks(p RunbookFindParams) ([]RunbookFindItem, int, error
 	}
 
 	listArgs := append(append([]any{}, args...), limit)
-	rows, err := s.db.Query(`
+	rows, err := rdb.Query(`
 		SELECT ri.id, ri.title, ri.project, ri.vault_path, ri.category, ri.pattern, ri.severity, ri.status,
 		       ri.stale, ri.age_days, ri.exec_count, ri.last_exec_at, bm25(runbook_index_fts) AS rank
 		FROM runbook_index_fts
@@ -586,8 +588,10 @@ func (s *Store) ListRunbookIndex(project string, f RunbookListFilter) ([]Runbook
 		whereSQL = strings.Join(where, " AND ")
 	}
 
+	rdb := s.readDB()
+
 	var total int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM runbook_index WHERE `+whereSQL, args...).Scan(&total); err != nil {
+	if err := rdb.QueryRow(`SELECT COUNT(*) FROM runbook_index WHERE `+whereSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("engram-projects: count runbook index: %w", err)
 	}
 
@@ -596,7 +600,7 @@ func (s *Store) ListRunbookIndex(project string, f RunbookListFilter) ([]Runbook
 		limit = 20
 	}
 	listArgs := append(append([]any{}, args...), limit, f.Offset)
-	rows, err := s.db.Query(`
+	rows, err := rdb.Query(`
 		SELECT id, project, vault_path, title, category, pattern, severity, status, symptoms,
 		       owner, automation_level, last_updated, last_verified, stale, age_days,
 		       exec_count, last_exec_at, synced_at

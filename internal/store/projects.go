@@ -355,42 +355,43 @@ const observationsByProjectPredicate = `lower(project) = ? AND deleted_at IS NUL
 // ProjectCardCounts computes the dashboard counters for mem_project_card.
 func (s *Store) ProjectCardCounts(slug string) (ProjectCardCounts, error) {
 	var c ProjectCardCounts
-	if err := s.db.QueryRow(
+	rdb := s.readDB()
+	if err := rdb.QueryRow(
 		`SELECT COUNT(*) FROM observations WHERE `+observationsByProjectPredicate, slug,
 	).Scan(&c.Observations); err != nil {
 		return c, err
 	}
-	if err := s.db.QueryRow(
+	if err := rdb.QueryRow(
 		`SELECT COUNT(*) FROM observations WHERE `+observationsByProjectPredicate+` AND pinned = 1`, slug,
 	).Scan(&c.Pinned); err != nil {
 		return c, err
 	}
-	if err := s.db.QueryRow(
+	if err := rdb.QueryRow(
 		`SELECT COUNT(*) FROM tasks WHERE project = ? AND deleted_at IS NULL`, slug,
 	).Scan(&c.TasksTotal); err != nil {
 		return c, err
 	}
-	if err := s.db.QueryRow(
+	if err := rdb.QueryRow(
 		`SELECT COUNT(*) FROM tasks WHERE project = ? AND deleted_at IS NULL AND state NOT IN ('done','cancelled','archived')`, slug,
 	).Scan(&c.TasksActive); err != nil {
 		return c, err
 	}
-	if err := s.db.QueryRow(
+	if err := rdb.QueryRow(
 		`SELECT COUNT(*) FROM evidence WHERE project = ? AND deleted_at IS NULL`, slug,
 	).Scan(&c.Evidence); err != nil {
 		return c, err
 	}
-	if err := s.db.QueryRow(
+	if err := rdb.QueryRow(
 		`SELECT COUNT(*) FROM evidence WHERE project = ? AND deleted_at IS NULL AND attached_jira = 0 AND attached_confluence_url IS NULL`, slug,
 	).Scan(&c.EvidenceUnattached); err != nil {
 		return c, err
 	}
-	if err := s.db.QueryRow(
+	if err := rdb.QueryRow(
 		`SELECT COUNT(*) FROM runbook_index WHERE project = ?`, slug,
 	).Scan(&c.Runbooks); err != nil {
 		return c, err
 	}
-	if err := s.db.QueryRow(
+	if err := rdb.QueryRow(
 		`SELECT COUNT(*) FROM runbook_index WHERE project = ? AND stale = 1`, slug,
 	).Scan(&c.RunbooksStale); err != nil {
 		return c, err
@@ -537,14 +538,16 @@ type ProjectCardListItem struct {
 // eight aggregate queries per card, which the TUI selector wants and a plain
 // pointer lookup does not.
 func (s *Store) ListProjectCards(includeCounts bool) ([]ProjectCardListItem, int, error) {
-	rows, err := s.db.Query(`SELECT ` + projectCardSelectColumns + `
+	rows, err := s.readDB().Query(`SELECT ` + projectCardSelectColumns + `
 		FROM project_cards WHERE deleted_at IS NULL ORDER BY updated_at DESC, slug ASC`)
 	if err != nil {
 		return nil, 0, fmt.Errorf("engram-projects: list project cards: %w", err)
 	}
-	// The store pool is capped at one connection (Store.New), so this cursor
-	// must be drained and closed before the per-card count queries below run:
-	// otherwise they block forever waiting for the connection it holds.
+	// Reads come from the dedicated pool (readpool.go), which has room for
+	// this cursor and the per-card count queries at the same time. The cursor
+	// is still drained and closed up front rather than nested: the pool is
+	// small, and holding one of its connections open across eight aggregate
+	// queries per card would starve every other reader.
 	var cards []ProjectCard
 	for rows.Next() {
 		c, err := scanProjectCard(rows)

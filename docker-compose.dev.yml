@@ -1,10 +1,9 @@
 # Isolated validation stack for koi-workspace changes.
 #
 # Disposable by design: named volumes start empty, nothing mounts a host path
-# under ~/.engram (see docker/dev/Dockerfile), and the default profile
-# publishes no ports at all — internal/server/server.go binds the HTTP API to
-# 127.0.0.1 inside the container, so every check goes through `docker exec` /
-# `docker compose exec` instead of a published port.
+# under ~/.engram (see docker/dev/Dockerfile), and the only published port is
+# bound to the host's own loopback address, so nothing here is reachable from
+# another machine.
 #
 # Usage (from the repository root):
 #   docker compose -f docker-compose.dev.yml up -d --build          # engram-dev only
@@ -30,6 +29,10 @@ services:
       ENGRAM_VAULT_ROOT: /vault
       CD_EVIDENCE_DIR: /vault/evidence
       ENGRAM_PORT: "7437"
+      # Bind every interface inside the container so the published port below
+      # has something to forward to. The container's network namespace is the
+      # boundary here; the host-side bind is what limits reach.
+      ENGRAM_HOST: 0.0.0.0
       ENGRAM_TUI_THEME: ${ENGRAM_TUI_THEME:-}
       ENGRAM_PROJECTS_SYNC: ${ENGRAM_PROJECTS_SYNC:-0}
       TERM: xterm-256color
@@ -38,16 +41,23 @@ services:
       - ./docker/dev/fixtures/vault:/vault:ro
       - ./docker/dev/out:/out
     healthcheck:
+      # Still probed over the container's own loopback: a 0.0.0.0 bind answers
+      # there too, and keeping the probe local means it reports on the process
+      # rather than on Docker's port forwarding.
       test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:7437/health"]
       interval: 5s
       timeout: 3s
       start_period: 5s
       retries: 6
     stop_grace_period: 5s
-    # No `ports:` here on purpose: the server only ever listens on the
-    # container's own loopback interface, so publishing a port would just
-    # produce "connection refused" on the host. Every interaction — MCP
-    # smoke tests, CLI checks, doctor — runs through `docker exec engram-dev`.
+    # The binary honours ENGRAM_HOST, so the api is reachable from the host on
+    # 127.0.0.1:17437 only. The host-side address is pinned deliberately: a
+    # bare "17437:7437" would publish on every host interface. Port 17437
+    # rather than 7437 so a dev stack never collides with the engram serve the
+    # developer already runs. `docker exec engram-dev` still works for CLI
+    # checks, doctor and MCP smoke tests.
+    ports:
+      - "127.0.0.1:17437:7437"
 
   # --- profile: cloud -------------------------------------------------------
   # Reproduces the isolation pattern of docker-compose.beta.yml on its own
