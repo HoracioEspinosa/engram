@@ -26,6 +26,9 @@ Thumbs.db
 .codex/skills
 .github/skills
 .gemini/skills
+
+# Agent definitions copied by setup.sh. The source of truth is agents/*.md.
+.claude/agents
 engram-dev
 .atl/
 .release-notes-beta.md
