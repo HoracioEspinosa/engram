@@ -13,6 +13,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// Widths of the two text columns of the selector table, in terminal cells.
+// The header row and the data rows read them from here so the two cannot
+// drift apart.
+const (
+	selectorSlugCells = 22
+	selectorNameCells = 28
+)
+
 // selectorModel is the Project Selector (S1, rfc-tui.md §5.S1): every live
 // project card, filterable by slug or display name, each row showing the
 // RFC §3.1 health counters the S1 wireframe puts in the list itself
@@ -217,8 +225,11 @@ func (m Model) viewSelector() string {
 }
 
 func (m Model) selectorHeaderRow() string {
-	line := fmt.Sprintf("  %-2s%-22s %-28s %8s %8s %10s",
-		"", "slug", "display name", "obs", "open", "stale RB")
+	line := fmt.Sprintf("  %s%s %s %8s %8s %10s",
+		shared.PadCells("", 2),
+		shared.PadCells("slug", selectorSlugCells),
+		shared.PadCells("display name", selectorNameCells),
+		"obs", "open", "stale RB")
 	return m.styles.Help.Render(line) + "\n"
 }
 
@@ -237,10 +248,10 @@ func (m Model) selectorRow(c store.ProjectCardListItem, selected bool) string {
 		stale = fmt.Sprintf("%d", c.Counts.RunbooksStale)
 	}
 
-	line := fmt.Sprintf("%s%-22s %-28s %8s %8s %10s",
+	line := fmt.Sprintf("%s%s %s %8s %8s %10s",
 		cursor,
-		shared.Truncate(c.Slug, 22),
-		shared.Truncate(c.DisplayName, 28),
+		shared.PadCells(shared.Truncate(c.Slug, selectorSlugCells), selectorSlugCells),
+		shared.PadCells(shared.Truncate(c.DisplayName, selectorNameCells), selectorNameCells),
 		obs, open, stale)
 	return rowStyle.Render(line) + "\n"
 }

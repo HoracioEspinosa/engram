@@ -18,3 +18,12 @@ const (
 	indexChrome = 5
 	viewChrome  = 8
 )
+
+// Widths of the index row's fixed columns, in terminal cells.
+const (
+	runbookIDCells       = 8
+	runbookTitleCells    = 40
+	runbookProjectCells  = 12
+	runbookCategoryCells = 14
+	runbookPatternCells  = 12
+)

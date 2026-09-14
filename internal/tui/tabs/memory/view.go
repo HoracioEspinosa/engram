@@ -394,7 +394,7 @@ func (m Model) viewTimeline() string {
 			b.WriteString(fmt.Sprintf("  %s %s %s  %s\n",
 				m.styles.TimelineConnector.Render("│"),
 				m.styles.ID.Render(fmt.Sprintf("#%-4d", e.ID)),
-				m.styles.TypeBadge.Render(fmt.Sprintf("[%-12s]", e.Type)),
+				m.styles.TypeBadge.Render("["+shared.PadCells(e.Type, timelineTypeCells)+"]"),
 				m.styles.TimelineItem.Render(shared.Truncate(e.Title, 60))))
 		}
 		b.WriteString(fmt.Sprintf("  %s\n", m.styles.TimelineConnector.Render("│")))
@@ -418,7 +418,7 @@ func (m Model) viewTimeline() string {
 			b.WriteString(fmt.Sprintf("  %s %s %s  %s\n",
 				m.styles.TimelineConnector.Render("│"),
 				m.styles.ID.Render(fmt.Sprintf("#%-4d", e.ID)),
-				m.styles.TypeBadge.Render(fmt.Sprintf("[%-12s]", e.Type)),
+				m.styles.TypeBadge.Render("["+shared.PadCells(e.Type, timelineTypeCells)+"]"),
 				m.styles.TimelineItem.Render(shared.Truncate(e.Title, 60))))
 		}
 	}
@@ -488,7 +488,7 @@ func (m Model) viewSessions() string {
 
 		line := fmt.Sprintf("%s%s  %s  %s obs  %s",
 			cursor,
-			m.styles.Project.Render(fmt.Sprintf("%-20s", s.Project)),
+			m.styles.Project.Render(shared.PadCells(shared.CutCells(s.Project, sessionProjectCells), sessionProjectCells)),
 			m.styles.Timestamp.Render(shared.LocalTime(s.StartedAt)),
 			m.styles.StatNumber.Render(fmt.Sprintf("%d", s.ObservationCount)),
 			style.Render(summary))

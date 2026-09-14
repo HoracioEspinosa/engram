@@ -18,3 +18,10 @@ const (
 	listChrome   = 4
 	detailChrome = 14
 )
+
+// Widths of the list row's fixed columns, in terminal cells.
+const (
+	evidenceNameCells = 46
+	evidenceKindCells = 4
+	evidenceTaskCells = 12
+)

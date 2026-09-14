@@ -22,3 +22,10 @@ const (
 	detailChrome      = 14
 	contextPackChrome = 5
 )
+
+// Widths of the tab's fixed columns, in terminal cells.
+const (
+	taskKeyCells         = 12
+	taskKindCells        = 9
+	observationTypeCells = 10
+)

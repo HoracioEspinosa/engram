@@ -96,8 +96,8 @@ func (m Model) viewTaskRow(item store.TaskListItem, selected bool) string {
 
 	line1 := fmt.Sprintf("%s%s %s %s  %s\n",
 		cursor,
-		m.styles.ID.Render(fmt.Sprintf("%-12s", data.TaskKey(item.Task))),
-		m.styles.TypeBadge.Render(fmt.Sprintf("[%-9s]", item.Kind)),
+		m.styles.ID.Render(shared.PadCells(shared.CutCells(data.TaskKey(item.Task), taskKeyCells), taskKeyCells)),
+		m.styles.TypeBadge.Render("["+shared.PadCells(item.Kind, taskKindCells)+"]"),
 		stateText,
 		titleStyle.Render(shared.Truncate(item.Title, 60)))
 
@@ -175,7 +175,7 @@ func (m Model) viewDetail() string {
 			b.WriteString(fmt.Sprintf("%s%s %s %s %s\n",
 				cursor,
 				m.styles.ID.Render(fmt.Sprintf("#%-5d", o.Observation.ID)),
-				m.styles.TypeBadge.Render(fmt.Sprintf("[%-10s]", o.Observation.Type)),
+				m.styles.TypeBadge.Render("["+shared.PadCells(o.Observation.Type, observationTypeCells)+"]"),
 				style.Render(shared.Truncate(o.Observation.Title, 50)),
 				m.styles.Timestamp.Render(shared.LocalTime(o.Observation.CreatedAt))))
 		}

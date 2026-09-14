@@ -106,9 +106,9 @@ func (m Model) viewEvidenceRow(item store.EvidenceListItem, selected bool) strin
 
 	return fmt.Sprintf("%s%s %s %s %s %s %s\n",
 		cursor,
-		titleStyle.Render(fmt.Sprintf("%-46s", shared.Truncate(filepathBase(item.Path), 46))),
-		m.styles.TypeBadge.Render(fmt.Sprintf("[%-4s]", item.Kind)),
-		m.styles.ID.Render(fmt.Sprintf("%-12s", task)),
+		titleStyle.Render(shared.PadCells(shared.Truncate(filepathBase(item.Path), evidenceNameCells), evidenceNameCells)),
+		m.styles.TypeBadge.Render("["+shared.PadCells(item.Kind, evidenceKindCells)+"]"),
+		m.styles.ID.Render(shared.PadCells(shared.CutCells(task, evidenceTaskCells), evidenceTaskCells)),
 		m.styles.DetailValue.Render(shared.Truncate(item.Proves, 40)),
 		attached,
 		m.styles.Timestamp.Render(shared.LocalTime(item.CapturedAt)))

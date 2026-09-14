@@ -33,3 +33,9 @@ const (
 	detailWrapMargin = 6
 	minDetailWrap    = 20
 )
+
+// Widths of the tab's fixed columns, in terminal cells.
+const (
+	timelineTypeCells   = 12
+	sessionProjectCells = 20
+)
