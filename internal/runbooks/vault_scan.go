@@ -72,6 +72,13 @@ func ScanVault(vaultDir string, now time.Time) (ScanResult, error) {
 		return result, ErrVaultDirNotFound
 	}
 
+	// The service map is scoped to this vault: a services.json at its
+	// Runbooks/ root (or ENGRAM_RUNBOOK_SERVICES, or nothing at all) decides
+	// which `service:` values this scan accepts, so a checkout that has not
+	// adopted services.json yet keeps resolving through the fifteen-slug
+	// compatibility default.
+	sm := NewServiceMap(ServiceMapOptions{VaultDir: vaultDir})
+
 	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -96,7 +103,7 @@ func ScanVault(vaultDir string, now time.Time) (ScanResult, error) {
 		result.Scanned++
 
 		fm := parseFrontmatter(doc)
-		entry, skipped := classify(fm, vaultPath, now)
+		entry, skipped := classify(fm, vaultPath, now, sm.Canonical)
 		if skipped != nil {
 			result.Skipped = append(result.Skipped, *skipped)
 			return nil
@@ -111,7 +118,10 @@ func ScanVault(vaultDir string, now time.Time) (ScanResult, error) {
 }
 
 // classify turns one parsed note into either an index entry or a skip.
-func classify(fm frontmatter, vaultPath string, now time.Time) (*store.RunbookIndexEntryInput, *store.RunbookSkipped) {
+// resolveService maps the note's `service:` value to a project slug; the
+// caller decides its sources (ScanVault scopes it to the vault being
+// scanned, through a ServiceMap.Canonical).
+func classify(fm frontmatter, vaultPath string, now time.Time, resolveService func(string) (string, bool)) (*store.RunbookIndexEntryInput, *store.RunbookSkipped) {
 	id := fm.str("id")
 
 	if !strings.EqualFold(fm.str("type"), "runbook") {
@@ -121,7 +131,7 @@ func classify(fm frontmatter, vaultPath string, now time.Time) (*store.RunbookIn
 		return nil, &store.RunbookSkipped{ID: id, VaultPath: vaultPath, Reason: "template"}
 	}
 
-	service, ok := CanonicalService(fm.str("service"))
+	service, ok := resolveService(fm.str("service"))
 	if !ok {
 		return nil, &store.RunbookSkipped{ID: id, VaultPath: vaultPath, Reason: "unknown_service"}
 	}

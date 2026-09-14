@@ -20,7 +20,14 @@ type Persister interface {
 // creating a project card for a typo. Every other filter (template, malformed
 // id, status outside the enum) belongs to the store, which applies them in
 // its documented order before this one.
+//
+// When params.ResolveService is already set — a caller that built its own
+// ServiceMap, scoped to the vault it is syncing from — that resolver is kept
+// as-is. Only a nil resolver falls back to CanonicalService, the
+// no-vault-context default.
 func SyncIndex(p Persister, params store.RunbookIndexSyncParams) (store.RunbookSyncResult, error) {
-	params.ResolveService = CanonicalService
+	if params.ResolveService == nil {
+		params.ResolveService = CanonicalService
+	}
 	return p.SyncRunbookIndex(params)
 }

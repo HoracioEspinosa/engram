@@ -356,6 +356,42 @@ status: draft
 	}
 }
 
+// TestVaultScanIndexesFixtureServices exercises the real dev fixture vault:
+// docker/dev/fixtures/vault/Runbooks/services.json declares koi-garden,
+// koi-garden-pond-02 and tsukimi-bridge, so the five seeded runbooks that
+// used to come back as unknown_service (none of the three are in the
+// fifteen-slug compatibility default) must now all resolve.
+func TestVaultScanIndexesFixtureServices(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", "docker", "dev", "fixtures", "vault"))
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+	if _, statErr := os.Stat(root); statErr != nil {
+		t.Fatalf("fixture vault not found at %s: %v", root, statErr)
+	}
+
+	result, err := ScanVault(root, fixedNow)
+	if err != nil {
+		t.Fatalf("ScanVault: %v", err)
+	}
+	if len(result.Entries) != 5 {
+		t.Fatalf("entries = %d, want 5 (RB-001..RB-005); skipped=%#v", len(result.Entries), result.Skipped)
+	}
+	for _, s := range result.Skipped {
+		if s.Reason == "unknown_service" {
+			t.Fatalf("unexpected unknown_service skip with services.json present: %+v", s)
+		}
+	}
+
+	services := map[string]int{}
+	for _, e := range result.Entries {
+		services[e.Service]++
+	}
+	if services["koi-garden"] != 2 || services["koi-garden-pond-02"] != 2 || services["tsukimi-bridge"] != 1 {
+		t.Fatalf("service counts = %#v, want koi-garden:2 koi-garden-pond-02:2 tsukimi-bridge:1", services)
+	}
+}
+
 func TestCanonicalService(t *testing.T) {
 	for _, raw := range []string{"nextcloud", "  Middleware ", "ENTERPRISE-SERVER", "knowledge-mcp"} {
 		if _, ok := CanonicalService(raw); !ok {
