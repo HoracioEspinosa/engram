@@ -13,9 +13,10 @@
 #
 # internal/store carries no Benchmark functions yet: they arrive with the
 # performance work, and the ones this script asks for by name are the paths
-# that work targets. Until then the script says so and exits clean rather than
-# failing, because a phase that has not written a benchmark has not regressed
-# one either.
+# that work targets. Until then `bench.sh baseline` says so and exits clean,
+# because a phase that has not written a benchmark has not regressed one
+# either. Any other label stops instead: comparing against a baseline that
+# holds no sample is not a green run, it is benchstat given nothing to read.
 #
 # Usage: bench.sh <label>     e.g. bench.sh baseline, bench.sh fase-1
 
@@ -34,6 +35,14 @@ BENCH_OUT="$OUT_DIR/bench"
 mkdir -p "$BENCH_OUT"
 
 BENCH_PATTERN='Search|ListTasks|ProjectCardCounts|FindRunbooks|Stats'
+BASELINE="$BENCH_OUT/baseline.txt"
+
+# A comparison needs something to compare against. A baseline file that holds no
+# sample is not a measurement of zero regression, it is the absence of a
+# measurement, and benchstat fed one produces output that looks like a result.
+if [ "$LABEL" != "baseline" ] && ! rg -q '^Benchmark' "$BASELINE" 2>/dev/null; then
+  fail "bench/baseline.txt carries no benchmark samples; run bench.sh baseline once benchmarks exist"
+fi
 
 if ! rg -q '^func Benchmark' "$ROOT_DIR/internal/store"; then
   log "no benchmarks found under internal/store; nothing to measure yet"
@@ -57,14 +66,8 @@ docker run --rm \
   go test -run '^$' -bench "$BENCH_PATTERN" -benchmem -count=6 ./internal/store/... \
   >"$TARGET"
 
-BASELINE="$BENCH_OUT/baseline.txt"
 if [ "$LABEL" = "baseline" ]; then
   log "this run is the baseline; nothing to compare against"
-  printf '%s\n' "$TARGET"
-  exit 0
-fi
-if [ ! -f "$BASELINE" ]; then
-  log "no $BASELINE yet; run bench.sh baseline before comparing"
   printf '%s\n' "$TARGET"
   exit 0
 fi
