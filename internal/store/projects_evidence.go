@@ -137,11 +137,12 @@ func (s *Store) AddEvidence(p AddEvidenceParams) (Evidence, bool, EvidenceLimits
 	if err := s.withTx(func(tx *sql.Tx) error {
 		res, err := s.execHook(tx, `
 			INSERT INTO evidence (sync_id, project, task_id, task_sync_id, path, sha256, category, kind, proves,
-				config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes, manifest_path, created_at)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes, manifest_path,
+				location_set_at, created_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			syncID, p.Task.Project, p.Task.ID, p.Task.SyncID, p.Path, p.SHA256, category, p.Kind, p.Proves,
 			nullableStr(p.ConfigStamp), captured, attachedJira, nullableStr(p.AttachedConfluenceURL),
-			nullableInt64(p.SizeBytes), nullableStr(p.ManifestPath), now)
+			nullableInt64(p.SizeBytes), nullableStr(p.ManifestPath), now, now)
 		if err != nil {
 			return fmt.Errorf("engram-projects: insert evidence: %w", err)
 		}
@@ -172,7 +173,8 @@ func (s *Store) AddEvidence(p AddEvidenceParams) (Evidence, bool, EvidenceLimits
 func (s *Store) relocateEvidence(id int64, path, category string) error {
 	return s.withTx(func(tx *sql.Tx) error {
 		if _, err := s.execHook(tx,
-			`UPDATE evidence SET path = ?, category = ? WHERE id = ?`, path, category, id,
+			`UPDATE evidence SET path = ?, category = ?, location_set_at = ? WHERE id = ?`,
+			path, category, s.nowUTC(), id,
 		); err != nil {
 			return fmt.Errorf("engram-projects: relocate evidence: %w", err)
 		}

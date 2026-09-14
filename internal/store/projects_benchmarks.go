@@ -200,7 +200,7 @@ func (s *Store) AddBenchmark(p AddBenchmarkParams) (AddBenchmarkResult, error) {
 		); err != nil {
 			return fmt.Errorf("engram-projects: insert benchmark: %w", err)
 		}
-		return nil
+		return s.enqueueBenchmarkTx(tx, syncID)
 	}); err != nil {
 		return AddBenchmarkResult{}, err
 	}
@@ -251,6 +251,11 @@ func (s *Store) demoteBaselineTx(tx *sql.Tx, taskSyncID, metric string) (*string
 		`UPDATE benchmarks SET baseline = 0, baseline_set_at = NULL WHERE sync_id = ?`, syncID,
 	); err != nil {
 		return nil, fmt.Errorf("engram-projects: demote baseline: %w", err)
+	}
+	// The demotion replicates too: a peer that only heard about the new
+	// baseline would end up with two.
+	if err := s.enqueueBenchmarkTx(tx, syncID); err != nil {
+		return nil, err
 	}
 	return &syncID, nil
 }

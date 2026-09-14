@@ -251,6 +251,8 @@ const (
 	SyncEntityEvidence       = "evidence"
 	SyncEntityTaskLink       = "task_link"
 	SyncEntityObservationRef = "observation_ref"
+	SyncEntityProjectAlias   = "project_alias"
+	SyncEntityBenchmark      = "benchmark"
 
 	SyncOpUpsert = "upsert"
 	SyncOpDelete = "delete"

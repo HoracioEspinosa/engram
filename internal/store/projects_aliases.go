@@ -145,7 +145,7 @@ func (s *Store) UpsertProjectAlias(alias, slug, source string) error {
 		); err != nil {
 			return fmt.Errorf("engram-projects: upsert project alias: %w", err)
 		}
-		return nil
+		return s.enqueueProjectAliasTx(tx, alias)
 	})
 }
 
@@ -159,13 +159,16 @@ func (s *Store) DeleteProjectAlias(alias string) error {
 	}
 	now := s.nowUTC()
 	return s.withTx(func(tx *sql.Tx) error {
-		if _, err := s.execHook(tx,
+		res, err := s.execHook(tx,
 			`UPDATE project_aliases SET deleted_at = ?, updated_at = ? WHERE alias = ? AND deleted_at IS NULL`,
-			now, now, alias,
-		); err != nil {
+			now, now, alias)
+		if err != nil {
 			return fmt.Errorf("engram-projects: delete project alias: %w", err)
 		}
-		return nil
+		if affected, _ := res.RowsAffected(); affected == 0 {
+			return nil
+		}
+		return s.enqueueProjectAliasTx(tx, alias)
 	})
 }
 

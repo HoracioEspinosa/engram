@@ -534,6 +534,10 @@ CREATE TABLE evidence_rebuild (
     attached_confluence_url TEXT,
     size_bytes              INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0),
     manifest_path           TEXT,
+    -- When the path and category last moved. A relocation is the one thing an
+    -- otherwise immutable row can report, and two replicas need a clock they
+    -- both hold to agree on which report is the later one.
+    location_set_at         TEXT,
     created_at              TEXT    NOT NULL DEFAULT (datetime('now')),
     deleted_at              TEXT,
     UNIQUE (task_sync_id, sha256)
@@ -542,10 +546,10 @@ CREATE TABLE evidence_rebuild (
 INSERT INTO evidence_rebuild
     (id, sync_id, project, task_id, task_sync_id, path, sha256, category, kind, proves,
      config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes,
-     manifest_path, created_at, deleted_at)
+     manifest_path, location_set_at, created_at, deleted_at)
 SELECT id, sync_id, project, task_id, task_sync_id, path, sha256, 'evidences', kind, proves,
        config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes,
-       manifest_path, created_at, deleted_at
+       manifest_path, created_at, created_at, deleted_at
 FROM evidence;
 
 DROP TABLE evidence;
