@@ -434,6 +434,7 @@ Full environment variable reference → [DOCS.md#environment-variables](DOCS.md#
 | [Agent Setup](docs/AGENT-SETUP.md)            | Per-agent configuration + Memory Protocol                              |
 | [Codebase Guide](docs/CODEBASE-GUIDE.md)      | Guide to the repository structure, flows, and implementation landmarks |
 | [Architecture](docs/ARCHITECTURE.md)          | How it works + MCP tools + project structure                           |
+| [Dev Environment](docs/DEV-ENVIRONMENT.md)    | The isolated Docker stack, `make` targets, and the `scripts/dev/` scripts |
 | [engram-projects CLI](docs/ENGRAM-PROJECTS-CLI.md) | `engram project …`: cards, tasks, evidence, runbooks, code graph, context packs |
 | [Plugins](docs/PLUGINS.md)                    | OpenCode & Claude Code plugin details                                  |
 | [Comparison](docs/COMPARISON.md)              | Why Engram vs claude-mem                                               |
