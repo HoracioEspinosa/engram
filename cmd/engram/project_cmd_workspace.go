@@ -48,6 +48,17 @@ func projLooseScope(explicit string) projScope {
 	return sc
 }
 
+// projNamedScope is the envelope scope for a command the caller scoped by
+// name. A blank name reports an empty scope rather than the project the
+// current directory happens to sit in, which would describe the caller instead
+// of the answer.
+func projNamedScope(name string) projScope {
+	if strings.TrimSpace(name) == "" {
+		return projScope{}
+	}
+	return projLooseScope(name)
+}
+
 // projStringList collects a flag given more than once, which is how a card
 // takes several tags or several aliases in one call.
 type projStringList []string
@@ -834,7 +845,10 @@ func projBaselineCell(item store.BenchmarkDelta) string {
 // means "better" for the metric's own direction, so a number that improved
 // reads as an improvement whichever way its unit points.
 func projDeltaCell(item store.BenchmarkDelta) string {
-	if item.DeltaPct == nil {
+	// The baseline is what everything else is compared against, so its own
+	// delta is zero by construction. Printing that as a change would put a
+	// number in the column that means nothing.
+	if item.DeltaPct == nil || item.Baseline {
 		return "-"
 	}
 	delta := *item.DeltaPct
@@ -942,8 +956,7 @@ func cmdProjectImportVault(cfg store.Config, slug string, args []string) {
 		return
 	}
 
-	sc := projScope{Slug: target}
-	projPrintResult(*jsonOut, sc, plan, func() {
+	projPrintResult(*jsonOut, projNamedScope(target), plan, func() {
 		table := &projTable{headers: []string{"ACTION", "PROJECT", "TASK", "KIND", "STATE"}}
 		for _, task := range plan.Tasks {
 			key := task.Slug
@@ -1025,7 +1038,7 @@ func cmdProjectSearch(cfg store.Config, slug string, args []string) {
 		return
 	}
 
-	projPrintResult(*jsonOut, projScope{Slug: target}, results, func() {
+	projPrintResult(*jsonOut, projNamedScope(target), results, func() {
 		if len(results.Hits) == 0 {
 			fmt.Println("no matches")
 			return

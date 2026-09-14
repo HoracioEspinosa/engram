@@ -279,24 +279,56 @@ func cmdThemeShow(cfg store.Config, args []string) {
 		return
 	}
 
-	fmt.Printf("theme:   %s (%s · %s)\n", record.Name, variant, record.Source)
-	table := &projTable{headers: []string{"", "ROLE", "HEX", "ON BASE", "ON SURFACE"}}
+	fmt.Printf("theme:   %s (%s · %s)\n\n", record.Name, variant, record.Source)
+
+	// The swatch is written outside the table. Its colour escape carries no
+	// printed width, and a column solver that counted it would push every
+	// header out of line by the length of an invisible sequence.
+	table := &projTable{headers: []string{"ROLE", "HEX", "ON BASE", "ON SURFACE"}}
 	for _, role := range roles {
-		table.add(themeSwatch(role.Hex), role.Role, role.Hex,
+		table.add(role.Role, role.Hex,
 			themeRatioCell(role.OnBase, role.Role), themeRatioCell(role.OnSurface, role.Role))
 	}
-	table.render(os.Stdout)
+	themeRenderSwatched(table, append([]string{""}, themeRoleHexes(roles)...))
 
-	fmt.Print("\nlogo:    ")
-	for _, stop := range themeGradient(palette) {
-		fmt.Print(themeSwatch(stop) + " ")
-	}
 	fmt.Println()
-	for _, stop := range themeGradient(palette) {
-		fmt.Printf("         %s\n", stop)
+	gradient := &projTable{headers: []string{"LOGO ROW", "HEX"}}
+	stops := themeGradient(palette)
+	for i, stop := range stops {
+		gradient.add(fmt.Sprintf("%d", i), stop)
 	}
-	for _, problem := range problems {
-		fmt.Printf("problem: %s\n", problem)
+	themeRenderSwatched(gradient, append([]string{""}, stops...))
+
+	if len(problems) > 0 {
+		fmt.Println()
+		for _, problem := range problems {
+			fmt.Printf("problem: %s\n", problem)
+		}
+	}
+}
+
+// themeRoleHexes lists the hex of each row, in row order, so the swatch column
+// can be laid alongside a table it is not part of.
+func themeRoleHexes(roles []themeRole) []string {
+	out := make([]string, 0, len(roles))
+	for _, role := range roles {
+		out = append(out, role.Hex)
+	}
+	return out
+}
+
+// themeRenderSwatched prints a table with a colour swatch in front of each
+// line, including a blank one in front of the header so the columns line up.
+func themeRenderSwatched(table *projTable, hexes []string) {
+	var buf strings.Builder
+	table.render(&buf)
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	for i, line := range lines {
+		swatch := "  "
+		if i < len(hexes) && hexes[i] != "" {
+			swatch = themeSwatch(hexes[i])
+		}
+		fmt.Printf("%s  %s\n", swatch, line)
 	}
 }
 
