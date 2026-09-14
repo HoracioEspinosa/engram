@@ -963,7 +963,7 @@ ERROR: Returns IsError=true if IDs are unknown, relation is invalid, or cross-pr
 func handleCurrentProject(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		cwd, _ := os.Getwd()
-		res := projectpkg.DetectProjectFull(cwd)
+		res := detectProject(cwd)
 		if processRes, ok := processProjectResult(cfg.DefaultProject); ok {
 			res = processRes
 		}
@@ -2029,7 +2029,7 @@ func resolveSessionStartProject(explicitDirectory string) (projectpkg.DetectionR
 	if explicitDirectory == "" {
 		return resolveWriteProject()
 	}
-	res := projectpkg.DetectProjectFull(explicitDirectory)
+	res := detectProject(explicitDirectory)
 	if res.Error != nil {
 		return res, res.Error
 	}
@@ -2388,6 +2388,21 @@ func (e *unresolvableProjectError) Error() string {
 	return fmt.Sprintf("project is not resolvable from %q: no explicit project, ENGRAM_PROJECT, repo config, or git-backed source was found, only a directory-name guess", e.Path)
 }
 
+// projectDetector is the process-wide detection cache every per-call path goes
+// through. Resolving a project means running git, and a session resolves it
+// again for every tool call from the same directory: one long session was
+// measured spending over a thousand processes on an answer that never changed.
+// What invalidates an entry — the repository's HEAD, the nearest config — lives
+// in internal/project/detect_cache.go.
+var projectDetector = projectpkg.NewDetector(0)
+
+// detectProject resolves dir through the shared cache. It returns exactly what
+// DetectProjectFull would, that result's own Error included.
+func detectProject(dir string) projectpkg.DetectionResult {
+	res, _ := projectDetector.Detect(dir)
+	return res
+}
+
 // resolveWriteProject detects the current project from the process working
 // directory. Returns ErrAmbiguousProject if cwd is a parent of multiple repos,
 // and *unresolvableProjectError if the only available source is a
@@ -2398,7 +2413,7 @@ func resolveWriteProject() (projectpkg.DetectionResult, error) {
 	if err != nil {
 		cwd = "."
 	}
-	res := projectpkg.DetectProjectFull(cwd)
+	res := detectProject(cwd)
 	if res.Error != nil {
 		return res, res.Error
 	}

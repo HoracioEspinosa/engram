@@ -36,3 +36,36 @@ func BenchmarkDetectProjectFull(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkDetectProjectCached measures the same detection through the cache an
+// MCP session actually uses. It is the number that says what a tool call pays
+// for naming its project on every call but the first.
+func BenchmarkDetectProjectCached(b *testing.B) {
+	dir := b.TempDir()
+	run := func(args ...string) {
+		b.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			b.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init")
+	run("config", "user.email", "bench@example.com")
+	run("config", "user.name", "Bench User")
+	run("remote", "add", "origin", "git@github.com:koi/koi-garden.git")
+
+	d := NewDetector(0)
+	if res, err := d.Detect(dir); err != nil || res.Project != "koi-garden" {
+		b.Fatalf("Detect = %+v err=%v; want project koi-garden", res, err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := d.Detect(dir)
+		if err != nil || res.Project == "" {
+			b.Fatalf("Detect returned no project: %+v err=%v", res, err)
+		}
+	}
+}
