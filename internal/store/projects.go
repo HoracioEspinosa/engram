@@ -260,8 +260,15 @@ func scanProjectCard(row interface{ Scan(dest ...any) error }) (ProjectCard, err
 }
 
 // GetProjectCard returns ErrNoProjectCard when the slug has no card yet.
+//
+// The read goes through the read pool, which ResolveProjectCard depends on:
+// it walks up to maxProjectDepth ancestors through this function on every
+// card read, and queueing each hop behind the writer is what the pool exists
+// to avoid. Every caller runs outside a transaction — the write paths read
+// here before they open one, or after they commit — so the pool always sees
+// the rows they expect.
 func (s *Store) GetProjectCard(slug string) (ProjectCard, error) {
-	c, err := scanProjectCard(s.db.QueryRow(
+	c, err := scanProjectCard(s.readDB().QueryRow(
 		`SELECT `+projectCardSelectColumns+` FROM project_cards WHERE slug = ? AND deleted_at IS NULL`, slug))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ProjectCard{}, ErrNoProjectCard

@@ -321,13 +321,15 @@ func (s *Store) ListBenchmarks(f BenchmarkListFilter) (Page[BenchmarkDelta], err
 	}
 	whereSQL := strings.Join(where, " AND ")
 
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM benchmarks b WHERE `+whereSQL, args...).
+	rdb := s.readDB()
+
+	if err := rdb.QueryRow(`SELECT COUNT(*) FROM benchmarks b WHERE `+whereSQL, args...).
 		Scan(&page.Total); err != nil {
 		return page, fmt.Errorf("engram-projects: count benchmarks: %w", err)
 	}
 
 	listArgs := append(append([]any{}, args...), page.Limit, page.Offset)
-	rows, err := s.db.Query(`
+	rows, err := rdb.Query(`
 		SELECT `+prefixedBenchmarkColumns("b")+`,
 		       (SELECT base.value FROM benchmarks base
 		        WHERE base.task_sync_id = b.task_sync_id AND base.metric = b.metric
@@ -375,7 +377,7 @@ func (s *Store) benchmarkTaskScope(taskSyncID string, includeChildren bool) ([]s
 	if !includeChildren {
 		return scope, nil
 	}
-	rows, err := s.db.Query(
+	rows, err := s.readDB().Query(
 		`SELECT sync_id FROM tasks WHERE parent_task_sync_id = ? AND deleted_at IS NULL ORDER BY id`,
 		taskSyncID)
 	if err != nil {

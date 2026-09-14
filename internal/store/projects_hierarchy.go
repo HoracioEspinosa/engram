@@ -345,7 +345,7 @@ func (s *Store) ProjectTree(root string, includeCounts bool) ([]ProjectTreeNode,
 	}
 
 	query := fmt.Sprintf(projectTreeQuery, anchor, prefixedProjectCardColumns("card"))
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.readDB().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("engram-projects: walk project tree: %w", err)
 	}
@@ -390,7 +390,7 @@ func (s *Store) SubtreeSlugs(root string) ([]string, error) {
 	if root == "" {
 		return nil, ErrNoProjectCard
 	}
-	rows, err := s.db.Query(`
+	rows, err := s.readDB().Query(`
 		WITH RECURSIVE tree(slug, path) AS (
 			SELECT slug, slug FROM project_cards WHERE deleted_at IS NULL AND slug = ?
 			UNION ALL
@@ -447,7 +447,7 @@ func projectFamilyStem(slug string) string {
 // nothing: the proposal is for a person to accept, and a slug that looks like
 // an instance is not proof that it is one.
 func (s *Store) SuggestProjectTree() ([]ProjectTreeSuggestion, error) {
-	rows, err := s.db.Query(
+	rows, err := s.readDB().Query(
 		`SELECT slug, parent_slug, repo_url FROM project_cards WHERE deleted_at IS NULL ORDER BY slug`)
 	if err != nil {
 		return nil, fmt.Errorf("engram-projects: read project cards for suggestions: %w", err)

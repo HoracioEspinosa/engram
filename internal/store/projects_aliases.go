@@ -186,7 +186,7 @@ func (s *Store) ListProjectAliases(slug string) ([]ProjectAlias, error) {
 	}
 	query += ` ORDER BY alias`
 
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.readDB().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("engram-projects: list project aliases: %w", err)
 	}
@@ -236,7 +236,7 @@ func (s *Store) ResolveProjectSlug(raw string) (ProjectResolution, error) {
 	}
 
 	var aliasSlug, aliasSource string
-	err = s.db.QueryRow(
+	err = s.readDB().QueryRow(
 		`SELECT slug, source FROM project_aliases WHERE alias = ? AND deleted_at IS NULL`, normalized,
 	).Scan(&aliasSlug, &aliasSource)
 	switch {
@@ -272,7 +272,7 @@ func (s *Store) foldedProjectMatch(normalized string) (string, error) {
 
 	candidates := map[string]bool{}
 	collect := func(query string) error {
-		rows, err := s.db.Query(query)
+		rows, err := s.readDB().Query(query)
 		if err != nil {
 			return fmt.Errorf("engram-projects: read projects for folding: %w", err)
 		}
