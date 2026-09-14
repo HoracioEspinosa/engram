@@ -152,11 +152,31 @@ var ProfileProjects = map[string]bool{
 	"mem_context_pack":       true,
 }
 
+// ProfileWorkspace contains the seven workspace tools plus the three
+// `projects` tools a workspace session never stops calling: the card it orients
+// itself with, the task list it picks work from, and the context pack it opens
+// a ticket with. The overlap is deliberate — a profile is what an agent loads,
+// not a partition of the registry — and ProfileProjects is untouched, so
+// --tools=projects still resolves to exactly the ten it always did.
+var ProfileWorkspace = map[string]bool{
+	"mem_project_tree":     true,
+	"mem_evidence_scan":    true,
+	"mem_benchmark_add":    true,
+	"mem_benchmark_list":   true,
+	"mem_benchmark_import": true,
+	"mem_vault_sync":       true,
+	"mem_workspace_search": true,
+	"mem_project_card":     true,
+	"mem_task_list":        true,
+	"mem_context_pack":     true,
+}
+
 // Profiles maps profile names to their tool sets.
 var Profiles = map[string]map[string]bool{
-	"agent":    ProfileAgent,
-	"admin":    ProfileAdmin,
-	"projects": ProfileProjects,
+	"agent":     ProfileAgent,
+	"admin":     ProfileAdmin,
+	"projects":  ProfileProjects,
+	"workspace": ProfileWorkspace,
 }
 
 // ResolveTools takes a comma-separated string of profile names and/or
@@ -1007,6 +1027,9 @@ ERROR: Returns IsError=true if IDs are unknown, relation is invalid, or cross-pr
 
 	// ─── engram-projects tools (profile: projects) ─────────────────────
 	registerProjectTools(srv, s, cfg, allowlist, writeQueue)
+
+	// ─── workspace tools (profile: workspace) ──────────────────────────
+	registerWorkspaceTools(srv, s, cfg, allowlist, writeQueue)
 }
 
 // ─── Tool Handlers ───────────────────────────────────────────────────────────
