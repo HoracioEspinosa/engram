@@ -1,6 +1,7 @@
 package evidence
 
 import (
+	"image"
 	"time"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -28,6 +29,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 		default:
 			return m.handleListKeys(msg.String())
 		}
+
+	case tea.MouseMsg:
+		return m.handleWheel(msg)
 
 	case evidenceLoadedMsg:
 		if msg.project != m.project {
@@ -86,6 +90,52 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// ─── Mouse ───────────────────────────────────────────────────────────────────
+
+// handleWheel translates a wheel notch into the movement the arrow keys
+// already make, so the pointer and the keyboard can never disagree about
+// where the cursor ends up.
+//
+// Only the list answers it. The detail screen is a fixed summary of one
+// capture — every field fits, so there is nothing to scroll — and the panel
+// beside the list at the split breakpoint is that same summary. The
+// coordinates arrive in the tab's own space; the root translates them out of
+// the frame before delivering.
+func (m Model) handleWheel(msg tea.MouseMsg) (tabs.Tab, tea.Cmd) {
+	rows, ok := shared.WheelDelta(msg)
+	if !ok || m.Screen == ScreenDetail {
+		return m, nil
+	}
+	key := "down"
+	if rows < 0 {
+		key, rows = "up", -rows
+	}
+
+	if pane, ok := shared.PaneAt(m.regions(), image.Pt(msg.X, msg.Y)); !ok || pane != shared.PaneMaster {
+		return m, nil
+	}
+
+	return repeatKey(m, rows, Model.handleListKeys, key)
+}
+
+// repeatKey applies one of the tab's key handlers n times, threading the model
+// through each step. A wheel notch is several rows, and the handlers move one.
+func repeatKey(m Model, n int, handle func(Model, string) (tabs.Tab, tea.Cmd), key string) (tabs.Tab, tea.Cmd) {
+	cmds := make([]tea.Cmd, 0, n)
+	for i := 0; i < n; i++ {
+		next, cmd := handle(m, key)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		updated, ok := next.(Model)
+		if !ok {
+			return next, tea.Batch(cmds...)
+		}
+		m = updated
+	}
+	return m, tea.Batch(cmds...)
 }
 
 // ─── List (S6) ───────────────────────────────────────────────────────────────

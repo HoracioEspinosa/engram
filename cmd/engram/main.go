@@ -933,10 +933,58 @@ func cmdTUI(cfg store.Config) {
 	}
 	palette := selection.Resolve()
 	model := newTUIModel(s, resolveTUIProject(), palette)
-	p := newTeaProgram(model)
+	p := newTeaProgram(model, tuiProgramOptions(resolveTUIMouse(s))...)
 	if _, err := runTeaProgram(p); err != nil {
 		fatal(err)
 	}
+}
+
+// mouseSettingKey is where the pointer is turned off for good. It is the same
+// key theme_cmd.go's themeSettingKey pattern establishes: the literal is
+// spelled in cmd/engram because internal/tui is reached through one facade
+// and a settings key is not part of that facade's surface.
+const mouseSettingKey = "tui.mouse"
+
+// tuiProgramOptions are the Bubble Tea options `engram tui` opens with.
+//
+// Cell motion is what makes a click land on a cell rather than on a pixel the
+// program cannot reason about, and it is the mode the tab bar's hitboxes and
+// the wheel both assume. It is a separate function from cmdTUI so the decision
+// can be tested: a tea.ProgramOption is an opaque closure, so what a test can
+// check is that the option is there at all, or that it is not.
+func tuiProgramOptions(mouse bool) []tea.ProgramOption {
+	if !mouse {
+		return nil
+	}
+	return []tea.ProgramOption{tea.WithMouseCellMotion()}
+}
+
+// resolveTUIMouse answers whether the workspace opens with the mouse enabled:
+// --no-mouse on the command line first, then settings['tui.mouse'] = "off".
+//
+// Enabling the mouse takes the terminal's own selection away — every drag
+// becomes an event the program consumes — so both a one-off escape hatch and a
+// remembered one are needed. Everything but an explicit "off" leaves the mouse
+// on: a settings row nobody wrote, or a value nobody recognises, must not
+// quietly disable a feature.
+func resolveTUIMouse(s *store.Store) bool {
+	for i := 2; i < len(os.Args); i++ {
+		if os.Args[i] == "--no-mouse" {
+			return false
+		}
+	}
+	if s == nil {
+		return true
+	}
+	value, ok, err := s.Setting(mouseSettingKey)
+	if err != nil {
+		log.Printf("[engram] ignoring the remembered mouse setting: %v", err)
+		return true
+	}
+	if !ok {
+		return true
+	}
+	return strings.ToLower(strings.TrimSpace(value)) != "off"
 }
 
 // resolveTUIProject resolves the project `engram tui` opens on, following

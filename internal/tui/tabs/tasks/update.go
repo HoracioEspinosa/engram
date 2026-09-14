@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"image"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 		default:
 			return m.handleListKeys(msg.String())
 		}
+
+	case tea.MouseMsg:
+		return m.handleWheel(msg)
 
 	case tasksLoadedMsg:
 		if msg.err != nil {
@@ -129,6 +133,70 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// ─── Mouse ───────────────────────────────────────────────────────────────────
+
+// handleWheel translates a wheel notch into the movement the arrow keys
+// already make.
+//
+// Going through the key handlers rather than touching the cursor directly is
+// what keeps the pointer and the keyboard from drifting apart: the window
+// arithmetic, the clamps and the page bounds are declared once, for both.
+//
+// Which pane the pointer is over decides what moves. Over the list it is the
+// cursor; over the panel beside it there is nothing to move, because that
+// panel shows what the row already carries rather than a body of its own. The
+// coordinates arrive in the tab's own space — the root translates them out of
+// the frame before delivering.
+func (m Model) handleWheel(msg tea.MouseMsg) (tabs.Tab, tea.Cmd) {
+	rows, ok := shared.WheelDelta(msg)
+	if !ok {
+		return m, nil
+	}
+	key := "down"
+	if rows < 0 {
+		key, rows = "up", -rows
+	}
+
+	switch m.Screen {
+	case ScreenContextPack:
+		// One long body: the whole screen scrolls, wherever the pointer is.
+		return repeatKey(m, rows, Model.handleContextPackKeys, key)
+	case ScreenDetail:
+		if m.ChangingState || m.Linking {
+			// A prompt is up; the list behind it is not the thing being
+			// navigated.
+			return m, nil
+		}
+		return repeatKey(m, rows, Model.handleDetailKeys, key)
+	}
+
+	if m.Searching && m.SearchInput.Focused() {
+		return m, nil
+	}
+	if pane, ok := shared.PaneAt(m.regions(), image.Pt(msg.X, msg.Y)); !ok || pane != shared.PaneMaster {
+		return m, nil
+	}
+	return repeatKey(m, rows, Model.handleListKeys, key)
+}
+
+// repeatKey applies one of the tab's key handlers n times, threading the model
+// through each step. A wheel notch is several rows, and the handlers move one.
+func repeatKey(m Model, n int, handle func(Model, string) (tabs.Tab, tea.Cmd), key string) (tabs.Tab, tea.Cmd) {
+	cmds := make([]tea.Cmd, 0, n)
+	for i := 0; i < n; i++ {
+		next, cmd := handle(m, key)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		updated, ok := next.(Model)
+		if !ok {
+			return next, tea.Batch(cmds...)
+		}
+		m = updated
+	}
+	return m, tea.Batch(cmds...)
 }
 
 // ─── List (S3) ───────────────────────────────────────────────────────────────

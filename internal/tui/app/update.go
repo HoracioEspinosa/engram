@@ -12,9 +12,10 @@ import (
 // Update routes a message.
 //
 // Keys reach only the active tab, after the root has taken its global
-// bindings. Everything else — window size, data loads, timers — is broadcast
-// to every tab, so a command that finishes while the user is elsewhere still
-// reaches the tab that issued it.
+// bindings. Mouse events reach the tab bar or the active tab, never the four
+// tabs nobody is looking at. Everything else — window size, data loads,
+// timers — is broadcast to every tab, so a command that finishes while the
+// user is elsewhere still reaches the tab that issued it.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -36,6 +37,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.updateActive(msg)
+
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
 
 	case tabs.NavigateMsg:
 		if msg.Target == tabs.Memory && msg.ObservationID != 0 {
