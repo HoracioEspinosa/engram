@@ -14,7 +14,7 @@ This is the complete technical reference for Engram. For getting started, see th
 | --------------------------------------------------------- | ------------------------------------------------------------ |
 | [Database Schema](#database-schema)                       | Tables, FTS5, SQLite config                                  |
 | [HTTP API](#http-api-endpoints)                           | All REST endpoints with request/response details             |
-| [MCP Tools](#mcp-tools-20-tools)                          | Detailed reference for all 20 memory tools                   |
+| [MCP Tools](#mcp-tools)                                   | Reference for the 20 agent and admin tools — see Tool profiles for the full breakdown |
 | [MCP Project Resolution](#mcp-project-resolution)         | Auto-detection algorithm, response envelope, tool categories |
 | [Workspace Tools](#workspace-tools-profile-workspace)     | The project tree, the vault scanners, benchmarks and the global search |
 | [Memory Protocol](#memory-protocol)                       | When/how agents should use the tools                         |
@@ -844,7 +844,12 @@ Returns success even when cwd is ambiguous — empty `project` + non-empty `avai
 
 ---
 
-## MCP Tools (20 tools)
+## MCP Tools
+
+This section documents the 20 `agent` and `admin` tools shared across every profile
+combination. The ten `projects` tools and the seven `workspace` tools are covered in
+[Tool profiles](#tool-profiles) above and [Workspace Tools](#workspace-tools-profile-workspace)
+below.
 
 ### mem_search
 
