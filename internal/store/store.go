@@ -3332,7 +3332,7 @@ func (s *Store) Timeline(observationID int64, before, after int) (*TimelineResul
 // ─── Search (FTS5) ───────────────────────────────────────────────────────────
 
 func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error) {
-	page, err := s.SearchPaged(query, opts)
+	page, err := s.searchPage(query, opts, false)
 	if err != nil {
 		return nil, err
 	}
@@ -3344,6 +3344,13 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 // the limit until the answer stops changing cannot tell "these are all of
 // them" from "the limit cut the rest"; the total says which.
 func (s *Store) SearchPaged(query string, opts SearchOptions) (SearchPage, error) {
+	return s.searchPage(query, opts, true)
+}
+
+// searchPage backs both readers. The total costs a second pass over the index
+// — the page query scores and orders every match, and counting them all does
+// the walk again — so it is computed only for the caller that asked for it.
+func (s *Store) searchPage(query string, opts SearchOptions, withTotal bool) (SearchPage, error) {
 	// Validate match_mode early so invalid values always error regardless of query shape.
 	switch opts.MatchMode {
 	case "", "all", "any":
@@ -3449,9 +3456,15 @@ func (s *Store) SearchPaged(query string, opts SearchOptions) (SearchPage, error
 		return SearchPage{}, err
 	}
 
-	total, err := s.countSearchMatches(query, ftsQuery, topicKeyQuery, filter, filterArgs)
-	if err != nil {
-		return SearchPage{}, err
+	total := len(results)
+	// A branch that came back short of the window has already returned every
+	// match there is, so the count is in hand and the second pass is waste.
+	if withTotal && len(results) >= window {
+		counted, err := s.countSearchMatches(query, ftsQuery, topicKeyQuery, filter, filterArgs)
+		if err != nil {
+			return SearchPage{}, err
+		}
+		total = counted
 	}
 
 	if offset >= len(results) {
