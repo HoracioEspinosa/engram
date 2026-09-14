@@ -74,6 +74,10 @@ func newTestStore(t *testing.T) *store.Store {
 
 // run executes a command the way the Bubble Tea runtime would, turning a
 // panic inside it into a test failure instead of a crashed test binary.
+//
+// A command that batches others is expanded, because the runtime runs each of
+// them: a screen switch carries both its reload and whatever the workspace is
+// recording about the switch, and the caller here wants the reload.
 func run(t *testing.T, cmd tea.Cmd) (msg tea.Msg) {
 	t.Helper()
 
@@ -82,7 +86,18 @@ func run(t *testing.T, cmd tea.Cmd) (msg tea.Msg) {
 			t.Fatalf("command panicked: %v", r)
 		}
 	}()
-	return cmd()
+
+	msg = cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return msg
+	}
+	for _, inner := range batch {
+		if produced := run(t, inner); produced != nil {
+			return produced
+		}
+	}
+	return nil
 }
 
 func TestNewWiresTheStoreIntoTheMemoryTab(t *testing.T) {

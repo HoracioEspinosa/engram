@@ -47,31 +47,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// opens the observation in Memory"), not a plain tab switch: skip
 			// activate()'s generic tab.Refresh() and load that observation's
 			// detail directly instead.
-			m.active = tabs.Memory
-			m.screen = screenTab
-			return m, m.memory.OpenObservation(msg.ObservationID)
+			return m.openTab(tabs.Memory, m.memory.OpenObservation(msg.ObservationID))
 		}
 		if msg.Target == tabs.Memory && msg.Query != "" {
 			// Runbooks' "t" (rfc-tui.md §3.1 S8/S9): open Memory pre-searched
 			// for this runbook's executions instead of landing on whatever
 			// screen Memory last showed.
-			m.active = tabs.Memory
-			m.screen = screenTab
-			return m, m.memory.SearchFor(msg.Query)
+			return m.openTab(tabs.Memory, m.memory.SearchFor(msg.Query))
 		}
 		if msg.Target == tabs.Tasks && msg.TaskID != 0 {
 			// The mirror image, for S7's "Enter" on an evidence file: open
 			// that file's task directly instead of landing on the list.
-			m.active = tabs.Tasks
-			m.screen = screenTab
-			return m, m.tasks.OpenTask(msg.TaskID)
+			return m.openTab(tabs.Tasks, m.tasks.OpenTask(msg.TaskID))
 		}
 		if msg.Target == tabs.Evidence && msg.TaskID != 0 {
 			// S4's "e" key: filter Evidence to the task under view (S6's
 			// task_id filter) instead of showing every file in the project.
-			m.active = tabs.Evidence
-			m.screen = screenTab
-			return m, m.evidence.OpenForTask(msg.TaskID)
+			return m.openTab(tabs.Evidence, m.evidence.OpenForTask(msg.TaskID))
 		}
 		return m.activate(msg.Target)
 
@@ -378,7 +370,11 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.ancestors = nil
 			// Nothing any tab is holding belongs to the project now active.
 			m.freshness = m.freshness.invalidateAll()
-			return m, tea.Batch(loadDashboard(m.projects, selected.Slug), loadAncestors(m.tree, selected.Slug))
+			return m, tea.Batch(
+				loadDashboard(m.projects, selected.Slug),
+				loadAncestors(m.tree, selected.Slug),
+				m.rememberProject(selected.Slug),
+			)
 		}
 		return m, nil
 	case "/":
@@ -439,9 +435,10 @@ func (m Model) activate(target tabs.ID) (tea.Model, tea.Cmd) {
 	m.active = target
 	m.screen = screenTab
 
+	remember := m.rememberTab(target)
 	if !m.freshness.stale(target, time.Now()) {
-		return m, nil
+		return m, remember
 	}
 	m.freshness = m.freshness.loaded(target)
-	return m, tab.Refresh()
+	return m, tea.Batch(remember, tab.Refresh())
 }

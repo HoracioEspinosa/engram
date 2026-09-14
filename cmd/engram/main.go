@@ -932,11 +932,73 @@ func cmdTUI(cfg store.Config) {
 		fmt.Fprintf(os.Stderr, "engram: unknown theme %q, falling back to %s\n", unknown, theme.DefaultThemeName)
 	}
 	palette := selection.Resolve()
-	model := newTUIModel(s, resolveTUIProject(), palette)
+	project := resolveTUIProject(s)
+	model := newTUIModel(s, project, palette).
+		WithIcons(resolveTUIIcons(s)).
+		WithLastTab(resolveTUITab(s, project))
 	p := newTeaProgram(model, tuiProgramOptions(resolveTUIMouse(s))...)
 	if _, err := runTeaProgram(p); err != nil {
 		fatal(err)
 	}
+}
+
+// Settings keys `engram tui` reads to reopen where it was left. They are
+// spelled here and again in internal/tui/app, the way tui.theme already is:
+// internal/tui is reached through one facade, and a settings key is not part
+// of that facade's surface.
+const (
+	lastProjectSettingKey = "tui.last_project"
+	lastTabSettingKey     = "tui.last_tab"
+	iconsSettingKey       = "tui.icons"
+)
+
+// tuiSetting reads one remembered value, or "" when there is none and when
+// the store will not answer. Nothing here is worth refusing to open the
+// workspace over: every caller has a default that is exactly the state a fresh
+// installation is in.
+func tuiSetting(s *store.Store, key string) string {
+	if s == nil {
+		return ""
+	}
+	value, ok, err := s.Setting(key)
+	if err != nil {
+		log.Printf("[engram] ignoring the remembered %s: %v", key, err)
+		return ""
+	}
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+// resolveTUIIcons picks the glyph vocabulary the workspace draws with:
+// ENGRAM_TUI_ICONS, then settings['tui.icons'], then whatever TERM and the
+// locale say the terminal can be trusted to render. Nerd Font icons are never
+// inferred — see theme.ResolveIconMode.
+func resolveTUIIcons(s *store.Store) theme.IconMode {
+	return theme.ResolveIconMode(
+		os.Getenv("ENGRAM_TUI_ICONS"),
+		tuiSetting(s, iconsSettingKey),
+		os.Getenv("TERM"),
+		os.Getenv("LANG"),
+	)
+}
+
+// resolveTUITab names the tab the workspace reopens on, and "" for the tab
+// New would have chosen on its own.
+//
+// The remembered tab only applies to the project it was remembered against.
+// Opening a different project on the last one's tab shows a screen about
+// somebody else's work, which is worse than the predictable landing screen: a
+// tab is a place inside a project, not a global preference.
+func resolveTUITab(s *store.Store, project string) string {
+	if project == "" {
+		return ""
+	}
+	if tuiSetting(s, lastProjectSettingKey) != project {
+		return ""
+	}
+	return tuiSetting(s, lastTabSettingKey)
 }
 
 // mouseSettingKey is where the pointer is turned off for good. It is the same
@@ -989,9 +1051,10 @@ func resolveTUIMouse(s *store.Store) bool {
 
 // resolveTUIProject resolves the project `engram tui` opens on, following
 // the precedence rfc-tui.md §9.1 fixes for --project: an explicit --project
-// (or --project=) flag first, then ENGRAM_PROJECT, then cwd detection. An
-// empty result means no project was resoluble, so the workspace opens on its
-// no-project home instead of a Dashboard.
+// (or --project=) flag first, then ENGRAM_PROJECT, then cwd detection, then
+// the project the last run was left on. An empty result means no project was
+// resoluble, so the workspace opens on its no-project home instead of a
+// Dashboard.
 //
 // cwd detection only counts as resoluble when project.DetectProjectFull backs
 // it with a fact (a git-derived source or repo config) — a directory-name
@@ -999,7 +1062,15 @@ func resolveTUIMouse(s *store.Store) bool {
 // detection at all, per ADR-057 §3: without this, DetectProject's bare
 // string never came back empty, so a non-git directory always looked
 // resoluble and rfc-tui.md §9.1's Selector fallback could never be reached.
-func resolveTUIProject() string {
+//
+// The remembered project sits below that detection and never above it. Opening
+// a terminal inside a repository and being shown a different project's
+// workspace is the one failure a remembered choice must not cause: where the
+// user is standing is a fact, and a fact outranks a habit. It sits above the
+// empty selector, which is what the tier is for — a workspace opened from a
+// directory that is nobody's project reopens on the project it was last doing
+// work in, rather than on a list to pick from again.
+func resolveTUIProject(s *store.Store) string {
 	resolved := ""
 	for i := 2; i < len(os.Args); i++ {
 		switch {
@@ -1019,6 +1090,9 @@ func resolveTUIProject() string {
 				resolved = det.Project
 			}
 		}
+	}
+	if resolved == "" {
+		resolved = tuiSetting(s, lastProjectSettingKey)
 	}
 	if resolved == "" {
 		return ""
