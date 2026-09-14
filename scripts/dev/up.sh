@@ -3,15 +3,16 @@
 #
 # What it does: stamps the image with the working tree's short SHA, builds
 # engram-dev, starts it, waits for Docker's own health check to report
-# healthy, publishes the compiled binary into the engram-dev-bin volume so the
-# shots profile can run it without rebuilding, and prints `engram version`.
+# healthy, checks that the published api port is loopback-only, publishes the
+# compiled binary into the engram-dev-bin volume so the shots profile can run
+# it without rebuilding, and prints `engram version`.
 #
 # What it guarantees: nothing starts until ./setup.sh has been run in this
 # checkout and until the resolved compose config is proven not to reach
-# ~/.engram. Readiness is decided by `docker inspect`, never by connecting to
-# a port: internal/server/server.go binds 127.0.0.1 inside the container, so
-# no port is published and a port probe from the host would report a refused
-# connection on a perfectly healthy container.
+# ~/.engram, and nothing continues past a dev api that answers beyond this
+# machine. Readiness is decided by `docker inspect` rather than by a port
+# probe, so the container's own health check stays the single source of truth
+# for whether the process is up.
 
 set -euo pipefail
 
@@ -59,6 +60,8 @@ if [ "$health" != "healthy" ]; then
   "${DC[@]}" logs --tail 50 engram-dev >&2 || true
   fail "engram-dev did not become healthy within ${HEALTH_TIMEOUT}s (last state: $health)"
 fi
+
+assert_dev_port_local
 
 # Publish the binary into the shared volume. Done with a throwaway `docker run`
 # against the image itself rather than `docker cp` out of the running
