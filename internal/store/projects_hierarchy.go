@@ -420,22 +420,6 @@ func (s *Store) SubtreeSlugs(root string) ([]string, error) {
 	return slugs, nil
 }
 
-// projectSeparators are the characters people use where a slug uses a hyphen.
-// A project typed as "ai_engram", "ai engram" or "ai.engram" names the same
-// thing as "ai-engram", and only the reader folds them together — nothing is
-// ever stored under the folded spelling.
-var projectSeparators = strings.NewReplacer("_", "-", " ", "-", ".", "-")
-
-// foldProjectSeparators returns the comparison form of a project name.
-func foldProjectSeparators(name string) string {
-	folded := strings.TrimSpace(strings.ToLower(name))
-	folded = projectSeparators.Replace(folded)
-	for strings.Contains(folded, "--") {
-		folded = strings.ReplaceAll(folded, "--", "-")
-	}
-	return strings.Trim(folded, "-")
-}
-
 // instanceSuffix matches the tail segment that numbers one instance of a
 // product: "00", "02", "i0002", "v2". A slug ending in one is read as a member
 // of the family its prefix names.
@@ -444,7 +428,7 @@ var instanceSuffix = regexp.MustCompile(`^[a-z]?[0-9]+$`)
 // projectFamilyStem returns the family a slug belongs to, or "" when the slug
 // names no family. It is the folded slug without its instance suffix.
 func projectFamilyStem(slug string) string {
-	folded := foldProjectSeparators(slug)
+	folded := FoldProjectSeparators(slug)
 	idx := strings.LastIndex(folded, "-")
 	if idx <= 0 {
 		return ""

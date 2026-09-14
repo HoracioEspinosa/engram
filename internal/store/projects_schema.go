@@ -27,6 +27,9 @@ const (
 	// project_cards, plus the three local columns that record the last graph
 	// staleness check.
 	projCardsHierarchyID = "proj-0001-cards-hierarchy"
+	// projAliasesID adds the table that lets one project answer to more than
+	// one name without any historical row being renamed.
+	projAliasesID = "proj-0002-project-aliases"
 )
 
 // projectsHierarchyDDL is the proj-0001-cards-hierarchy step. It is written as
@@ -358,11 +361,44 @@ func (s *Store) migrateProjects() error {
 // (which projectsSchemaDDL just created in its version-2 shape) and an existing
 // one both walk the same path exactly once.
 func (s *Store) migrateProjectsToV3() error {
-	return s.once(projCardsHierarchyID, func() error {
-		_, err := s.execHook(s.db, projectsHierarchyDDL)
-		return err
-	})
+	steps := []struct {
+		id  string
+		ddl string
+	}{
+		{projCardsHierarchyID, projectsHierarchyDDL},
+		{projAliasesID, projectAliasesDDL},
+	}
+	for _, step := range steps {
+		if err := s.once(step.id, func() error {
+			_, err := s.execHook(s.db, step.ddl)
+			return err
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
+
+// projectAliasesDDL is the proj-0002-project-aliases step. An alias is a name
+// that resolves to a project, never a rename: nothing historical moves, so a
+// tool configured years ago against the old spelling keeps working while the
+// rows stay under the name they were written with.
+const projectAliasesDDL = `
+CREATE TABLE IF NOT EXISTS project_aliases (
+    alias      TEXT    PRIMARY KEY
+               CHECK (alias = lower(trim(alias)) AND length(alias) BETWEEN 1 AND 96),
+    sync_id    TEXT    NOT NULL UNIQUE,
+    slug       TEXT    NOT NULL REFERENCES project_cards(slug)
+                       ON DELETE CASCADE ON UPDATE CASCADE,
+    source     TEXT    NOT NULL
+               CHECK (source IN ('git_remote','dir','env','manual','normalizer')),
+    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    deleted_at TEXT,
+    CHECK (alias <> slug)
+);
+CREATE INDEX IF NOT EXISTS idx_project_aliases_slug ON project_aliases(slug);
+`
 
 // projectsSchemaDropDDL removes every engram-projects object in dependency
 // order: FTS5 sync triggers first, then the FTS5 virtual tables, then the
@@ -379,6 +415,7 @@ DROP TRIGGER IF EXISTS tasks_fts_insert;
 DROP TABLE IF EXISTS runbook_index_fts;
 DROP TABLE IF EXISTS tasks_fts;
 DROP TABLE IF EXISTS task_link_tombstones;
+DROP TABLE IF EXISTS project_aliases;
 DROP TABLE IF EXISTS observation_refs;
 DROP TABLE IF EXISTS task_observations;
 DROP TABLE IF EXISTS evidence;
@@ -424,6 +461,7 @@ type ProjectsSchemaStatus struct {
 	Evidence         int  `json:"evidence"`
 	RunbookIndex     int  `json:"runbook_index"`
 	TaskObservations int  `json:"task_observations"`
+	ProjectAliases   int  `json:"project_aliases"`
 }
 
 // ProjectsSchemaStatus reads the current state of the engram-projects
@@ -460,6 +498,7 @@ func (s *Store) ProjectsSchemaStatus() (ProjectsSchemaStatus, error) {
 		{"evidence", &status.Evidence},
 		{"runbook_index", &status.RunbookIndex},
 		{"task_observations", &status.TaskObservations},
+		{"project_aliases", &status.ProjectAliases},
 	}
 	for _, c := range counts {
 		if err := s.db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", c.table)).Scan(c.dest); err != nil {
