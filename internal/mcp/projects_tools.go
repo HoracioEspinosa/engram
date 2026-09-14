@@ -48,11 +48,12 @@ func isValidProjectSlug(slug string) bool {
 }
 
 var taskKindEnum = []string{"feature", "bugfix", "refactor", "incident", "migration", "spike"}
-var taskStateEnum = []string{"open", "analysis", "in_progress", "review", "verified", "done", "blocked", "cancelled"}
+var taskStateEnum = []string{"open", "analysis", "in_progress", "review", "verified", "done", "blocked", "cancelled", "pending", "archived", "unverified"}
 var taskListStateEnum = append([]string{"active"}, taskStateEnum...)
 var jiraStatusCategoryEnum = []string{"new", "indeterminate", "done"}
 var taskLinkRoleEnum = []string{"context", "decision", "root_cause", "evidence", "summary"}
-var evidenceKindEnum = []string{"png", "gif", "mp4", "json", "log", "txt"}
+var evidenceKindEnum = []string{"png", "jpg", "gif", "webp", "svg", "mp4", "webm", "json", "csv", "log", "txt", "md", "patch", "diff", "pdf", "html", "zip", "har", "other"}
+var evidenceCategoryEnum = []string{"analysis", "plans", "runbooks", "reports", "patches", "evidences", "evidences-qa", "benchmarks", "scripts", "assets", "exports"}
 var runbookCategoryEnum = []string{"auth", "database", "queue", "network", "performance", "data-integrity", "registration"}
 var runbookPatternEnum = []string{"missing-files", "auth-access", "file-save-failure", "sync-upload", "registration-subscription", "other"}
 var runbookSeverityEnum = []string{"P1", "P2", "P3", "P4"}
@@ -345,6 +346,11 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("pr_url"),
 				mcp.WithString("knowledge_ref"),
 				mcp.WithString("assignee"),
+				mcp.WithString("slug", mcp.Pattern(`^[a-z0-9][a-z0-9-]*$`), mcp.MaxLength(64), mcp.Description("Short stable name for the task, unique inside the project")),
+				mcp.WithString("summary", mcp.MaxLength(1000), mcp.Description("What the task is about, in prose")),
+				mcp.WithString("pending_note", mcp.MaxLength(1000), mcp.Description("What is still missing before the task can move on")),
+				mcp.WithString("vault_path", mcp.Description("Vault-relative folder holding this task's working files")),
+				mcp.WithString("parent_task", mcp.Description("Parent task in any reference form: PROJ-123 | task-<hex> | #42 | change:<sdd_change> | slug")),
 			),
 			queuedWriteHandler(writeQueue, handleTaskUpsert(s, cfg)),
 		)
@@ -368,6 +374,12 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithNumber("limit", mcp.Min(1), mcp.Max(100), mcp.DefaultNumber(20)),
 				mcp.WithNumber("offset", mcp.Min(0), mcp.DefaultNumber(0)),
 				mcp.WithNumber("stale_after_hours", mcp.Min(1), mcp.DefaultNumber(24)),
+				mcp.WithString("match_mode", mcp.Enum(matchModeEnum...), mcp.DefaultString("all"),
+					mcp.Description("How query's tokens combine: all (default) needs every token, any needs one of them")),
+				mcp.WithBoolean("include_archived", mcp.DefaultBool(false),
+					mcp.Description("Bring archived tasks back into the listing. Archived work is history, so it is left out by default.")),
+				mcp.WithBoolean("include_children", mcp.DefaultBool(false),
+					mcp.Description("List the project and every project under it in the hierarchy. data.projects names the ones covered.")),
 			),
 			handleTaskList(s, cfg),
 		)
@@ -418,6 +430,8 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("manifest_path", mcp.Description("Relative path of manifest.json for the ticket")),
 				mcp.WithBoolean("attached_jira", mcp.DefaultBool(false)),
 				mcp.WithString("attached_confluence_url"),
+				mcp.WithString("category", mcp.Enum(evidenceCategoryEnum...), mcp.DefaultString("evidences"),
+					mcp.Description("Vault folder the file belongs to")),
 			),
 			queuedWriteHandler(writeQueue, handleEvidenceAdd(s, cfg)),
 		)
@@ -437,8 +451,12 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("task"),
 				mcp.WithBoolean("attached_jira"),
 				mcp.WithString("kind", mcp.Enum(evidenceKindEnum...)),
+				mcp.WithString("category", mcp.Enum(evidenceCategoryEnum...), mcp.Description("Narrow the listing to one vault folder")),
+				mcp.WithString("query", mcp.Description("Full-text search over the path, what the capture proves, its category and its kind")),
 				mcp.WithNumber("limit", mcp.Min(1), mcp.Max(200), mcp.DefaultNumber(50)),
 				mcp.WithNumber("offset", mcp.Min(0), mcp.DefaultNumber(0)),
+				mcp.WithBoolean("include_children", mcp.DefaultBool(false),
+					mcp.Description("List the project and every project under it in the hierarchy. data.projects names the ones covered.")),
 			),
 			handleEvidenceList(s, cfg),
 		)
@@ -700,6 +718,37 @@ func derefString(v *string) string {
 	return strings.TrimSpace(*v)
 }
 
+// projectScope is the set of projects a listing covers: the one that was
+// resolved, or the whole subtree below it when the caller asked for the
+// children. A project with no card has no subtree, so it answers as itself.
+func projectScope(s *store.Store, project string, includeChildren bool) []string {
+	if !includeChildren {
+		return []string{project}
+	}
+	slugs, err := s.SubtreeSlugs(project)
+	if err != nil || len(slugs) == 0 {
+		return []string{project}
+	}
+	return slugs
+}
+
+// pageSlice cuts one page out of a list already joined from several queries.
+// Each query applied the offset to its own rows, so the joined list is paged
+// again here rather than trusted to be a page already.
+func pageSlice[T any](items []T, offset, limit int) []T {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(items) {
+		return nil
+	}
+	items = items[offset:]
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items
+}
+
 func optBoolDefault(req mcp.CallToolRequest, key string, def bool) bool {
 	v, ok := req.GetArguments()[key].(bool)
 	if !ok {
@@ -886,6 +935,11 @@ func handleTaskUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			PRUrl:              optStringPtr(req, "pr_url"),
 			KnowledgeRef:       optStringPtr(req, "knowledge_ref"),
 			Assignee:           optStringPtr(req, "assignee"),
+			Slug:               optStringPtr(req, "slug"),
+			Summary:            optStringPtr(req, "summary"),
+			PendingNote:        optStringPtr(req, "pending_note"),
+			VaultPath:          optStringPtr(req, "vault_path"),
+			ParentTask:         optStringPtr(req, "parent_task"),
 		}
 		result, err := s.UpsertTask(params)
 		if err != nil {
@@ -900,6 +954,9 @@ func handleTaskUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			if errors.As(err, &conflict) {
 				return projectToolError("task_key_conflict", conflict.Error(),
 					map[string]any{"existing_project": conflict.ExistingProject}), nil
+			}
+			if errors.Is(err, store.ErrUnknownTask) {
+				return projectToolError("unknown_task", fmt.Sprintf("parent_task %q not found in project %s", optString(req, "parent_task"), detRes.Project), nil), nil
 			}
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -927,21 +984,42 @@ func handleTaskList(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), nil), nil
 		}
 
+		matchMode := optString(req, "match_mode")
+		if matchMode != "" && !enumContains(matchModeEnum, matchMode) {
+			return projectToolError("invalid_enum", fmt.Sprintf("match_mode %q is invalid", matchMode), map[string]any{"allowed": matchModeEnum}), nil
+		}
+
 		filter := store.TaskListFilter{
 			State:           state,
 			Kind:            optString(req, "kind"),
 			JiraKey:         optString(req, "jira_key"),
 			Query:           optString(req, "query"),
+			MatchMode:       matchMode,
+			IncludeArchived: optBoolDefault(req, "include_archived", false),
 			Limit:           clampInt(intArg(req, "limit", 20), 1, 100, 20),
 			Offset:          intArg(req, "offset", 0),
 			StaleAfterHours: clampInt(intArg(req, "stale_after_hours", 24), 1, 1<<30, 24),
 		}
-		items, total, err := s.ListTasks(detRes.Project, filter)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		scope := projectScope(s, detRes.Project, optBoolDefault(req, "include_children", false))
+		var items []store.TaskListItem
+		total := 0
+		// Each project in the subtree is listed on its own and the pages are
+		// joined, because a task list is scoped to one project in the store and
+		// a subtree is a reader's question, not a storage one.
+		for _, slug := range scope {
+			page, count, err := s.ListTasks(slug, filter)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			items = append(items, page...)
+			total += count
+		}
+		if len(scope) > 1 {
+			items = pageSlice(items, filter.Offset, filter.Limit)
 		}
 		return respondProjectResult(detRes, map[string]any{
 			"items": items, "total": total, "limit": filter.Limit, "offset": filter.Offset,
+			"projects": scope,
 		}), nil
 	}
 }
@@ -1039,7 +1117,11 @@ func handleEvidenceAdd(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			return projectToolError("invalid_sha256", fmt.Sprintf("sha256 %q is not 64 lowercase hex chars", sha256), nil), nil
 		}
 		if !enumContains(evidenceKindEnum, kind) {
-			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), nil), nil
+			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), map[string]any{"allowed": evidenceKindEnum}), nil
+		}
+		category := optString(req, "category")
+		if category != "" && !enumContains(evidenceCategoryEnum, category) {
+			return projectToolError("invalid_enum", fmt.Sprintf("category %q is invalid", category), map[string]any{"allowed": evidenceCategoryEnum}), nil
 		}
 		// An evidence path names a file inside the evidence directory, so it is
 		// checked for what it RESOLVES to, not for how it starts. Rejecting a
@@ -1072,6 +1154,7 @@ func handleEvidenceAdd(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			Task:                  task,
 			Path:                  path,
 			SHA256:                sha256,
+			Category:              category,
 			Kind:                  kind,
 			Proves:                proves,
 			ConfigStamp:           optStringPtr(req, "config_stamp"),
@@ -1103,11 +1186,16 @@ func handleEvidenceList(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 		filter := store.EvidenceListFilter{
 			AttachedJira: optBoolPtr(req, "attached_jira"),
 			Kind:         optString(req, "kind"),
+			Category:     optString(req, "category"),
+			Query:        optString(req, "query"),
 			Limit:        clampInt(intArg(req, "limit", 50), 1, 200, 50),
 			Offset:       intArg(req, "offset", 0),
 		}
 		if kind := filter.Kind; kind != "" && !enumContains(evidenceKindEnum, kind) {
 			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), nil), nil
+		}
+		if category := filter.Category; category != "" && !enumContains(evidenceCategoryEnum, category) {
+			return projectToolError("invalid_enum", fmt.Sprintf("category %q is invalid", category), map[string]any{"allowed": evidenceCategoryEnum}), nil
 		}
 		if taskRef := optString(req, "task"); taskRef != "" {
 			task, err := s.ResolveTaskRef(detRes.Project, taskRef)
@@ -1120,12 +1208,25 @@ func handleEvidenceList(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			filter.TaskSyncID = task.SyncID
 		}
 
-		items, total, totalBytes, err := s.ListEvidence(detRes.Project, filter)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		scope := projectScope(s, detRes.Project, optBoolDefault(req, "include_children", false))
+		var items []store.EvidenceListItem
+		total := 0
+		var totalBytes int64
+		for _, slug := range scope {
+			page, count, bytes, err := s.ListEvidence(slug, filter)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			items = append(items, page...)
+			total += count
+			totalBytes += bytes
+		}
+		if len(scope) > 1 {
+			items = pageSlice(items, filter.Offset, filter.Limit)
 		}
 		return respondProjectResult(detRes, map[string]any{
 			"items": items, "total": total, "total_bytes": totalBytes, "limit": filter.Limit, "offset": filter.Offset,
+			"projects": scope,
 		}), nil
 	}
 }
