@@ -36,3 +36,10 @@ bin/
 
 # Regenerable code graph, never versioned.
 graphify-out/
+
+# Compiled binaries that a stray `go build` inside the package directory
+# leaves behind. `go build ./cmd/engram` writes to the current directory, so
+# running it from inside cmd/engram drops a 17 MB executable named after the
+# package right next to the sources.
+cmd/engram/main
+cmd/engram/gentle-creation
