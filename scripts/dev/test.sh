@@ -40,6 +40,7 @@ status_snapshot() {
 }
 
 BEFORE_STATUS="$(status_snapshot)"
+set_git_mount_args
 
 log "running the suite inside $GO_IMAGE"
 set +e
@@ -47,6 +48,7 @@ docker run --rm \
   -v "$ROOT_DIR:/src" \
   -v "${GOMOD_VOLUME}:/go/pkg/mod" \
   -v "${GOBUILD_VOLUME}:/root/.cache/go-build" \
+  "${GIT_MOUNT_ARGS[@]+"${GIT_MOUNT_ARGS[@]}"}" \
   -w /src \
   "$GO_IMAGE" \
   bash -c '

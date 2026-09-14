@@ -6981,6 +6981,60 @@ func TestProcessOverrideSaveHandlerWritesToDefaultProject(t *testing.T) {
 	}
 }
 
+// TestSaveExplicitProjectMatchesProcessOverrideOutsideRepo asserts that naming
+// the very project the process was started with is accepted even when the
+// working directory is not a repository and the project has no rows yet.
+func TestSaveExplicitProjectMatchesProcessOverrideOutsideRepo(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	s := newMCPTestStore(t)
+	h := handleSave(s, MCPConfig{DefaultProject: "koi-garden"}, NewSessionActivity(10*time.Minute))
+
+	res, err := h(context.Background(), mcppkg.CallToolRequest{Params: mcppkg.CallToolParams{Arguments: map[string]any{
+		"title":   "explicit project matches the override",
+		"content": "saved with an explicit project equal to the process override",
+		"type":    "decision",
+		"project": "koi-garden",
+	}}})
+	if err != nil || res.IsError {
+		t.Fatalf("save error: err=%v isError=%v text=%q", err, res.IsError, callResultText(t, res))
+	}
+	envelope := callResultJSON(t, res)
+	if got := envelope["project"]; got != "koi-garden" {
+		t.Fatalf("project = %v; want koi-garden", got)
+	}
+	if got := envelope["project_source"]; got != project.SourceExplicitOverride {
+		t.Fatalf("project_source = %v; want %s", got, project.SourceExplicitOverride)
+	}
+}
+
+// TestSaveExplicitProjectRejectsMismatchWithProcessOverride asserts that the
+// process override only vouches for its own project: any other name still needs
+// a card, observations, a session, or repo configuration behind it.
+func TestSaveExplicitProjectRejectsMismatchWithProcessOverride(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	s := newMCPTestStore(t)
+	h := handleSave(s, MCPConfig{DefaultProject: "koi-garden"}, NewSessionActivity(10*time.Minute))
+
+	res, err := h(context.Background(), mcppkg.CallToolRequest{Params: mcppkg.CallToolParams{Arguments: map[string]any{
+		"title":   "explicit project differs from the override",
+		"content": "saved with an explicit project the process cannot vouch for",
+		"type":    "decision",
+		"project": "tsukimi-bridge",
+	}}})
+	if err != nil {
+		t.Fatalf("save error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected an error result; got %q", callResultText(t, res))
+	}
+	envelope := callResultJSON(t, res)
+	if got := envelope["error_code"]; got != "unknown_project" {
+		t.Fatalf("error_code = %v; want unknown_project (text: %s)", got, callResultText(t, res))
+	}
+}
+
 // TestHandleSearchPersonalScopeIgnoresCWDProject verifies that when scope=personal
 // and no explicit project is given, handleSearch returns personal memories from
 // ALL projects rather than filtering to the cwd-detected project (issue #391).

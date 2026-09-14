@@ -3822,7 +3822,9 @@ func TestMigrationInternalErrorAndNoopBranches(t *testing.T) {
 	})
 
 	t.Run("migrate returns deterministic exec hook errors", func(t *testing.T) {
-		s := newTestStore(t)
+		// The backfill runs once per database, so the failure has to be forced
+		// on a database that has not been migrated yet.
+		s := openMigrationTestStore(t, t.TempDir(), defaultStoreHooks())
 
 		origExec := s.hooks.exec
 		s.hooks.exec = func(db execer, query string, args ...any) (sql.Result, error) {
@@ -4258,6 +4260,12 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 		for _, needle := range failCases {
 			t.Run(needle, func(t *testing.T) {
 				s := newTestStore(t)
+				if strings.HasPrefix(needle, "UPDATE ") {
+					// The row rewrites are behind the migration ledger, so an
+					// already-migrated store never reaches them again. Only a
+					// database that has not been migrated yet can fail on one.
+					s = openMigrationTestStore(t, t.TempDir(), defaultStoreHooks())
+				}
 				if strings.Contains(needle, "CREATE TRIGGER prompt_fts_insert") {
 					if _, err := s.db.Exec(`
 						DROP TRIGGER IF EXISTS prompt_fts_insert;
@@ -7284,6 +7292,7 @@ func TestProjectScopedTablesMatchesTheLiveSchema(t *testing.T) {
 	}
 
 	want := map[string]wantShape{
+		"benchmarks":             {},
 		"cloud_upgrade_state":    {projectPK: true, hasUpdatedAt: true},
 		"evidence":               {},
 		"observations":           {hasUpdatedAt: true},
@@ -7479,9 +7488,9 @@ func TestMergeProjectsMovesEvidenceTasksRunbooksAndTombstones(t *testing.T) {
 }
 
 // TestTablesReferencingProjectCards pins the exact set of tables discovered
-// via PRAGMA foreign_key_list as of this schema — tasks, evidence and
-// runbook_index, each through a foreign key on their own "project" column
-// into project_cards(slug). A future table with the same FK shape needs no
+// via PRAGMA foreign_key_list as of this schema — tasks, evidence,
+// runbook_index and benchmarks, each through a foreign key on their own
+// "project" column into project_cards(slug). A future table with the same FK shape needs no
 // matching addition here; this test is what would need updating to notice
 // that isn't happening automatically.
 func TestTablesReferencingProjectCards(t *testing.T) {
@@ -7500,7 +7509,7 @@ func TestTablesReferencingProjectCards(t *testing.T) {
 	for _, d := range dependents {
 		got[d.name] = true
 	}
-	want := map[string]bool{"tasks": true, "evidence": true, "runbook_index": true}
+	want := map[string]bool{"tasks": true, "evidence": true, "runbook_index": true, "benchmarks": true}
 	if len(got) != len(want) {
 		t.Fatalf("tablesReferencingProjectCards = %v, want %v", got, want)
 	}

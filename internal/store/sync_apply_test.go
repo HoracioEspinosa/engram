@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -576,5 +577,92 @@ func TestApplyPulledRelation_MultiActorSamePair(t *testing.T) {
 	}
 	if n2 != 1 {
 		t.Errorf("actor-2 sync_id: expected 1 row, got %d", n2)
+	}
+}
+
+// TestApplyPulledMutationParksUnknownEntity pins the pull's behaviour against a
+// peer that replicates an entity this binary has never heard of: the mutation is
+// quarantined as dead with the reason recorded, the cursor advances past it, and
+// the mutations queued behind it still apply.
+func TestApplyPulledMutationParksUnknownEntity(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.ensureSyncState(DefaultSyncTargetKey); err != nil {
+		t.Fatalf("ensureSyncState: %v", err)
+	}
+
+	unknown := SyncMutation{
+		Entity:    "telemetry_sample",
+		EntityKey: "tel-0001",
+		Op:        SyncOpUpsert,
+		Payload:   `{"sync_id":"tel-0001","metric":"p95","value":12.5}`,
+		Source:    SyncSourceRemote,
+		Seq:       1,
+		TargetKey: DefaultSyncTargetKey,
+	}
+	if err := s.ApplyPulledMutation(DefaultSyncTargetKey, unknown); err != nil {
+		t.Fatalf("ApplyPulledMutation: expected the pull to survive an unknown entity, got %v", err)
+	}
+
+	var applyStatus, entity, lastError string
+	if err := s.db.QueryRow(
+		`SELECT apply_status, entity, ifnull(last_error, '') FROM sync_apply_deferred WHERE sync_id LIKE ?`,
+		unknown.EntityKey+"%",
+	).Scan(&applyStatus, &entity, &lastError); err != nil {
+		t.Fatalf("scan deferred row: %v", err)
+	}
+	if applyStatus != "dead" {
+		t.Errorf("apply_status = %q; want dead", applyStatus)
+	}
+	if entity != "telemetry_sample" {
+		t.Errorf("entity = %q; want telemetry_sample", entity)
+	}
+	if !strings.Contains(lastError, "telemetry_sample") {
+		t.Errorf("last_error = %q; want it to name the unknown entity", lastError)
+	}
+
+	state, err := s.GetSyncState(DefaultSyncTargetKey)
+	if err != nil {
+		t.Fatalf("GetSyncState: %v", err)
+	}
+	if state.LastPulledSeq != 1 {
+		t.Fatalf("last_pulled_seq = %d; want 1 so the pull is not stuck on the unknown entity", state.LastPulledSeq)
+	}
+
+	// The mutation queued behind the unknown one still applies.
+	if err := s.CreateSession("sess-after-unknown", "koi-garden", ""); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	obsID, err := s.AddObservation(AddObservationParams{
+		SessionID: "sess-after-unknown", Type: "discovery", Title: "after", Content: "after", Project: "koi-garden",
+	})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+	obs, err := s.GetObservation(obsID)
+	if err != nil {
+		t.Fatalf("GetObservation: %v", err)
+	}
+	payload, err := json.Marshal(observationPayloadFromObservation(obs))
+	if err != nil {
+		t.Fatalf("marshal observation payload: %v", err)
+	}
+	next := SyncMutation{
+		Entity:    SyncEntityObservation,
+		EntityKey: obs.SyncID,
+		Op:        SyncOpUpsert,
+		Payload:   string(payload),
+		Source:    SyncSourceRemote,
+		Seq:       2,
+		TargetKey: DefaultSyncTargetKey,
+	}
+	if err := s.ApplyPulledMutation(DefaultSyncTargetKey, next); err != nil {
+		t.Fatalf("ApplyPulledMutation after the unknown entity: %v", err)
+	}
+	state, err = s.GetSyncState(DefaultSyncTargetKey)
+	if err != nil {
+		t.Fatalf("GetSyncState: %v", err)
+	}
+	if state.LastPulledSeq != 2 {
+		t.Fatalf("last_pulled_seq = %d; want 2", state.LastPulledSeq)
 	}
 }

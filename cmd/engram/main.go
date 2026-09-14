@@ -2906,6 +2906,10 @@ Commands:
 Environment:
   ENGRAM_DATA_DIR    Override data directory (default: ~/.engram)
   ENGRAM_PORT        Override HTTP server port (default: 7437)
+  ENGRAM_HOST        Bind interface for "engram serve" (default: 127.0.0.1).
+                     Set it to 0.0.0.0 only behind a boundary that already
+                     restricts who reaches the port, such as a container
+                     publishing it on the host's loopback address.
   ENGRAM_PROJECT     Process-level default project override.
                      For "engram serve": fallback for GET /sync/status with no project param.
                      For "engram mcp": sets DefaultProject, overriding cwd detection for all tools.

@@ -2,8 +2,8 @@
 # lib.sh — shared state and guards for every script under scripts/dev/.
 #
 # What it does: exports the paths, the container name and the compose
-# invocation that the dev environment is addressed through, plus the two
-# guards every entry point runs before it touches Docker.
+# invocation that the dev environment is addressed through, plus the guards
+# every entry point runs before it touches Docker.
 #
 # What it guarantees:
 #   * assert_no_live_db() refuses to continue if anything in this run could
@@ -13,6 +13,10 @@
 #   * require_setup() refuses to continue when ./setup.sh has not been run in
 #     this checkout, because .claude/skills/ and .claude/agents/ are generated,
 #     are not tracked, and resolve to nothing — silently — when absent.
+#   * assert_dev_port_local() refuses to continue when the published HTTP port
+#     is listening on anything but the host's loopback address. The container
+#     binds 0.0.0.0 inside its own namespace; the host-side bind is the only
+#     thing keeping the dev store off the local network.
 #
 # This file is sourced, never executed. It defines no side effects beyond the
 # variables and functions below.
@@ -41,8 +45,12 @@ OUT_DIR="$ROOT_DIR/docker/dev/out"
 GO_IMAGE="golang:1.25.10"
 IMAGE="engram-dev:latest"
 LIVE_DB_DIR="$HOME/.engram"
+# Host-side port docker-compose.dev.yml publishes the container's 7437 on.
+# Deliberately not 7437, so a dev stack never collides with the engram serve
+# the developer already runs on the real store.
+DEV_HTTP_PORT="17437"
 
-export ROOT_DIR COMPOSE_FILE COMPOSE_PROJECT CONTAINER OUT_DIR GO_IMAGE IMAGE LIVE_DB_DIR
+export ROOT_DIR COMPOSE_FILE COMPOSE_PROJECT CONTAINER OUT_DIR GO_IMAGE IMAGE LIVE_DB_DIR DEV_HTTP_PORT
 
 # log writes progress to stderr so a script's stdout stays machine-readable.
 log() {
@@ -219,6 +227,45 @@ $config"
   log "isolation ok: nothing in the compose config resolves under $LIVE_DB_DIR"
 }
 
+# assert_dev_port_local refuses to continue when the published HTTP port is
+# reachable from anything but this machine.
+#
+# `docker compose config` proves what the file asks for; lsof proves what the
+# kernel actually did. Docker opens the host-side socket itself, so a ports:
+# entry that loses its "127.0.0.1:" prefix still produces a working stack —
+# one that also answers the local network. Only the live socket shows that.
+#
+# Run it after the container reports healthy: before that, Docker may not have
+# opened the host-side listener yet.
+assert_dev_port_local() {
+  require_cmd lsof
+
+  local listeners
+  listeners="$(lsof -nP -iTCP:"$DEV_HTTP_PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  [ -n "$listeners" ] || fail "nothing is listening on port $DEV_HTTP_PORT; the dev api is not published"
+
+  local line addr bad=""
+  while IFS= read -r line; do
+    case "$line" in
+      COMMAND* | "") continue ;;
+    esac
+    # The NAME column is the last field before the "(LISTEN)" marker, e.g.
+    # "127.0.0.1:17437" or "[::1]:17437". Drop the port to get the bind
+    # address on its own.
+    addr="${line%% (LISTEN)*}"
+    addr="${addr##* }"
+    addr="${addr%:*}"
+    case "$addr" in
+      127.0.0.1 | localhost | ::1 | "[::1]") ;;
+      *) bad="$bad $addr" ;;
+    esac
+  done <<<"$listeners"
+
+  [ -z "$bad" ] || fail "port $DEV_HTTP_PORT listens on$bad, not only on the host's loopback address; fix the ports: entry in $COMPOSE_FILE"
+
+  log "port ok: $DEV_HTTP_PORT listens on the loopback address only"
+}
+
 # require_setup refuses to run until ./setup.sh has populated .claude/.
 # Both directories are generated and git-ignored, so a fresh checkout has
 # neither: the agent's `skills:` field would resolve to nothing without any
@@ -246,4 +293,26 @@ require_setup() {
   [ -n "$found" ] || fail "no architecture-guardrails skill under $skills_dir — run ./setup.sh first"
   [ -f "$agent_file" ] || fail "$agent_file is missing — run ./setup.sh first"
   log "setup ok: $found and $agent_file are in place"
+}
+
+# GIT_MOUNT_ARGS carries the extra `docker run -v` flags a checkout needs so the
+# container can read its own git metadata. In an ordinary clone it stays empty:
+# the mount of the working tree already carries .git. In a linked worktree .git
+# is a file naming a directory outside the tree, so without this the container
+# sees a checkout git refuses to read, and every test that resolves a project
+# from the repository fails for a reason that has nothing to do with the code.
+GIT_MOUNT_ARGS=()
+
+set_git_mount_args() {
+  GIT_MOUNT_ARGS=()
+  [ -f "$ROOT_DIR/.git" ] || return 0
+
+  local common
+  common="$(git -C "$ROOT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  [ -n "$common" ] && [ -d "$common" ] || return 0
+
+  # Mounted at its own absolute path, because that is the path the .git file
+  # names: anywhere else and the pointer still dangles.
+  GIT_MOUNT_ARGS=(-v "$common:$common")
+  log "linked worktree: mounting $common so git works inside the container"
 }

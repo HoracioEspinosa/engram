@@ -53,6 +53,49 @@ func TestUpsertProjectCard_MinimalDefaultsDisplayNameToSlug(t *testing.T) {
 	}
 }
 
+// TestProjectKnownSeesCardOnlyProject covers the window between creating a
+// project card and writing the first observation under it: the project is real
+// and every read tool has to accept it. It also pins the fallback for a store
+// that never created the engram-projects tables, where the answer is "not
+// known" rather than an error.
+func TestProjectKnownSeesCardOnlyProject(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+
+	known, err := s.ProjectKnown("koi-garden")
+	if err != nil {
+		t.Fatalf("ProjectKnown before the card: %v", err)
+	}
+	if known {
+		t.Fatal("expected koi-garden to be unknown before its card exists")
+	}
+
+	if _, _, err := s.UpsertProjectCard(UpsertProjectCardParams{Slug: "koi-garden"}); err != nil {
+		t.Fatalf("UpsertProjectCard: %v", err)
+	}
+	if exists, err := s.ProjectExists("koi-garden"); err != nil || exists {
+		t.Fatalf("ProjectExists = %v, %v; want false, nil for a card without rows", exists, err)
+	}
+
+	known, err = s.ProjectKnown("koi-garden")
+	if err != nil {
+		t.Fatalf("ProjectKnown with a card: %v", err)
+	}
+	if !known {
+		t.Fatal("expected a project with only a card to be known")
+	}
+
+	if err := s.DropProjectsSchema(); err != nil {
+		t.Fatalf("DropProjectsSchema: %v", err)
+	}
+	known, err = s.ProjectKnown("koi-garden")
+	if err != nil {
+		t.Fatalf("ProjectKnown without the projects schema: %v", err)
+	}
+	if known {
+		t.Fatal("expected an unknown project without the projects schema, not an error")
+	}
+}
+
 func TestGetProjectCard_NoCard(t *testing.T) {
 	s := newProjectsSchemaTestStore(t)
 	_, err := s.GetProjectCard("ghost")

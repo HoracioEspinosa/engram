@@ -203,16 +203,31 @@ func SyncGraph(s *store.Store, slug, repoDir, graphPath string) (store.GraphSync
 	if fi, statErr := os.Stat(fullPath); statErr == nil {
 		builtAt = fi.ModTime().UTC().Format("2006-01-02 15:04:05")
 	}
-	headCommit := gitHeadCommitTimeout(repoDir)
 
 	if err := s.StampProjectGraph(slug, stats.BuiltAtCommit, builtAt, &summaryJSON); err != nil {
 		return result, err
 	}
 
+	// The staleness verdict comes from CheckStaleness rather than from a
+	// commit comparison here: a commit that only moves prose changes HEAD
+	// without touching a single node, and reporting that as stale is what
+	// trained everyone to ignore the indicator. A failed check degrades to
+	// the commit comparison instead of failing a sync that already succeeded.
+	headCommit := gitHeadCommitTimeout(repoDir)
+	result.Stale = headCommit != "" && headCommit != stats.BuiltAtCommit
+	if staleness, staleErr := CheckStaleness(repoDir, stats.BuiltAtCommit, graphPath, time.Now().UTC()); staleErr == nil {
+		result.Stale = staleness.Stale
+		if staleness.HeadCommit != "" {
+			headCommit = staleness.HeadCommit
+		}
+		if err := s.StampGraphStaleness(slug, staleness.Reason, staleness.ChangedFiles, staleness.CheckedAt); err != nil {
+			return result, err
+		}
+	}
+
 	result.Synced = true
 	result.GraphCommit = stats.BuiltAtCommit
 	result.HeadCommit = headCommit
-	result.Stale = headCommit != "" && headCommit != stats.BuiltAtCommit
 	result.NodeCount = stats.NodeCount
 	result.EdgeCount = stats.EdgeCount
 	result.CommunityCount = len(stats.CommunitySize)

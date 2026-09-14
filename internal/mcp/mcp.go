@@ -963,7 +963,7 @@ ERROR: Returns IsError=true if IDs are unknown, relation is invalid, or cross-pr
 func handleCurrentProject(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		cwd, _ := os.Getwd()
-		res := projectpkg.DetectProjectFull(cwd)
+		res := detectProject(cwd)
 		if processRes, ok := processProjectResult(cfg.DefaultProject); ok {
 			res = processRes
 		}
@@ -974,6 +974,16 @@ func handleCurrentProject(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc 
 			"project_path":       res.Path,
 			"cwd":                cwd,
 			"available_projects": res.AvailableProjects,
+		}
+		// Saying which project the detected name resolves to, and how, is what
+		// lets an agent see that it is about to write under an alias before it
+		// writes anything.
+		if resolution, err := s.ResolveProjectSlug(res.Project); err == nil {
+			envelope["resolved_slug"] = resolution.Slug
+			envelope["resolved_via"] = resolution.Via
+			if resolution.AliasSource != "" {
+				envelope["resolved_alias_source"] = resolution.AliasSource
+			}
 		}
 		if res.Warning != "" {
 			envelope["warning"] = res.Warning
@@ -2019,7 +2029,7 @@ func resolveSessionStartProject(explicitDirectory string) (projectpkg.DetectionR
 	if explicitDirectory == "" {
 		return resolveWriteProject()
 	}
-	res := projectpkg.DetectProjectFull(explicitDirectory)
+	res := detectProject(explicitDirectory)
 	if res.Error != nil {
 		return res, res.Error
 	}
@@ -2378,6 +2388,21 @@ func (e *unresolvableProjectError) Error() string {
 	return fmt.Sprintf("project is not resolvable from %q: no explicit project, ENGRAM_PROJECT, repo config, or git-backed source was found, only a directory-name guess", e.Path)
 }
 
+// projectDetector is the process-wide detection cache every per-call path goes
+// through. Resolving a project means running git, and a session resolves it
+// again for every tool call from the same directory: one long session was
+// measured spending over a thousand processes on an answer that never changed.
+// What invalidates an entry — the repository's HEAD, the nearest config — lives
+// in internal/project/detect_cache.go.
+var projectDetector = projectpkg.NewDetector(0)
+
+// detectProject resolves dir through the shared cache. It returns exactly what
+// DetectProjectFull would, that result's own Error included.
+func detectProject(dir string) projectpkg.DetectionResult {
+	res, _ := projectDetector.Detect(dir)
+	return res
+}
+
 // resolveWriteProject detects the current project from the process working
 // directory. Returns ErrAmbiguousProject if cwd is a parent of multiple repos,
 // and *unresolvableProjectError if the only available source is a
@@ -2388,7 +2413,7 @@ func resolveWriteProject() (projectpkg.DetectionResult, error) {
 	if err != nil {
 		cwd = "."
 	}
-	res := projectpkg.DetectProjectFull(cwd)
+	res := detectProject(cwd)
 	if res.Error != nil {
 		return res, res.Error
 	}
@@ -2491,12 +2516,14 @@ func resolveSaveWriteProjectWithProcessOverride(s *store.Store, projectChoice st
 			return processRes, nil
 		}
 	}
-	return resolveSaveWriteProject(s, projectChoice, explicitProjectProvided, reason, sessionID, validateToken)
+	return resolveSaveWriteProject(s, projectChoice, explicitProjectProvided, reason, sessionID, validateToken, defaultProject)
 }
 
 // resolveSaveWriteProject resolves the write project target using the full MCP precedence:
 // explicit request parameter, existing session association, or nearest configuration/directory detection.
-func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProjectProvided bool, reason, sessionID string, validateToken ambiguousRecoveryTokenValidator) (projectpkg.DetectionResult, error) {
+// defaultProject carries the process-level override so an explicit project that names it
+// is backed by the same authority as one detected from repo configuration.
+func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProjectProvided bool, reason, sessionID string, validateToken ambiguousRecoveryTokenValidator, defaultProject string) (projectpkg.DetectionResult, error) {
 	trimmedSessionID := strings.TrimSpace(sessionID)
 	trimmedProjectChoice := strings.TrimSpace(projectChoice)
 	trimmedReason := strings.TrimSpace(reason)
@@ -2519,7 +2546,7 @@ func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProje
 	}
 
 	if trimmedProjectChoice != "" {
-		cwdRes, cwdErr := resolveWriteProject()
+		cwdRes, cwdErr := resolveWriteProjectWithProcessOverride(defaultProject)
 		if cwdErr != nil {
 			if errors.Is(cwdErr, projectpkg.ErrInvalidConfig) {
 				return cwdRes, cwdErr
@@ -2552,7 +2579,7 @@ func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProje
 			}
 		}
 
-		exists, err := s.ProjectExists(project)
+		exists, err := s.ProjectKnown(project)
 		if err != nil {
 			return projectpkg.DetectionResult{}, err
 		}
@@ -2579,6 +2606,14 @@ func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProje
 			}, nil
 		}
 
+		// A name the store does not hold may still be one of its projects
+		// under a spelling somebody else uses. Following it here is what keeps
+		// a tool configured with the old name writing into the same memories
+		// instead of opening a second project beside them.
+		if aliased, ok := resolveProjectThroughAliases(s, project); ok {
+			return aliased, nil
+		}
+
 		if cwdErr != nil {
 			if errors.Is(cwdErr, projectpkg.ErrInvalidConfig) {
 				return cwdRes, cwdErr
@@ -2592,7 +2627,10 @@ func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProje
 			return cwdRes, cwdErr
 		}
 
-		if cwdRes.Source == projectpkg.SourceConfig {
+		// Repo configuration and the process-level override are both trustworthy
+		// destinations, so naming either of them explicitly is the same write the
+		// tool would have performed on its own.
+		if cwdRes.Source == projectpkg.SourceConfig || cwdRes.Source == sourceProcessOverride {
 			resolvedProject, err := normalizeExplicitWriteProject(cwdRes.Project)
 			if err != nil {
 				return projectpkg.DetectionResult{}, err
@@ -2832,17 +2870,42 @@ func resolveReadProjectWithProcessOverride(s *store.Store, override, defaultProj
 	return resolveReadProject(s, override)
 }
 
+// resolveProjectThroughAliases maps a name the store does not recognise onto
+// the project it actually means — an alias somebody declared, or a real project
+// that differs only in which separator was typed. It reports false when nothing
+// claims the name, which is what leaves the caller free to report it unknown.
+//
+// Every call site asks this only after ProjectKnown has already said no, so a
+// real project is never rerouted.
+func resolveProjectThroughAliases(s *store.Store, name string) (projectpkg.DetectionResult, bool) {
+	resolution, err := s.ResolveProjectSlug(name)
+	if err != nil || strings.TrimSpace(resolution.Slug) == "" {
+		return projectpkg.DetectionResult{}, false
+	}
+	source := projectpkg.SourceExplicitOverride
+	switch resolution.Via {
+	case store.ProjectResolvedViaAlias:
+		source = projectpkg.SourceAlias
+	case store.ProjectResolvedViaFolded:
+		source = projectpkg.SourceFolded
+	}
+	return projectpkg.DetectionResult{Project: resolution.Slug, Source: source}, true
+}
+
 func resolveReadProject(s *store.Store, override string) (projectpkg.DetectionResult, error) {
 	override = strings.TrimSpace(override)
 	if override == "" {
 		return resolveWriteProject()
 	}
 	normalized, _ := store.NormalizeProject(override)
-	exists, err := s.ProjectExists(normalized)
+	exists, err := s.ProjectKnown(normalized)
 	if err != nil {
 		return projectpkg.DetectionResult{}, err
 	}
 	if !exists {
+		if aliased, ok := resolveProjectThroughAliases(s, normalized); ok {
+			return aliased, nil
+		}
 		// Collect available projects for the error.
 		stats, _ := s.Stats()
 		return projectpkg.DetectionResult{}, &unknownProjectError{

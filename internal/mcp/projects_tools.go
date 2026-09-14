@@ -234,10 +234,7 @@ func resolveProjectsToolCreateProject(s *store.Store, cfg MCPConfig, explicit st
 	}
 
 	normalized, _ := store.NormalizeProject(explicit)
-	if backed, _ := s.ProjectExists(normalized); backed {
-		return projectpkg.DetectionResult{Project: normalized, Source: projectpkg.SourceExplicitOverride}, nil
-	}
-	if cardExists, _ := s.ProjectCardExists(normalized); cardExists {
+	if known, _ := s.ProjectKnown(normalized); known {
 		return projectpkg.DetectionResult{Project: normalized, Source: projectpkg.SourceExplicitOverride}, nil
 	}
 
@@ -248,6 +245,13 @@ func resolveProjectsToolCreateProject(s *store.Store, cfg MCPConfig, explicit st
 			detected.Project = normalized
 			return detected, nil
 		}
+	}
+
+	// The name may be one this store already knows under another spelling.
+	// Following it keeps a task or a card landing on the existing project
+	// rather than founding a duplicate next to it.
+	if aliased, ok := resolveProjectThroughAliases(s, normalized); ok {
+		return aliased, nil
 	}
 
 	stats, _ := s.Stats()
@@ -1033,12 +1037,15 @@ func handleRunbookFind(s *store.Store) server.ToolHandlerFunc {
 		project := ""
 		if raw := optString(req, "project"); raw != "" {
 			normalized, _ := store.NormalizeProject(raw)
-			exists, _ := s.ProjectExists(normalized)
-			cardExists, _ := s.ProjectCardExists(normalized)
-			if !exists && !cardExists {
-				stats, _ := s.Stats()
-				return projectToolError("unknown_project", fmt.Sprintf("Project %q not found in store", normalized),
-					map[string]any{"available_projects": stats.Projects}), nil
+			known, _ := s.ProjectKnown(normalized)
+			if !known {
+				aliased, ok := resolveProjectThroughAliases(s, normalized)
+				if !ok {
+					stats, _ := s.Stats()
+					return projectToolError("unknown_project", fmt.Sprintf("Project %q not found in store", normalized),
+						map[string]any{"available_projects": stats.Projects}), nil
+				}
+				normalized = aliased.Project
 			}
 			project = normalized
 		}

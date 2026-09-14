@@ -368,6 +368,61 @@ type RunbookFindItem struct {
 	Rank       float64 `json:"rank"`
 }
 
+// runbookFindQuery ranks the matches and carries their total in the same round
+// trip. The total is a scalar subquery rather than COUNT(*) OVER (): a window
+// function makes SQLite build an ephemeral table and a sorter for what is here
+// a handful of rows, measured at 94µs against 67µs for the subquery and the
+// same 67µs the two separate statements cost. One statement, one snapshot, and
+// the total can no longer disagree with the rows it describes because a write
+// landed between two queries.
+//
+// Both joins are CROSS JOINs deliberately. Given a filter on runbook_index,
+// SQLite is free to reorder an ordinary join, picks that table as the outer
+// loop and re-runs the MATCH once per row; naming the order costs nothing and
+// removes the possibility.
+const runbookFindQuery = `
+SELECT ri.id, ri.title, ri.project, ri.vault_path, ri.category, ri.pattern, ri.severity,
+       ri.status, ri.stale, ri.age_days, ri.exec_count, ri.last_exec_at,
+       bm25(runbook_index_fts) AS hit_rank,
+       (SELECT COUNT(*)
+        FROM runbook_index_fts total_fts
+        CROSS JOIN runbook_index total_ri ON total_ri.seq = total_fts.rowid
+        WHERE %s)
+FROM runbook_index_fts
+CROSS JOIN runbook_index ri ON ri.seq = runbook_index_fts.rowid
+WHERE %s
+ORDER BY hit_rank
+LIMIT ?`
+
+// runbookFindPredicate renders the filter under the given aliases. It is called
+// twice per search — once for the page, once for the total that rides with it —
+// under different aliases, so the uncorrelated subquery cannot end up
+// referencing the outer row by accident.
+//
+// matchColumn is the FTS5 hidden column the MATCH is spelled against. It is
+// named after the table, so an aliased instance has to qualify it: the
+// subquery's is total_fts.runbook_index_fts, not total_fts.
+func runbookFindPredicate(p RunbookFindParams, ftsQuery, matchColumn, ri string) (string, []any) {
+	where := []string{matchColumn + " MATCH ?"}
+	args := []any{ftsQuery}
+	if p.Project != "" {
+		where = append(where, ri+".project = ?")
+		args = append(args, p.Project)
+	}
+	if p.Category != "" {
+		where = append(where, ri+".category = ?")
+		args = append(args, p.Category)
+	}
+	if p.Pattern != "" {
+		where = append(where, ri+".pattern = ?")
+		args = append(args, p.Pattern)
+	}
+	if !p.IncludeStale {
+		where = append(where, ri+".stale = 0")
+	}
+	return strings.Join(where, " AND "), args
+}
+
 // FindRunbooks ranks candidate runbooks by BM25 over runbook_index_fts.
 func (s *Store) FindRunbooks(p RunbookFindParams) ([]RunbookFindItem, int, error) {
 	matchMode := p.MatchMode
@@ -376,64 +431,40 @@ func (s *Store) FindRunbooks(p RunbookFindParams) ([]RunbookFindItem, int, error
 	}
 	ftsQuery := ftsMatchQuery(p.Query, matchMode)
 
-	where := []string{"runbook_index_fts MATCH ?"}
-	args := []any{ftsQuery}
-	if p.Project != "" {
-		where = append(where, "ri.project = ?")
-		args = append(args, p.Project)
-	}
-	if p.Category != "" {
-		where = append(where, "ri.category = ?")
-		args = append(args, p.Category)
-	}
-	if p.Pattern != "" {
-		where = append(where, "ri.pattern = ?")
-		args = append(args, p.Pattern)
-	}
-	if !p.IncludeStale {
-		where = append(where, "ri.stale = 0")
-	}
-	whereSQL := strings.Join(where, " AND ")
+	totalWhere, totalArgs := runbookFindPredicate(p, ftsQuery, "total_fts.runbook_index_fts", "total_ri")
+	pageWhere, pageArgs := runbookFindPredicate(p, ftsQuery, "runbook_index_fts", "ri")
 
 	limit := p.Limit
 	if limit <= 0 {
 		limit = 5
 	}
 
-	var total int
-	countArgs := append([]any{}, args...)
-	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM runbook_index_fts JOIN runbook_index ri ON ri.seq = runbook_index_fts.rowid WHERE `+whereSQL,
-		countArgs...,
-	).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("engram-projects: count runbook matches: %w", err)
-	}
+	// The subquery is spelled first in the projection, so its bindings come
+	// first too.
+	args := append(append([]any{}, totalArgs...), pageArgs...)
+	args = append(args, limit)
 
-	listArgs := append(append([]any{}, args...), limit)
-	rows, err := s.db.Query(`
-		SELECT ri.id, ri.title, ri.project, ri.vault_path, ri.category, ri.pattern, ri.severity, ri.status,
-		       ri.stale, ri.age_days, ri.exec_count, ri.last_exec_at, bm25(runbook_index_fts) AS rank
-		FROM runbook_index_fts
-		JOIN runbook_index ri ON ri.seq = runbook_index_fts.rowid
-		WHERE `+whereSQL+`
-		ORDER BY rank LIMIT ?`, listArgs...)
+	rows, err := s.queryHook(s.readDB(), fmt.Sprintf(runbookFindQuery, totalWhere, pageWhere), args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("engram-projects: find runbooks: %w", err)
 	}
 	defer rows.Close()
 
 	var items []RunbookFindItem
+	total := 0
 	for rows.Next() {
 		var item RunbookFindItem
 		var stale int
 		if err := rows.Scan(&item.ID, &item.Title, &item.Project, &item.VaultPath, &item.Category,
 			&item.Pattern, &item.Severity, &item.Status, &stale, &item.AgeDays, &item.ExecCount,
-			&item.LastExecAt, &item.Rank); err != nil {
+			&item.LastExecAt, &item.Rank, &total); err != nil {
 			return nil, 0, err
 		}
 		item.Stale = stale == 1
 		items = append(items, item)
 	}
+	// An empty page means nothing matched: this search takes no offset, so
+	// there is no page past the end for the total to have to explain.
 	return items, total, rows.Err()
 }
 
@@ -517,6 +548,11 @@ func (s *Store) SearchRunbookIndex(query, project string, limit int) ([]RunbookI
 // RunbookListFilter holds the filters of the runbook index listing. Unlike
 // FindRunbooks it takes no query: this is the browsable index, not the BM25
 // ranking.
+// defaultRunbookListLimit is the page size a runbook listing takes when the
+// caller names none. It is spelled once so ListRunbooksPage reports the same
+// number the query actually applied.
+const defaultRunbookListLimit = 20
+
 type RunbookListFilter struct {
 	Stale    *bool
 	Category string
@@ -586,17 +622,19 @@ func (s *Store) ListRunbookIndex(project string, f RunbookListFilter) ([]Runbook
 		whereSQL = strings.Join(where, " AND ")
 	}
 
+	rdb := s.readDB()
+
 	var total int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM runbook_index WHERE `+whereSQL, args...).Scan(&total); err != nil {
+	if err := s.queryRowHook(rdb, `SELECT COUNT(*) FROM runbook_index WHERE `+whereSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("engram-projects: count runbook index: %w", err)
 	}
 
 	limit := f.Limit
 	if limit <= 0 {
-		limit = 20
+		limit = defaultRunbookListLimit
 	}
 	listArgs := append(append([]any{}, args...), limit, f.Offset)
-	rows, err := s.db.Query(`
+	rows, err := s.queryHook(rdb, `
 		SELECT id, project, vault_path, title, category, pattern, severity, status, symptoms,
 		       owner, automation_level, last_updated, last_verified, stale, age_days,
 		       exec_count, last_exec_at, synced_at
@@ -624,4 +662,23 @@ func (s *Store) ListRunbookIndex(project string, f RunbookListFilter) ([]Runbook
 		items = append(items, r)
 	}
 	return items, total, rows.Err()
+}
+
+// ListRunbooksPage is ListRunbookIndex with the page's own shape reported
+// alongside it, so a caller that paginates does not have to remember which
+// default limit the store applied.
+//
+// The project stays its own argument rather than moving into the filter: it is
+// the scope of the listing, not one more thing being filtered out of it, and
+// every other listing in this package spells it the same way.
+func (s *Store) ListRunbooksPage(project string, f RunbookListFilter) (Page[RunbookIndexRow], error) {
+	items, total, err := s.ListRunbookIndex(project, f)
+	if err != nil {
+		return Page[RunbookIndexRow]{}, err
+	}
+	limit := f.Limit
+	if limit <= 0 {
+		limit = defaultRunbookListLimit
+	}
+	return Page[RunbookIndexRow]{Items: items, Total: total, Limit: limit, Offset: f.Offset}, nil
 }

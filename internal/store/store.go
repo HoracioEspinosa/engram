@@ -251,6 +251,8 @@ const (
 	SyncEntityEvidence       = "evidence"
 	SyncEntityTaskLink       = "task_link"
 	SyncEntityObservationRef = "observation_ref"
+	SyncEntityProjectAlias   = "project_alias"
+	SyncEntityBenchmark      = "benchmark"
 
 	SyncOpUpsert = "upsert"
 	SyncOpDelete = "delete"
@@ -508,7 +510,10 @@ func (s *Store) MaxObservationLength() int {
 // ─── Store ───────────────────────────────────────────────────────────────────
 
 type Store struct {
-	db    *sql.DB
+	db *sql.DB
+	// rdb is the read-only pool pure reads go through. Nil when the pool is
+	// disabled, in which case readDB falls back to db. See readpool.go.
+	rdb   *sql.DB
 	cfg   Config
 	hooks storeHooks
 }
@@ -519,6 +524,13 @@ type execer interface {
 
 type queryer interface {
 	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+// rowQueryer is the single-row read surface. It is separate from queryer so a
+// path that reads one row keeps saying so, and so the hook that counts round
+// trips sees both shapes rather than only the cursor one.
+type rowQueryer interface {
+	QueryRow(query string, args ...any) *sql.Row
 }
 
 type rowScanner interface {
@@ -556,11 +568,12 @@ func closeRowsWithError(rows rowScanner, err error) error {
 }
 
 type storeHooks struct {
-	exec    func(db execer, query string, args ...any) (sql.Result, error)
-	query   func(db queryer, query string, args ...any) (*sql.Rows, error)
-	queryIt func(db queryer, query string, args ...any) (rowScanner, error)
-	beginTx func(db *sql.DB) (*sql.Tx, error)
-	commit  func(tx *sql.Tx) error
+	exec     func(db execer, query string, args ...any) (sql.Result, error)
+	query    func(db queryer, query string, args ...any) (*sql.Rows, error)
+	queryRow func(db rowQueryer, query string, args ...any) *sql.Row
+	queryIt  func(db queryer, query string, args ...any) (rowScanner, error)
+	beginTx  func(db *sql.DB) (*sql.Tx, error)
+	commit   func(tx *sql.Tx) error
 }
 
 func defaultStoreHooks() storeHooks {
@@ -570,6 +583,9 @@ func defaultStoreHooks() storeHooks {
 		},
 		query: func(db queryer, query string, args ...any) (*sql.Rows, error) {
 			return db.Query(query, args...)
+		},
+		queryRow: func(db rowQueryer, query string, args ...any) *sql.Row {
+			return db.QueryRow(query, args...)
 		},
 		queryIt: func(db queryer, query string, args ...any) (rowScanner, error) {
 			rows, err := db.Query(query, args...)
@@ -606,6 +622,13 @@ func (s *Store) queryHook(db queryer, query string, args ...any) (*sql.Rows, err
 	return db.Query(query, args...)
 }
 
+func (s *Store) queryRowHook(db rowQueryer, query string, args ...any) *sql.Row {
+	if s.hooks.queryRow != nil {
+		return s.hooks.queryRow(db, query, args...)
+	}
+	return db.QueryRow(query, args...)
+}
+
 func (s *Store) queryItHook(db queryer, query string, args ...any) (rowScanner, error) {
 	if s.hooks.queryIt != nil {
 		return s.hooks.queryIt(db, query, args...)
@@ -639,32 +662,50 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("engram: create data dir: %w", err)
 	}
 
+	s, err := openStore(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repairEnrolledProjectSyncMutations(); err != nil {
+		return nil, fmt.Errorf("engram: repair enrolled sync journal: %w", err)
+	}
+
+	return s, nil
+}
+
+// openStore opens the write connection, migrates it, and attaches the read
+// pool. The read pool is opened last so its connections only ever see a
+// migrated schema on a file whose journal mode is already WAL.
+func openStore(cfg Config) (*Store, error) {
 	dbPath := filepath.Join(cfg.DataDir, "engram.db")
-	db, err := openDB("sqlite", dbPath)
+	db, err := openDB("sqlite", sqliteDSN(dbPath, writePragmas))
 	if err != nil {
 		return nil, fmt.Errorf("engram: open database: %w", err)
 	}
+	// SQLite serialises writers, so a second write connection would only
+	// turn a wait into a SQLITE_BUSY. Reads get their own pool instead.
 	db.SetMaxOpenConns(1)
 
-	// SQLite performance pragmas
-	pragmas := []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000",
-		"PRAGMA synchronous = NORMAL",
-		"PRAGMA foreign_keys = ON",
-	}
-	for _, p := range pragmas {
-		if _, err := db.Exec(p); err != nil {
-			return nil, fmt.Errorf("engram: pragma %q: %w", p, err)
-		}
+	// The pragmas ride on the DSN and are applied when the driver opens a
+	// connection, which sql.Open defers. Ping forces that open so a rejected
+	// pragma is reported here rather than at the first query.
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("engram: open database: %w", err)
 	}
 
 	s := &Store{db: db, cfg: cfg, hooks: defaultStoreHooks()}
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("engram: migration: %w", err)
 	}
-	if err := s.repairEnrolledProjectSyncMutations(); err != nil {
-		return nil, fmt.Errorf("engram: repair enrolled sync journal: %w", err)
+
+	if readPoolEnabled() {
+		rdb, err := openReadPool(dbPath, readPoolSize())
+		if err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+		s.rdb = rdb
 	}
 
 	return s, nil
@@ -680,39 +721,32 @@ func newWithoutRepair(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("engram: create data dir: %w", err)
 	}
 
-	dbPath := filepath.Join(cfg.DataDir, "engram.db")
-	db, err := openDB("sqlite", dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("engram: open database: %w", err)
-	}
-	db.SetMaxOpenConns(1)
-
-	pragmas := []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000",
-		"PRAGMA synchronous = NORMAL",
-		"PRAGMA foreign_keys = ON",
-	}
-	for _, p := range pragmas {
-		if _, err := db.Exec(p); err != nil {
-			return nil, fmt.Errorf("engram: pragma %q: %w", p, err)
-		}
-	}
-
-	s := &Store{db: db, cfg: cfg, hooks: defaultStoreHooks()}
-	if err := s.migrate(); err != nil {
-		return nil, fmt.Errorf("engram: migration: %w", err)
-	}
-	return s, nil
+	return openStore(cfg)
 }
 
+// Close releases both pools. The read pool goes first: it holds nothing the
+// writer needs, and closing it before the writer lets the writer's connection
+// be the last one out, which is when SQLite checkpoints the WAL.
 func (s *Store) Close() error {
-	return s.db.Close()
+	var errs []error
+	if s.rdb != nil {
+		if err := s.rdb.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := s.db.Close(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // ─── Migrations ──────────────────────────────────────────────────────────────
 
 func (s *Store) migrate() error {
+	if err := s.ensureMigrationLedger(); err != nil {
+		return err
+	}
+
 	schema := `
 			CREATE TABLE IF NOT EXISTS sessions (
 				id         TEXT PRIMARY KEY,
@@ -966,74 +1000,85 @@ func (s *Store) migrate() error {
 	`); err != nil {
 		return err
 	}
-	// Backfill: extract project from JSON payload for existing rows with empty project.
-	if _, err := s.execHook(s.db, `
-		UPDATE sync_mutations
-		SET project = COALESCE(json_extract(payload, '$.project'), '')
-		WHERE project = '' AND payload != ''
-	`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `
-		UPDATE sync_mutations
-		SET project = COALESCE((
-			SELECT sessions.project
-			FROM sessions
-			WHERE sessions.id = json_extract(sync_mutations.payload, '$.session_id')
-		), '')
-		WHERE project = ''
-		  AND payload != ''
-		  AND ifnull(json_extract(payload, '$.session_id'), '') != ''
-	`); err != nil {
-		return err
-	}
-
-	if _, err := s.execHook(s.db, `UPDATE observations SET scope = 'project' WHERE scope IS NULL OR scope = ''`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE observations SET topic_key = NULL WHERE topic_key = ''`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE observations SET revision_count = 1 WHERE revision_count IS NULL OR revision_count < 1`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE observations SET duplicate_count = 1 WHERE duplicate_count IS NULL OR duplicate_count < 1`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE observations SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE observations SET sync_id = 'obs-' || lower(hex(randomblob(16))) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
-		return err
-	}
-
-	if _, err := s.execHook(s.db, `UPDATE user_prompts SET project = '' WHERE project IS NULL`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE prompt_tombstones SET project = '' WHERE project IS NULL`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE user_prompts SET sync_id = 'prompt-' || lower(hex(randomblob(16))) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
-		return err
-	}
-
-	// sessions and user_prompts previously had no per-row modification clock:
-	// started_at and created_at mark a row's birth, not its last write, so
-	// applySessionPayloadTx and applyPromptUpsertTx had nothing to compare a
-	// pull against and overwrote unconditionally. This mirrors the column
-	// observations already got (see the observationColumns loop above) and
-	// backfills it from the closest available birth timestamp so existing
-	// rows are never left with an empty clock.
+	// sessions and user_prompts carry no per-row modification clock of their
+	// own: started_at and created_at mark a row's birth, not its last write, so
+	// applySessionPayloadTx and applyPromptUpsertTx have nothing to compare a
+	// pull against and would overwrite unconditionally. This mirrors the column
+	// observations gets in the observationColumns loop above; the backfill below
+	// fills it from the closest available birth timestamp so no existing row is
+	// left with an empty clock.
 	if err := s.addColumnIfNotExists("sessions", "updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfNotExists("user_prompts", "updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
-	if _, err := s.execHook(s.db, `UPDATE sessions SET updated_at = started_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE user_prompts SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+
+	// Every row rewrite the schema above assumes, behind one ledger entry. They
+	// only have work to do on rows an older binary wrote, and the writers all
+	// fill these columns, so a database that has been through them once cannot
+	// grow a row that needs them again.
+	if err := s.once(migrationBackfillID, func() error {
+		// Give a mutation written before the column existed the project its own
+		// payload names, then the project of the session it belongs to.
+		if _, err := s.execHook(s.db, `
+			UPDATE sync_mutations
+			SET project = COALESCE(json_extract(payload, '$.project'), '')
+			WHERE project = '' AND payload != ''
+		`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `
+			UPDATE sync_mutations
+			SET project = COALESCE((
+				SELECT sessions.project
+				FROM sessions
+				WHERE sessions.id = json_extract(sync_mutations.payload, '$.session_id')
+			), '')
+			WHERE project = ''
+			  AND payload != ''
+			  AND ifnull(json_extract(payload, '$.session_id'), '') != ''
+		`); err != nil {
+			return err
+		}
+
+		if _, err := s.execHook(s.db, `UPDATE observations SET scope = 'project' WHERE scope IS NULL OR scope = ''`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE observations SET topic_key = NULL WHERE topic_key = ''`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE observations SET revision_count = 1 WHERE revision_count IS NULL OR revision_count < 1`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE observations SET duplicate_count = 1 WHERE duplicate_count IS NULL OR duplicate_count < 1`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE observations SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE observations SET sync_id = 'obs-' || lower(hex(randomblob(16))) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
+			return err
+		}
+
+		if _, err := s.execHook(s.db, `UPDATE user_prompts SET project = '' WHERE project IS NULL`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE prompt_tombstones SET project = '' WHERE project IS NULL`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE user_prompts SET sync_id = 'prompt-' || lower(hex(randomblob(16))) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
+			return err
+		}
+
+		if _, err := s.execHook(s.db, `UPDATE sessions SET updated_at = started_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE user_prompts SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 
@@ -1141,6 +1186,10 @@ func (s *Store) migrate() error {
 	// tasks, evidence, runbook_index and task_observations. Single contact
 	// point with the upstream migrate() so a future rebase only has to
 	// preserve this one line.
+	if err := s.ensureFunctionIndexes(); err != nil {
+		return err
+	}
+
 	if err := s.migrateProjects(); err != nil {
 		return err
 	}
@@ -2462,7 +2511,7 @@ func (s *Store) RecentObservations(project, scope string, limit int) ([]Observat
 	args := []any{}
 
 	if project != "" {
-		query += " AND LOWER(o.project) = ?"
+		query += " AND lower(o.project) = ?"
 		args = append(args, project)
 	}
 	if scope != "" {
@@ -2487,7 +2536,7 @@ func (s *Store) PinnedObservations(project, scope string) ([]Observation, error)
 	args := []any{}
 
 	if project != "" {
-		query += " AND LOWER(o.project) = ?"
+		query += " AND lower(o.project) = ?"
 		args = append(args, project)
 	}
 	if scope != "" {
@@ -2539,7 +2588,7 @@ func (s *Store) recentUnpinnedObservations(project, scope string, limit int) ([]
 	`
 	args := []any{}
 	if project != "" {
-		query += " AND LOWER(o.project) = ?"
+		query += " AND lower(o.project) = ?"
 		args = append(args, project)
 	}
 	if scope != "" {
@@ -2567,7 +2616,7 @@ func (s *Store) ObservationsNeedingReview(project string, limit int) ([]Observat
 	`
 	args := []any{}
 	if project != "" {
-		query += " AND LOWER(o.project) = ?"
+		query += " AND lower(o.project) = ?"
 		args = append(args, project)
 	}
 	query += " ORDER BY datetime(o.review_after) ASC, o.id ASC LIMIT ?"
@@ -2764,7 +2813,7 @@ func (s *Store) SearchPrompts(query string, project string, limit int) ([]Prompt
 	sql += " ORDER BY fts.rank LIMIT ?"
 	args = append(args, limit)
 
-	rows, err := s.queryItHook(s.db, sql, args...)
+	rows, err := s.queryItHook(s.readDB(), sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search prompts: %w", err)
 	}
@@ -2908,7 +2957,7 @@ func (s *Store) DeletePrompt(id int64) error {
 // ─── Get Single Observation ──────────────────────────────────────────────────
 
 func (s *Store) GetObservation(id int64) (*Observation, error) {
-	row := s.db.QueryRow(
+	row := s.readDB().QueryRow(
 		`SELECT `+observationSelectColumns+`
 		 FROM observations WHERE id = ? AND deleted_at IS NULL`, id,
 	)
@@ -3076,8 +3125,10 @@ func (s *Store) Timeline(observationID int64, before, after int) (*TimelineResul
 		session = nil
 	}
 
+	rdb := s.readDB()
+
 	// 3. Get observations BEFORE the focus (same session, older, chronological order)
-	beforeRows, err := s.queryItHook(s.db, `
+	beforeRows, err := s.queryItHook(rdb, `
 		SELECT id, session_id, type, title, content, tool_name, project,
 		       scope, topic_key, revision_count, duplicate_count, last_seen_at, created_at, updated_at, deleted_at
 		FROM observations
@@ -3111,7 +3162,7 @@ func (s *Store) Timeline(observationID int64, before, after int) (*TimelineResul
 	}
 
 	// 4. Get observations AFTER the focus (same session, newer, chronological order)
-	afterRows, err := s.queryItHook(s.db, `
+	afterRows, err := s.queryItHook(rdb, `
 		SELECT id, session_id, type, title, content, tool_name, project,
 		       scope, topic_key, revision_count, duplicate_count, last_seen_at, created_at, updated_at, deleted_at
 		FROM observations
@@ -3142,7 +3193,7 @@ func (s *Store) Timeline(observationID int64, before, after int) (*TimelineResul
 
 	// 5. Count total observations in the session for context
 	var totalInRange int
-	s.db.QueryRow(
+	rdb.QueryRow(
 		"SELECT COUNT(*) FROM observations WHERE session_id = ? AND deleted_at IS NULL", focus.SessionID,
 	).Scan(&totalInRange)
 
@@ -3191,7 +3242,7 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 			tkArgs = append(tkArgs, opts.Type)
 		}
 		if opts.Project != "" {
-			tkSQL += " AND LOWER(project) = ?"
+			tkSQL += " AND lower(project) = ?"
 			tkArgs = append(tkArgs, opts.Project)
 		}
 		if opts.Scope != "" {
@@ -3202,7 +3253,7 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 		tkSQL += " ORDER BY updated_at DESC LIMIT ?"
 		tkArgs = append(tkArgs, limit)
 
-		tkRows, err := s.queryItHook(s.db, tkSQL, tkArgs...)
+		tkRows, err := s.queryItHook(s.readDB(), tkSQL, tkArgs...)
 		if err == nil {
 			defer tkRows.Close()
 			for tkRows.Next() {
@@ -3244,7 +3295,7 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 	}
 
 	if opts.Project != "" {
-		sqlQ += " AND LOWER(o.project) = ?"
+		sqlQ += " AND lower(o.project) = ?"
 		args = append(args, opts.Project)
 	}
 
@@ -3256,7 +3307,7 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 	sqlQ += " ORDER BY rank LIMIT ?"
 	args = append(args, limit)
 
-	rows, err := s.queryItHook(s.db, sqlQ, args...)
+	rows, err := s.queryItHook(s.readDB(), sqlQ, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
@@ -3297,12 +3348,13 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 
 func (s *Store) Stats() (*Stats, error) {
 	stats := &Stats{}
+	rdb := s.readDB()
 
-	s.db.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&stats.TotalSessions)
-	s.db.QueryRow("SELECT COUNT(*) FROM observations WHERE deleted_at IS NULL").Scan(&stats.TotalObservations)
-	s.db.QueryRow("SELECT COUNT(*) FROM user_prompts").Scan(&stats.TotalPrompts)
+	rdb.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&stats.TotalSessions)
+	rdb.QueryRow("SELECT COUNT(*) FROM observations WHERE deleted_at IS NULL").Scan(&stats.TotalObservations)
+	rdb.QueryRow("SELECT COUNT(*) FROM user_prompts").Scan(&stats.TotalPrompts)
 
-	rows, err := s.queryItHook(s.db, "SELECT project FROM observations WHERE project IS NOT NULL AND deleted_at IS NULL GROUP BY project ORDER BY MAX(created_at) DESC")
+	rows, err := s.queryItHook(rdb, "SELECT project FROM observations WHERE project IS NOT NULL AND deleted_at IS NULL GROUP BY project ORDER BY MAX(created_at) DESC")
 	if err != nil {
 		return stats, nil
 	}
@@ -3332,7 +3384,7 @@ func (s *Store) ProjectExists(name string) (bool, error) {
 	// is expected to pass an already-normalized name (NormalizeProject result).
 	const query = `
 SELECT 1 FROM (
-  SELECT project FROM observations WHERE LOWER(project) = ? AND deleted_at IS NULL
+  SELECT project FROM observations WHERE lower(project) = ? AND deleted_at IS NULL
   UNION ALL
   SELECT project FROM sessions WHERE LOWER(project) = ?
   UNION ALL
@@ -4309,6 +4361,28 @@ func (s *Store) ApplyPulledMutation(targetKey string, mutation SyncMutation) err
 						apply_status      = 'dead',
 						last_attempted_at = datetime('now')
 				`, mutation.EntityKey, mutation.Entity, mutation.Payload); deferErr != nil {
+					return fmt.Errorf("ApplyPulledMutation: write dead row: %w", deferErr)
+				}
+				// Fall through to advance the cursor (ACK the seq).
+			} else if errors.Is(applyErr, ErrApplyDead) {
+				// Any other entity whose mutation can never apply — an entity
+				// only a newer peer knows, above all — is quarantined with the
+				// reason it failed for, so one of them does not stall every
+				// mutation queued behind it. The key carries a payload digest
+				// because several undecodable mutations can share one entity key.
+				deadKey := deferredRowKey(strings.TrimSpace(mutation.EntityKey), mutation.Payload)
+				log.Printf("[store] ApplyPulledMutation: %s cannot apply seq=%d entity_key=%s err=%v — marking dead",
+					mutation.Entity, mutation.Seq, mutation.EntityKey, applyErr)
+				if _, deferErr := s.execHook(tx, `
+					INSERT INTO sync_apply_deferred
+						(sync_id, entity, payload, apply_status, retry_count, first_seen_at, last_error, last_attempted_at)
+					VALUES (?, ?, ?, 'dead', 0, datetime('now'), ?, datetime('now'))
+					ON CONFLICT(sync_id) DO UPDATE SET
+						payload           = excluded.payload,
+						apply_status      = 'dead',
+						last_error        = excluded.last_error,
+						last_attempted_at = datetime('now')
+				`, deadKey, mutation.Entity, mutation.Payload, applyErr.Error()); deferErr != nil {
 					return fmt.Errorf("ApplyPulledMutation: write dead row: %w", deferErr)
 				}
 				// Fall through to advance the cursor (ACK the seq).
@@ -6371,7 +6445,11 @@ func (s *Store) applyPulledMutationTx(tx *sql.Tx, mutation SyncMutation) error {
 		if isProjectsEntity(mutation.Entity) {
 			return s.applyProjectsMutationTx(tx, mutation)
 		}
-		return fmt.Errorf("unknown sync entity %q", mutation.Entity)
+		// An entity this binary does not know comes from a peer running a newer
+		// one, and no amount of retrying will teach it the shape. It is dead
+		// rather than deferred so the pull quarantines it and moves on instead
+		// of stalling every mutation queued behind it.
+		return fmt.Errorf("%w: unknown sync entity %q", ErrApplyDead, mutation.Entity)
 	}
 }
 
