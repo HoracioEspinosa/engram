@@ -3555,6 +3555,18 @@ SELECT 1 FROM (
 // ─── Context Formatting ─────────────────────────────────────────────────────
 
 func (s *Store) FormatContext(project, scope string) (string, error) {
+	return s.FormatContextLimited(project, scope, 0)
+}
+
+// FormatContextLimited is FormatContext with a caller-chosen cap on the recent
+// observations it renders, so a host with a small context window can ask for
+// less than the configured maximum. A limit of zero or less means the
+// configured maximum; a larger one is clamped to it, because the cap exists to
+// bound what one tool call can put in a context window.
+func (s *Store) FormatContextLimited(project, scope string, limit int) (string, error) {
+	if limit <= 0 || limit > s.cfg.MaxContextResults {
+		limit = s.cfg.MaxContextResults
+	}
 	sessions, err := s.RecentSessions(project, 5)
 	if err != nil {
 		return "", err
@@ -3565,7 +3577,7 @@ func (s *Store) FormatContext(project, scope string) (string, error) {
 		return "", err
 	}
 
-	observations, err := s.recentUnpinnedObservations(project, scope, s.cfg.MaxContextResults)
+	observations, err := s.recentUnpinnedObservations(project, scope, limit)
 	if err != nil {
 		return "", err
 	}
