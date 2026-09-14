@@ -2491,12 +2491,14 @@ func resolveSaveWriteProjectWithProcessOverride(s *store.Store, projectChoice st
 			return processRes, nil
 		}
 	}
-	return resolveSaveWriteProject(s, projectChoice, explicitProjectProvided, reason, sessionID, validateToken)
+	return resolveSaveWriteProject(s, projectChoice, explicitProjectProvided, reason, sessionID, validateToken, defaultProject)
 }
 
 // resolveSaveWriteProject resolves the write project target using the full MCP precedence:
 // explicit request parameter, existing session association, or nearest configuration/directory detection.
-func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProjectProvided bool, reason, sessionID string, validateToken ambiguousRecoveryTokenValidator) (projectpkg.DetectionResult, error) {
+// defaultProject carries the process-level override so an explicit project that names it
+// is backed by the same authority as one detected from repo configuration.
+func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProjectProvided bool, reason, sessionID string, validateToken ambiguousRecoveryTokenValidator, defaultProject string) (projectpkg.DetectionResult, error) {
 	trimmedSessionID := strings.TrimSpace(sessionID)
 	trimmedProjectChoice := strings.TrimSpace(projectChoice)
 	trimmedReason := strings.TrimSpace(reason)
@@ -2519,7 +2521,7 @@ func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProje
 	}
 
 	if trimmedProjectChoice != "" {
-		cwdRes, cwdErr := resolveWriteProject()
+		cwdRes, cwdErr := resolveWriteProjectWithProcessOverride(defaultProject)
 		if cwdErr != nil {
 			if errors.Is(cwdErr, projectpkg.ErrInvalidConfig) {
 				return cwdRes, cwdErr
@@ -2592,7 +2594,10 @@ func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProje
 			return cwdRes, cwdErr
 		}
 
-		if cwdRes.Source == projectpkg.SourceConfig {
+		// Repo configuration and the process-level override are both trustworthy
+		// destinations, so naming either of them explicitly is the same write the
+		// tool would have performed on its own.
+		if cwdRes.Source == projectpkg.SourceConfig || cwdRes.Source == sourceProcessOverride {
 			resolvedProject, err := normalizeExplicitWriteProject(cwdRes.Project)
 			if err != nil {
 				return projectpkg.DetectionResult{}, err

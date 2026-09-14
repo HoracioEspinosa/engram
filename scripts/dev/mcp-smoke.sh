@@ -21,18 +21,11 @@
 #     a name that disappears between runs fails here, which is the whole
 #     point of keeping the additive rule enforceable rather than aspirational.
 #
-# Three behaviours of the current binary are held fixed rather than worked
-# around, because this suite is not allowed to change the binary and a suite
-# that skips what it cannot fix stops measuring it:
-#   * mem_save rejects a request that names a project when the process runs
-#     outside a repository, even with a process-level override (id 5).
+# One behaviour of the current binary is held fixed rather than worked around,
+# because a suite that skips what it cannot fix stops measuring it:
 #   * Read tools do not recognise a project that only has a card (ids 6, 9-12
-#     and 16, and id 7, which reads the observation id 5 failed to write).
-#   * mem_task_link checks that the observation it is given exists before it
-#     checks that a graph_ref carries a graph_commit, so id 15 also reports
-#     the observation id 5 failed to write (unknown_observation) instead of
-#     the graph_commit rule it was written to exercise.
-# Each is pinned to the exact code it reports today. A pinned expectation that
+#     and 16).
+# It is pinned to the exact code it reports today. A pinned expectation that
 # starts succeeding is a FAIL, not a silent pass: the day the behaviour changes,
 # the assertion has to be promoted rather than forgotten.
 #
@@ -292,9 +285,9 @@ assert_ok 3 "id 3 mem_project_upsert"
 assert_pinned_failure 16 "id 16 mem_project_card does not see a project that only has a card" unknown_project
 
 assert_ok 4 "id 4 mem_task_upsert"
-assert_pinned_failure 5 "id 5 mem_save rejects the project it was told to use" unresolvable_project
+assert_ok 5 "id 5 mem_save accepts the project the process was started with"
 assert_pinned_failure 6 "id 6 mem_search does not see the project" unknown_project
-assert_pinned_failure 7 "id 7 mem_get_observation finds nothing, because id 5 wrote nothing" '^Observation #1 not found'
+assert_ok 7 "id 7 mem_get_observation reads back what id 5 wrote"
 assert_ok 8 "id 8 mem_evidence_add"
 assert_pinned_failure 9 "id 9 mem_evidence_list does not see the project" unknown_project
 assert_pinned_failure 10 "id 10 mem_task_list does not see the project" unknown_project
@@ -303,7 +296,7 @@ assert_pinned_failure 12 "id 12 mem_project_card does not see the project" unkno
 
 assert_error_code 13 "id 13 mem_project_upsert refuses an explicit project it does not already know" unknown_project
 assert_error_code 14 "id 14 mem_evidence_add refuses an absolute evidence path" absolute_path_rejected
-assert_pinned_failure 15 "id 15 mem_task_link reports the missing observation before the graph_commit rule it targets" unknown_observation
+assert_error_code 15 "id 15 mem_task_link refuses a graph_ref without a graph_commit" graph_commit_required
 
 printf '\nmcp-smoke: %d/%d evaluated (%d ok, %d pinned)\n' \
   "$((OK_COUNT + PINNED_COUNT))" "$EVALUATED" "$OK_COUNT" "$PINNED_COUNT"
