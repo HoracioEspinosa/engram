@@ -136,12 +136,17 @@ func clampInt(v, min, max, def int) int {
 // envelope shared by every engram-projects tool (RFC §5.0). result may be any
 // JSON-marshalable value: a structured object (card, task, ...) or a plain
 // string (mem_context_pack's markdown format).
+//
+// `data` carries the same value as `result` so one field name reads the
+// structured answer of every tool in this package, whichever envelope helper
+// built it.
 func respondProjectResult(res projectpkg.DetectionResult, result any) *mcp.CallToolResult {
 	envelope := map[string]any{
 		"project":        res.Project,
 		"project_source": res.Source,
 		"project_path":   res.Path,
 		"result":         result,
+		"data":           result,
 	}
 	if res.Warning != "" {
 		envelope["warning"] = res.Warning
@@ -150,18 +155,11 @@ func respondProjectResult(res projectpkg.DetectionResult, result any) *mcp.CallT
 	return mcp.NewToolResultText(string(out))
 }
 
-// projectToolError builds the {"error", "code", ...fields} envelope used by
-// every engram-projects tool error (RFC §5.0) — distinct from errorWithMeta's
-// {"error_code","message",...} shape used by the rest of this package.
+// projectToolError builds the error envelope used by every engram-projects
+// tool (RFC §5.0). It delegates to toolError, which emits this package's two
+// error vocabularies side by side.
 func projectToolError(code, message string, fields map[string]any) *mcp.CallToolResult {
-	envelope := map[string]any{"error": message, "code": code}
-	for k, v := range fields {
-		envelope[k] = v
-	}
-	out, _ := jsonMarshal(envelope)
-	result := mcp.NewToolResultText(string(out))
-	result.IsError = true
-	return result
+	return toolError(code, message, fields)
 }
 
 // knowledgeRefToolError maps the knowledge_ref shape rule (RFC §9.1/§9.2)

@@ -2923,7 +2923,25 @@ func resolveReadProject(s *store.Store, override string) (projectpkg.DetectionRe
 // respondWithProject wraps a tool result by prepending the project envelope
 // fields (project, project_source, project_path) to the text output.
 // extra is an optional map of additional fields to include.
+//
+// The envelope also carries a structured `data` object mirroring what the
+// prose `result` says: the extra fields, plus the text itself. A caller that
+// reads only `data` therefore sees everything the envelope carries, while
+// `result` stays exactly what it always was.
 func respondWithProject(res projectpkg.DetectionResult, text string, extra map[string]any) *mcp.CallToolResult {
+	data := make(map[string]any, len(extra)+1)
+	for k, v := range extra {
+		data[k] = v
+	}
+	data["text"] = text
+	return respondWithProjectData(res, text, extra, data)
+}
+
+// respondWithProjectData is respondWithProject for a tool that has a richer
+// structured answer than its prose result — a result list, a page of a
+// collection — and wants `data` to carry it without duplicating every field
+// at the top level of the envelope.
+func respondWithProjectData(res projectpkg.DetectionResult, text string, extra map[string]any, data map[string]any) *mcp.CallToolResult {
 	envelope := map[string]any{
 		"project":        res.Project,
 		"project_source": res.Source,
@@ -2936,6 +2954,7 @@ func respondWithProject(res projectpkg.DetectionResult, text string, extra map[s
 	for k, v := range extra {
 		envelope[k] = v
 	}
+	envelope["data"] = data
 	out, _ := jsonMarshal(envelope)
 	return mcp.NewToolResultText(string(out))
 }
@@ -3053,10 +3072,28 @@ func addErrorMetadata(result *mcp.CallToolResult, metadata map[string]any) {
 
 // errorWithMeta returns a structured tool error result with error_code,
 // message, available_projects, and a hint for resolution.
+// toolError builds the error envelope every tool in this package answers with.
+// It emits both error vocabularies the package grew — {"error","code"} for the
+// engram-projects tools and {"error_code","message"} for the rest — so a
+// caller that reads either pair keeps working.
+func toolError(code, message string, fields map[string]any) *mcp.CallToolResult {
+	envelope := map[string]any{
+		"error":      message,
+		"error_code": code,
+		"code":       code,
+		"message":    message,
+	}
+	for k, v := range fields {
+		envelope[k] = v
+	}
+	out, _ := jsonMarshal(envelope)
+	result := mcp.NewToolResultText(string(out))
+	result.IsError = true
+	return result
+}
+
 func errorWithMeta(code, msg string, availableProjects []string) *mcp.CallToolResult {
 	envelope := map[string]any{
-		"error_code":         code,
-		"message":            msg,
 		"available_projects": availableProjects,
 	}
 	switch code {
@@ -3081,10 +3118,7 @@ func errorWithMeta(code, msg string, availableProjects []string) *mcp.CallToolRe
 	case "unresolvable_project":
 		envelope["hint"] = "Pass project explicitly, set ENGRAM_PROJECT, or run from inside a git repository (or a repo with .engram/config.json) so the write has a trustworthy destination."
 	}
-	out, _ := jsonMarshal(envelope)
-	result := mcp.NewToolResultText(string(out))
-	result.IsError = true
-	return result
+	return toolError(code, msg, envelope)
 }
 
 // jsonMarshal marshals v to JSON. Named to allow test injection if needed.
