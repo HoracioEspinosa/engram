@@ -100,10 +100,19 @@ func paletteRoles(p Palette) []struct {
 	}
 }
 
-// legibilityIssues checks every role a screen paints against both background
-// planes it can land on — Base (the app frame) and Surface (panels and cards,
-// theme.go's StatCard/TimelineFocus/SearchInput borders sit on either) — and
-// reports every pair under the bar that role answers to.
+// legibilityIssues checks every role a screen paints against the background
+// planes it can land on, and reports every pair under the bar that role
+// answers to.
+//
+// The ten text roles are measured against both planes — Base (the app frame)
+// and Surface (panels and cards, theme.go's StatCard/TimelineFocus/SearchInput
+// borders sit on either). Overlay is measured against Base alone, because Base
+// is the only plane it is ever drawn on: theme.go hands it to BorderForeground
+// and to glamour's HorizontalRule, and both are painted on the terminal's
+// default background. Surface is never filled underneath one, so a bar against
+// it would be a rule no pixel obeys and Palette.Validate does not enforce —
+// and validate.go measuring one thing while this test measures another is the
+// asymmetry that lets `engram theme import` refuse a palette engram ships.
 func legibilityIssues(p Palette) []contrastIssue {
 	backgrounds := []struct {
 		name  string
@@ -116,6 +125,9 @@ func legibilityIssues(p Palette) []contrastIssue {
 	var issues []contrastIssue
 	for _, bg := range backgrounds {
 		for _, fg := range paletteRoles(p) {
+			if fg.name == "Overlay" && bg.name != "Base" {
+				continue
+			}
 			issue := contrastIssue{role: fg.name, bg: bg.name}
 			ratio, err := ContrastRatio(fg.color, bg.color)
 			if err != nil {
@@ -151,21 +163,17 @@ var knownContrastDebt = map[string]map[string]bool{
 		"Info/Base":    true,
 		"Info/Surface": true,
 	},
-	"catppuccin-mocha": {
-		// Mocha's separator clears the ground but not the panel colour it
-		// was picked to sit beside.
-		"Overlay/Surface": true,
-	},
 	"kanagawa": {
 		"Subtext/Base":      true,
 		"Subtext/Surface":   true,
 		"Danger/Base":       true,
 		"Danger/Surface":    true,
 		"Secondary/Surface": true,
-		// Kanagawa's separator cannot draw a panel border against either of
-		// its own grounds.
-		"Overlay/Base":    true,
-		"Overlay/Surface": true,
+		// Kanagawa's separator draws a panel border its own ground swallows,
+		// at 2.23:1. Palette.Validate rejects exactly this pair, so
+		// `engram theme import` refuses from a user a palette engram ships
+		// as a builtin; the entry keeps that visible rather than hidden.
+		"Overlay/Base": true,
 	},
 }
 
@@ -218,7 +226,7 @@ func TestKnownContrastDebtIsStillReal(t *testing.T) {
 	}
 }
 
-// TestOverlayIsVisibleAgainstBothPlanes is the separator's own criterion,
+// TestOverlayIsVisibleAgainstTheGround is the separator's own criterion,
 // separated out from the ten text roles so a failure reads as what it is: a
 // panel whose border a reader cannot find.
 //
@@ -227,29 +235,28 @@ func TestKnownContrastDebtIsStillReal(t *testing.T) {
 // nothing else — so an invisible separator does not merely look weak, it
 // removes the only thing telling a reader where one panel stops and the next
 // begins.
-func TestOverlayIsVisibleAgainstBothPlanes(t *testing.T) {
+//
+// The ground is Base and only Base, the same plane Palette.Validate measures
+// against: a border and a horizontal rule are drawn on the terminal's default
+// background, never inside a filled panel.
+func TestOverlayIsVisibleAgainstTheGround(t *testing.T) {
 	for _, name := range paletteNames() {
 		t.Run(name, func(t *testing.T) {
 			p := registry[name]()
 			debt := knownContrastDebt[name]
-			for _, plane := range []struct {
-				name  string
-				color lipgloss.Color
-			}{{"Base", p.Base}, {"Surface", p.Surface}} {
-				ratio, err := ContrastRatio(p.Overlay, plane.color)
-				if err != nil {
-					t.Fatalf("Overlay on %s: %v", plane.name, err)
-				}
-				issue := contrastIssue{role: "Overlay", bg: plane.name, ratio: ratio}
-				if ratio >= MinOverlayContrastRatio {
-					continue
-				}
-				if debt[issue.key()] {
-					t.Logf("known contrast debt on an inherited palette: %s", issue)
-					continue
-				}
-				t.Error(issue)
+			ratio, err := ContrastRatio(p.Overlay, p.Base)
+			if err != nil {
+				t.Fatalf("Overlay on Base: %v", err)
 			}
+			issue := contrastIssue{role: "Overlay", bg: "Base", ratio: ratio}
+			if ratio >= MinOverlayContrastRatio {
+				return
+			}
+			if debt[issue.key()] {
+				t.Logf("known contrast debt on an inherited palette: %s", issue)
+				return
+			}
+			t.Error(issue)
 		})
 	}
 }

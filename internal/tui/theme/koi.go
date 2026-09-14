@@ -8,20 +8,22 @@ import "github.com/charmbracelet/lipgloss"
 //
 // The first is legibility with no help from the backgrounds: every one of the
 // ten text roles clears 4.5:1 against Base *and* against Surface, and Overlay
-// clears 3:1 against both. That matters because nothing in this workspace
+// clears 3:1 against Base. That matters because nothing in this workspace
 // paints a panel — a selected row is a cursor glyph in Primary, a panel is a
 // border in Overlay — so a reader never gets the contrast boost a filled
-// background would have given them.
+// background would have given them. Overlay is measured against Base alone
+// because Base is the only plane it is ever drawn on: it is a panel border and
+// a horizontal rule, and both sit on the terminal's default background.
 //
 // The second is that the terminal underneath may be translucent. A pane at
 // ninety percent opacity is the theme's Base mixed with whatever is behind the
 // window, so the plane a role is actually read against is not the hex written
 // here. Composite and the contrast tests measure that mixed plane against both
 // extremes a desktop can be, and it is that second rule the separators of
-// showa and ogon are lifted a few units for: at the hues they were first drawn
-// at, a bright desktop behind the window washed their panel borders down to
-// 2.83:1 and 2.77:1. The lift is imperceptible next to the ground and is the
-// difference between a findable border and an invisible one.
+// showa and ogon sit a few units above their neutral ramps for: a bright
+// desktop behind the window washes a panel border out, and those few units are
+// the difference between a findable border and an invisible one. The lift is
+// imperceptible next to the ground it is drawn on.
 //
 // Four palettes, one idea: a koi pond. Orange fish, gold scales, lotus pink,
 // water teal, moss green.
@@ -76,7 +78,7 @@ func Showa() Palette {
 	var (
 		base      = lipgloss.Color("#0f0f11")
 		surface   = lipgloss.Color("#1c1c20")
-		overlay   = lipgloss.Color("#73737d")
+		overlay   = lipgloss.Color("#72727c")
 		text      = lipgloss.Color("#f2efe9")
 		subtext   = lipgloss.Color("#a8a49c")
 		primary   = lipgloss.Color("#ff8552")
@@ -98,7 +100,7 @@ func Ogon() Palette {
 	var (
 		base      = lipgloss.Color("#151009")
 		surface   = lipgloss.Color("#231a10")
-		overlay   = lipgloss.Color("#8a7249")
+		overlay   = lipgloss.Color("#8a7248")
 		text      = lipgloss.Color("#f6ead2")
 		subtext   = lipgloss.Color("#bda884")
 		primary   = lipgloss.Color("#ffc247")

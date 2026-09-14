@@ -12,6 +12,13 @@ import "testing"
 // of against another field of the same struct — a check derived from the
 // struct under test can never catch a field holding the wrong token's colour,
 // only two fields holding different colours from each other.
+//
+// Two of those koi values are the design's, not the table's: showa's and
+// ogon's overlays sit a few units above the neutral ramp the palette table
+// names, because a panel border has to clear 3:1 against Base once a
+// translucent terminal composites it over a bright desktop
+// (TestKoiPalettesStayLegibleOverTranslucentBackgrounds measures exactly
+// that). Every other value is the table's, verbatim.
 var specTokenHex = map[string]struct {
 	base, surface, overlay, text, subtext              string
 	primary, secondary, success, warning, danger, info string
@@ -28,12 +35,12 @@ var specTokenHex = map[string]struct {
 		accent: "#71510f", highlight: "#0b5f5b",
 	},
 	"showa": {
-		base: "#0f0f11", surface: "#1c1c20", overlay: "#73737d", text: "#f2efe9", subtext: "#a8a49c",
+		base: "#0f0f11", surface: "#1c1c20", overlay: "#72727c", text: "#f2efe9", subtext: "#a8a49c",
 		primary: "#ff8552", secondary: "#f5d6c6", success: "#9ec97e", warning: "#dcb43f", danger: "#ff7a86", info: "#7cb8dd",
 		accent: "#e6b455", highlight: "#8ad7c8",
 	},
 	"ogon": {
-		base: "#151009", surface: "#231a10", overlay: "#8a7249", text: "#f6ead2", subtext: "#bda884",
+		base: "#151009", surface: "#231a10", overlay: "#8a7248", text: "#f6ead2", subtext: "#bda884",
 		primary: "#ffc247", secondary: "#f0d9a8", success: "#a5c96b", warning: "#f2a93b", danger: "#f4756a", info: "#8bbfc9",
 		accent: "#e79a3c", highlight: "#a8d8b0",
 	},
