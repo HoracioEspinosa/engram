@@ -663,6 +663,8 @@ func main() {
 		cmdProjects(cfg)
 	case "project":
 		cmdProject(cfg)
+	case "theme":
+		cmdTheme(cfg)
 	case "setup":
 		cmdSetup(cfg)
 	case "protocol-mode":
@@ -2874,8 +2876,20 @@ Commands:
                        runbooks sync|find       Runbook index and symptom search
                        context <task>           Compose a task's context pack
                        promote list|stamp       engram -> vault promotion candidates and knowledge_ref stamp
+                       tree|set-parent|alias    The project tree and the names that redirect onto it
+                       evidence scan <task>     Register what a task's vault folder holds
+                       bench add|list|import    Measurements next to their baseline
+                       import-vault [<root>]    Read a whole knowledge tree into the store
+                       search <query>           Search the whole workspace at once
                      <slug> is optional: ENGRAM_PROJECT, then cwd detection.
                      Run "engram project help" for the full flag list.
+  theme <sub>        Palettes the TUI renders with (all accept --json)
+                       list                     Installed themes and which one is active
+                       show <name>              Roles, gradient and contrast against both planes
+                       use <name>               Remember the theme the TUI opens on
+                       import <file> [--force]  Add a theme from a JSON document
+                       export <name> [--out]    Write a theme as a JSON document
+                       reset <name>             Put a builtin back the way it shipped
   setup [agent]      Install/setup agent integration (opencode, pi, claude-code,
                      gemini-cli, codex, antigravity-cli, windsurf, qwen, kiro,
                      cursor, vscode-copilot, kilocode)

@@ -1245,7 +1245,7 @@ func TestCmdProjectGraphRequiresSyncSubcommand(t *testing.T) {
 	if !*exited {
 		t.Fatal("`graph rebuild` must exit non-zero")
 	}
-	if !strings.Contains(stderr, "graph sync") {
+	if !strings.Contains(stderr, "graph <sync|check>") {
 		t.Fatalf("stderr = %q", stderr)
 	}
 }

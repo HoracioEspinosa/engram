@@ -176,7 +176,26 @@ func cmdProjectUpsert(cfg store.Config, slug string, args []string) {
 	knowledgeHub := f.fs.String("knowledge-hub", "", "vault-relative path of the service hub")
 	owner := f.fs.String("owner", "", "owning team or person")
 	graphPath := f.fs.String("graph-path", "", "repo-relative path of graph.json")
+	parent := f.fs.String("parent", "", "slug of the parent project")
+	toRoot := f.fs.Bool("root", false, "move the project to the top of the tree")
+	kind := f.fs.String("kind", "", strings.Join(projProjectKindEnum, "|"))
+	description := f.fs.String("description", "", "one line about what the project is")
+	icon := f.fs.String("icon", "", "icon token")
+	color := f.fs.String("color", "", "palette role token or #rrggbb")
+	var tags projStringList
+	f.fs.Var(&tags, "tag", "tag for the project; repeatable")
+	var aliases projStringList
+	f.fs.Var(&aliases, "alias", "name that redirects to this project; repeatable")
 	if !f.parse(args) {
+		return
+	}
+	if f.given("kind") && !projEnumContains(projProjectKindEnum, *kind) {
+		projFail(*jsonOut, "invalid_enum", fmt.Sprintf("kind %q is invalid", *kind),
+			map[string]any{"hint": "one of " + strings.Join(projProjectKindEnum, ", ")})
+		return
+	}
+	if f.given("parent") && *toRoot {
+		projFail(*jsonOut, "invalid_enum", "pass at most one of --parent and --root", nil)
 		return
 	}
 
@@ -191,6 +210,18 @@ func cmdProjectUpsert(cfg store.Config, slug string, args []string) {
 		return
 	}
 
+	// The column holds a JSON array, so a repeated flag is encoded rather than
+	// joined: a tag containing a comma would otherwise silently become two.
+	tagList := "[]"
+	if len(tags) > 0 {
+		encoded, err := json.Marshal([]string(tags))
+		if err != nil {
+			fatal(err)
+			return
+		}
+		tagList = string(encoded)
+	}
+
 	card, created, err := s.UpsertProjectCard(store.UpsertProjectCardParams{
 		Slug:             sc.Slug,
 		DisplayName:      f.ptr("display-name", displayName),
@@ -201,13 +232,54 @@ func cmdProjectUpsert(cfg store.Config, slug string, args []string) {
 		KnowledgeHubPath: f.ptr("knowledge-hub", knowledgeHub),
 		Owner:            f.ptr("owner", owner),
 		GraphPath:        f.ptr("graph-path", graphPath),
+		Kind:             f.ptr("kind", kind),
+		Description:      f.ptr("description", description),
+		Icon:             f.ptr("icon", icon),
+		Color:            f.ptr("color", color),
+		Tags:             f.ptr("tag", &tagList),
 	})
 	if err != nil {
 		fatal(err)
 		return
 	}
 
+	// The parent is a second write on purpose: it is the only path that
+	// validates the cycle and rewrites the depth of everything below the card,
+	// so it cannot ride along with the column updates. The card created above
+	// is reported either way, so a refused move never looks like a refused
+	// upsert.
+	parentErr := ""
+	if f.given("parent") || *toRoot {
+		var target *string
+		if !*toRoot {
+			value := strings.TrimSpace(*parent)
+			target = &value
+		}
+		if err := s.SetProjectParent(card.Slug, target); err != nil {
+			parentErr = err.Error()
+			projFail(*jsonOut, projParentFailureCode(err), err.Error(),
+				map[string]any{"card": projCardForJSON(card), "created": created})
+			return
+		}
+		if refreshed, err := s.GetProjectCard(card.Slug); err == nil {
+			card = refreshed
+		}
+	}
+
+	aliasErrors := map[string]string{}
+	for _, alias := range aliases {
+		if err := s.UpsertProjectAlias(alias, card.Slug, "manual"); err != nil {
+			aliasErrors[alias] = err.Error()
+		}
+	}
+
 	result := map[string]any{"card": projCardForJSON(card), "created": created}
+	if len(aliases) > 0 {
+		result["aliases"] = aliases
+	}
+	if len(aliasErrors) > 0 {
+		result["alias_errors"] = aliasErrors
+	}
 	projPrintResult(*jsonOut, sc, result, func() {
 		verb := "updated"
 		if created {
@@ -215,14 +287,39 @@ func cmdProjectUpsert(cfg store.Config, slug string, args []string) {
 		}
 		fmt.Printf("%s project card %s\n", verb, card.Slug)
 		projRenderCard(card, nil, nil)
+		for alias, reason := range aliasErrors {
+			fmt.Fprintf(os.Stderr, "engram: alias %s was not set: %s\n", alias, reason)
+		}
+		if parentErr != "" {
+			fmt.Fprintf(os.Stderr, "engram: parent was not set: %s\n", parentErr)
+		}
 	})
+}
+
+// projParentFailureCode maps a reparenting refusal onto the envelope code it is
+// reported under, the same way the workspace package does for a bulk apply.
+func projParentFailureCode(err error) string {
+	switch {
+	case errors.Is(err, store.ErrProjectCycle):
+		return "project_cycle"
+	case errors.Is(err, store.ErrProjectDepthExceeded):
+		return "project_depth_exceeded"
+	case errors.Is(err, store.ErrNoProjectCard):
+		return "unknown_project"
+	default:
+		return "set_parent_failed"
+	}
 }
 
 // ─── graph sync ──────────────────────────────────────────────────────────────
 
 func cmdProjectGraph(cfg store.Config, slug string, args []string) {
+	if len(args) > 0 && args[0] == "check" {
+		cmdProjectGraphCheck(cfg, slug, args[1:])
+		return
+	}
 	if len(args) == 0 || args[0] != "sync" {
-		fmt.Fprintln(os.Stderr, "usage: engram project [<slug>] graph sync [--repo-dir <dir>] [--graph-path <rel>] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: engram project [<slug>] graph <sync|check> [--repo-dir <dir>] [--json]")
 		exitFunc(1)
 		return
 	}
@@ -667,7 +764,7 @@ func projResolveObservationID(s *store.Store, raw string, jsonOut bool) (int64, 
 
 func cmdProjectEvidence(cfg store.Config, slug string, args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: engram project [<slug>] evidence <add|list> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: engram project [<slug>] evidence <add|list|scan> [flags]")
 		exitFunc(1)
 		return
 	}
@@ -676,9 +773,11 @@ func cmdProjectEvidence(cfg store.Config, slug string, args []string) {
 		cmdProjectEvidenceAdd(cfg, slug, args[1:])
 	case "list":
 		cmdProjectEvidenceList(cfg, slug, args[1:])
+	case "scan":
+		cmdProjectEvidenceScan(cfg, slug, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "engram: unknown evidence subcommand %q\n", args[0])
-		fmt.Fprintln(os.Stderr, "usage: engram project [<slug>] evidence <add|list> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: engram project [<slug>] evidence <add|list|scan> [flags]")
 		exitFunc(1)
 	}
 }
