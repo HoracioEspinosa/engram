@@ -50,7 +50,7 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-require_cmd docker
+require_cmd docker jq
 assert_no_live_db
 
 SEED_OUT="$OUT_DIR/seed"
@@ -125,21 +125,44 @@ evidence koi-garden KOI-1099 "koi-garden/KOI-1099/01-traza.png" "la traza muestr
 evidence tsukimi-bridge TSU-204 "tsukimi-bridge/TSU-204/01-galeria.png" "la galería carga los thumbnails migrados"
 
 # Runbooks are seeded from the prepared entries file rather than by scanning
-# the vault. The scan path is measured separately (migrate-check.sh) because
-# internal/runbooks/service_map.go only knows fifteen real service slugs, so
-# every fixture service is rejected as unknown_service today; taking that
-# count to zero is a later phase's criterion, not a seeding failure.
-log "runbooks: syncing from /vault/Runbooks/.entries.json"
-set +e
-docker exec -i -e ENGRAM_PROJECT=koi-garden "$CONTAINER" \
-  engram project koi-garden runbooks sync \
-  --entries-file /vault/Runbooks/.entries.json \
-  --json >"$SEED_OUT/runbooks-sync.json" 2>"$SEED_OUT/runbooks-sync.stderr"
-runbooks_status=$?
-set -e
-if [ "$runbooks_status" -ne 0 ]; then
-  log "WARN runbooks sync exited $runbooks_status (see $SEED_OUT/runbooks-sync.json and .stderr); recorded, not fatal in this phase"
-fi
+# the vault, once per project that owns entries. The sync drops an entry whose
+# project is not the one the command runs for, so a single call would reject
+# three of the five as other_project and report a number about the call rather
+# than about the entries. koi-garden-pond-01 owns none, so it is not in the loop.
+#
+# --entries-file resolves each `service:` through the fixed map in
+# internal/runbooks/service_map.go (internal/runbooks/index.go:24), exactly as
+# --vault-dir does, and that map only knows fifteen real service slugs. Every
+# fixture service sits outside it on purpose, so the whole fixture is skipped as
+# unknown_service and runbook_index stays empty; taking that count to zero is a
+# later phase's criterion, not a seeding failure.
+rm -f "$SEED_OUT"/runbooks-sync-*.json
+for slug in koi-garden koi-garden-pond-02 tsukimi-bridge; do
+  log "runbooks: syncing $slug from /vault/Runbooks/.entries.json"
+  set +e
+  docker exec -i -e "ENGRAM_PROJECT=$slug" "$CONTAINER" \
+    engram project "$slug" runbooks sync \
+    --entries-file /vault/Runbooks/.entries.json \
+    --json >"$SEED_OUT/runbooks-sync-$slug.json" 2>"$SEED_OUT/runbooks-sync-$slug.stderr"
+  runbooks_status=$?
+  set -e
+  if [ "$runbooks_status" -ne 0 ]; then
+    log "WARN runbooks sync for $slug exited $runbooks_status (see $SEED_OUT/runbooks-sync-$slug.json and .stderr); recorded, not fatal in this phase"
+  fi
+done
+
+# One line for the whole fixture: what was indexed, and why the rest was not.
+# other_project is left out because it says nothing about an entry — it is what
+# the two projects that do not own it report, and every entry is already counted
+# once, by the project that does.
+jq -s '{
+    upserted: (map(.result.sync.upserted // 0) | add),
+    skipped: (
+      map(.result.sync.skipped[]? | select(.reason != "other_project") | .reason)
+      | group_by(.) | map({(.[0]): length}) | add // {}
+    )
+  }' "$SEED_OUT"/runbooks-sync-*.json >"$SEED_OUT/runbooks-baseline.json"
+log "runbooks baseline: $(jq -c . "$SEED_OUT/runbooks-baseline.json")"
 
 if [ -n "$LIVE_COPY" ]; then
   [ -f "$LIVE_COPY" ] || fail "live copy not found: $LIVE_COPY"
