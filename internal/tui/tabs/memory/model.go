@@ -16,6 +16,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/setup"
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 	"github.com/HoracioEspinosa/engram/internal/version"
 
@@ -445,3 +446,18 @@ func linkObservationToTask(r data.TaskReader, taskID, observationID int64) tea.C
 		return observationLinkedToTaskMsg{taskID: taskID, err: err}
 	}
 }
+
+// The messages this tab issues belong to it alone: the root delivers each
+// to its owner rather than broadcasting it to every tab (tabs.Targeted).
+func (updateCheckMsg) TabOwner() tabs.ID             { return tabs.Memory }
+func (statsLoadedMsg) TabOwner() tabs.ID             { return tabs.Memory }
+func (searchResultsMsg) TabOwner() tabs.ID           { return tabs.Memory }
+func (recentObservationsMsg) TabOwner() tabs.ID      { return tabs.Memory }
+func (observationDetailMsg) TabOwner() tabs.ID       { return tabs.Memory }
+func (timelineMsg) TabOwner() tabs.ID                { return tabs.Memory }
+func (recentSessionsMsg) TabOwner() tabs.ID          { return tabs.Memory }
+func (sessionObservationsMsg) TabOwner() tabs.ID     { return tabs.Memory }
+func (sessionDeletedMsg) TabOwner() tabs.ID          { return tabs.Memory }
+func (setupInstallMsg) TabOwner() tabs.ID            { return tabs.Memory }
+func (linkTaskResultsMsg) TabOwner() tabs.ID         { return tabs.Memory }
+func (observationLinkedToTaskMsg) TabOwner() tabs.ID { return tabs.Memory }

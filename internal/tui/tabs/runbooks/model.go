@@ -17,6 +17,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -227,3 +228,9 @@ func (m Model) Refresh() tea.Cmd {
 	}
 	return loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
 }
+
+// The messages this tab issues belong to it alone: the root delivers each
+// to its owner rather than broadcasting it to every tab (tabs.Targeted).
+func (runbooksLoadedMsg) TabOwner() tabs.ID { return tabs.Runbooks }
+func (markdownLoadedMsg) TabOwner() tabs.ID { return tabs.Runbooks }
+func (editorClosedMsg) TabOwner() tabs.ID   { return tabs.Runbooks }

@@ -56,6 +56,10 @@ type Model struct {
 	cloud    cloud.Model
 	projects data.ProjectReader
 
+	// freshness decides whether switching to a tab reloads it: a tab whose
+	// data is still current is shown as it is.
+	freshness tabFreshness
+
 	// tree feeds the status bar's breadcrumb. It is optional: a workspace
 	// built without one simply shows the project on its own.
 	tree      data.ProjectTreeReader

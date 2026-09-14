@@ -1,6 +1,8 @@
 package app
 
 import (
+	"time"
+
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -103,10 +105,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		// The terminal's size genuinely concerns every tab, not only the
+		// active one: a tab laid out at the old width would render wrong the
+		// moment it is switched to.
 		return m.broadcast(msg)
 	}
 
+	// A message that names its owner goes to that tab alone. Broadcasting it
+	// woke four tabs that had no case for it, copying each model to leave it
+	// unchanged.
+	if targeted, ok := msg.(tabs.Targeted); ok {
+		return m.deliver(targeted.TabOwner(), msg)
+	}
+
 	return m.broadcast(msg)
+}
+
+// deliver hands msg to one tab and stores the result back. A message for a
+// tab this build does not implement is dropped, the same way activate leaves
+// an unimplemented target alone.
+func (m Model) deliver(id tabs.ID, msg tea.Msg) (tea.Model, tea.Cmd) {
+	tab := m.tab(id)
+	if tab == nil {
+		return m, nil
+	}
+	updated, cmd := tab.Update(msg)
+	m = m.withTab(id, updated)
+	m.freshness = m.freshness.loaded(id)
+	return m, cmd
 }
 
 // digitTabs maps rfc-tui.md §7.1's "1"…"5" to the tab each activates, in tab
@@ -193,6 +219,9 @@ func (m Model) matchGlobal(msg tea.KeyMsg) (handled bool, model tea.Model, cmd t
 		return true, model, cmd
 
 	case key.Matches(msg, globalKeys.Refresh):
+		// "r" is the user saying the data is out of date, so it reloads
+		// whatever the TTL would have let stand.
+		m.freshness = m.freshness.loaded(m.active)
 		return true, m, m.refreshActiveScreen()
 
 	case key.Matches(msg, globalKeys.Help):
@@ -343,6 +372,8 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.runbooks = m.runbooks.WithProject(selected.Slug)
 			m.memory = m.memory.WithProject(selected.Slug)
 			m.ancestors = nil
+			// Nothing any tab is holding belongs to the project now active.
+			m.freshness = m.freshness.invalidateAll()
 			return m, tea.Batch(loadDashboard(m.projects, selected.Slug), loadAncestors(m.tree, selected.Slug))
 		}
 		return m, nil
@@ -383,8 +414,16 @@ func (m Model) broadcast(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// activate switches to target and reloads whatever it shows. Navigating to an
-// ID this build implements no tab for leaves the workspace where it is.
+// activate switches to target and reloads it only when what it is showing
+// could have gone out of date. Navigating to an ID this build implements no
+// tab for leaves the workspace where it is.
+//
+// Every tab switch used to re-run the tab's whole query set. Cycling through
+// five tabs to read something on the first one cost five round trips to
+// SQLite and five screens that flickered back through their loading state,
+// for data nobody had changed. A tab that loaded seconds ago is shown as it
+// is; "r" still reloads on demand, and a tab marked dirty reloads whether or
+// not its TTL has run out.
 func (m Model) activate(target tabs.ID) (tea.Model, tea.Cmd) {
 	tab := m.tab(target)
 	if tab == nil {
@@ -395,5 +434,10 @@ func (m Model) activate(target tabs.ID) (tea.Model, tea.Cmd) {
 	}
 	m.active = target
 	m.screen = screenTab
+
+	if !m.freshness.stale(target, time.Now()) {
+		return m, nil
+	}
+	m.freshness = m.freshness.loaded(target)
 	return m, tab.Refresh()
 }

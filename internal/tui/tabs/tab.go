@@ -82,6 +82,21 @@ type Tab interface {
 	CapturingText() bool
 }
 
+// Targeted is what a message implements when it belongs to exactly one tab.
+//
+// Everything used to be broadcast: a task list coming back woke Memory,
+// Evidence, Runbooks and Cloud as well, each type-switching over a message
+// it had no case for. That is five Update calls and five model copies for
+// one row of data, on every load, on every tab.
+//
+// A message that names its owner is delivered to that tab alone. Only the
+// two kinds that genuinely concern everyone — the terminal's size and a
+// change of palette — are still broadcast.
+type Targeted interface {
+	// TabOwner is the tab this message was issued by and belongs to.
+	TabOwner() ID
+}
+
 // NavigateMsg asks the root to activate another tab. A tab emits it instead of
 // switching itself, which is what keeps tabs from importing each other.
 //

@@ -19,6 +19,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -204,3 +205,8 @@ func (m Model) OpenForTask(taskID int64) tea.Cmd {
 func absolutePath(relative string) string {
 	return filepath.Join(shared.EvidenceRoot(), relative)
 }
+
+// The messages this tab issues belong to it alone: the root delivers each
+// to its owner rather than broadcasting it to every tab (tabs.Targeted).
+func (evidenceLoadedMsg) TabOwner() tabs.ID { return tabs.Evidence }
+func (manifestLoadedMsg) TabOwner() tabs.ID { return tabs.Evidence }

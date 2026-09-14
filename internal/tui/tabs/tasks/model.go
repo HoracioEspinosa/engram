@@ -18,6 +18,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -255,3 +256,11 @@ func (m Model) Refresh() tea.Cmd {
 	}
 	return loadTasks(m.reader, m.project, m.Filter)
 }
+
+// The messages this tab issues belong to it alone: the root delivers each
+// to its owner rather than broadcasting it to every tab (tabs.Targeted).
+func (tasksLoadedMsg) TabOwner() tabs.ID       { return tabs.Tasks }
+func (taskDetailLoadedMsg) TabOwner() tabs.ID  { return tabs.Tasks }
+func (stateUpdatedMsg) TabOwner() tabs.ID      { return tabs.Tasks }
+func (observationLinkedMsg) TabOwner() tabs.ID { return tabs.Tasks }
+func (contextPackLoadedMsg) TabOwner() tabs.ID { return tabs.Tasks }
