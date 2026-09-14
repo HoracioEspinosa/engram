@@ -975,6 +975,16 @@ func handleCurrentProject(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc 
 			"cwd":                cwd,
 			"available_projects": res.AvailableProjects,
 		}
+		// Saying which project the detected name resolves to, and how, is what
+		// lets an agent see that it is about to write under an alias before it
+		// writes anything.
+		if resolution, err := s.ResolveProjectSlug(res.Project); err == nil {
+			envelope["resolved_slug"] = resolution.Slug
+			envelope["resolved_via"] = resolution.Via
+			if resolution.AliasSource != "" {
+				envelope["resolved_alias_source"] = resolution.AliasSource
+			}
+		}
 		if res.Warning != "" {
 			envelope["warning"] = res.Warning
 		}
@@ -2581,6 +2591,14 @@ func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProje
 			}, nil
 		}
 
+		// A name the store does not hold may still be one of its projects
+		// under a spelling somebody else uses. Following it here is what keeps
+		// a tool configured with the old name writing into the same memories
+		// instead of opening a second project beside them.
+		if aliased, ok := resolveProjectThroughAliases(s, project); ok {
+			return aliased, nil
+		}
+
 		if cwdErr != nil {
 			if errors.Is(cwdErr, projectpkg.ErrInvalidConfig) {
 				return cwdRes, cwdErr
@@ -2837,6 +2855,28 @@ func resolveReadProjectWithProcessOverride(s *store.Store, override, defaultProj
 	return resolveReadProject(s, override)
 }
 
+// resolveProjectThroughAliases maps a name the store does not recognise onto
+// the project it actually means — an alias somebody declared, or a real project
+// that differs only in which separator was typed. It reports false when nothing
+// claims the name, which is what leaves the caller free to report it unknown.
+//
+// Every call site asks this only after ProjectKnown has already said no, so a
+// real project is never rerouted.
+func resolveProjectThroughAliases(s *store.Store, name string) (projectpkg.DetectionResult, bool) {
+	resolution, err := s.ResolveProjectSlug(name)
+	if err != nil || strings.TrimSpace(resolution.Slug) == "" {
+		return projectpkg.DetectionResult{}, false
+	}
+	source := projectpkg.SourceExplicitOverride
+	switch resolution.Via {
+	case store.ProjectResolvedViaAlias:
+		source = projectpkg.SourceAlias
+	case store.ProjectResolvedViaFolded:
+		source = projectpkg.SourceFolded
+	}
+	return projectpkg.DetectionResult{Project: resolution.Slug, Source: source}, true
+}
+
 func resolveReadProject(s *store.Store, override string) (projectpkg.DetectionResult, error) {
 	override = strings.TrimSpace(override)
 	if override == "" {
@@ -2848,6 +2888,9 @@ func resolveReadProject(s *store.Store, override string) (projectpkg.DetectionRe
 		return projectpkg.DetectionResult{}, err
 	}
 	if !exists {
+		if aliased, ok := resolveProjectThroughAliases(s, normalized); ok {
+			return aliased, nil
+		}
 		// Collect available projects for the error.
 		stats, _ := s.Stats()
 		return projectpkg.DetectionResult{}, &unknownProjectError{

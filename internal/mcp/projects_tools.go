@@ -247,6 +247,13 @@ func resolveProjectsToolCreateProject(s *store.Store, cfg MCPConfig, explicit st
 		}
 	}
 
+	// The name may be one this store already knows under another spelling.
+	// Following it keeps a task or a card landing on the existing project
+	// rather than founding a duplicate next to it.
+	if aliased, ok := resolveProjectThroughAliases(s, normalized); ok {
+		return aliased, nil
+	}
+
 	stats, _ := s.Stats()
 	return projectpkg.DetectionResult{}, projectToolError("unknown_project",
 		fmt.Sprintf("Project %q is not backed by an existing card or observations, and does not match the project detected from cwd/ENGRAM_PROJECT", normalized),
@@ -1032,9 +1039,13 @@ func handleRunbookFind(s *store.Store) server.ToolHandlerFunc {
 			normalized, _ := store.NormalizeProject(raw)
 			known, _ := s.ProjectKnown(normalized)
 			if !known {
-				stats, _ := s.Stats()
-				return projectToolError("unknown_project", fmt.Sprintf("Project %q not found in store", normalized),
-					map[string]any{"available_projects": stats.Projects}), nil
+				aliased, ok := resolveProjectThroughAliases(s, normalized)
+				if !ok {
+					stats, _ := s.Stats()
+					return projectToolError("unknown_project", fmt.Sprintf("Project %q not found in store", normalized),
+						map[string]any{"available_projects": stats.Projects}), nil
+				}
+				normalized = aliased.Project
 			}
 			project = normalized
 		}
