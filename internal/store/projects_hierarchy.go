@@ -453,6 +453,24 @@ const (
 	// SuggestReasonSharedPrefixAndRepo is the same, with every member pointing
 	// at one git remote.
 	SuggestReasonSharedPrefixAndRepo = "shared_prefix_and_repo_url"
+	// SuggestReasonSharedFirstSegment is a family that shares the first segment
+	// of its name and nothing else — no numbering, and no project answering to
+	// the segment yet.
+	SuggestReasonSharedFirstSegment = "shared_first_segment"
+)
+
+// The number of members a family needs before it is worth proposing.
+const (
+	// minFamilyMembers is enough when the parent is already a project, or when
+	// the members are numbered instances of it: both are strong signals on
+	// their own.
+	minFamilyMembers = 2
+	// minSegmentFamilyMembers is what an invented parent costs. Two names that
+	// merely start with the same word are a coincidence as often as a family —
+	// "web-angular-skeleton" and "web-metronic-angular" share nothing but the
+	// word — so a synthesized segment has to hold a third member before it is
+	// offered.
+	minSegmentFamilyMembers = 3
 )
 
 // knownProject is one name this store answers to, however it came to: a project
@@ -554,15 +572,28 @@ func longestKnownPrefix(known []knownProject, slug, folded string) string {
 	return best
 }
 
+// firstNameSegment returns the leading segment of a folded slug — "clarodrive"
+// for "clarodrive-sysops-utils" — or "" when the name has no second segment to
+// be the prefix of.
+func firstNameSegment(folded string) string {
+	idx := strings.Index(folded, "-")
+	if idx <= 0 || idx == len(folded)-1 {
+		return ""
+	}
+	return folded[:idx]
+}
+
 // SuggestProjectTree proposes a parent for every group of projects that reads
 // as members of one product, folding the separator each name happens to use so
 // "nextcloud_00" and "nextcloud-02" land in the same family.
 //
-// A project the store already answers to always wins over an invented stem: a
-// family of "koi-garden-pond-01" and "koi-garden-pond-02" belongs under the
-// "koi-garden" that is already there, not under a "koi-garden-pond" this would
-// have to create next to it. Only when nothing answers to the common prefix is
-// the numbered-instance stem proposed as a new umbrella.
+// Three groupings, in order of how much each one is worth believing. A project
+// the store already answers to always wins: a family of "koi-garden-pond-01"
+// and "koi-garden-pond-02" belongs under the "koi-garden" that is already
+// there, not under a "koi-garden-pond" this would have to create next to it.
+// Failing that, a numbered instance is filed under the stem its numbering
+// implies. Failing that too, names that share their first segment are offered a
+// parent named after it — the weakest signal, so it needs a third member.
 //
 // It writes nothing: the proposal is for a person to accept, and a name that
 // looks like an instance is not proof that it is one.
@@ -580,8 +611,9 @@ func (s *Store) SuggestProjectTree() ([]ProjectTreeSuggestion, error) {
 	}
 
 	type family struct {
-		members  []knownProject
-		existing bool
+		members []knownProject
+		reason  string
+		minimum int
 	}
 	families := map[string]*family{}
 	for _, k := range known {
@@ -590,17 +622,21 @@ func (s *Store) SuggestProjectTree() ([]ProjectTreeSuggestion, error) {
 			// somebody already made.
 			continue
 		}
-		parent := longestKnownPrefix(known, k.slug, k.folded)
-		existing := parent != ""
-		if !existing {
-			parent = projectFamilyStem(k.slug)
+		parent, reason, minimum := "", "", minFamilyMembers
+		switch {
+		case longestKnownPrefix(known, k.slug, k.folded) != "":
+			parent, reason = longestKnownPrefix(known, k.slug, k.folded), SuggestReasonExistingPrefix
+		case projectFamilyStem(k.slug) != "":
+			parent, reason = projectFamilyStem(k.slug), SuggestReasonSharedPrefix
+		default:
+			parent, reason, minimum = firstNameSegment(k.folded), SuggestReasonSharedFirstSegment, minSegmentFamilyMembers
 		}
-		if parent == "" {
+		if parent == "" || parent == k.slug {
 			continue
 		}
 		f, ok := families[parent]
 		if !ok {
-			f = &family{existing: existing}
+			f = &family{reason: reason, minimum: minimum}
 			families[parent] = f
 		}
 		f.members = append(f.members, k)
@@ -615,7 +651,7 @@ func (s *Store) SuggestProjectTree() ([]ProjectTreeSuggestion, error) {
 	suggestions := make([]ProjectTreeSuggestion, 0, len(parents))
 	for _, parent := range parents {
 		f := families[parent]
-		if len(f.members) < 2 {
+		if len(f.members) < f.minimum {
 			continue
 		}
 		children := make([]string, 0, len(f.members))
@@ -634,11 +670,8 @@ func (s *Store) SuggestProjectTree() ([]ProjectTreeSuggestion, error) {
 		}
 		sort.Strings(children)
 
-		reason := SuggestReasonSharedPrefix
-		switch {
-		case f.existing:
-			reason = SuggestReasonExistingPrefix
-		case sameRepo && sharedRepo != "":
+		reason := f.reason
+		if reason == SuggestReasonSharedPrefix && sameRepo && sharedRepo != "" {
 			reason = SuggestReasonSharedPrefixAndRepo
 		}
 		suggestions = append(suggestions, ProjectTreeSuggestion{

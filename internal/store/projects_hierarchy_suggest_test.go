@@ -154,3 +154,63 @@ func TestSuggestProjectTreeReportsSeparatorPairs(t *testing.T) {
 		t.Fatalf("pairs = %+v, want none", none)
 	}
 }
+
+// TestSuggestProjectTreeGroupsAFamilyWithNoParentYet pins the third and
+// weakest grouping: several names that share their first segment and nothing
+// else. It is the shape the real store is in — four clarodrive-* projects and
+// no clarodrive — and it is also the shape a coincidence takes, so an invented
+// segment has to hold three members before it is offered.
+func TestSuggestProjectTreeGroupsAFamilyWithNoParentYet(t *testing.T) {
+	s := newTestStore(t)
+	for _, slug := range []string{
+		"clarodrive-dockerized", "clarodrive-patches", "clarodrive-cleanup-accounts",
+		"web-angular-skeleton", "web-metronic-angular",
+	} {
+		seedObservationProject(t, s, slug)
+	}
+
+	suggestions, err := s.SuggestProjectTree()
+	if err != nil {
+		t.Fatalf("SuggestProjectTree: %v", err)
+	}
+
+	found := findSuggestion(suggestions, "clarodrive")
+	if found == nil {
+		t.Fatalf("no suggestion for clarodrive: %+v", suggestions)
+	}
+	if len(found.Children) != 3 {
+		t.Fatalf("children %v, want the three clarodrive projects", found.Children)
+	}
+	if found.ParentExists {
+		t.Error("no project answers to clarodrive yet")
+	}
+	if found.Reason != SuggestReasonSharedFirstSegment {
+		t.Fatalf("reason %q, want %q", found.Reason, SuggestReasonSharedFirstSegment)
+	}
+
+	// Two names that merely start with the same word are not a family.
+	if weak := findSuggestion(suggestions, "web"); weak != nil {
+		t.Fatalf("a two-member segment was proposed: %+v", weak)
+	}
+}
+
+// TestSuggestProjectTreePrefersTheLongestExistingPrefix pins which parent a
+// child is offered when two known projects are both prefixes of it: the nearer
+// one, so a family already broken out does not get flattened back.
+func TestSuggestProjectTreePrefersTheLongestExistingPrefix(t *testing.T) {
+	s := newTestStore(t)
+	seedCards(t, s, "koi", "koi-garden", "koi-garden-pond-01", "koi-garden-pond-02")
+
+	suggestions, err := s.SuggestProjectTree()
+	if err != nil {
+		t.Fatalf("SuggestProjectTree: %v", err)
+	}
+	under := findSuggestion(suggestions, "koi-garden")
+	if under == nil || len(under.Children) != 2 {
+		t.Fatalf("koi-garden suggestion = %+v, want the two ponds", under)
+	}
+	// koi-garden is the only child koi has, so koi is not proposed at all.
+	if shallow := findSuggestion(suggestions, "koi"); shallow != nil {
+		t.Fatalf("koi was proposed with a single child: %+v", shallow)
+	}
+}
