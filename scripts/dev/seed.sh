@@ -133,13 +133,13 @@ evidence tsukimi-bridge TSU-204 "tsukimi-bridge/TSU-204/01-galeria.png" "la gale
 # three of the five as other_project and report a number about the call rather
 # than about the entries. koi-garden-pond-01 owns none, so it is not in the loop.
 #
-# --entries-file resolves each `service:` through the fixed map in
-# internal/runbooks/service_map.go (internal/runbooks/index.go:24), exactly as
-# --vault-dir does, and that map only knows fifteen real service slugs. Every
-# fixture service sits outside it on purpose, so the whole fixture is skipped as
-# unknown_service and runbook_index stays empty: the map is a fixed list, so
-# every fictional service is rejected until the map becomes data-driven, and
-# that rejection is not a seeding failure.
+# --entries-file has no vault checkout to scope a service map to, so it
+# resolves each `service:` through the compatibility default in
+# internal/runbooks/service_map.go, which only knows fifteen real service
+# slugs. Every fixture service sits outside it on purpose, so the whole fixture
+# is skipped as unknown_service and runbook_index stays empty; that rejection
+# is not a seeding failure. The --vault-dir route reads the vault's own
+# Runbooks/services.json instead and resolves the same fixtures.
 rm -f "$SEED_OUT"/runbooks-sync-*.json
 for slug in koi-garden koi-garden-pond-02 tsukimi-bridge; do
   log "runbooks: syncing $slug from /vault/Runbooks/.entries.json"

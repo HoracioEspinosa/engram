@@ -18,10 +18,10 @@
 #     blocked or error, and the report's status is the worst of them.
 #
 # It also measures `runbooks sync --vault-dir /vault` against the fixtures and
-# stores the result without judging it. Today every fixture service is rejected
-# as unknown_service, because internal/runbooks/service_map.go only knows
-# fifteen real service slugs; recording that number is how the later work can
-# show it went to zero.
+# stores the result without judging it. The vault carries its own service map
+# at Runbooks/services.json, so the fixture services resolve through it rather
+# than through the compatibility default in internal/runbooks/service_map.go;
+# recording the number is how a regression in that wiring becomes visible.
 #
 # Usage: migrate-check.sh <copy.db>
 

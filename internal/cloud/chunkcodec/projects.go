@@ -5,13 +5,18 @@ package chunkcodec
 // A chunk that leaves this machine must be canonical: the project stamped on
 // every payload, required fields present and trimmed, and an entity_key that
 // is derived from the payload rather than trusted from the sender. This file
-// adds those rules for the five engram-projects entities, keeping the same
+// adds those rules for the seven engram-projects entities, keeping the same
 // shape the upstream entities already follow so normalizeChunkMutation needs
 // only a default branch.
 //
 // The payload structs are deliberately a second, independent copy of the ones
 // in internal/store: this package encodes the wire contract, and the wire
-// contract must not silently follow a local schema refactor.
+// contract must not silently follow a local schema refactor. The cost of that
+// independence is that a column the store replicates but this file never
+// declared is dropped here without a word — encoding a struct cannot fail on a
+// field it does not know — so every field added to a replicated row has to be
+// added here too, and asserted on the payload rather than on a round trip:
+// two replicas that both lost the same field still agree with each other.
 
 import (
 	"encoding/json"
@@ -39,6 +44,18 @@ type mutationProjectCardPayload struct {
 	UpdatedAt        string  `json:"updated_at"`
 	DeletedAt        *string `json:"deleted_at,omitempty"`
 	Project          string  `json:"project"`
+
+	// The hierarchy and the appearance travel with the card. The three
+	// staleness columns deliberately do not: they answer "is the graph in this
+	// checkout current", and a replica shipping its own answer would overwrite
+	// a fact about a working copy it has never seen.
+	ParentSlug  *string `json:"parent_slug,omitempty"`
+	Depth       int     `json:"depth"`
+	Kind        string  `json:"kind,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Icon        *string `json:"icon,omitempty"`
+	Color       *string `json:"color,omitempty"`
+	Tags        *string `json:"tags,omitempty"`
 }
 
 type mutationTaskPayload struct {
@@ -60,6 +77,14 @@ type mutationTaskPayload struct {
 	UpdatedAt          string  `json:"updated_at"`
 	ClosedAt           *string `json:"closed_at,omitempty"`
 	DeletedAt          *string `json:"deleted_at,omitempty"`
+
+	// What the vault gave the task. The parent travels as a sync_id only: the
+	// local row id means nothing on another machine.
+	Slug             *string `json:"slug,omitempty"`
+	Summary          *string `json:"summary,omitempty"`
+	PendingNote      *string `json:"pending_note,omitempty"`
+	VaultPath        *string `json:"vault_path,omitempty"`
+	ParentTaskSyncID *string `json:"parent_task_sync_id,omitempty"`
 }
 
 type mutationEvidencePayload struct {
@@ -68,6 +93,7 @@ type mutationEvidencePayload struct {
 	TaskSyncID            string  `json:"task_sync_id"`
 	Path                  string  `json:"path"`
 	SHA256                string  `json:"sha256"`
+	Category              string  `json:"category,omitempty"`
 	Kind                  string  `json:"kind"`
 	Proves                string  `json:"proves"`
 	ConfigStamp           *string `json:"config_stamp,omitempty"`
@@ -79,6 +105,11 @@ type mutationEvidencePayload struct {
 	CreatedAt             string  `json:"created_at"`
 	DeletedAt             *string `json:"deleted_at,omitempty"`
 	OccurredAt            string  `json:"occurred_at"`
+	// LocationSetAt is the clock of the location group. Without it an incoming
+	// relocation is decided against a local side that has no clock of its own,
+	// so the last delivery wins and two replicas that received the same two
+	// reports in different orders stop agreeing.
+	LocationSetAt *string `json:"location_set_at,omitempty"`
 }
 
 type mutationTaskLinkPayload struct {
@@ -90,6 +121,38 @@ type mutationTaskLinkPayload struct {
 	Project           string  `json:"project"`
 }
 
+type mutationProjectAliasPayload struct {
+	Alias     string  `json:"alias"`
+	SyncID    string  `json:"sync_id"`
+	Slug      string  `json:"slug"`
+	Source    string  `json:"source"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
+	DeletedAt *string `json:"deleted_at,omitempty"`
+	Project   string  `json:"project"`
+}
+
+type mutationBenchmarkPayload struct {
+	SyncID        string  `json:"sync_id"`
+	Project       string  `json:"project"`
+	TaskSyncID    string  `json:"task_sync_id"`
+	Name          string  `json:"name"`
+	Metric        string  `json:"metric"`
+	Unit          string  `json:"unit"`
+	Direction     string  `json:"direction"`
+	Value         float64 `json:"value"`
+	Baseline      bool    `json:"baseline"`
+	BaselineSetAt *string `json:"baseline_set_at,omitempty"`
+	RunPath       *string `json:"run_path,omitempty"`
+	SHA256        *string `json:"sha256,omitempty"`
+	ConfigStamp   *string `json:"config_stamp,omitempty"`
+	CapturedAt    string  `json:"captured_at"`
+	Notes         *string `json:"notes,omitempty"`
+	Source        string  `json:"source"`
+	CreatedAt     string  `json:"created_at"`
+	DeletedAt     *string `json:"deleted_at,omitempty"`
+}
+
 type mutationObservationRefPayload struct {
 	ObservationSyncID string  `json:"observation_sync_id"`
 	RefKind           string  `json:"ref_kind"`
@@ -99,25 +162,27 @@ type mutationObservationRefPayload struct {
 	Project           string  `json:"project"`
 }
 
-// isProjectsEntity reports whether entity is one of the five engram-projects
+// isProjectsEntity reports whether entity is one of the engram-projects
 // entities of RFC section 10.2.
 func isProjectsEntity(entity string) bool {
 	switch strings.TrimSpace(entity) {
 	case store.SyncEntityProjectCard, store.SyncEntityTask, store.SyncEntityEvidence,
-		store.SyncEntityTaskLink, store.SyncEntityObservationRef:
+		store.SyncEntityTaskLink, store.SyncEntityObservationRef,
+		store.SyncEntityProjectAlias, store.SyncEntityBenchmark:
 		return true
 	default:
 		return false
 	}
 }
 
-// validateSupportedProjectsMutation accepts upsert and delete for the three
-// row entities and the link set, and upsert only for observation_ref, which is
+// validateSupportedProjectsMutation accepts upsert and delete for the row
+// entities and the link set, and upsert only for observation_ref, which is
 // grow-only in v1 exactly like relation.
 func validateSupportedProjectsMutation(entity, op string) error {
 	unsupported := fmt.Errorf("unsupported mutation %q/%q", entity, op)
 	switch strings.TrimSpace(entity) {
-	case store.SyncEntityProjectCard, store.SyncEntityTask, store.SyncEntityEvidence, store.SyncEntityTaskLink:
+	case store.SyncEntityProjectCard, store.SyncEntityTask, store.SyncEntityEvidence,
+		store.SyncEntityTaskLink, store.SyncEntityProjectAlias, store.SyncEntityBenchmark:
 		if op != store.SyncOpUpsert && op != store.SyncOpDelete {
 			return unsupported
 		}
@@ -307,9 +372,101 @@ func normalizeProjectsMutationPayload(entity, op, payload, project string) (stri
 		body.Project = project
 		return encodeProjectsPayload(body,
 			body.ObservationSyncID+"|"+body.RefKind+"|"+body.Ref)
+	case store.SyncEntityProjectAlias:
+		var body mutationProjectAliasPayload
+		if err := DecodeSyncMutationPayload(payload, &body); err != nil {
+			return "", "", fmt.Errorf("decode mutation payload: %w", err)
+		}
+		// The alias is the primary key, so it is also the portable identity —
+		// and it is compared folded to lower case for the self-reference check
+		// only, never rewritten: nothing is ever stored under a folded name.
+		body.Alias = strings.TrimSpace(body.Alias)
+		body.SyncID = strings.TrimSpace(body.SyncID)
+		body.Slug = strings.TrimSpace(body.Slug)
+		body.Source = strings.TrimSpace(body.Source)
+		if body.Alias == "" {
+			return "", "", fmt.Errorf("project_alias payload alias is required")
+		}
+		if body.SyncID == "" {
+			return "", "", fmt.Errorf("project_alias payload sync_id is required")
+		}
+		if op == store.SyncOpUpsert {
+			if body.Slug == "" {
+				return "", "", fmt.Errorf("project_alias payload slug is required for upsert")
+			}
+			if strings.EqualFold(body.Alias, body.Slug) {
+				return "", "", fmt.Errorf("project_alias %q cannot point at itself", body.Alias)
+			}
+			if !isProjectAliasSource(body.Source) {
+				return "", "", fmt.Errorf("project_alias payload source %q is not one of %s",
+					body.Source, strings.Join(projectAliasSources, ", "))
+			}
+			if strings.TrimSpace(body.UpdatedAt) == "" {
+				return "", "", fmt.Errorf("project_alias payload updated_at is required for upsert")
+			}
+		}
+		body.Project = project
+		return encodeProjectsPayload(body, body.Alias)
+	case store.SyncEntityBenchmark:
+		var body mutationBenchmarkPayload
+		if err := DecodeSyncMutationPayload(payload, &body); err != nil {
+			return "", "", fmt.Errorf("decode mutation payload: %w", err)
+		}
+		body.SyncID = strings.TrimSpace(body.SyncID)
+		body.TaskSyncID = strings.TrimSpace(body.TaskSyncID)
+		body.Name = strings.TrimSpace(body.Name)
+		body.Metric = strings.TrimSpace(body.Metric)
+		body.Unit = strings.TrimSpace(body.Unit)
+		body.Direction = strings.TrimSpace(body.Direction)
+		body.Source = strings.TrimSpace(body.Source)
+		if body.SyncID == "" {
+			return "", "", fmt.Errorf("benchmark payload sync_id is required")
+		}
+		if body.TaskSyncID == "" {
+			return "", "", fmt.Errorf("benchmark payload task_sync_id is required")
+		}
+		if op == store.SyncOpUpsert {
+			if body.Name == "" {
+				return "", "", fmt.Errorf("benchmark payload name is required for upsert")
+			}
+			if body.Metric == "" {
+				return "", "", fmt.Errorf("benchmark payload metric is required for upsert")
+			}
+			// A number with no unit, or with a direction nobody reads it
+			// against, is not a measurement anything can be compared with.
+			if body.Unit == "" {
+				return "", "", fmt.Errorf("benchmark payload unit is required for upsert")
+			}
+			if body.Direction != store.BenchmarkDirectionLower && body.Direction != store.BenchmarkDirectionHigher {
+				return "", "", fmt.Errorf("benchmark payload direction %q must be %s or %s",
+					body.Direction, store.BenchmarkDirectionLower, store.BenchmarkDirectionHigher)
+			}
+			if strings.TrimSpace(body.CapturedAt) == "" {
+				return "", "", fmt.Errorf("benchmark payload captured_at is required for upsert")
+			}
+			if body.Source == "" {
+				return "", "", fmt.Errorf("benchmark payload source is required for upsert")
+			}
+		}
+		body.Project = project
+		return encodeProjectsPayload(body, body.SyncID)
 	default:
 		return "", "", fmt.Errorf("unsupported mutation %q/%q", entity, op)
 	}
+}
+
+// projectAliasSources mirrors the project_aliases.source CHECK. A value
+// outside it reaches the replica's DDL and is rejected there, which turns a
+// typo into a deferred row instead of a refusal the sender can see.
+var projectAliasSources = []string{"git_remote", "dir", "env", "manual", "normalizer"}
+
+func isProjectAliasSource(source string) bool {
+	for _, known := range projectAliasSources {
+		if source == known {
+			return true
+		}
+	}
+	return false
 }
 
 func encodeProjectsPayload(body any, entityKey string) (string, string, error) {

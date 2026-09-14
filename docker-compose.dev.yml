@@ -99,14 +99,12 @@ services:
       # ENGRAM_CLOUD_TOKEN is set together with a project allowlist.
       ENGRAM_JWT_SECRET: engram-dev-workspace-local-only-jwt-secret-not-for-prod
       # The dev cloud runs authenticated rather than under
-      # ENGRAM_CLOUD_INSECURE_NO_AUTH=1, which the server accepts at startup but
-      # which leaves every /sync/* route answering
-      # 403 "forbidden: principal is required": cloudserver.authorizeProjectScope
-      # asks for a principal whenever a principal-project authorizer is wired,
-      # and the insecure path never puts one in the request context. A legacy
-      # sync token resolves to a principal the allowlist alone authorizes, which
-      # is the scope this stack wants anyway. Local-only and never a real secret;
-      # every client in scripts/dev/ presents the same value.
+      # ENGRAM_CLOUD_INSECURE_NO_AUTH=1. The insecure mode does serve the sync
+      # routes — newCloudRuntime leaves the principal-project authorizer out
+      # when there is no authenticator to mint principals, so the allowlist
+      # alone scopes the request — but a token keeps this stack rehearsing the
+      # authenticated path the product actually ships. Local-only and never a
+      # real secret; every client in scripts/dev/ presents the same value.
       ENGRAM_CLOUD_TOKEN: ${ENGRAM_DEV_CLOUD_TOKEN:-engram-dev-workspace-local-only-sync-token}
       ENGRAM_CLOUD_ALLOWED_PROJECTS: koi-garden,koi-garden-pond-01,koi-garden-pond-02,tsukimi-bridge
       ENGRAM_CLOUD_HOST: 0.0.0.0

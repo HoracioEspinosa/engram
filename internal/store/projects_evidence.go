@@ -90,6 +90,26 @@ type AddEvidenceParams struct {
 	AttachedConfluenceURL *string
 }
 
+// FindEvidenceBySHA returns the evidence a task already holds for these exact
+// bytes, and whether there was one.
+//
+// It is the read half of AddEvidence's idempotency key, exposed because a dry
+// run has to say "update" where an apply would, and the write path alone cannot
+// answer that without writing.
+func (s *Store) FindEvidenceBySHA(taskSyncID, sha256 string) (Evidence, bool, error) {
+	e, err := scanEvidence(s.readDB().QueryRow(
+		`SELECT `+evidenceSelectColumns+` FROM evidence
+		 WHERE task_sync_id = ? AND sha256 = ? AND deleted_at IS NULL`,
+		taskSyncID, sha256))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Evidence{}, false, nil
+	}
+	if err != nil {
+		return Evidence{}, false, fmt.Errorf("engram-projects: check duplicate evidence: %w", err)
+	}
+	return e, true, nil
+}
+
 // AddEvidence registers a captured evidence file, idempotent by
 // (task_sync_id, sha256) (RFC §5.6).
 //
@@ -103,10 +123,11 @@ func (s *Store) AddEvidence(p AddEvidenceParams) (Evidence, bool, EvidenceLimits
 		category = DefaultEvidenceCategory
 	}
 
-	existing, err := scanEvidence(s.db.QueryRow(
-		`SELECT `+evidenceSelectColumns+` FROM evidence WHERE task_sync_id = ? AND sha256 = ? AND deleted_at IS NULL`,
-		p.Task.SyncID, p.SHA256))
-	if err == nil {
+	existing, found, err := s.FindEvidenceBySHA(p.Task.SyncID, p.SHA256)
+	if err != nil {
+		return Evidence{}, false, EvidenceLimits{}, err
+	}
+	if found {
 		if existing.Path != p.Path || existing.Category != category {
 			if err := s.relocateEvidence(existing.ID, p.Path, category); err != nil {
 				return Evidence{}, false, EvidenceLimits{}, err
@@ -116,9 +137,6 @@ func (s *Store) AddEvidence(p AddEvidenceParams) (Evidence, bool, EvidenceLimits
 		}
 		limits, limErr := s.evidenceLimitsForTask(p.Task.SyncID, "", 0)
 		return existing, true, limits, limErr
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return Evidence{}, false, EvidenceLimits{}, fmt.Errorf("engram-projects: check duplicate evidence: %w", err)
 	}
 
 	capturedAt := p.CapturedAt

@@ -248,6 +248,52 @@ func BenchmarkSearchWorkspace(b *testing.B) {
 	}
 }
 
+// benchObs5k is the corpus the workspace search is measured against at the
+// size a real workspace reaches. The six arms each scale with the corpus, and
+// a search that is fast over 600 observations says nothing about one over five
+// thousand — which is where the CROSS JOIN that fixes the query plan earns its
+// keep or does not.
+const benchObs5k = 5000
+
+// BenchmarkSearchWorkspace5k is BenchmarkSearchWorkspace at workspace scale.
+// It is a separate function rather than a bigger seed for the existing one so
+// the small measurement stays comparable across runs while this one answers
+// the different question of how the six arms behave against a full corpus.
+func BenchmarkSearchWorkspace5k(b *testing.B) {
+	s := seedBenchStore(b, benchProjects, benchTasksPer, benchObs5k)
+	for i := 0; i < benchProjects; i++ {
+		slug := fmt.Sprintf("koi-project-%02d", i)
+		task, err := s.ResolveTaskRef(slug, fmt.Sprintf("KOI-%d000", i))
+		if err != nil {
+			b.Fatalf("ResolveTaskRef: %v", err)
+		}
+		for m := 0; m < 3; m++ {
+			if _, err := s.AddBenchmark(AddBenchmarkParams{
+				Task:       task,
+				Name:       fmt.Sprintf("%s %s throughput", benchWords[m%len(benchWords)], slug),
+				Metric:     fmt.Sprintf("p%d", 50+m*45),
+				Unit:       "ms",
+				Value:      float64(10 + m),
+				CapturedAt: fmt.Sprintf("2026-09-%02dT10:00:00Z", m+1),
+			}); err != nil {
+				b.Fatalf("AddBenchmark: %v", err)
+			}
+		}
+	}
+
+	params := SearchWorkspaceParams{Query: "pond filt", PerKind: 5}
+	if _, err := s.SearchWorkspace(params); err != nil {
+		b.Fatalf("SearchWorkspace: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := s.SearchWorkspace(params); err != nil {
+			b.Fatalf("SearchWorkspace: %v", err)
+		}
+	}
+}
+
 func BenchmarkStats(b *testing.B) {
 	s := seedBenchStore(b, benchProjects, benchTasksPer, benchObs)
 	b.ReportAllocs()

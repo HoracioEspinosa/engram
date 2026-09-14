@@ -191,6 +191,113 @@ type SearchOptions struct {
 	Scope     string `json:"scope,omitempty"`
 	Limit     int    `json:"limit,omitempty"`
 	MatchMode string `json:"match_mode,omitempty"` // "all" (default) | "any"
+
+	// Projects widens Project to a set of them, which is how a search covers
+	// a project and everything under it. Project is ignored when it is set.
+	Projects []string `json:"projects,omitempty"`
+	// Offset skips this many results, so a caller can page instead of raising
+	// the limit until everything fits.
+	Offset int `json:"offset,omitempty"`
+	// TaskSyncID keeps only observations linked to that task.
+	TaskSyncID string `json:"task_sync_id,omitempty"`
+	// GraphRef keeps only observations carrying that graph reference.
+	GraphRef string `json:"graph_ref,omitempty"`
+	// Since and Until bound created_at, inclusive, in any format SQLite's
+	// datetime() accepts.
+	Since string `json:"since,omitempty"`
+	Until string `json:"until,omitempty"`
+}
+
+// SearchPage is a page of search results together with how many there were
+// before the page was cut, so a caller can say "10 of 84" rather than implying
+// there were only ten.
+type SearchPage struct {
+	Results []SearchResult `json:"results"`
+	Total   int            `json:"total"`
+	Offset  int            `json:"offset"`
+	Limit   int            `json:"limit"`
+}
+
+// filterSQL renders the predicates every search branch shares, for rows of
+// observations aliased as `alias`. It is one function so the page, the count
+// and the topic-key branch cannot drift into filtering differently.
+func (o SearchOptions) filterSQL(alias string) (string, []any) {
+	var sql strings.Builder
+	var args []any
+	col := func(name string) string { return alias + "." + name }
+
+	if o.Type != "" {
+		sql.WriteString(" AND " + col("type") + " = ?")
+		args = append(args, o.Type)
+	}
+	if projects := o.projectSet(); len(projects) > 0 {
+		// One project keeps the `lower(project) = ?` shape idx_obs_project_lower
+		// is built for; the IN list is only rendered when a subtree genuinely
+		// needs it.
+		if len(projects) == 1 {
+			sql.WriteString(" AND lower(" + col("project") + ") = ?")
+		} else {
+			sql.WriteString(" AND lower(" + col("project") + ") IN (" + placeholders(len(projects)) + ")")
+		}
+		for _, p := range projects {
+			args = append(args, p)
+		}
+	}
+	if o.Scope != "" {
+		sql.WriteString(" AND " + col("scope") + " = ?")
+		args = append(args, normalizeScope(o.Scope))
+	}
+	if o.Since != "" {
+		sql.WriteString(" AND datetime(" + col("created_at") + ") >= datetime(?)")
+		args = append(args, o.Since)
+	}
+	if o.Until != "" {
+		sql.WriteString(" AND datetime(" + col("created_at") + ") <= datetime(?)")
+		args = append(args, o.Until)
+	}
+	if o.TaskSyncID != "" {
+		sql.WriteString(" AND EXISTS (SELECT 1 FROM task_observations tl WHERE tl.observation_id = " + col("id") + " AND tl.task_sync_id = ?)")
+		args = append(args, o.TaskSyncID)
+	}
+	if o.GraphRef != "" {
+		// idx_obs_refs_kind_ref drives this lookup, so the reference is
+		// matched from the index rather than by scanning the observation's
+		// own references.
+		sql.WriteString(" AND EXISTS (SELECT 1 FROM observation_refs r WHERE r.ref_kind = 'graph' AND r.ref = ? AND r.observation_sync_id = " + col("sync_id") + ")")
+		args = append(args, o.GraphRef)
+	}
+	return sql.String(), args
+}
+
+// projectSet returns the normalized project filter, whether it came from
+// Projects or from the single Project.
+func (o SearchOptions) projectSet() []string {
+	source := o.Projects
+	if len(source) == 0 {
+		if o.Project == "" {
+			return nil
+		}
+		source = []string{o.Project}
+	}
+	seen := make(map[string]bool, len(source))
+	out := make([]string, 0, len(source))
+	for _, p := range source {
+		normalized, _ := NormalizeProject(p)
+		if normalized == "" || seen[normalized] {
+			continue
+		}
+		seen[normalized] = true
+		out = append(out, normalized)
+	}
+	return out
+}
+
+// placeholders renders n comma-separated SQL placeholders.
+func placeholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }
 
 type AddObservationParams struct {
@@ -2354,6 +2461,22 @@ func (s *Store) SessionObservations(sessionID string, limit int) ([]Observation,
 // ─── Observations ────────────────────────────────────────────────────────────
 
 func (s *Store) AddObservation(p AddObservationParams) (int64, error) {
+	var observationID int64
+	if err := s.withTx(func(tx *sql.Tx) error {
+		id, err := s.addObservationTx(tx, p)
+		observationID = id
+		return err
+	}); err != nil {
+		return 0, err
+	}
+	return observationID, nil
+}
+
+// addObservationTx is AddObservation's body without its transaction, so a
+// caller that has to write more than the observation — AddObservationLinked
+// writes its task link and its graph reference too — can commit every half
+// together instead of leaving an orphan behind when the second one fails.
+func (s *Store) addObservationTx(tx *sql.Tx, p AddObservationParams) (int64, error) {
 	// Normalize project name (lowercase + trim) before any persistence
 	p.Project, _ = NormalizeProject(p.Project)
 
@@ -2369,7 +2492,7 @@ func (s *Store) AddObservation(p AddObservationParams) (int64, error) {
 	topicKey := normalizeTopicKey(p.TopicKey)
 
 	var observationID int64
-	err := s.withTx(func(tx *sql.Tx) error {
+	err := func(tx *sql.Tx) error {
 		var obs *Observation
 		if topicKey != "" {
 			var existingID int64
@@ -2488,7 +2611,7 @@ func (s *Store) AddObservation(p AddObservationParams) (int64, error) {
 			return err
 		}
 		return s.enqueueSyncMutationTx(tx, SyncEntityObservation, obs.SyncID, SyncOpUpsert, observationPayloadFromObservation(obs))
-	})
+	}(tx)
 	if err != nil {
 		return 0, err
 	}
@@ -3209,16 +3332,32 @@ func (s *Store) Timeline(observationID int64, before, after int) (*TimelineResul
 // ─── Search (FTS5) ───────────────────────────────────────────────────────────
 
 func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error) {
+	page, err := s.searchPage(query, opts, false)
+	if err != nil {
+		return nil, err
+	}
+	return page.Results, nil
+}
+
+// SearchPaged is Search with the page's own bounds: the results after Offset,
+// and how many matches the query has in total. A caller that only ever raises
+// the limit until the answer stops changing cannot tell "these are all of
+// them" from "the limit cut the rest"; the total says which.
+func (s *Store) SearchPaged(query string, opts SearchOptions) (SearchPage, error) {
+	return s.searchPage(query, opts, true)
+}
+
+// searchPage backs both readers. The total costs a second pass over the index
+// — the page query scores and orders every match, and counting them all does
+// the walk again — so it is computed only for the caller that asked for it.
+func (s *Store) searchPage(query string, opts SearchOptions, withTotal bool) (SearchPage, error) {
 	// Validate match_mode early so invalid values always error regardless of query shape.
 	switch opts.MatchMode {
 	case "", "all", "any":
 		// valid
 	default:
-		return nil, fmt.Errorf("invalid match_mode %q: must be \"all\" or \"any\"", opts.MatchMode)
+		return SearchPage{}, fmt.Errorf("invalid match_mode %q: must be \"all\" or \"any\"", opts.MatchMode)
 	}
-
-	// Normalize project filter so "Engram" finds records stored as "engram"
-	opts.Project, _ = NormalizeProject(opts.Project)
 
 	limit := opts.Limit
 	if limit <= 0 {
@@ -3227,31 +3366,26 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 	if limit > s.cfg.MaxSearchResults {
 		limit = s.cfg.MaxSearchResults
 	}
+	offset := opts.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	// The page is cut from the combined result set, so both branches have to
+	// reach past the offset before anything can be skipped.
+	window := limit + offset
+
+	filter, filterArgs := opts.filterSQL("o")
+	topicKeyQuery := strings.Contains(query, "/")
 
 	var directResults []SearchResult
-	if strings.Contains(query, "/") {
+	if topicKeyQuery {
 		tkSQL := `
 			SELECT ` + observationSelectColumns + `
-			FROM observations
-			WHERE topic_key = ? AND deleted_at IS NULL
-		`
-		tkArgs := []any{query}
-
-		if opts.Type != "" {
-			tkSQL += " AND type = ?"
-			tkArgs = append(tkArgs, opts.Type)
-		}
-		if opts.Project != "" {
-			tkSQL += " AND lower(project) = ?"
-			tkArgs = append(tkArgs, opts.Project)
-		}
-		if opts.Scope != "" {
-			tkSQL += " AND scope = ?"
-			tkArgs = append(tkArgs, normalizeScope(opts.Scope))
-		}
-
-		tkSQL += " ORDER BY updated_at DESC LIMIT ?"
-		tkArgs = append(tkArgs, limit)
+			FROM observations o
+			WHERE o.topic_key = ? AND o.deleted_at IS NULL` + filter + `
+			ORDER BY o.updated_at DESC LIMIT ?`
+		tkArgs := append([]any{query}, filterArgs...)
+		tkArgs = append(tkArgs, window)
 
 		tkRows, err := s.queryItHook(s.readDB(), tkSQL, tkArgs...)
 		if err == nil {
@@ -3285,31 +3419,14 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 		       bm25(observations_fts, 5.0, 1.0, 0.0, 0.0, 0.0, 3.0) as rank
 		FROM observations_fts fts
 		JOIN observations o ON o.id = fts.rowid
-		WHERE observations_fts MATCH ? AND o.deleted_at IS NULL
-	`
-	args := []any{ftsQuery}
-
-	if opts.Type != "" {
-		sqlQ += " AND o.type = ?"
-		args = append(args, opts.Type)
-	}
-
-	if opts.Project != "" {
-		sqlQ += " AND lower(o.project) = ?"
-		args = append(args, opts.Project)
-	}
-
-	if opts.Scope != "" {
-		sqlQ += " AND o.scope = ?"
-		args = append(args, normalizeScope(opts.Scope))
-	}
-
-	sqlQ += " ORDER BY rank LIMIT ?"
-	args = append(args, limit)
+		WHERE observations_fts MATCH ? AND o.deleted_at IS NULL` + filter + `
+		ORDER BY rank LIMIT ?`
+	args := append([]any{ftsQuery}, filterArgs...)
+	args = append(args, window)
 
 	rows, err := s.queryItHook(s.readDB(), sqlQ, args...)
 	if err != nil {
-		return nil, fmt.Errorf("search: %w", err)
+		return SearchPage{}, fmt.Errorf("search: %w", err)
 	}
 	defer rows.Close()
 
@@ -3328,20 +3445,65 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 			&sr.LastSeenAt, &sr.ReviewAfter, &sr.Pinned, &sr.CreatedAt, &sr.UpdatedAt, &sr.DeletedAt,
 			&sr.Rank,
 		); err != nil {
-			return nil, err
+			return SearchPage{}, err
 		}
 		if !seen[sr.ID] {
+			seen[sr.ID] = true
 			results = append(results, sr)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return SearchPage{}, err
 	}
 
+	total := len(results)
+	// A branch that came back short of the window has already returned every
+	// match there is, so the count is in hand and the second pass is waste.
+	if withTotal && len(results) >= window {
+		counted, err := s.countSearchMatches(query, ftsQuery, topicKeyQuery, filter, filterArgs)
+		if err != nil {
+			return SearchPage{}, err
+		}
+		total = counted
+	}
+
+	if offset >= len(results) {
+		results = nil
+	} else {
+		results = results[offset:]
+	}
 	if len(results) > limit {
 		results = results[:limit]
 	}
-	return results, nil
+	return SearchPage{Results: results, Total: total, Offset: offset, Limit: limit}, nil
+}
+
+// countSearchMatches counts every row the search matches, before the page is
+// cut. The UNION is over ids alone so the count never materializes the rows it
+// is counting.
+func (s *Store) countSearchMatches(query, ftsQuery string, topicKeyQuery bool, filter string, filterArgs []any) (int, error) {
+	countSQL := `
+		SELECT COUNT(*) FROM (
+			SELECT o.id
+			FROM observations_fts fts
+			JOIN observations o ON o.id = fts.rowid
+			WHERE observations_fts MATCH ? AND o.deleted_at IS NULL` + filter
+	args := append([]any{ftsQuery}, filterArgs...)
+	if topicKeyQuery {
+		countSQL += `
+			UNION
+			SELECT o.id FROM observations o
+			WHERE o.topic_key = ? AND o.deleted_at IS NULL` + filter
+		args = append(args, query)
+		args = append(args, filterArgs...)
+	}
+	countSQL += `)`
+
+	var total int
+	if err := s.readDB().QueryRow(countSQL, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("search: count matches: %w", err)
+	}
+	return total, nil
 }
 
 // ─── Stats ───────────────────────────────────────────────────────────────────
@@ -3406,6 +3568,18 @@ SELECT 1 FROM (
 // ─── Context Formatting ─────────────────────────────────────────────────────
 
 func (s *Store) FormatContext(project, scope string) (string, error) {
+	return s.FormatContextLimited(project, scope, 0)
+}
+
+// FormatContextLimited is FormatContext with a caller-chosen cap on the recent
+// observations it renders, so a host with a small context window can ask for
+// less than the configured maximum. A limit of zero or less means the
+// configured maximum; a larger one is clamped to it, because the cap exists to
+// bound what one tool call can put in a context window.
+func (s *Store) FormatContextLimited(project, scope string, limit int) (string, error) {
+	if limit <= 0 || limit > s.cfg.MaxContextResults {
+		limit = s.cfg.MaxContextResults
+	}
 	sessions, err := s.RecentSessions(project, 5)
 	if err != nil {
 		return "", err
@@ -3416,7 +3590,7 @@ func (s *Store) FormatContext(project, scope string) (string, error) {
 		return "", err
 	}
 
-	observations, err := s.recentUnpinnedObservations(project, scope, s.cfg.MaxContextResults)
+	observations, err := s.recentUnpinnedObservations(project, scope, limit)
 	if err != nil {
 		return "", err
 	}

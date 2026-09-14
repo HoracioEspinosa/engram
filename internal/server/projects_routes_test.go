@@ -549,6 +549,59 @@ func TestProjectsRoutes_RunbookSyncFromVaultCheckout(t *testing.T) {
 	}
 }
 
+// TestProjectsRoutes_RunbookSyncHonorsTheVaultServiceMap pins the wiring
+// between the scan and the store on the vault-fs route: both resolve
+// `service:` and both must resolve it through the map that belongs to the
+// checkout being synced, so a slug only the vault's services.json declares is
+// indexed instead of coming back as unknown_service.
+func TestProjectsRoutes_RunbookSyncHonorsTheVaultServiceMap(t *testing.T) {
+	a := newProjectsAPI(t)
+	a.seedCard("koi-garden")
+
+	root := t.TempDir()
+	for rel, content := range map[string]string{
+		"Runbooks/services.json": `{"services":[{"slug":"koi-garden","aliases":["koi"]}]}`,
+		"Runbooks/Auth/RB-001 Autologin.md": `---
+type: runbook
+id: RB-001
+title: "Autologin fails on an expired token"
+service: koi-garden
+severity: P2
+category: auth
+status: verified
+symptoms:
+  - "/api/autologin returns 401 invalid_token"
+tags:
+  - type/runbook
+last_updated: 2026-08-14
+---
+
+# RB-001
+`,
+	} {
+		full := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", full, err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", full, err)
+		}
+	}
+
+	body := fmt.Sprintf(`{"source":"vault-fs","vault_dir":%q}`, root)
+	synced := a.expect(a.do(http.MethodPost, "/projects/koi-garden/runbooks/sync", body), http.StatusOK)
+	if up, _ := synced["upserted"].(float64); up != 1 {
+		t.Fatalf("upserted = %v, want 1; body = %v", synced["upserted"], synced)
+	}
+	skipped, _ := synced["skipped"].([]any)
+	for _, raw := range skipped {
+		reason, _ := raw.(map[string]any)["reason"].(string)
+		if reason == "unknown_service" {
+			t.Fatalf("services.json declares koi-garden, yet the sync skipped %v", raw)
+		}
+	}
+}
+
 // TestProjectsRoutes_RunbookSyncFilteringIsNotAnError pins the split between
 // a malformed body (400) and a correct payload the store filtered out (200).
 // The weekly vault sync depends on it: a checkout holding only templates is

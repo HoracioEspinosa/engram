@@ -1,8 +1,11 @@
 package data
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1014,5 +1017,1158 @@ func TestSQLiteTaskReaderTaskAndLinkObservationReportAClosedStore(t *testing.T) 
 	}
 	if _, err := r.ContextPack(task.ID); err == nil {
 		t.Fatal("ContextPack against a closed store should report an error")
+	}
+}
+
+// ─── New interfaces: fakes implement them, and pagination is honest ─────────
+
+// TestFakeReadersImplementNewInterfaces is the runtime counterpart of the
+// var _ X = (*FakeY)(nil) assertions declared next to each fake in fake.go:
+// those already fail the build if a fake drifts from its interface, so this
+// test exists to give that contract a name a coverage report and a CI
+// failure can point to.
+func TestFakeReadersImplementNewInterfaces(t *testing.T) {
+	var (
+		_ ProjectTreeReader  = (*FakeProjectTree)(nil)
+		_ BenchmarkReader    = (*FakeBenchmark)(nil)
+		_ GraphReader        = (*FakeGraph)(nil)
+		_ GraphSyncer        = (*FakeGraph)(nil)
+		_ ThemeReader        = (*FakeTheme)(nil)
+		_ ThemeWriter        = (*FakeTheme)(nil)
+		_ SettingsReader     = (*FakeSettings)(nil)
+		_ SettingsWriter     = (*FakeSettings)(nil)
+		_ GlobalSearcher     = (*FakeSearch)(nil)
+		_ TaskPageReader     = (*FakeTask)(nil)
+		_ EvidencePageReader = (*FakeEvidence)(nil)
+		_ RunbookPageReader  = (*FakeRunbook)(nil)
+		_ ScopedMemoryReader = (*FakeMemory)(nil)
+	)
+}
+
+// TestFakePaginatedMethodsReportTotalBeyondThePage seeds more rows than one
+// page holds for every new paginated fake method, so Total (the full match
+// count) and len(Items) (the page) provably disagree — a fake that quietly
+// capped Total at the page size would pass every other test in this file
+// and still lie to a pager.
+func TestFakePaginatedMethodsReportTotalBeyondThePage(t *testing.T) {
+	tasks := make([]store.TaskListItem, 5)
+	for i := range tasks {
+		tasks[i] = store.TaskListItem{Task: store.Task{ID: int64(i + 1), Project: "acme", Title: fmt.Sprintf("task %d", i)}}
+	}
+	ft := &FakeTask{ItemsByProject: map[string][]store.TaskListItem{"acme": tasks}}
+	tp, err := ft.ListTasksPage("acme", store.TaskListFilter{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListTasksPage: %v", err)
+	}
+	if tp.Total != 5 || len(tp.Items) != 2 {
+		t.Fatalf("ListTasksPage = %+v, want Total=5 len(Items)=2", tp)
+	}
+	if !tp.HasNext() || tp.HasPrev() {
+		t.Fatalf("ListTasksPage paging flags wrong: HasNext=%v HasPrev=%v", tp.HasNext(), tp.HasPrev())
+	}
+
+	evidence := make([]store.EvidenceListItem, 4)
+	for i := range evidence {
+		evidence[i] = store.EvidenceListItem{Evidence: store.Evidence{ID: int64(i + 1), Category: "auth"}}
+	}
+	fe := &FakeEvidence{ItemsByProject: map[string][]store.EvidenceListItem{"acme": evidence}}
+	ep, err := fe.ListEvidencePage("acme", store.EvidenceListFilter{Limit: 1})
+	if err != nil {
+		t.Fatalf("ListEvidencePage: %v", err)
+	}
+	if ep.Total != 4 || len(ep.Items) != 1 {
+		t.Fatalf("ListEvidencePage = %+v, want Total=4 len(Items)=1", ep)
+	}
+
+	runbooks := make([]store.RunbookIndexRow, 3)
+	for i := range runbooks {
+		runbooks[i] = store.RunbookIndexRow{ID: fmt.Sprintf("RB-%03d", i+1), Project: "acme"}
+	}
+	fr := &FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": runbooks}}
+	rp, err := fr.ListRunbooksPage("acme", false, RunbookFilter{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListRunbooksPage: %v", err)
+	}
+	if rp.Total != 3 || len(rp.Items) != 2 {
+		t.Fatalf("ListRunbooksPage = %+v, want Total=3 len(Items)=2", rp)
+	}
+
+	benches := make([]Benchmark, 6)
+	for i := range benches {
+		benches[i] = Benchmark{BenchmarkDelta: store.BenchmarkDelta{Benchmark: store.Benchmark{Metric: "p95"}}}
+	}
+	fb := &FakeBenchmark{ByProject: map[string][]Benchmark{"acme": benches}}
+	bp, err := fb.ListBenchmarks("acme", BenchmarkFilter{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListBenchmarks: %v", err)
+	}
+	if bp.Total != 6 || len(bp.Items) != 2 {
+		t.Fatalf("ListBenchmarks = %+v, want Total=6 len(Items)=2", bp)
+	}
+
+	results := make([]store.SearchResult, 7)
+	for i := range results {
+		results[i] = store.SearchResult{Observation: store.Observation{ID: int64(i + 1), Project: strp("acme")}}
+	}
+	fm := &FakeMemory{SearchResults: results}
+	sp, err := fm.SearchScoped("needle", ProjectScope{}, 3, 0)
+	if err != nil {
+		t.Fatalf("SearchScoped: %v", err)
+	}
+	if sp.Total != 7 || len(sp.Items) != 3 {
+		t.Fatalf("SearchScoped = %+v, want Total=7 len(Items)=3", sp)
+	}
+}
+
+// countingProjectTreeStore is a projectTreeStore that counts how many of its
+// methods sqliteProjectTree.ProjectTree calls, so
+// TestProjectTreeReaderIssuesAtMostTwoStoreCalls can assert on the count
+// without instrumenting SQL (internal/store's own query hooks are
+// unexported).
+type countingProjectTreeStore struct {
+	calls int
+	tree  []store.ProjectTreeNode
+}
+
+func (c *countingProjectTreeStore) ProjectTree(root string, includeCounts bool) ([]store.ProjectTreeNode, error) {
+	c.calls++
+	return c.tree, nil
+}
+func (c *countingProjectTreeStore) GetProjectCard(slug string) (store.ProjectCard, error) {
+	c.calls++
+	return store.ProjectCard{Slug: slug}, nil
+}
+func (c *countingProjectTreeStore) ProjectCardCounts(slug string) (store.ProjectCardCounts, error) {
+	c.calls++
+	return store.ProjectCardCounts{}, nil
+}
+func (c *countingProjectTreeStore) ListProjectAliases(slug string) ([]store.ProjectAlias, error) {
+	c.calls++
+	return nil, nil
+}
+func (c *countingProjectTreeStore) SubtreeSlugs(root string) ([]string, error) {
+	c.calls++
+	return nil, nil
+}
+func (c *countingProjectTreeStore) ResolveProjectSlug(raw string) (store.ProjectResolution, error) {
+	c.calls++
+	return store.ProjectResolution{}, nil
+}
+
+func TestProjectTreeReaderIssuesAtMostTwoStoreCalls(t *testing.T) {
+	backing := &countingProjectTreeStore{
+		tree: []store.ProjectTreeNode{
+			{ProjectCard: store.ProjectCard{Slug: "a"}, Counts: &store.ProjectCardCounts{}},
+			{ProjectCard: store.ProjectCard{Slug: "b", ParentSlug: strp("a")}, Counts: &store.ProjectCardCounts{}},
+		},
+	}
+	r := sqliteProjectTree{store: backing}
+
+	nodes, err := r.ProjectTree()
+	if err != nil {
+		t.Fatalf("ProjectTree: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].Slug != "a" || len(nodes[0].Children) != 1 || nodes[0].Children[0].Slug != "b" {
+		t.Fatalf("ProjectTree forest = %+v, want a with b nested under it", nodes)
+	}
+	if backing.calls == 0 {
+		t.Fatal("ProjectTree issued no store calls at all — the test isn't exercising anything")
+	}
+	if backing.calls > 2 {
+		t.Fatalf("ProjectTree issued %d store calls, want at most 2", backing.calls)
+	}
+}
+
+// ─── Project tree, real store ────────────────────────────────────────────────
+
+func TestSQLiteProjectTreeReaderRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: "koi-garden"}); err != nil {
+		t.Fatalf("UpsertProjectCard(koi-garden): %v", err)
+	}
+	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: "koi-garden-pond-02"}); err != nil {
+		t.Fatalf("UpsertProjectCard(koi-garden-pond-02): %v", err)
+	}
+	if err := s.SetProjectParent("koi-garden-pond-02", strp("koi-garden")); err != nil {
+		t.Fatalf("SetProjectParent: %v", err)
+	}
+	if err := s.UpsertProjectAlias("koi_garden", "koi-garden", "manual"); err != nil {
+		t.Fatalf("UpsertProjectAlias: %v", err)
+	}
+
+	r := NewProjectTreeReader(s)
+
+	tree, err := r.ProjectTree()
+	if err != nil {
+		t.Fatalf("ProjectTree: %v", err)
+	}
+	var root *ProjectNode
+	for i := range tree {
+		if tree[i].Slug == "koi-garden" {
+			root = &tree[i]
+		}
+	}
+	if root == nil {
+		t.Fatalf("koi-garden missing from the forest: %+v", tree)
+	}
+	if len(root.Children) != 1 || root.Children[0].Slug != "koi-garden-pond-02" {
+		t.Fatalf("koi-garden's children = %+v, want koi-garden-pond-02 nested under it", root.Children)
+	}
+	if root.Children[0].Depth != 1 {
+		t.Fatalf("koi-garden-pond-02 depth = %d, want 1", root.Children[0].Depth)
+	}
+
+	node, err := r.ProjectNode("koi-garden")
+	if err != nil {
+		t.Fatalf("ProjectNode: %v", err)
+	}
+	if len(node.Aliases) != 1 || node.Aliases[0] != "koi_garden" {
+		t.Fatalf("ProjectNode aliases = %#v, want [koi_garden]", node.Aliases)
+	}
+
+	ancestors, err := r.Ancestors("koi-garden-pond-02")
+	if err != nil {
+		t.Fatalf("Ancestors: %v", err)
+	}
+	if len(ancestors) != 1 || ancestors[0].Slug != "koi-garden" {
+		t.Fatalf("ancestors = %+v, want [koi-garden]", ancestors)
+	}
+
+	descendants, err := r.Descendants("koi-garden")
+	if err != nil {
+		t.Fatalf("Descendants: %v", err)
+	}
+	found := false
+	for _, d := range descendants {
+		if d == "koi-garden-pond-02" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("descendants = %v, want koi-garden-pond-02 among them", descendants)
+	}
+
+	slug, err := r.ResolveAlias("koi_garden")
+	if err != nil {
+		t.Fatalf("ResolveAlias: %v", err)
+	}
+	if slug != "koi-garden" {
+		t.Fatalf("ResolveAlias(koi_garden) = %q, want koi-garden", slug)
+	}
+	if _, err := r.ResolveAlias("no-such-project-anywhere"); !errors.Is(err, ErrProjectUnresolved) {
+		t.Fatalf("ResolveAlias(unknown) = %v, want ErrProjectUnresolved", err)
+	}
+}
+
+// ─── Workspace search, real store ────────────────────────────────────────────
+
+func TestSQLiteGlobalSearcherRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	seedProject(t, s, "acme")
+	if err := s.CreateSession("acme-session", "acme", "/tmp/acme"); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if _, err := s.AddObservation(store.AddObservationParams{
+		SessionID: "acme-session", Type: "discovery", Title: "Needle finding",
+		Content: "needle content for workspace search", Project: "acme", Scope: "project",
+	}); err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	hits, err := NewGlobalSearcher(s).SearchWorkspace(SearchQuery{Text: "needle", LimitPerKind: 5})
+	if err != nil {
+		t.Fatalf("SearchWorkspace: %v", err)
+	}
+	found := false
+	for _, h := range hits {
+		if h.Kind == SearchKindObservation && h.Project == "acme" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("SearchWorkspace hits = %+v, want an observation hit for acme", hits)
+	}
+}
+
+// ─── Benchmarks, real store ───────────────────────────────────────────────────
+
+func TestSQLiteBenchmarkReaderRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	task := seedProject(t, s, "acme")
+
+	if _, err := s.AddBenchmark(store.AddBenchmarkParams{
+		Task: task, Name: "login", Metric: "p95", Unit: "ms", Value: 400, Baseline: true,
+		CapturedAt: "2026-01-01 00:00:00",
+	}); err != nil {
+		t.Fatalf("AddBenchmark(baseline): %v", err)
+	}
+	if _, err := s.AddBenchmark(store.AddBenchmarkParams{
+		Task: task, Name: "login", Metric: "p95", Unit: "ms", Value: 300,
+		CapturedAt: "2026-02-01 00:00:00",
+	}); err != nil {
+		t.Fatalf("AddBenchmark(measurement): %v", err)
+	}
+
+	r := NewBenchmarkReader(s)
+
+	page, err := r.ListBenchmarks("acme", BenchmarkFilter{})
+	if err != nil {
+		t.Fatalf("ListBenchmarks: %v", err)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("ListBenchmarks items = %d, want 2", len(page.Items))
+	}
+	var measurement Benchmark
+	for _, b := range page.Items {
+		if !b.Baseline {
+			measurement = b
+		}
+	}
+	if measurement.SyncID == "" {
+		t.Fatal("expected the non-baseline measurement among ListBenchmarks's items")
+	}
+	if measurement.Delta() == nil {
+		t.Fatal("a measurement with a baseline must report a Delta")
+	}
+	improved := measurement.Improved()
+	if improved == nil || !*improved {
+		t.Fatalf("300ms against a 400ms lower-is-better baseline must read as improved, got %v", improved)
+	}
+
+	taskBenches, err := r.TaskBenchmarks(task.SyncID)
+	if err != nil {
+		t.Fatalf("TaskBenchmarks: %v", err)
+	}
+	if len(taskBenches) != 2 {
+		t.Fatalf("TaskBenchmarks = %d, want 2", len(taskBenches))
+	}
+
+	history, err := r.MetricHistory("acme", "p95", 10)
+	if err != nil {
+		t.Fatalf("MetricHistory: %v", err)
+	}
+	if len(history) != 2 || history[0].CapturedAt >= history[1].CapturedAt {
+		t.Fatalf("MetricHistory = %+v, want oldest first", history)
+	}
+}
+
+// ─── Themes, real store ───────────────────────────────────────────────────────
+
+func TestSQLiteThemeReaderWriterRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SeedBuiltinTheme("koi-pond", store.ThemeVariantDark, json.RawMessage(`{"primary":"#ff9e5e"}`)); err != nil {
+		t.Fatalf("SeedBuiltinTheme: %v", err)
+	}
+
+	writer := NewThemeWriter(s)
+	reader := NewThemeReader(s)
+
+	if err := writer.SaveTheme(store.ThemeRecord{
+		Name: "my-theme", Variant: store.ThemeVariantDark, Palette: json.RawMessage(`{"primary":"#111111"}`),
+	}); err != nil {
+		t.Fatalf("SaveTheme: %v", err)
+	}
+
+	themes, err := reader.ListThemes()
+	if err != nil {
+		t.Fatalf("ListThemes: %v", err)
+	}
+	if len(themes) != 2 {
+		t.Fatalf("ListThemes = %d, want 2 (koi-pond + my-theme)", len(themes))
+	}
+
+	mine, err := reader.Theme("my-theme")
+	if err != nil {
+		t.Fatalf("Theme(my-theme): %v", err)
+	}
+	if mine.Invalid != "" {
+		t.Fatalf("my-theme should validate: %q", mine.Invalid)
+	}
+
+	if err := writer.SaveTheme(store.ThemeRecord{Name: "blank", Palette: json.RawMessage(`{}`)}); err != nil {
+		t.Fatalf("SaveTheme(blank): %v", err)
+	}
+	blank, err := reader.Theme("blank")
+	if err != nil {
+		t.Fatalf("Theme(blank): %v", err)
+	}
+	if blank.Invalid == "" {
+		t.Fatal("a palette with no color roles must be flagged Invalid")
+	}
+
+	if err := writer.DeleteTheme("my-theme"); err != nil {
+		t.Fatalf("DeleteTheme: %v", err)
+	}
+	if _, err := reader.Theme("my-theme"); !errors.Is(err, store.ErrThemeNotFound) {
+		t.Fatalf("Theme(my-theme) after delete = %v, want ErrThemeNotFound", err)
+	}
+
+	if err := writer.DeleteTheme("koi-pond"); !errors.Is(err, store.ErrBuiltinTheme) {
+		t.Fatalf("DeleteTheme(koi-pond) = %v, want ErrBuiltinTheme", err)
+	}
+	if err := writer.ResetTheme("koi-pond", nil); err != nil {
+		t.Fatalf("ResetTheme: %v", err)
+	}
+}
+
+// ─── Settings, real store ─────────────────────────────────────────────────────
+
+func TestSQLiteSettingsReaderWriterRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	writer := NewSettingsWriter(s)
+	reader := NewSettingsReader(s)
+
+	if err := writer.SetSetting("tui.theme", "koi-pond"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+	if err := writer.SetSetting("tui.icons", "nerd"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+	if err := writer.SetSetting("other.key", "x"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+
+	value, ok, err := reader.Setting("tui.theme")
+	if err != nil {
+		t.Fatalf("Setting: %v", err)
+	}
+	if !ok || value != "koi-pond" {
+		t.Fatalf("Setting(tui.theme) = (%q, %v), want (koi-pond, true)", value, ok)
+	}
+
+	_, ok, err = reader.Setting("tui.mouse")
+	if err != nil {
+		t.Fatalf("Setting: %v", err)
+	}
+	if ok {
+		t.Fatal("Setting(tui.mouse) reported ok for a key that was never set")
+	}
+
+	scoped, err := reader.Settings("tui.")
+	if err != nil {
+		t.Fatalf("Settings: %v", err)
+	}
+	if len(scoped) != 2 || scoped["tui.theme"] != "koi-pond" || scoped["tui.icons"] != "nerd" {
+		t.Fatalf("Settings(tui.) = %v, want exactly the two tui.* keys", scoped)
+	}
+}
+
+// ─── Tasks, evidence, runbooks: new methods, real store ─────────────────────
+
+func TestSQLiteTaskReaderNewMethodsRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	const slug = "acme"
+	task := seedProject(t, s, slug)
+	if _, err := s.UpsertTask(store.UpsertTaskParams{
+		Project: slug, Slug: strp("mantenimiento"), Title: strp("Vault-only task"), Kind: strp("spike"),
+		VaultPath: strp(slug + "/mantenimiento"),
+	}); err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+
+	r := NewTaskPageReader(s)
+
+	page, err := r.ListTasksPage(slug, store.TaskListFilter{Limit: 1})
+	if err != nil {
+		t.Fatalf("ListTasksPage: %v", err)
+	}
+	if page.Total != 2 || len(page.Items) != 1 {
+		t.Fatalf("ListTasksPage = %+v, want Total=2 len(Items)=1", page)
+	}
+
+	detail, err := r.TaskBySlug(slug, "mantenimiento")
+	if err != nil {
+		t.Fatalf("TaskBySlug: %v", err)
+	}
+	if detail.Task.Title != "Vault-only task" {
+		t.Fatalf("TaskBySlug found the wrong task: %+v", detail.Task)
+	}
+	if _, err := r.TaskBySlug(slug, "no-such-slug"); err == nil {
+		t.Fatal("TaskBySlug should fail for an unknown slug")
+	}
+
+	vaultRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(vaultRoot, slug, "mantenimiento"), 0o755); err != nil {
+		t.Fatalf("mkdir vault dir: %v", err)
+	}
+	t.Setenv(vaultRootEnv, vaultRoot)
+
+	dir, ok, err := r.VaultDir(detail.Task.ID)
+	if err != nil {
+		t.Fatalf("VaultDir: %v", err)
+	}
+	if !ok || dir != filepath.Join(vaultRoot, slug, "mantenimiento") {
+		t.Fatalf("VaultDir = (%q, %v), want the seeded folder", dir, ok)
+	}
+
+	dir, ok, err = r.VaultDir(task.ID) // seedProject's task has no vault_path
+	if err != nil {
+		t.Fatalf("VaultDir(no vault_path): %v", err)
+	}
+	if ok {
+		t.Fatalf("VaultDir reported ok for a task with no vault_path: %q", dir)
+	}
+}
+
+func TestSQLiteEvidenceReaderNewMethodsRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	const slug = "acme"
+	task := seedProject(t, s, slug) // seeds one evidence row under the default category
+
+	if _, _, _, err := s.AddEvidence(store.AddEvidenceParams{
+		Task: task, Path: "second.png", SHA256: strings.Repeat("b", 64),
+		Kind: "png", Proves: "also works", Category: "benchmarks",
+	}); err != nil {
+		t.Fatalf("AddEvidence: %v", err)
+	}
+
+	r := NewEvidencePageReader(s)
+
+	page, err := r.ListEvidencePage(slug, store.EvidenceListFilter{Limit: 1})
+	if err != nil {
+		t.Fatalf("ListEvidencePage: %v", err)
+	}
+	if page.Total != 2 || len(page.Items) != 1 {
+		t.Fatalf("ListEvidencePage = %+v, want Total=2 len(Items)=1", page.Page)
+	}
+	if page.TotalBytes < 0 {
+		t.Fatalf("TotalBytes = %d, want >= 0", page.TotalBytes)
+	}
+
+	categories, err := r.Categories(slug)
+	if err != nil {
+		t.Fatalf("Categories: %v", err)
+	}
+	if len(categories) < 2 {
+		t.Fatalf("Categories = %+v, want at least 2 distinct categories", categories)
+	}
+}
+
+func TestSQLiteRunbookReaderListRunbooksPageRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	const slug = "acme"
+	seedProject(t, s, slug) // seeds RB-900, needs_review=true (stale)
+
+	if _, err := s.SyncRunbookIndex(store.RunbookIndexSyncParams{
+		Source: "knowledge-mcp",
+		Entries: []store.RunbookIndexEntryInput{
+			{
+				ID: "RB-901", VaultPath: "Runbooks/RB-901.md", Title: "Fresh runbook",
+				Service: slug, Category: "auth", Status: "verified",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SyncRunbookIndex: %v", err)
+	}
+
+	r := NewRunbookPageReader(s)
+	stale := true
+	page, err := r.ListRunbooksPage(slug, false, RunbookFilter{Stale: &stale})
+	if err != nil {
+		t.Fatalf("ListRunbooksPage: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != "RB-900" {
+		t.Fatalf("ListRunbooksPage(stale) = %+v, want just RB-900", page.Items)
+	}
+}
+
+// ─── Memory scoped methods, real store ───────────────────────────────────────
+
+func TestSQLiteMemoryReaderScopedMethodsRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.CreateSession("acme-session", "acme", "/tmp/acme"); err != nil {
+		t.Fatalf("CreateSession(acme): %v", err)
+	}
+	if err := s.CreateSession("other-session", "other", "/tmp/other"); err != nil {
+		t.Fatalf("CreateSession(other): %v", err)
+	}
+	if _, err := s.AddObservation(store.AddObservationParams{
+		SessionID: "acme-session", Type: "discovery", Title: "Acme finding",
+		Content: "scoped needle content", Project: "acme", Scope: "project",
+	}); err != nil {
+		t.Fatalf("AddObservation(acme): %v", err)
+	}
+	if _, err := s.AddObservation(store.AddObservationParams{
+		SessionID: "other-session", Type: "discovery", Title: "Other finding",
+		Content: "scoped needle content", Project: "other", Scope: "project",
+	}); err != nil {
+		t.Fatalf("AddObservation(other): %v", err)
+	}
+
+	r := NewScopedMemoryReader(s)
+
+	searchPage, err := r.SearchScoped("needle", ProjectScope{Project: "acme"}, 10, 0)
+	if err != nil {
+		t.Fatalf("SearchScoped: %v", err)
+	}
+	if len(searchPage.Items) == 0 {
+		t.Fatal("SearchScoped(acme) found nothing")
+	}
+	for _, hit := range searchPage.Items {
+		if hit.Project == nil || *hit.Project != "acme" {
+			t.Fatalf("SearchScoped leaked a result from another project: %+v", hit)
+		}
+	}
+
+	obsPage, err := r.RecentObservationsScoped(ProjectScope{Project: "acme"}, 10, 0)
+	if err != nil {
+		t.Fatalf("RecentObservationsScoped: %v", err)
+	}
+	for _, o := range obsPage.Items {
+		if o.Project == nil || *o.Project != "acme" {
+			t.Fatalf("RecentObservationsScoped leaked another project: %+v", o)
+		}
+	}
+
+	sessPage, err := r.RecentSessionsScoped(ProjectScope{Project: "acme"}, 10, 0)
+	if err != nil {
+		t.Fatalf("RecentSessionsScoped: %v", err)
+	}
+	for _, sess := range sessPage.Items {
+		if sess.Project != "acme" {
+			t.Fatalf("RecentSessionsScoped leaked another project: %+v", sess)
+		}
+	}
+
+	allPage, err := r.RecentObservationsScoped(ProjectScope{}, 10, 0)
+	if err != nil {
+		t.Fatalf("RecentObservationsScoped(unscoped): %v", err)
+	}
+	if len(allPage.Items) < 2 {
+		t.Fatalf("RecentObservationsScoped(unscoped) = %d, want >= 2", len(allPage.Items))
+	}
+}
+
+// ─── Graph, real store ────────────────────────────────────────────────────────
+
+func TestSQLiteGraphReaderRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	const slug = "acme"
+	seedProject(t, s, slug)
+
+	// project_cards.graph_commit is CHECKed at exactly 40 characters, the
+	// shape of a full git SHA.
+	const commit = "a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4"
+	summary := `{"source":["graphify-out/graph.json"],"built_at_commit":"` + commit + `","node_count":10,` +
+		`"edge_count":20,"community_count":2,"god_nodes":[{"label":"Foo","edges":5,"file":"foo.go"}]}`
+	if err := s.StampProjectGraph(slug, commit, "2026-09-14 10:00:00", &summary); err != nil {
+		t.Fatalf("StampProjectGraph: %v", err)
+	}
+	if err := s.StampGraphStaleness(slug, "code_changed", 3, "2026-09-14 10:05:00"); err != nil {
+		t.Fatalf("StampGraphStaleness: %v", err)
+	}
+
+	state, err := NewGraphReader(s).GraphState(slug)
+	if err != nil {
+		t.Fatalf("GraphState: %v", err)
+	}
+	if state.Commit != commit || state.Nodes != 10 || state.Edges != 20 || state.Communities != 2 {
+		t.Fatalf("GraphState = %+v, want the stamped summary", state)
+	}
+	if len(state.GodNodes) != 1 || state.GodNodes[0].Label != "Foo" {
+		t.Fatalf("GraphState god nodes = %+v", state.GodNodes)
+	}
+	if !state.Stale || state.StaleReason != "code_changed" || state.ChangedFiles != 3 {
+		t.Fatalf("GraphState staleness = %+v, want code_changed/3", state)
+	}
+}
+
+// TestSQLiteGraphReaderObservationRefsPagesGraphLinks pins what the Graph tab
+// lists: the project's graph-linked observations, newest first, with the real
+// total behind the page.
+func TestSQLiteGraphReaderObservationRefsPagesGraphLinks(t *testing.T) {
+	s := newTestStore(t)
+	const commit = "a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4"
+	if err := s.CreateSession("acme-session", "acme", "/tmp/acme"); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	var ids []int64
+	for _, ref := range []string{"pkg/a.First", "pkg/b.Second"} {
+		res, err := s.AddObservationLinked(store.AddObservationParams{
+			SessionID: "acme-session", Type: "decision", Title: ref, Content: ref, Project: "acme",
+		}, &store.ObservationLink{GraphRef: ref, GraphCommit: commit})
+		if err != nil {
+			t.Fatalf("AddObservationLinked(%s): %v", ref, err)
+		}
+		ids = append(ids, res.ObservationID)
+	}
+
+	page, err := NewGraphReader(s).ObservationRefs("acme", 1, 0)
+	if err != nil {
+		t.Fatalf("ObservationRefs: %v", err)
+	}
+	if page.Total != 2 || len(page.Items) != 1 {
+		t.Fatalf("page = %+v, want one of two", page)
+	}
+	if page.Items[0].ObservationID != ids[1] || page.Items[0].Ref != "pkg/b.Second" {
+		t.Fatalf("first item = %+v, want the newest ref", page.Items[0])
+	}
+	if page.Items[0].RefKind != "graph" || page.Items[0].GraphCommit != commit {
+		t.Fatalf("item = %+v, want a graph ref at the stamped commit", page.Items[0])
+	}
+	if !page.HasNext() {
+		t.Fatal("a page of one out of two has a next page")
+	}
+
+	empty, err := NewGraphReader(s).ObservationRefs("nobody", 10, 0)
+	if err != nil {
+		t.Fatalf("ObservationRefs(unknown project): %v", err)
+	}
+	if empty.Total != 0 || len(empty.Items) != 0 {
+		t.Fatalf("page = %+v, want an empty one", empty)
+	}
+}
+
+// ─── Nil-store guards ─────────────────────────────────────────────────────────
+
+// TestNewAdaptersWithoutAStoreReportErrStoreUnavailable is the new-interface
+// counterpart of the existing TestSQLite*WithoutAStoreReportsIt tests: every
+// adapter this package added must fail the same honest way a real store
+// outage would, rather than panic on a nil pointer.
+func TestNewAdaptersWithoutAStoreReportErrStoreUnavailable(t *testing.T) {
+	ptr := NewProjectTreeReader(nil)
+	if _, err := ptr.ProjectTree(); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("ProjectTree(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := ptr.ProjectNode("x"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("ProjectNode(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := ptr.Ancestors("x"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("Ancestors(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := ptr.Descendants("x"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("Descendants(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := ptr.ResolveAlias("x"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("ResolveAlias(nil) = %v, want ErrStoreUnavailable", err)
+	}
+
+	tr := NewTaskPageReader(nil)
+	if _, err := tr.ListTasksPage("acme", store.TaskListFilter{}); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("ListTasksPage(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := tr.TaskBySlug("acme", "x"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("TaskBySlug(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, _, err := tr.VaultDir(1); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("VaultDir(nil) = %v, want ErrStoreUnavailable", err)
+	}
+
+	er := NewEvidencePageReader(nil)
+	if _, err := er.ListEvidencePage("acme", store.EvidenceListFilter{}); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("ListEvidencePage(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := er.Categories("acme"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("Categories(nil) = %v, want ErrStoreUnavailable", err)
+	}
+
+	rr := NewRunbookPageReader(nil)
+	if _, err := rr.ListRunbooksPage("acme", false, RunbookFilter{}); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("ListRunbooksPage(nil) = %v, want ErrStoreUnavailable", err)
+	}
+
+	mr := NewScopedMemoryReader(nil)
+	if _, err := mr.SearchScoped("x", ProjectScope{}, 10, 0); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("SearchScoped(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := mr.RecentObservationsScoped(ProjectScope{}, 10, 0); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("RecentObservationsScoped(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := mr.RecentSessionsScoped(ProjectScope{}, 10, 0); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("RecentSessionsScoped(nil) = %v, want ErrStoreUnavailable", err)
+	}
+
+	br := NewBenchmarkReader(nil)
+	if _, err := br.ListBenchmarks("acme", BenchmarkFilter{}); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("ListBenchmarks(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := br.TaskBenchmarks("sync-1"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("TaskBenchmarks(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := br.MetricHistory("acme", "p95", 10); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("MetricHistory(nil) = %v, want ErrStoreUnavailable", err)
+	}
+
+	gr := NewGraphReader(nil)
+	if _, err := gr.GraphState("acme"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("GraphState(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := gr.ObservationRefs("acme", 10, 0); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("ObservationRefs(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	gs := NewGraphSyncer(nil, "")
+	if _, err := gs.SyncGraph("acme"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("SyncGraph(nil) = %v, want ErrStoreUnavailable", err)
+	}
+
+	thr := NewThemeReader(nil)
+	if _, err := thr.ListThemes(); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("ListThemes(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := thr.Theme("koi-pond"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("Theme(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	thw := NewThemeWriter(nil)
+	if err := thw.SaveTheme(store.ThemeRecord{}); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("SaveTheme(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if err := thw.DeleteTheme("koi-pond"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("DeleteTheme(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if err := thw.ResetTheme("koi-pond", nil); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("ResetTheme(nil) = %v, want ErrStoreUnavailable", err)
+	}
+
+	sr := NewSettingsReader(nil)
+	if _, _, err := sr.Setting("x"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("Setting(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	if _, err := sr.Settings(""); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("Settings(nil) = %v, want ErrStoreUnavailable", err)
+	}
+	sw := NewSettingsWriter(nil)
+	if err := sw.SetSetting("x", "y"); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("SetSetting(nil) = %v, want ErrStoreUnavailable", err)
+	}
+
+	if _, err := NewGlobalSearcher(nil).SearchWorkspace(SearchQuery{}); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("SearchWorkspace(nil) = %v, want ErrStoreUnavailable", err)
+	}
+}
+
+// ─── New fakes: behavior, not just the interface assertion ──────────────────
+
+func TestFakeProjectTreeReturnsWhatItWasGiven(t *testing.T) {
+	f := &FakeProjectTree{
+		Tree:              []ProjectNode{{Slug: "a"}},
+		NodeBySlug:        map[string]ProjectNode{"a": {Slug: "a", DisplayName: "A"}},
+		AncestorsBySlug:   map[string][]ProjectNode{"b": {{Slug: "a"}}},
+		DescendantsBySlug: map[string][]string{"a": {"a", "b"}},
+		AliasResolution:   map[string]string{"koi_garden": "koi-garden"},
+	}
+
+	tree, err := f.ProjectTree()
+	if err != nil || len(tree) != 1 || tree[0].Slug != "a" {
+		t.Fatalf("ProjectTree = (%+v, %v)", tree, err)
+	}
+	node, err := f.ProjectNode("a")
+	if err != nil || node.DisplayName != "A" {
+		t.Fatalf("ProjectNode = (%+v, %v)", node, err)
+	}
+	if _, err := f.ProjectNode("missing"); err == nil {
+		t.Fatal("ProjectNode(missing) should fail")
+	}
+	ancestors, err := f.Ancestors("b")
+	if err != nil || len(ancestors) != 1 {
+		t.Fatalf("Ancestors = (%+v, %v)", ancestors, err)
+	}
+	descendants, err := f.Descendants("a")
+	if err != nil || len(descendants) != 2 {
+		t.Fatalf("Descendants = (%+v, %v)", descendants, err)
+	}
+	slug, err := f.ResolveAlias("koi_garden")
+	if err != nil || slug != "koi-garden" {
+		t.Fatalf("ResolveAlias = (%q, %v)", slug, err)
+	}
+	if _, err := f.ResolveAlias("unknown"); !errors.Is(err, ErrProjectUnresolved) {
+		t.Fatalf("ResolveAlias(unknown) = %v, want ErrProjectUnresolved", err)
+	}
+}
+
+func TestFakeProjectTreeErrShortCircuits(t *testing.T) {
+	f := &FakeProjectTree{Err: errors.New("boom")}
+	if _, err := f.ProjectTree(); err == nil {
+		t.Fatal("ProjectTree should fail")
+	}
+	if _, err := f.ProjectNode("a"); err == nil {
+		t.Fatal("ProjectNode should fail")
+	}
+	if _, err := f.Ancestors("a"); err == nil {
+		t.Fatal("Ancestors should fail")
+	}
+	if _, err := f.Descendants("a"); err == nil {
+		t.Fatal("Descendants should fail")
+	}
+	if _, err := f.ResolveAlias("a"); err == nil {
+		t.Fatal("ResolveAlias should fail")
+	}
+}
+
+func TestFakeBenchmarkReturnsWhatItWasGiven(t *testing.T) {
+	f := &FakeBenchmark{
+		ByProject: map[string][]Benchmark{
+			"acme": {
+				{BenchmarkDelta: store.BenchmarkDelta{Benchmark: store.Benchmark{Metric: "p95"}}},
+				{BenchmarkDelta: store.BenchmarkDelta{Benchmark: store.Benchmark{Metric: "rss"}}},
+			},
+		},
+		ByTaskSyncID: map[string][]Benchmark{
+			"task-1": {{BenchmarkDelta: store.BenchmarkDelta{Benchmark: store.Benchmark{Metric: "p95"}}}},
+		},
+	}
+
+	page, err := f.ListBenchmarks("acme", BenchmarkFilter{Metric: "p95"})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("ListBenchmarks(metric filter) = (%+v, %v)", page, err)
+	}
+	if f.LastFilter.Metric != "p95" {
+		t.Fatalf("LastFilter = %+v", f.LastFilter)
+	}
+
+	taskBenches, err := f.TaskBenchmarks("task-1")
+	if err != nil || len(taskBenches) != 1 {
+		t.Fatalf("TaskBenchmarks = (%+v, %v)", taskBenches, err)
+	}
+
+	history, err := f.MetricHistory("acme", "p95", 1)
+	if err != nil || len(history) != 1 {
+		t.Fatalf("MetricHistory = (%+v, %v)", history, err)
+	}
+}
+
+func TestFakeBenchmarkErrShortCircuits(t *testing.T) {
+	f := &FakeBenchmark{Err: errors.New("boom")}
+	if _, err := f.ListBenchmarks("acme", BenchmarkFilter{}); err == nil {
+		t.Fatal("ListBenchmarks should fail")
+	}
+	if _, err := f.TaskBenchmarks("t"); err == nil {
+		t.Fatal("TaskBenchmarks should fail")
+	}
+	if _, err := f.MetricHistory("acme", "p95", 1); err == nil {
+		t.Fatal("MetricHistory should fail")
+	}
+}
+
+func TestFakeGraphReturnsWhatItWasGivenAndRecordsSyncCalls(t *testing.T) {
+	f := &FakeGraph{
+		StateByProject: map[string]GraphState{"acme": {Project: "acme", Nodes: 5}},
+		RefsByProject:  map[string][]ObservationRef{"acme": {{ObservationID: 1}, {ObservationID: 2}}},
+		SyncResult:     map[string]GraphState{"acme": {Project: "acme", Nodes: 6}},
+	}
+	state, err := f.GraphState("acme")
+	if err != nil || state.Nodes != 5 {
+		t.Fatalf("GraphState = (%+v, %v)", state, err)
+	}
+	refs, err := f.ObservationRefs("acme", 1, 0)
+	if err != nil || len(refs.Items) != 1 || refs.Total != 2 {
+		t.Fatalf("ObservationRefs = (%+v, %v)", refs, err)
+	}
+	synced, err := f.SyncGraph("acme")
+	if err != nil || synced.Nodes != 6 {
+		t.Fatalf("SyncGraph = (%+v, %v)", synced, err)
+	}
+	if len(f.SyncCalls) != 1 || f.SyncCalls[0] != "acme" {
+		t.Fatalf("SyncCalls = %v", f.SyncCalls)
+	}
+}
+
+func TestFakeGraphErrShortCircuits(t *testing.T) {
+	f := &FakeGraph{Err: errors.New("boom")}
+	if _, err := f.GraphState("acme"); err == nil {
+		t.Fatal("GraphState should fail")
+	}
+	if _, err := f.ObservationRefs("acme", 1, 0); err == nil {
+		t.Fatal("ObservationRefs should fail")
+	}
+	if _, err := f.SyncGraph("acme"); err == nil {
+		t.Fatal("SyncGraph should fail")
+	}
+}
+
+func TestFakeThemeReturnsWhatItWasGivenAndRecordsWrites(t *testing.T) {
+	f := &FakeTheme{
+		Themes: []ThemeRecord{{ThemeRecord: store.ThemeRecord{Name: "koi-pond"}}},
+		ByName: map[string]ThemeRecord{"koi-pond": {ThemeRecord: store.ThemeRecord{Name: "koi-pond", Builtin: true}}},
+	}
+	themes, err := f.ListThemes()
+	if err != nil || len(themes) != 1 {
+		t.Fatalf("ListThemes = (%+v, %v)", themes, err)
+	}
+	theme, err := f.Theme("koi-pond")
+	if err != nil || !theme.Builtin {
+		t.Fatalf("Theme = (%+v, %v)", theme, err)
+	}
+	if _, err := f.Theme("missing"); !errors.Is(err, store.ErrThemeNotFound) {
+		t.Fatalf("Theme(missing) = %v, want ErrThemeNotFound", err)
+	}
+	if err := f.SaveTheme(store.ThemeRecord{Name: "new"}); err != nil {
+		t.Fatalf("SaveTheme: %v", err)
+	}
+	if err := f.DeleteTheme("koi-pond"); err != nil {
+		t.Fatalf("DeleteTheme: %v", err)
+	}
+	if err := f.ResetTheme("koi-pond", json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("ResetTheme: %v", err)
+	}
+	if len(f.Saved) != 1 || len(f.Deleted) != 1 || len(f.ResetCalls) != 1 {
+		t.Fatalf("writes not recorded: saved=%d deleted=%d reset=%d", len(f.Saved), len(f.Deleted), len(f.ResetCalls))
+	}
+}
+
+func TestFakeThemeErrShortCircuitsButStillRecordsTheAttemptedWrite(t *testing.T) {
+	f := &FakeTheme{Err: errors.New("boom")}
+	if _, err := f.ListThemes(); err == nil {
+		t.Fatal("ListThemes should fail")
+	}
+	if _, err := f.Theme("x"); err == nil {
+		t.Fatal("Theme should fail")
+	}
+	if err := f.SaveTheme(store.ThemeRecord{Name: "x"}); err == nil {
+		t.Fatal("SaveTheme should fail")
+	}
+	if err := f.DeleteTheme("x"); err == nil {
+		t.Fatal("DeleteTheme should fail")
+	}
+	if err := f.ResetTheme("x", nil); err == nil {
+		t.Fatal("ResetTheme should fail")
+	}
+	if len(f.Saved) != 1 || len(f.Deleted) != 1 || len(f.ResetCalls) != 1 {
+		t.Fatalf("attempted writes not recorded despite the error: saved=%d deleted=%d reset=%d",
+			len(f.Saved), len(f.Deleted), len(f.ResetCalls))
+	}
+}
+
+func TestFakeSettingsReturnsWhatItWasGivenAndRecordsWrites(t *testing.T) {
+	f := &FakeSettings{Values: map[string]string{"tui.theme": "koi-pond"}}
+	v, ok, err := f.Setting("tui.theme")
+	if err != nil || !ok || v != "koi-pond" {
+		t.Fatalf("Setting = (%q, %v, %v)", v, ok, err)
+	}
+	_, ok, err = f.Setting("tui.mouse")
+	if err != nil || ok {
+		t.Fatalf("Setting(unset) = (%v, %v)", ok, err)
+	}
+	all, err := f.Settings("tui.")
+	if err != nil || len(all) != 1 {
+		t.Fatalf("Settings = (%+v, %v)", all, err)
+	}
+	if err := f.SetSetting("tui.icons", "nerd"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+	if f.Values["tui.icons"] != "nerd" || len(f.SetCalls) != 1 {
+		t.Fatalf("SetSetting did not update Values/SetCalls: %+v %v", f.Values, f.SetCalls)
+	}
+}
+
+func TestFakeSettingsErrShortCircuits(t *testing.T) {
+	f := &FakeSettings{Err: errors.New("boom")}
+	if _, _, err := f.Setting("x"); err == nil {
+		t.Fatal("Setting should fail")
+	}
+	if _, err := f.Settings(""); err == nil {
+		t.Fatal("Settings should fail")
+	}
+	if err := f.SetSetting("x", "y"); err == nil {
+		t.Fatal("SetSetting should fail")
+	}
+}
+
+func TestFakeSearchFiltersByKindsAndRecordsTheQuery(t *testing.T) {
+	f := &FakeSearch{Hits: []SearchHit{
+		{Kind: SearchKindObservation, Title: "obs"},
+		{Kind: SearchKindTask, Title: "task"},
+	}}
+	all, err := f.SearchWorkspace(SearchQuery{Text: "x"})
+	if err != nil || len(all) != 2 {
+		t.Fatalf("SearchWorkspace(no kinds) = (%+v, %v)", all, err)
+	}
+	only, err := f.SearchWorkspace(SearchQuery{Text: "x", Kinds: []SearchKind{SearchKindTask}})
+	if err != nil || len(only) != 1 || only[0].Kind != SearchKindTask {
+		t.Fatalf("SearchWorkspace(task only) = (%+v, %v)", only, err)
+	}
+	if f.LastQuery.Text != "x" {
+		t.Fatalf("LastQuery = %+v", f.LastQuery)
+	}
+}
+
+func TestFakeSearchErrShortCircuits(t *testing.T) {
+	f := &FakeSearch{Err: errors.New("boom")}
+	if _, err := f.SearchWorkspace(SearchQuery{}); err == nil {
+		t.Fatal("SearchWorkspace should fail")
+	}
+}
+
+func TestFakeTaskBySlugAndVaultDirReturnWhatTheyWereGiven(t *testing.T) {
+	f := &FakeTask{
+		DetailBySlug: map[string]TaskDetail{"acme/mantenimiento": {Task: store.Task{Title: "Vault task"}}},
+		VaultDirByID: map[int64]string{1: "/vault/acme/mantenimiento"},
+	}
+	detail, err := f.TaskBySlug("acme", "mantenimiento")
+	if err != nil || detail.Task.Title != "Vault task" {
+		t.Fatalf("TaskBySlug = (%+v, %v)", detail, err)
+	}
+	if _, err := f.TaskBySlug("acme", "missing"); err == nil {
+		t.Fatal("TaskBySlug(missing) should fail")
+	}
+	dir, ok, err := f.VaultDir(1)
+	if err != nil || !ok || dir != "/vault/acme/mantenimiento" {
+		t.Fatalf("VaultDir = (%q, %v, %v)", dir, ok, err)
+	}
+	if _, ok, err := f.VaultDir(2); err != nil || ok {
+		t.Fatalf("VaultDir(unset) = (%v, %v)", ok, err)
+	}
+
+	errFake := &FakeTask{Err: errors.New("boom")}
+	if _, err := errFake.TaskBySlug("acme", "x"); err == nil {
+		t.Fatal("TaskBySlug should fail")
+	}
+	if _, _, err := errFake.VaultDir(1); err == nil {
+		t.Fatal("VaultDir should fail")
+	}
+}
+
+func TestFakeEvidenceCategoriesReturnsWhatItWasGiven(t *testing.T) {
+	f := &FakeEvidence{ItemsByProject: map[string][]store.EvidenceListItem{"acme": {
+		{Evidence: store.Evidence{Category: "auth"}},
+		{Evidence: store.Evidence{Category: "auth"}},
+		{Evidence: store.Evidence{Category: "benchmarks"}},
+	}}}
+	cats, err := f.Categories("acme")
+	if err != nil {
+		t.Fatalf("Categories: %v", err)
+	}
+	if len(cats) != 2 || cats[0].Category != "auth" || cats[0].Count != 2 ||
+		cats[1].Category != "benchmarks" || cats[1].Count != 1 {
+		t.Fatalf("Categories = %+v", cats)
+	}
+	if _, err := (&FakeEvidence{Err: errors.New("boom")}).Categories("acme"); err == nil {
+		t.Fatal("Categories should fail")
+	}
+}
+
+func TestFakeMemoryScopedMethodsFilterAndPaginate(t *testing.T) {
+	f := &FakeMemory{
+		Observations: []store.Observation{{ID: 1, Project: strp("acme")}, {ID: 2, Project: strp("other")}},
+		Sessions:     []store.SessionSummary{{ID: "s1", Project: "acme"}, {ID: "s2", Project: "other"}},
+	}
+	obsPage, err := f.RecentObservationsScoped(ProjectScope{Project: "acme"}, 10, 0)
+	if err != nil || len(obsPage.Items) != 1 || obsPage.Items[0].Project == nil || *obsPage.Items[0].Project != "acme" {
+		t.Fatalf("RecentObservationsScoped = (%+v, %v)", obsPage, err)
+	}
+	sessPage, err := f.RecentSessionsScoped(ProjectScope{Project: "acme"}, 10, 0)
+	if err != nil || len(sessPage.Items) != 1 || sessPage.Items[0].Project != "acme" {
+		t.Fatalf("RecentSessionsScoped = (%+v, %v)", sessPage, err)
+	}
+	if f.LastScope.Project != "acme" {
+		t.Fatalf("LastScope = %+v", f.LastScope)
+	}
+
+	// Subtree widens the scope through SubtreeSlugs.
+	f.SubtreeSlugs = map[string][]string{"acme": {"acme", "acme-child"}}
+	f.Observations = append(f.Observations, store.Observation{ID: 3, Project: strp("acme-child")})
+	widePage, err := f.RecentObservationsScoped(ProjectScope{Project: "acme", Subtree: true}, 10, 0)
+	if err != nil || len(widePage.Items) != 2 {
+		t.Fatalf("RecentObservationsScoped(subtree) = (%+v, %v)", widePage, err)
+	}
+
+	errFake := &FakeMemory{Err: errors.New("boom")}
+	if _, err := errFake.RecentObservationsScoped(ProjectScope{}, 1, 0); err == nil {
+		t.Fatal("RecentObservationsScoped should fail")
+	}
+	if _, err := errFake.RecentSessionsScoped(ProjectScope{}, 1, 0); err == nil {
+		t.Fatal("RecentSessionsScoped should fail")
+	}
+	if _, err := errFake.SearchScoped("x", ProjectScope{}, 1, 0); err == nil {
+		t.Fatal("SearchScoped should fail")
 	}
 }

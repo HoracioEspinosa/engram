@@ -251,6 +251,46 @@ else
   note_failure "the second run changed the distribution; see after-projects.tsv vs after-projects-rerun.tsv"
 fi
 
+# ─── the tree the reorganisation would propose ───────────────────────────────
+#
+# Reported and asserted, never applied. `tree suggest` writes nothing by
+# construction, which is what makes it safe to run against a copy of the real
+# store: the point here is to prove the grouping sees the real families, not to
+# reorganise anything.
+
+log "asking for the tree suggestion over the real copy"
+docker exec -i -e "ENGRAM_DATA_DIR=$LIVE_DIR" "$CONTAINER" \
+  engram project tree suggest --json >"$REORG_OUT/tree.json"
+
+if jq -e . "$REORG_OUT/tree.json" >/dev/null 2>&1; then
+  printf 'PASS  tree suggest returned valid JSON (%s group(s))\n' \
+    "$(jq -r '.result.suggestions | length' "$REORG_OUT/tree.json")"
+else
+  note_failure "tree suggest did not return valid JSON; see $REORG_OUT/tree.json"
+fi
+
+# The real store keeps several clarodrive-* projects — dockerized, patches,
+# cleanup-accounts, sysops-utils — under a clarodrive that already exists. A
+# grouping that only reads project_cards, or that invents a parent instead of
+# reusing the one that is there, misses them; this is the assertion that says so.
+CLARODRIVE_MEMBERS="$(jq -r '
+  [.result.suggestions[]? | select(.parent | startswith("clarodrive")) | .children | length] | max // 0
+' "$REORG_OUT/tree.json")"
+if [ "${CLARODRIVE_MEMBERS:-0}" -ge 3 ]; then
+  printf 'PASS  a clarodrive family with %s members was proposed\n' "$CLARODRIVE_MEMBERS"
+  jq -c '.result.suggestions[]? | select(.parent | startswith("clarodrive"))' "$REORG_OUT/tree.json" \
+    | awk '{ print "      | " $0 }'
+else
+  note_failure "no clarodrive family with at least 3 members was proposed (largest: ${CLARODRIVE_MEMBERS:-0}); see $REORG_OUT/tree.json"
+fi
+
+# Reported, never enforced: how many names are one project written more than
+# one way is a property of the real data, and a threshold here would fail the
+# day somebody fixes one of them.
+SEPARATOR_PAIRS="$(jq -r '.result.separator_pairs | length' "$REORG_OUT/tree.json")"
+printf 'INFO  %s project name(s) are spelled more than one way\n' "${SEPARATOR_PAIRS:-0}"
+jq -c '.result.separator_pairs[]?' "$REORG_OUT/tree.json" | awk '{ print "      | " $0 }'
+
 log "running doctor against the copy"
 docker exec -i -e "ENGRAM_DATA_DIR=$LIVE_DIR" "$CONTAINER" \
   engram doctor --json >"$REORG_OUT/doctor.json"

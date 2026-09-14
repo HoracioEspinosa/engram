@@ -2263,6 +2263,8 @@ func TestNewServerWithToolsNilRegistersAll(t *testing.T) {
 		"mem_project_card", "mem_project_upsert", "mem_task_upsert", "mem_task_list",
 		"mem_task_link", "mem_evidence_add", "mem_evidence_list", "mem_runbook_index_sync",
 		"mem_runbook_find", "mem_context_pack",
+		"mem_project_tree", "mem_evidence_scan", "mem_benchmark_add", "mem_benchmark_list",
+		"mem_benchmark_import", "mem_vault_sync", "mem_workspace_search",
 	}
 
 	for _, name := range allTools {
@@ -2367,9 +2369,9 @@ func TestNewServerBackwardsCompatible(t *testing.T) {
 	srv := NewServer(s)
 	tools := srv.ListTools()
 
-	// 18 agent + 4 admin + 10 projects = 32 total.
-	if len(tools) != 32 {
-		t.Errorf("NewServer should register all 32 tools, got %d", len(tools))
+	// 18 agent + 4 admin + 10 projects + 7 workspace = 39 total.
+	if len(tools) != 39 {
+		t.Errorf("NewServer should register all 39 tools, got %d", len(tools))
 	}
 }
 
@@ -2713,9 +2715,9 @@ func TestNewServerWithConfig(t *testing.T) {
 		t.Fatal("expected MCP server instance")
 	}
 	tools := srv.ListTools()
-	// Should have all 32 tools (18 agent + 4 admin + 10 projects).
-	if len(tools) != 32 {
-		t.Errorf("NewServerWithConfig should register all 32 tools, got %d", len(tools))
+	// Should have all 39 tools (18 agent + 4 admin + 10 projects + 7 workspace).
+	if len(tools) != 39 {
+		t.Errorf("NewServerWithConfig should register all 39 tools, got %d", len(tools))
 	}
 }
 
@@ -6186,8 +6188,11 @@ func TestMCPConfig_CanConstructWithDefaultProject(t *testing.T) {
 	}
 }
 
-// JW7: TestMemContext_SchemaNoLimitParam — mem_context schema must NOT advertise limit.
-func TestMemContext_SchemaNoLimitParam(t *testing.T) {
+// TestMemContext_SchemaAdvertisesAnHonouredLimit pins that mem_context's limit
+// is real. The parameter was once removed from the schema precisely because
+// the handler ignored it; a schema that advertises it again must be backed by
+// a handler that reads it.
+func TestMemContext_SchemaAdvertisesAnHonouredLimit(t *testing.T) {
 	s := newMCPTestStore(t)
 	srv := newServerWithActivity(s, MCPConfig{}, nil, NewSessionActivity(10*time.Minute))
 
@@ -6196,12 +6201,32 @@ func TestMemContext_SchemaNoLimitParam(t *testing.T) {
 	if !ok {
 		t.Fatal("mem_context tool not found")
 	}
-
-	// The schema must NOT have a "limit" input property.
-	props := st.Tool.InputSchema.Properties
-	if _, hasLimit := props["limit"]; hasLimit {
-		t.Error("mem_context schema must not advertise 'limit' param (it is silently ignored)")
+	if _, hasLimit := st.Tool.InputSchema.Properties["limit"]; !hasLimit {
+		t.Fatal("mem_context schema must advertise the limit its handler honours")
 	}
+	if !strings.Contains(mcpSourceOf(t, "handleContext"), `intArg(req, "limit"`) {
+		t.Fatal("handleContext must read the limit its schema advertises")
+	}
+}
+
+// mcpSourceOf returns the source of one function in mcp.go, so a schema test
+// can check the handler actually reads what the schema promises.
+func mcpSourceOf(t *testing.T, funcName string) string {
+	t.Helper()
+	source, err := os.ReadFile("mcp.go")
+	if err != nil {
+		t.Fatalf("read mcp.go: %v", err)
+	}
+	text := string(source)
+	start := strings.Index(text, "func "+funcName+"(")
+	if start < 0 {
+		t.Fatalf("function %s not found in mcp.go", funcName)
+	}
+	end := strings.Index(text[start:], "\n}\n")
+	if end < 0 {
+		return text[start:]
+	}
+	return text[start : start+end]
 }
 
 // JS1: TestAllTools_ReadResponseEnvelope_WithAssertions

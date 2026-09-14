@@ -23,13 +23,20 @@ import (
 // {"error", "code", ...} envelope; store methods never format that envelope
 // themselves so the same data layer can back the HTTP API (T-04.03) later.
 var (
-	ErrNoProjectCard       = errors.New("no project card")
-	ErrGraphNotFound       = errors.New("graph.json not found")
-	ErrGraphMissingCommit  = errors.New("graph.json missing built_at_commit")
-	ErrUnknownTask         = errors.New("unknown task")
+	ErrNoProjectCard      = errors.New("no project card")
+	ErrGraphNotFound      = errors.New("graph.json not found")
+	ErrGraphMissingCommit = errors.New("graph.json missing built_at_commit")
+	ErrUnknownTask        = errors.New("unknown task")
+	// ErrAmbiguousTask is returned when a reference resolved without a project
+	// answers in more than one of them.
+	ErrAmbiguousTask       = errors.New("task reference matches more than one project")
 	ErrUnknownObservation  = errors.New("unknown observation")
 	ErrCrossProjectLink    = errors.New("link rejected: observation and task belong to different projects")
 	ErrGraphCommitRequired = errors.New("graph_ref requires graph_commit")
+	// ErrGraphCommitNotFullSHA rejects an abbreviated commit before it reaches
+	// the schema's 40-character CHECK, where the failure would otherwise be
+	// indistinguishable from a duplicate reference.
+	ErrGraphCommitNotFullSHA = errors.New("graph_commit must be a full 40-character commit sha")
 )
 
 // TaskKeyConflictError is returned by UpsertTask when the incoming jira_key

@@ -35,6 +35,9 @@ assert_no_live_db
 BENCH_OUT="$OUT_DIR/bench"
 mkdir -p "$BENCH_OUT"
 
+# `Search` is deliberately unanchored: it selects the observation search, the
+# workspace search and the five-thousand-observation variant of it, which is
+# the size the workspace query plan has to hold up at.
 BENCH_PATTERN='Search|ListTasks|ProjectCardCounts|ListProjectCards|FindRunbooks|Stats|DetectProject'
 BENCH_PACKAGES='./internal/store/... ./internal/project/...'
 BASELINE="$BENCH_OUT/baseline.txt"

@@ -397,6 +397,10 @@ type TaskListFilter struct {
 	// otherwise leave them out. Archived work is kept, not shown by default:
 	// it is history, and history is not a to-do list.
 	IncludeArchived bool
+	// MatchMode is how Query's tokens combine: "all" (default) needs every
+	// token, "any" needs one of them. A title search over a handful of tasks
+	// is often better served by the broader one.
+	MatchMode       string
 	Limit           int
 	Offset          int
 	StaleAfterHours int
@@ -473,7 +477,11 @@ func (s *Store) ListTasks(project string, f TaskListFilter) ([]TaskListItem, int
 	}
 	if strings.TrimSpace(f.Query) != "" {
 		where = append(where, "t.id IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)")
-		args = append(args, sanitizeFTS(f.Query))
+		if f.MatchMode == "any" {
+			args = append(args, sanitizeFTSCandidates(f.Query))
+		} else {
+			args = append(args, sanitizeFTS(f.Query))
+		}
 	}
 	whereSQL := strings.Join(where, " AND ")
 
@@ -559,41 +567,52 @@ var (
 	changeRefRefPattern  = regexp.MustCompile(`^change:([a-z0-9][a-z0-9-]*)$`)
 )
 
-// ResolveTaskRef resolves a task reference string, scoped to project, using
-// one of the four forms documented in RFC §5.0: jira_key, sync_id, "#id", or
-// "change:sdd_change".
+// ResolveTaskRef resolves a task reference string in the five forms the
+// surfaces accept: jira_key, sync_id, "#id", "change:sdd_change", and the task
+// slug. Anything that matches none of the first four is read as a slug, which
+// is what an importer walking vault folders has to resolve with.
+//
+// An empty project searches the whole store. The workspace operations are given
+// a reference without a project — the task is what names the project, not the
+// other way round — and a reference that answers in two projects is refused
+// with ErrAmbiguousTask rather than decided by row order.
 func (s *Store) ResolveTaskRef(project, ref string) (Task, error) {
 	ref = strings.TrimSpace(ref)
-	switch {
-	case taskSyncIDRefPattern.MatchString(ref):
-		return s.getTaskByProjectColumn(project, "sync_id", ref)
-	case jiraKeyRefPattern.MatchString(ref):
-		return s.getTaskByProjectColumn(project, "jira_key", ref)
-	case localIDRefPattern.MatchString(ref):
-		m := localIDRefPattern.FindStringSubmatch(ref)
-		id, err := strconv.ParseInt(m[1], 10, 64)
-		if err != nil {
-			return Task{}, ErrUnknownTask
-		}
-		t, err := s.getTaskByID(id)
-		if err != nil {
-			return Task{}, err
-		}
-		if t.Project != project {
-			return Task{}, ErrUnknownTask
-		}
-		return t, nil
-	case changeRefRefPattern.MatchString(ref):
-		m := changeRefRefPattern.FindStringSubmatch(ref)
-		return s.getTaskByProjectColumn(project, "sdd_change", m[1])
-	default:
+	if ref == "" {
 		return Task{}, ErrUnknownTask
 	}
+
+	var (
+		column string
+		value  any
+	)
+	switch {
+	case taskSyncIDRefPattern.MatchString(ref):
+		column, value = "sync_id", ref
+	case jiraKeyRefPattern.MatchString(ref):
+		column, value = "jira_key", ref
+	case localIDRefPattern.MatchString(ref):
+		id, err := strconv.ParseInt(localIDRefPattern.FindStringSubmatch(ref)[1], 10, 64)
+		if err != nil {
+			return Task{}, ErrUnknownTask
+		}
+		column, value = "id", id
+	case changeRefRefPattern.MatchString(ref):
+		column, value = "sdd_change", changeRefRefPattern.FindStringSubmatch(ref)[1]
+	default:
+		column, value = "slug", ref
+	}
+
+	if strings.TrimSpace(project) != "" {
+		return s.getTaskByProjectColumn(project, column, value)
+	}
+	return s.getTaskAnywhere(column, value, ref)
 }
 
-func (s *Store) getTaskByProjectColumn(project, col, val string) (Task, error) {
-	t, err := scanTask(s.db.QueryRow(
-		`SELECT `+taskSelectColumns+` FROM tasks WHERE project = ? AND `+col+` = ? AND deleted_at IS NULL`,
+func (s *Store) getTaskByProjectColumn(project, col string, val any) (Task, error) {
+	t, err := scanTask(s.readDB().QueryRow(
+		`SELECT `+taskSelectColumns+` FROM tasks
+		 WHERE project = ? AND `+col+` = ? AND deleted_at IS NULL ORDER BY id LIMIT 1`,
 		project, val))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrUnknownTask
@@ -602,6 +621,41 @@ func (s *Store) getTaskByProjectColumn(project, col, val string) (Task, error) {
 		return Task{}, fmt.Errorf("engram-projects: resolve task ref: %w", err)
 	}
 	return t, nil
+}
+
+// getTaskAnywhere resolves a reference across every project, refusing the case
+// where more than one answers.
+func (s *Store) getTaskAnywhere(col string, val any, ref string) (Task, error) {
+	rows, err := s.readDB().Query(
+		`SELECT `+taskSelectColumns+` FROM tasks WHERE `+col+` = ? AND deleted_at IS NULL ORDER BY id`, val)
+	if err != nil {
+		return Task{}, fmt.Errorf("engram-projects: resolve task ref: %w", err)
+	}
+	defer rows.Close()
+
+	var found []Task
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return Task{}, fmt.Errorf("engram-projects: scan task ref: %w", err)
+		}
+		found = append(found, t)
+	}
+	if err := rows.Err(); err != nil {
+		return Task{}, fmt.Errorf("engram-projects: resolve task ref: %w", err)
+	}
+
+	switch len(found) {
+	case 0:
+		return Task{}, ErrUnknownTask
+	case 1:
+		return found[0], nil
+	}
+	projects := make([]string, 0, len(found))
+	for _, t := range found {
+		projects = append(projects, t.Project)
+	}
+	return Task{}, fmt.Errorf("%w: %s resolves in %s", ErrAmbiguousTask, ref, strings.Join(projects, ", "))
 }
 
 // ─── mem_task_link ───────────────────────────────────────────────────────────
@@ -686,6 +740,13 @@ func (s *Store) LinkTaskObservation(p LinkTaskObservationParams) (LinkTaskObserv
 	if p.GraphRef != nil && strings.TrimSpace(*p.GraphRef) != "" {
 		if p.GraphCommit == nil || strings.TrimSpace(*p.GraphCommit) == "" {
 			return LinkTaskObservationResult{}, ErrGraphCommitRequired
+		}
+		// The column is CHECKed at exactly 40 characters and the insert below
+		// ignores conflicts, so an abbreviated SHA used to be dropped without a
+		// word: the caller was told the link succeeded while the reference it
+		// asked for was never written.
+		if !isFullGitSHA(strings.TrimSpace(*p.GraphCommit)) {
+			return LinkTaskObservationResult{}, ErrGraphCommitNotFullSHA
 		}
 		candidates = append(candidates, refCandidate{"graph", *p.GraphRef, p.GraphCommit})
 	}

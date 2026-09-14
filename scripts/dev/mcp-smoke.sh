@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 # mcp-smoke.sh — drive one MCP session against the dev container and assert it.
 #
-# What it does: runs docker/dev/fixtures/mcp/session.jsonl through a single
-# `engram mcp` process, one request per response, captures the NDJSON it writes
-# back, and checks one assertion per request id (sixteen of them), printing PASS
-# or FAIL for each and a summary of how many are plain successes and how many
-# are failures this suite holds fixed.
+# What it does: runs two MCP sessions against the dev container, one request per
+# response, captures the NDJSON each writes back, and checks one assertion per
+# request id, printing PASS or FAIL for each and a summary of how many are plain
+# successes and how many are failures this suite holds fixed.
+#
+# The sessions are separate processes on purpose. The first
+# (docker/dev/fixtures/mcp/session.jsonl, --tools=agent,projects) is the
+# catalogue every other script depends on; the second
+# (session-workspace.jsonl, --tools=agent,projects,workspace) adds the workspace
+# profile. Loading a bigger profile into the first would change the number the
+# baseline comparison is built on, so the workspace tools get a session of their
+# own — ids 100 and up — over the same store the first one left behind, which is
+# also what lets a scan find the task the first session created.
 #
 # What it guarantees:
 #   * One number, every run. The session runs against /data/smoke, a data
@@ -50,17 +58,30 @@ SMOKE_DATA_DIR=/data/smoke
 # so adding a tool to the session must not require editing this number to
 # stay green.
 MIN_TOOLS=28
+# The second session asks for agent,projects,workspace, and that set is exact:
+# 18 + 10 + 7 unique names, the three tools the workspace profile shares with
+# projects counted once. An equality here is what makes "the recommended set is
+# 35 tools" a number the docs can quote.
+WORKSPACE_TOOLS=35
 
 require_cmd docker jq rg
 assert_no_live_db
 
 SESSION_IN="$ROOT_DIR/docker/dev/fixtures/mcp/session.jsonl"
 [ -f "$SESSION_IN" ] || fail "missing MCP session fixture: $SESSION_IN"
+WORKSPACE_IN="$ROOT_DIR/docker/dev/fixtures/mcp/session-workspace.jsonl"
+[ -f "$WORKSPACE_IN" ] || fail "missing MCP workspace session fixture: $WORKSPACE_IN"
 
 MCP_OUT="$OUT_DIR/mcp"
 mkdir -p "$MCP_OUT"
 SESSION_OUT="$MCP_OUT/session.out.jsonl"
 SESSION_ERR="$MCP_OUT/session.stderr"
+WORKSPACE_OUT="$MCP_OUT/session-workspace.out.jsonl"
+WORKSPACE_ERR="$MCP_OUT/session-workspace.stderr"
+# The stored reference the tool catalogue may only grow away from. It is the
+# agent,projects list, so the workspace session compares against it too and only
+# ever adds to it.
+BASELINE_FILE="$MCP_OUT/tools-list-baseline.json"
 
 log "resetting $SMOKE_DATA_DIR so the session starts from an empty store"
 in_container rm -rf "$SMOKE_DATA_DIR"
@@ -102,24 +123,31 @@ record() {
 # Every line has to be JSON before any assertion can mean anything: a single
 # stray log line on stdout would otherwise make later jq selects silently
 # return nothing, and an assertion that matches nothing looks like a pass.
-bad_line=0
-line_no=0
-while IFS= read -r line; do
-  line_no=$((line_no + 1))
-  [ -n "$line" ] || continue
-  if ! printf '%s' "$line" | jq -e . >/dev/null 2>&1; then
-    bad_line="$line_no"
-    break
+assert_every_line_is_json() {
+  local capture="$1" bad_line=0 line_no=0 line
+  while IFS= read -r line; do
+    line_no=$((line_no + 1))
+    [ -n "$line" ] || continue
+    if ! printf '%s' "$line" | jq -e . >/dev/null 2>&1; then
+      bad_line="$line_no"
+      break
+    fi
+  done <"$capture"
+  if [ "$bad_line" -ne 0 ]; then
+    fail "line $bad_line of $capture is not JSON; no assertion below can be trusted"
   fi
-done <"$SESSION_OUT"
-if [ "$bad_line" -ne 0 ]; then
-  fail "line $bad_line of $SESSION_OUT is not JSON; no assertion below can be trusted"
-fi
-log "every response line parses as JSON"
+  log "every response line of $capture parses as JSON"
+}
+
+assert_every_line_is_json "$SESSION_OUT"
+
+# CAPTURE is the response file the assertions below read. It is switched once,
+# between the two sessions, so every helper keeps taking an id and nothing else.
+CAPTURE="$SESSION_OUT"
 
 # resp <id> prints the single response object carrying that id.
 resp() {
-  jq -c --argjson id "$1" 'select(.id? == $id)' "$SESSION_OUT"
+  jq -c --argjson id "$1" 'select(.id? == $id)' "$CAPTURE"
 }
 
 # err_text <response> prints the tool-level error message the call reported.
@@ -243,7 +271,6 @@ else
   fi
 
   TOOLS_FILE="$MCP_OUT/tools-list-${LABEL}.json"
-  BASELINE_FILE="$MCP_OUT/tools-list-baseline.json"
   PREVIOUS=""
   if [ -f "$BASELINE_FILE" ]; then
     PREVIOUS="$MCP_OUT/.tools-list-baseline.previous.json"
@@ -300,8 +327,107 @@ assert_error_code 13 "id 13 mem_project_upsert refuses an explicit project no sp
 assert_error_code 14 "id 14 mem_evidence_add refuses an absolute evidence path" absolute_path_rejected
 assert_error_code 15 "id 15 mem_task_link refuses a graph_ref without a graph_commit" graph_commit_required
 
+# ─── Second session: the workspace profile ───────────────────────────────────
+#
+# It runs over the same /data/smoke the first session filled, which is what
+# gives the scan a task to attach evidence to, and against the read-only /vault
+# the compose file mounts. Every write here is a dry run except the one
+# benchmark, so re-running the suite is the same answer twice.
+
+log "running the workspace MCP session in lockstep (--tools=agent,projects,workspace over $SMOKE_DATA_DIR)"
+set +e
+mcp_session_lockstep "$WORKSPACE_IN" "$WORKSPACE_OUT" "$WORKSPACE_ERR" -- \
+  docker exec -i -e "ENGRAM_DATA_DIR=$SMOKE_DATA_DIR" -e "ENGRAM_PROJECT=$PROJECT" "$CONTAINER" \
+  engram mcp --tools=agent,projects,workspace --project "$PROJECT"
+workspace_status=$?
+set -e
+log "workspace session exited $workspace_status ($(wc -l <"$WORKSPACE_OUT" | tr -d ' ') response line(s))"
+
+assert_every_line_is_json "$WORKSPACE_OUT"
+CAPTURE="$WORKSPACE_OUT"
+
+# id 100 — initialize: the second connection negotiated its own protocol version.
+ws_init="$(resp 100)"
+if [ -n "$ws_init" ] && printf '%s' "$ws_init" | jq -e '.result.protocolVersion | type == "string" and length > 0' >/dev/null; then
+  record PASS ok "id 100 initialize negotiated protocolVersion $(printf '%s' "$ws_init" | jq -r '.result.protocolVersion')"
+else
+  record FAIL ok "id 100 initialize negotiated a protocolVersion" "got: $(printf '%s' "$ws_init" | jq -c '.result // .error // "no response"')"
+fi
+
+# id 101 — tools/list with the workspace profile: exactly the recommended set,
+# stored for the phase gate and compared against the baseline the first session
+# wrote, which it may only add to.
+ws_tools="$(resp 101)"
+ws_tools_ok=1
+ws_tools_detail=""
+if [ -z "$ws_tools" ]; then
+  ws_tools_ok=0
+  ws_tools_detail="no response with id 101"
+else
+  ws_count="$(printf '%s' "$ws_tools" | jq -r '.result.tools | length')"
+  if [ "${ws_count:-0}" -ne "$WORKSPACE_TOOLS" ]; then
+    ws_tools_ok=0
+    ws_tools_detail="$ws_count tools, expected exactly $WORKSPACE_TOOLS"
+  fi
+
+  # The labelled artifact carries the recommended set, which is what a phase
+  # gate quotes. The one exception is the stored reference itself: overwriting
+  # tools-list-baseline.json with a bigger profile would make every later
+  # agent,projects run report the workspace tools as missing.
+  WS_TOOLS_FILE="$MCP_OUT/tools-list-${LABEL}.json"
+  if [ "$WS_TOOLS_FILE" = "$BASELINE_FILE" ]; then
+    WS_TOOLS_FILE="$MCP_OUT/tools-list-${LABEL}-workspace.json"
+  fi
+  printf '%s' "$ws_tools" | jq '.result.tools | map(.name) | sort' >"$WS_TOOLS_FILE"
+  log "workspace tool catalogue ($ws_count) stored at $WS_TOOLS_FILE"
+
+  for want in mem_project_tree mem_evidence_scan mem_benchmark_add mem_benchmark_list \
+    mem_benchmark_import mem_vault_sync mem_workspace_search; do
+    if ! jq -e --arg n "$want" 'index($n) != null' "$WS_TOOLS_FILE" >/dev/null; then
+      ws_tools_ok=0
+      ws_tools_detail="${ws_tools_detail:+$ws_tools_detail; }$want is not registered"
+    fi
+  done
+
+  if [ -f "$BASELINE_FILE" ]; then
+    ws_missing="$(jq -r --slurpfile now "$WS_TOOLS_FILE" '. - $now[0] | join(", ")' "$BASELINE_FILE")"
+    if [ -n "$ws_missing" ]; then
+      ws_tools_ok=0
+      ws_tools_detail="${ws_tools_detail:+$ws_tools_detail; }gone since the baseline: $ws_missing"
+    else
+      log "the workspace catalogue only adds to $BASELINE_FILE"
+    fi
+  fi
+fi
+if [ "$ws_tools_ok" -eq 1 ]; then
+  record PASS ok "id 101 tools/list carries the workspace profile (${ws_count:-0} tools)"
+else
+  record FAIL ok "id 101 tools/list carries the workspace profile" "$ws_tools_detail"
+fi
+
+assert_ok 102 "id 102 mem_project_upsert records the knowledge hub"
+assert_ok 103 "id 103 mem_task_upsert records the task's vault folder"
+assert_ok 104 "id 104 mem_project_tree walks koi-garden with counts"
+assert_ok 105 "id 105 mem_evidence_scan dry-runs KOI-1099 over /vault"
+assert_ok 106 "id 106 mem_benchmark_add records the lookup.p95 baseline"
+assert_ok 107 "id 107 mem_benchmark_list reads the measurement back"
+assert_ok 108 "id 108 mem_benchmark_import dry-runs an engram.benchmark.v1 run"
+assert_ok 109 "id 109 mem_vault_sync dry-runs the whole vault"
+assert_ok 110 "id 110 mem_workspace_search answers across kinds"
+
+assert_error_code 111 "id 111 mem_project_tree refuses a root with no card" unknown_project
+assert_error_code 112 "id 112 mem_evidence_scan refuses a task nothing answers to" unknown_task
+assert_error_code 113 "id 113 mem_benchmark_add refuses a unit nothing compares" invalid_enum
+assert_error_code 114 "id 114 mem_benchmark_list refuses a task nothing answers to" unknown_task
+assert_error_code 115 "id 115 mem_benchmark_import refuses a run that is not there" run_not_found
+assert_error_code 116 "id 116 mem_benchmark_import refuses a foreign run with no pointer map" not_engram_benchmark_v1
+assert_error_code 117 "id 117 mem_vault_sync refuses a root that is not a directory" vault_root_unresolved
+assert_error_code 118 "id 118 mem_workspace_search refuses a one-character query" query_too_short
+assert_error_code 119 "id 119 mem_benchmark_add refuses a second value under the key id 106 recorded" duplicate_benchmark
+
 printf '\nmcp-smoke: %d/%d evaluated (%d ok, %d pinned)\n' \
   "$((OK_COUNT + PINNED_COUNT))" "$EVALUATED" "$OK_COUNT" "$PINNED_COUNT"
 printf 'session:   %s\nstderr:    %s\n' "$SESSION_OUT" "$SESSION_ERR"
+printf 'workspace: %s\nstderr:    %s\n' "$WORKSPACE_OUT" "$WORKSPACE_ERR"
 
 [ "$FAIL_COUNT" -eq 0 ] || exit 1

@@ -83,31 +83,45 @@ func (c KnowledgeRefDanglingCheck) Run(ctx context.Context, scope Scope) (CheckR
 	findings := make([]Finding, 0)
 	dangling := 0
 	checked := 0
-	seen := map[string]bool{}
+	seen := map[string]vaultPointerStatus{}
 	for _, pointer := range pointers {
 		if pointer.Path == "" {
 			continue
 		}
 		checked++
 		key := pointer.Path
-		if !seen[key] {
-			seen[key] = vaultDocumentExists(vaultDir, pointer.Path)
+		status, ok := seen[key]
+		if !ok {
+			status = resolveVaultPointer(vaultDir, pointer.Path)
+			seen[key] = status
 		}
-		if seen[key] {
+		if status == vaultPointerOK {
 			continue
 		}
 		dangling++
 		if len(findings) >= maxDanglingFindings {
 			continue
 		}
+
+		reasonCode := c.Code()
+		message := fmt.Sprintf("%s %q points at %q, which is not in the vault checkout.", pointer.Kind, pointer.Owner, pointer.Path)
+		why := "A pointer that no longer resolves silently downgrades the context pack: the agent is told the fact is documented and finds nothing there, so it re-derives it from code."
+		safeNextStep := "Pull the vault checkout; if the document really was renamed or removed, restamp the pointer with mem_task_link (or `engram project <slug> tasks link --knowledge-ref`)."
+		if status == vaultPointerIsDirectory {
+			reasonCode = c.Code() + "_points_to_directory"
+			message = fmt.Sprintf("%s %q points at %q, which is a directory; the contract expects a document.", pointer.Kind, pointer.Owner, pointer.Path)
+			why = "A pointer must name the document itself: a containing folder reads as \"present\" to a casual look, but the context pack still has nothing to attach and a browsing agent gets a directory listing instead of the fact it was promised."
+			safeNextStep = "Point the pointer at the specific document inside that folder (for example its README or hub note), or restamp it with mem_task_link (or `engram project <slug> tasks link --knowledge-ref`)."
+		}
+
 		findings = append(findings, Finding{
 			CheckID:              c.Code(),
 			Severity:             SeverityWarning,
-			ReasonCode:           c.Code(),
-			Message:              fmt.Sprintf("%s %q points at %q, which is not in the vault checkout.", pointer.Kind, pointer.Owner, pointer.Path),
-			Why:                  "A pointer that no longer resolves silently downgrades the context pack: the agent is told the fact is documented and finds nothing there, so it re-derives it from code.",
+			ReasonCode:           reasonCode,
+			Message:              message,
+			Why:                  why,
 			Evidence:             mustJSON(pointer),
-			SafeNextStep:         "Pull the vault checkout; if the document really was renamed or removed, restamp the pointer with mem_task_link (or `engram project <slug> tasks link --knowledge-ref`).",
+			SafeNextStep:         safeNextStep,
 			RequiresConfirmation: true,
 		})
 	}
@@ -133,21 +147,46 @@ func (c KnowledgeRefDanglingCheck) Run(ctx context.Context, scope Scope) (CheckR
 	return result, nil
 }
 
-// vaultDocumentExists resolves one vault-relative pointer inside the
+// vaultPointerStatus classifies what a vault-relative pointer resolves to
+// inside the checkout: a usable document, a directory standing in for one,
+// or nothing at all (including a pointer that escapes the checkout, which is
+// treated as missing rather than followed).
+type vaultPointerStatus int
+
+const (
+	vaultPointerMissing vaultPointerStatus = iota
+	vaultPointerIsDirectory
+	vaultPointerOK
+)
+
+// resolveVaultPointer resolves one vault-relative pointer inside the
 // checkout. A pointer that escapes the checkout is treated as missing rather
 // than followed: the shape rule already rejects those on write, and an older
 // row must not make the check read outside the vault.
-func vaultDocumentExists(vaultDir, path string) bool {
+func resolveVaultPointer(vaultDir, path string) vaultPointerStatus {
 	if strings.HasPrefix(path, "/") || strings.HasPrefix(path, "~") {
-		return false
+		return vaultPointerMissing
 	}
 	root := filepath.Clean(vaultDir)
 	target := filepath.Clean(filepath.Join(root, filepath.FromSlash(path)))
 	if target != root && !strings.HasPrefix(target, root+string(filepath.Separator)) {
-		return false
+		return vaultPointerMissing
 	}
 	info, err := os.Stat(target)
-	return err == nil && !info.IsDir()
+	if err != nil {
+		return vaultPointerMissing
+	}
+	if info.IsDir() {
+		return vaultPointerIsDirectory
+	}
+	return vaultPointerOK
+}
+
+// vaultDocumentExists reports whether path resolves to a document (not a
+// directory) inside vaultDir. It is the boolean shape resolveVaultPointer
+// used to expose before a directory needed its own outcome.
+func vaultDocumentExists(vaultDir, path string) bool {
+	return resolveVaultPointer(vaultDir, path) == vaultPointerOK
 }
 
 // compile-time proof that the store satisfies what this check reads.

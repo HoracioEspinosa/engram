@@ -540,6 +540,24 @@ func (s *Store) enqueueProjectsMutationTx(tx *sql.Tx, entity, entityKey string, 
 	if deleted {
 		op = SyncOpDelete
 	}
+	// An unacked mutation for this same row is an older snapshot of it, and
+	// this journal carries snapshots rather than deltas, so it holds nothing
+	// the new one lacks. Keeping it is worse than redundant: two writes to one
+	// row in the same second carry the same updated_at, the receiver breaks
+	// that tie by hashing the payload (RFC section 10.3), and which of the two
+	// states survives replication then depends on a digest rather than on
+	// which write came last. Superseding it leaves at most one pending
+	// snapshot per row.
+	//
+	// An acked mutation is never touched: it has already left this machine, and
+	// deleting it would rewrite what a peer was told.
+	if _, err := s.execHook(tx, `
+		DELETE FROM sync_mutations
+		WHERE target_key = ? AND entity = ? AND entity_key = ? AND source = ? AND acked_at IS NULL`,
+		DefaultSyncTargetKey, entity, entityKey, SyncSourceLocal,
+	); err != nil {
+		return fmt.Errorf("engram-projects: supersede the pending mutation of %s %s: %w", entity, entityKey, err)
+	}
 	return s.enqueueSyncMutationTx(tx, entity, entityKey, op, payload)
 }
 

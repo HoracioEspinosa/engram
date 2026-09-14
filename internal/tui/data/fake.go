@@ -1,11 +1,57 @@
 package data
 
 import (
+	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
 )
+
+// pageSlice pages items client-side: Total is the full count before
+// slicing, Items is the [offset:offset+limit] window. It backs every new
+// *Scoped/*Page fake method in this file, so a test seeding more rows than
+// one page reliably sees Total != len(Items).
+func pageSlice[T any](items []T, limit, offset int) Page[T] {
+	if limit <= 0 {
+		limit = len(items)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(items) {
+		offset = len(items)
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	return Page[T]{Items: items[offset:end], Total: len(items), Limit: limit, Offset: offset}
+}
+
+// filterByScope keeps the items whose project (per projectOf) is scope.Project,
+// or — when scope.Subtree — in subtreeSlugs[scope.Project]. An empty
+// scope.Project keeps everything, matching every scoped method's unscoped
+// sibling.
+func filterByScope[T any](items []T, scope ProjectScope, projectOf func(T) string, subtreeSlugs map[string][]string) []T {
+	if scope.Project == "" {
+		return items
+	}
+	allowed := map[string]bool{scope.Project: true}
+	if scope.Subtree {
+		for _, s := range subtreeSlugs[scope.Project] {
+			allowed[s] = true
+		}
+	}
+	var out []T
+	for _, it := range items {
+		if allowed[projectOf(it)] {
+			out = append(out, it)
+		}
+	}
+	return out
+}
 
 // FakeMemory is an in-memory MemoryReader for tests: set the fields you care
 // about, leave the rest zero.
@@ -21,6 +67,11 @@ type FakeMemory struct {
 	Sessions        []store.SessionSummary
 	SessionObs      map[string][]store.Observation
 
+	// SubtreeSlugs backs the *Scoped methods' Subtree widening: project ->
+	// every slug (itself included) a subtree scope should match. A project
+	// missing from this map widens to itself only.
+	SubtreeSlugs map[string][]string
+
 	// Err is returned by every method when set.
 	Err error
 
@@ -28,9 +79,14 @@ type FakeMemory struct {
 	// assert on the call and not only on the rendered result.
 	Queries         []string
 	DeletedSessions []string
+
+	// LastScope records the ProjectScope the tab most recently asked for, the
+	// same convention FakeTask.LastListFilter follows.
+	LastScope ProjectScope
 }
 
 var _ MemoryReader = (*FakeMemory)(nil)
+var _ ScopedMemoryReader = (*FakeMemory)(nil)
 
 func (f *FakeMemory) Stats() (*store.Stats, error) {
 	if f.Err != nil {
@@ -91,6 +147,34 @@ func (f *FakeMemory) DeleteSession(sessionID string) error {
 	}
 	f.DeletedSessions = append(f.DeletedSessions, sessionID)
 	return nil
+}
+
+func (f *FakeMemory) SearchScoped(query string, scope ProjectScope, limit, offset int) (Page[store.SearchResult], error) {
+	f.Queries = append(f.Queries, query)
+	f.LastScope = scope
+	if f.Err != nil {
+		return Page[store.SearchResult]{}, f.Err
+	}
+	matched := filterByScope(f.SearchResults, scope, func(r store.SearchResult) string { return derefOr(r.Project, "") }, f.SubtreeSlugs)
+	return pageSlice(matched, limit, offset), nil
+}
+
+func (f *FakeMemory) RecentObservationsScoped(scope ProjectScope, limit, offset int) (Page[store.Observation], error) {
+	f.LastScope = scope
+	if f.Err != nil {
+		return Page[store.Observation]{}, f.Err
+	}
+	matched := filterByScope(f.Observations, scope, func(o store.Observation) string { return derefOr(o.Project, "") }, f.SubtreeSlugs)
+	return pageSlice(matched, limit, offset), nil
+}
+
+func (f *FakeMemory) RecentSessionsScoped(scope ProjectScope, limit, offset int) (Page[store.SessionSummary], error) {
+	f.LastScope = scope
+	if f.Err != nil {
+		return Page[store.SessionSummary]{}, f.Err
+	}
+	matched := filterByScope(f.Sessions, scope, func(s store.SessionSummary) string { return s.Project }, f.SubtreeSlugs)
+	return pageSlice(matched, limit, offset), nil
 }
 
 func capObservations(obs []store.Observation, limit int) []store.Observation {
@@ -189,8 +273,14 @@ func (f *FakeProject) LatestEvidence(slug string, limit int) ([]store.EvidenceLi
 // what the tab asked to write, so a test can assert on the call and not only
 // on the screen it produced.
 type FakeTask struct {
-	ItemsByProject  map[string][]store.TaskListItem
-	DetailByID      map[int64]TaskDetail
+	ItemsByProject map[string][]store.TaskListItem
+	DetailByID     map[int64]TaskDetail
+	// DetailBySlug is keyed "<project>/<slug>", TaskBySlug's compound
+	// identity: a slug is only unique within its project.
+	DetailBySlug map[string]TaskDetail
+	// VaultDirByID backs VaultDir. A missing or empty entry reports ok=false,
+	// the same as a task with no vault_path or no ENGRAM_VAULT_ROOT would.
+	VaultDirByID    map[int64]string
 	ContextPackByID map[int64]string
 
 	// Err is returned by every method when set.
@@ -209,22 +299,31 @@ type FakeTask struct {
 }
 
 var _ TaskReader = (*FakeTask)(nil)
+var _ TaskPageReader = (*FakeTask)(nil)
+
+// filteredTasks applies filter.Query to a project's seeded items, without
+// paginating — ListTasks and ListTasksPage both window this same set, so the
+// filter is written once.
+func (f *FakeTask) filteredTasks(taskProject string, filter store.TaskListFilter) []store.TaskListItem {
+	items := f.ItemsByProject[taskProject]
+	if filter.Query == "" {
+		return items
+	}
+	var matched []store.TaskListItem
+	for _, it := range items {
+		if strings.Contains(strings.ToLower(it.Title), strings.ToLower(filter.Query)) {
+			matched = append(matched, it)
+		}
+	}
+	return matched
+}
 
 func (f *FakeTask) ListTasks(taskProject string, filter store.TaskListFilter) ([]store.TaskListItem, error) {
 	f.LastListFilter = filter
 	if f.Err != nil {
 		return nil, f.Err
 	}
-	items := f.ItemsByProject[taskProject]
-	if filter.Query != "" {
-		var matched []store.TaskListItem
-		for _, it := range items {
-			if strings.Contains(strings.ToLower(it.Title), strings.ToLower(filter.Query)) {
-				matched = append(matched, it)
-			}
-		}
-		items = matched
-	}
+	items := f.filteredTasks(taskProject, filter)
 	// Mirrors store.ListTasks's own default: an unset limit still caps the
 	// page at 20, it does not mean "everything" (see internal/store's
 	// projects_tasks.go ListTasks). A fake that returned every row here
@@ -244,6 +343,19 @@ func (f *FakeTask) ListTasks(taskProject string, filter store.TaskListFilter) ([
 	return items[offset:end], nil
 }
 
+func (f *FakeTask) ListTasksPage(taskProject string, filter store.TaskListFilter) (Page[store.TaskListItem], error) {
+	f.LastListFilter = filter
+	if f.Err != nil {
+		return Page[store.TaskListItem]{}, f.Err
+	}
+	items := f.filteredTasks(taskProject, filter)
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	return pageSlice(items, limit, filter.Offset), nil
+}
+
 func (f *FakeTask) Task(id int64) (TaskDetail, error) {
 	if f.Err != nil {
 		return TaskDetail{}, f.Err
@@ -253,6 +365,28 @@ func (f *FakeTask) Task(id int64) (TaskDetail, error) {
 		return TaskDetail{}, errors.New("no such task")
 	}
 	return d, nil
+}
+
+func (f *FakeTask) TaskBySlug(taskProject, slug string) (TaskDetail, error) {
+	if f.Err != nil {
+		return TaskDetail{}, f.Err
+	}
+	d, ok := f.DetailBySlug[taskProject+"/"+slug]
+	if !ok {
+		return TaskDetail{}, errors.New("no such task")
+	}
+	return d, nil
+}
+
+func (f *FakeTask) VaultDir(id int64) (string, bool, error) {
+	if f.Err != nil {
+		return "", false, f.Err
+	}
+	dir, ok := f.VaultDirByID[id]
+	if !ok || dir == "" {
+		return "", false, nil
+	}
+	return dir, true, nil
 }
 
 func (f *FakeTask) UpdateState(id int64, state string) error {
@@ -305,12 +439,12 @@ type FakeEvidence struct {
 }
 
 var _ EvidenceReader = (*FakeEvidence)(nil)
+var _ EvidencePageReader = (*FakeEvidence)(nil)
 
-func (f *FakeEvidence) ListEvidence(project string, filter store.EvidenceListFilter) ([]store.EvidenceListItem, error) {
-	f.LastFilter = filter
-	if f.Err != nil {
-		return nil, f.Err
-	}
+// filteredEvidence applies filter's task, attached-jira, kind and category
+// filters to a project's seeded items, without paginating — ListEvidence and
+// ListEvidencePage both window this same set.
+func (f *FakeEvidence) filteredEvidence(project string, filter store.EvidenceListFilter) []store.EvidenceListItem {
 	var filtered []store.EvidenceListItem
 	for _, it := range f.ItemsByProject[project] {
 		if filter.TaskID != 0 && it.TaskID != filter.TaskID {
@@ -325,9 +459,59 @@ func (f *FakeEvidence) ListEvidence(project string, filter store.EvidenceListFil
 		if filter.Kind != "" && it.Kind != filter.Kind {
 			continue
 		}
+		if filter.Category != "" && it.Category != filter.Category {
+			continue
+		}
 		filtered = append(filtered, it)
 	}
-	return filtered, nil
+	return filtered
+}
+
+func (f *FakeEvidence) ListEvidence(project string, filter store.EvidenceListFilter) ([]store.EvidenceListItem, error) {
+	f.LastFilter = filter
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	return f.filteredEvidence(project, filter), nil
+}
+
+func (f *FakeEvidence) ListEvidencePage(project string, filter store.EvidenceListFilter) (EvidencePage, error) {
+	f.LastFilter = filter
+	if f.Err != nil {
+		return EvidencePage{}, f.Err
+	}
+	items := f.filteredEvidence(project, filter)
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	var totalBytes int64
+	for _, it := range items {
+		if it.SizeBytes != nil {
+			totalBytes += *it.SizeBytes
+		}
+	}
+	return EvidencePage{Page: pageSlice(items, limit, filter.Offset), TotalBytes: totalBytes}, nil
+}
+
+func (f *FakeEvidence) Categories(project string) ([]CategoryCount, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	counts := map[string]int{}
+	var order []string
+	for _, it := range f.ItemsByProject[project] {
+		if _, seen := counts[it.Category]; !seen {
+			order = append(order, it.Category)
+		}
+		counts[it.Category]++
+	}
+	sort.Strings(order)
+	out := make([]CategoryCount, 0, len(order))
+	for _, category := range order {
+		out = append(out, CategoryCount{Category: category, Count: counts[category]})
+	}
+	return out, nil
 }
 
 // FakeRunbook is an in-memory RunbookReader for tests: set the fields you
@@ -356,6 +540,7 @@ type FakeRunbook struct {
 }
 
 var _ RunbookReader = (*FakeRunbook)(nil)
+var _ RunbookPageReader = (*FakeRunbook)(nil)
 
 // allRunbooks flattens every project's seeded rows, in map iteration order —
 // callers needing a stable order sort the result themselves, same as a real
@@ -377,6 +562,38 @@ func (f *FakeRunbook) ListRunbooks(project string, all bool) ([]store.RunbookInd
 		return f.allRunbooks(), nil
 	}
 	return f.ItemsByProject[project], nil
+}
+
+func (f *FakeRunbook) ListRunbooksPage(project string, all bool, filter RunbookFilter) (Page[store.RunbookIndexRow], error) {
+	f.LastListAll = all
+	if f.Err != nil {
+		return Page[store.RunbookIndexRow]{}, f.Err
+	}
+	pool := f.ItemsByProject[project]
+	if all {
+		pool = f.allRunbooks()
+	}
+	var filtered []store.RunbookIndexRow
+	for _, r := range pool {
+		if filter.Stale != nil && r.Stale != *filter.Stale {
+			continue
+		}
+		if filter.Category != "" && r.Category != filter.Category {
+			continue
+		}
+		if filter.Pattern != "" && (r.Pattern == nil || *r.Pattern != filter.Pattern) {
+			continue
+		}
+		if filter.Status != "" && r.Status != filter.Status {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	return pageSlice(filtered, limit, filter.Offset), nil
 }
 
 func (f *FakeRunbook) SearchRunbooks(project string, all bool, query string, limit int) ([]store.RunbookIndexRow, error) {
@@ -421,4 +638,335 @@ func matchesRunbookQuery(r store.RunbookIndexRow, query string) bool {
 		}
 	}
 	return false
+}
+
+// FakeProjectTree is an in-memory ProjectTreeReader for tests: set the
+// fields you care about, leave the rest zero.
+//
+// Unlike ProjectTree()'s sqlite adapter, which builds the forest and the
+// ancestor chain from flat store rows, the fake takes them pre-built: what
+// is under test elsewhere (the tabs that consume ProjectTreeReader) is
+// whether a view renders a tree correctly, not whether this fake can also
+// reimplement buildProjectForest.
+type FakeProjectTree struct {
+	Tree              []ProjectNode
+	NodeBySlug        map[string]ProjectNode
+	AncestorsBySlug   map[string][]ProjectNode
+	DescendantsBySlug map[string][]string
+	AliasResolution   map[string]string
+
+	// Err is returned by every method when set.
+	Err error
+}
+
+var _ ProjectTreeReader = (*FakeProjectTree)(nil)
+
+func (f *FakeProjectTree) ProjectTree() ([]ProjectNode, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	return f.Tree, nil
+}
+
+func (f *FakeProjectTree) ProjectNode(slug string) (ProjectNode, error) {
+	if f.Err != nil {
+		return ProjectNode{}, f.Err
+	}
+	n, ok := f.NodeBySlug[slug]
+	if !ok {
+		return ProjectNode{}, errors.New("no such project")
+	}
+	return n, nil
+}
+
+func (f *FakeProjectTree) Ancestors(slug string) ([]ProjectNode, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	return f.AncestorsBySlug[slug], nil
+}
+
+func (f *FakeProjectTree) Descendants(root string) ([]string, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	return f.DescendantsBySlug[root], nil
+}
+
+func (f *FakeProjectTree) ResolveAlias(raw string) (string, error) {
+	if f.Err != nil {
+		return "", f.Err
+	}
+	slug, ok := f.AliasResolution[raw]
+	if !ok {
+		return "", ErrProjectUnresolved
+	}
+	return slug, nil
+}
+
+// FakeBenchmark is an in-memory BenchmarkReader for tests: set the fields
+// you care about, leave the rest zero.
+type FakeBenchmark struct {
+	ByProject    map[string][]Benchmark
+	ByTaskSyncID map[string][]Benchmark
+
+	// Err is returned by every method when set.
+	Err error
+
+	// LastFilter records the filter ListBenchmarks most recently asked for.
+	LastFilter BenchmarkFilter
+}
+
+var _ BenchmarkReader = (*FakeBenchmark)(nil)
+
+func (f *FakeBenchmark) ListBenchmarks(project string, filter BenchmarkFilter) (Page[Benchmark], error) {
+	f.LastFilter = filter
+	if f.Err != nil {
+		return Page[Benchmark]{}, f.Err
+	}
+	items := f.ByProject[project]
+	if filter.Metric != "" {
+		var matched []Benchmark
+		for _, b := range items {
+			if b.Metric == filter.Metric {
+				matched = append(matched, b)
+			}
+		}
+		items = matched
+	}
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	return pageSlice(items, limit, filter.Offset), nil
+}
+
+func (f *FakeBenchmark) TaskBenchmarks(taskSyncID string) ([]Benchmark, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	return f.ByTaskSyncID[taskSyncID], nil
+}
+
+func (f *FakeBenchmark) MetricHistory(project, metric string, limit int) ([]Benchmark, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	var out []Benchmark
+	for _, b := range f.ByProject[project] {
+		if b.Metric == metric {
+			out = append(out, b)
+		}
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// FakeGraph is an in-memory GraphReader and GraphSyncer for tests: set the
+// fields you care about, leave the rest zero.
+type FakeGraph struct {
+	StateByProject map[string]GraphState
+	// RefsByProject holds each project's graph-linked observations, newest
+	// first — the order the sqlite reader returns them in, so a test that
+	// asserts on the first row is asserting on the same row the real one
+	// would give it.
+	RefsByProject map[string][]ObservationRef
+	// SyncResult, when a project has an entry, is what SyncGraph returns for
+	// it instead of StateByProject's own entry — the state "after" a sync,
+	// distinct from the state a plain GraphState read would see before one.
+	SyncResult map[string]GraphState
+
+	// Err is returned by every method when set.
+	Err error
+
+	// SyncCalls records every project SyncGraph was asked to sync, so a test
+	// can assert on the call and not only on the state it returned.
+	SyncCalls []string
+}
+
+var _ GraphReader = (*FakeGraph)(nil)
+var _ GraphSyncer = (*FakeGraph)(nil)
+
+func (f *FakeGraph) GraphState(project string) (GraphState, error) {
+	if f.Err != nil {
+		return GraphState{}, f.Err
+	}
+	return f.StateByProject[project], nil
+}
+
+func (f *FakeGraph) ObservationRefs(project string, limit, offset int) (Page[ObservationRef], error) {
+	if f.Err != nil {
+		return Page[ObservationRef]{}, f.Err
+	}
+	return pageSlice(f.RefsByProject[project], limit, offset), nil
+}
+
+func (f *FakeGraph) SyncGraph(project string) (GraphState, error) {
+	f.SyncCalls = append(f.SyncCalls, project)
+	if f.Err != nil {
+		return GraphState{}, f.Err
+	}
+	if state, ok := f.SyncResult[project]; ok {
+		return state, nil
+	}
+	return f.StateByProject[project], nil
+}
+
+// FakeTheme is an in-memory ThemeReader and ThemeWriter for tests: set the
+// fields you care about, leave the rest zero.
+type FakeTheme struct {
+	Themes []ThemeRecord
+	ByName map[string]ThemeRecord
+
+	// Err is returned by every method when set.
+	Err error
+
+	// Saved, Deleted and ResetCalls record every write, so a test can assert
+	// on the call and not only on a subsequent read.
+	Saved      []store.ThemeRecord
+	Deleted    []string
+	ResetCalls []struct {
+		Name    string
+		Palette json.RawMessage
+	}
+}
+
+var _ ThemeReader = (*FakeTheme)(nil)
+var _ ThemeWriter = (*FakeTheme)(nil)
+
+func (f *FakeTheme) ListThemes() ([]ThemeRecord, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	return f.Themes, nil
+}
+
+func (f *FakeTheme) Theme(name string) (ThemeRecord, error) {
+	if f.Err != nil {
+		return ThemeRecord{}, f.Err
+	}
+	rec, ok := f.ByName[name]
+	if !ok {
+		return ThemeRecord{}, store.ErrThemeNotFound
+	}
+	return rec, nil
+}
+
+func (f *FakeTheme) SaveTheme(rec store.ThemeRecord) error {
+	f.Saved = append(f.Saved, rec)
+	if f.Err != nil {
+		return f.Err
+	}
+	return nil
+}
+
+func (f *FakeTheme) DeleteTheme(name string) error {
+	f.Deleted = append(f.Deleted, name)
+	if f.Err != nil {
+		return f.Err
+	}
+	return nil
+}
+
+func (f *FakeTheme) ResetTheme(name string, palette json.RawMessage) error {
+	f.ResetCalls = append(f.ResetCalls, struct {
+		Name    string
+		Palette json.RawMessage
+	}{name, palette})
+	if f.Err != nil {
+		return f.Err
+	}
+	return nil
+}
+
+// FakeSettings is an in-memory SettingsReader and SettingsWriter for tests:
+// set Values directly, or let SetSetting populate it.
+type FakeSettings struct {
+	Values map[string]string
+
+	// Err is returned by every method when set.
+	Err error
+
+	// SetCalls records every write, so a test can assert on the call and not
+	// only on a subsequent read.
+	SetCalls []struct {
+		Key, Value string
+	}
+}
+
+var _ SettingsReader = (*FakeSettings)(nil)
+var _ SettingsWriter = (*FakeSettings)(nil)
+
+func (f *FakeSettings) Setting(key string) (string, bool, error) {
+	if f.Err != nil {
+		return "", false, f.Err
+	}
+	v, ok := f.Values[key]
+	return v, ok, nil
+}
+
+func (f *FakeSettings) Settings(prefix string) (map[string]string, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	out := map[string]string{}
+	for k, v := range f.Values {
+		if prefix == "" || strings.HasPrefix(k, prefix) {
+			out[k] = v
+		}
+	}
+	return out, nil
+}
+
+func (f *FakeSettings) SetSetting(key, value string) error {
+	f.SetCalls = append(f.SetCalls, struct{ Key, Value string }{key, value})
+	if f.Err != nil {
+		return f.Err
+	}
+	if f.Values == nil {
+		f.Values = map[string]string{}
+	}
+	f.Values[key] = value
+	return nil
+}
+
+// FakeSearch is an in-memory GlobalSearcher for tests: set Hits, leave the
+// rest zero.
+type FakeSearch struct {
+	Hits []SearchHit
+
+	// Err is returned by every method when set.
+	Err error
+
+	// LastQuery records the query SearchWorkspace most recently asked for.
+	LastQuery SearchQuery
+}
+
+var _ GlobalSearcher = (*FakeSearch)(nil)
+
+// SearchWorkspace filters Hits by q.Kinds (every kind when empty) — a scope
+// or text-match simulation would just duplicate store.SearchWorkspace's own
+// FTS5 logic in Go, which is exactly what a fake is not for; a test that
+// needs scope-aware behavior seeds Hits already scoped.
+func (f *FakeSearch) SearchWorkspace(q SearchQuery) ([]SearchHit, error) {
+	f.LastQuery = q
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	if len(q.Kinds) == 0 {
+		return f.Hits, nil
+	}
+	kinds := map[string]bool{}
+	for _, k := range q.Kinds {
+		kinds[k] = true
+	}
+	var out []SearchHit
+	for _, h := range f.Hits {
+		if kinds[h.Kind] {
+			out = append(out, h)
+		}
+	}
+	return out, nil
 }

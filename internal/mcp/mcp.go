@@ -6,11 +6,17 @@
 //
 // Tool profiles allow agents to load only the tools they need:
 //
-//	engram mcp                    → all 19 tools (default)
-//	engram mcp --tools=agent      → 15 tools agents actually use (per skill files)
-//	engram mcp --tools=admin      → 4 tools for TUI/CLI (delete, stats, timeline, merge)
-//	engram mcp --tools=agent,admin → combine profiles
-//	engram mcp --tools=mem_save,mem_search → individual tool names
+//	engram mcp                                  → every registered tool (default)
+//	engram mcp --tools=agent                    → the 18 tools the memory protocols call
+//	engram mcp --tools=admin                    → 4 tools for TUI/CLI (delete, stats, timeline, merge)
+//	engram mcp --tools=projects                 → the 10 engram-projects tools
+//	engram mcp --tools=workspace                → the 7 workspace tools, plus card, task list and context pack
+//	engram mcp --tools=agent,projects,workspace → the recommended set for work inside a project repository
+//	engram mcp --tools=mem_save,mem_search      → individual tool names
+//
+// A profile is what an agent loads, not a partition of the registry: workspace
+// re-exports three projects tools on purpose, and the overlap is counted once
+// when profiles are combined.
 package mcp
 
 import (
@@ -56,7 +62,16 @@ type MCPConfig struct {
 	// mem_save call (REQ-001). nil means "use the store default" (3).
 	// An explicit pointer value (including 0) is forwarded directly.
 	Limit *int
+
+	// ServerVersion is the version the MCP initialize handshake reports to the
+	// host. It carries the binary's own version so a host can tell which
+	// engram it is talking to. Empty means "dev".
+	ServerVersion string
 }
+
+// defaultServerVersion is what the initialize handshake reports when the
+// binary was built without version information.
+const defaultServerVersion = "dev"
 
 var suggestTopicKey = store.SuggestTopicKey
 
@@ -143,11 +158,31 @@ var ProfileProjects = map[string]bool{
 	"mem_context_pack":       true,
 }
 
+// ProfileWorkspace contains the seven workspace tools plus the three
+// `projects` tools a workspace session never stops calling: the card it orients
+// itself with, the task list it picks work from, and the context pack it opens
+// a ticket with. The overlap is deliberate — a profile is what an agent loads,
+// not a partition of the registry — and ProfileProjects is untouched, so
+// --tools=projects still resolves to exactly the ten it always did.
+var ProfileWorkspace = map[string]bool{
+	"mem_project_tree":     true,
+	"mem_evidence_scan":    true,
+	"mem_benchmark_add":    true,
+	"mem_benchmark_list":   true,
+	"mem_benchmark_import": true,
+	"mem_vault_sync":       true,
+	"mem_workspace_search": true,
+	"mem_project_card":     true,
+	"mem_task_list":        true,
+	"mem_context_pack":     true,
+}
+
 // Profiles maps profile names to their tool sets.
 var Profiles = map[string]map[string]bool{
-	"agent":    ProfileAgent,
-	"admin":    ProfileAdmin,
-	"projects": ProfileProjects,
+	"agent":     ProfileAgent,
+	"admin":     ProfileAdmin,
+	"projects":  ProfileProjects,
+	"workspace": ProfileWorkspace,
 }
 
 // ResolveTools takes a comma-separated string of profile names and/or
@@ -253,9 +288,13 @@ func NewServerWithConfig(s *store.Store, cfg MCPConfig, allowlist map[string]boo
 }
 
 func newServerWithActivity(s *store.Store, cfg MCPConfig, allowlist map[string]bool, activity *SessionActivity) *server.MCPServer {
+	serverVersion := strings.TrimSpace(cfg.ServerVersion)
+	if serverVersion == "" {
+		serverVersion = defaultServerVersion
+	}
 	srv := server.NewMCPServer(
 		"engram",
-		"0.1.0",
+		serverVersion,
 		server.WithToolCapabilities(true),
 		server.WithInstructions(serverInstructions),
 	)
@@ -308,6 +347,25 @@ func registerTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, allowli
 				),
 				mcp.WithNumber("limit",
 					mcp.Description("Max results (default: 10, max: 20)"),
+				),
+				mcp.WithNumber("offset",
+					mcp.Min(0),
+					mcp.Description("Skip this many results. data.total says how many matches the query has in all, so paging stops when offset+limit reaches it."),
+				),
+				mcp.WithString("task",
+					mcp.Description("Keep only observations linked to this task: PROJ-123 | task-<hex> | #42 | change:<sdd_change> | slug."),
+				),
+				mcp.WithString("graph_ref",
+					mcp.Description("Keep only observations carrying this graph reference, as stamped by mem_save or mem_task_link."),
+				),
+				mcp.WithString("since",
+					mcp.Description("Keep only observations created at or after this timestamp (YYYY-MM-DD or RFC3339)."),
+				),
+				mcp.WithString("until",
+					mcp.Description("Keep only observations created at or before this timestamp (YYYY-MM-DD or RFC3339)."),
+				),
+				mcp.WithBoolean("include_children",
+					mcp.Description("Widen the project filter to the project and every project under it in the hierarchy."),
 				),
 			),
 			handleSearch(s, cfg, activity),
@@ -382,6 +440,21 @@ Examples:
 				),
 				mcp.WithBoolean("capture_prompt",
 					mcp.Description("Automatically capture the current user prompt when available (default: true). Set false for SDD artifacts or automated saves."),
+				),
+				mcp.WithString("task",
+					mcp.Description("Task this observation belongs to, in any reference form: PROJ-123 | task-<hex> | #42 | change:<sdd_change> | slug. The observation and the link are written together."),
+				),
+				mcp.WithString("role",
+					mcp.Enum(taskLinkRoleEnum...),
+					mcp.DefaultString("context"),
+					mcp.Description("Role the observation plays for the task. Applies only together with task."),
+				),
+				mcp.WithString("graph_ref",
+					mcp.Description("Symbol or community label taken from graphify that this observation describes."),
+				),
+				mcp.WithString("graph_commit",
+					mcp.Pattern(`^[0-9a-f]{40}$`),
+					mcp.Description("Commit graph_ref was resolved against, as the full 40-character sha. Falls back to the project card's graph_commit when omitted; the save is refused with graph_commit_required when neither exists, and with graph_commit_invalid when the sha is abbreviated."),
 				),
 			),
 			queuedWriteHandler(writeQueue, handleSave(s, cfg, activity)),
@@ -535,6 +608,10 @@ Examples:
 				mcp.WithIdempotentHintAnnotation(true),
 				mcp.WithOpenWorldHintAnnotation(false),
 				mcp.WithNumber("id", mcp.Required(), mcp.Description("Observation ID to pin")),
+				mcp.WithBoolean("pinned",
+					mcp.DefaultBool(true),
+					mcp.Description("Pin state to set. false unpins, so a caller that tracks the state does not need a second tool."),
+				),
 			),
 			handlePin(s, true),
 		)
@@ -571,7 +648,10 @@ Examples:
 				mcp.WithString("scope",
 					mcp.Description("Filter observations by scope: project (default) or personal"),
 				),
-				// JW7: limit param removed — schema advertised it but handleContext never read it.
+				mcp.WithNumber("limit",
+					mcp.Min(1), mcp.Max(50),
+					mcp.Description("Cap the recent observations rendered, 1 to 50. Omit for the configured maximum."),
+				),
 			),
 			handleContext(s, cfg, activity),
 		)
@@ -953,6 +1033,9 @@ ERROR: Returns IsError=true if IDs are unknown, relation is invalid, or cross-pr
 
 	// ─── engram-projects tools (profile: projects) ─────────────────────
 	registerProjectTools(srv, s, cfg, allowlist, writeQueue)
+
+	// ─── workspace tools (profile: workspace) ──────────────────────────
+	registerWorkspaceTools(srv, s, cfg, allowlist, writeQueue)
 }
 
 // ─── Tool Handlers ───────────────────────────────────────────────────────────
@@ -978,12 +1061,26 @@ func handleCurrentProject(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc 
 		// Saying which project the detected name resolves to, and how, is what
 		// lets an agent see that it is about to write under an alias before it
 		// writes anything.
+		resolved := map[string]any{}
 		if resolution, err := s.ResolveProjectSlug(res.Project); err == nil {
 			envelope["resolved_slug"] = resolution.Slug
 			envelope["resolved_via"] = resolution.Via
+			resolved["slug"] = resolution.Slug
+			resolved["via"] = resolution.Via
 			if resolution.AliasSource != "" {
 				envelope["resolved_alias_source"] = resolution.AliasSource
+				resolved["alias_source"] = resolution.AliasSource
 			}
+		}
+		// data is the structured half every tool envelope carries, so a caller
+		// reads the resolution the same way here as anywhere else.
+		envelope["data"] = map[string]any{
+			"project":            res.Project,
+			"project_source":     res.Source,
+			"project_path":       res.Path,
+			"cwd":                cwd,
+			"available_projects": res.AvailableProjects,
+			"resolved":           resolved,
 		}
 		if res.Warning != "" {
 			envelope["warning"] = res.Warning
@@ -1058,20 +1155,49 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 		sessionID := defaultSessionID(project)
 		activity.RecordToolCall(sessionID)
 
-		results, err := s.Search(query, store.SearchOptions{
+		opts := store.SearchOptions{
 			Type:      typ,
 			Project:   searchProject,
 			Scope:     scope,
 			Limit:     limit,
+			Offset:    intArg(req, "offset", 0),
 			MatchMode: matchMode,
-		})
+			GraphRef:  strings.TrimSpace(optString(req, "graph_ref")),
+			Since:     strings.TrimSpace(optString(req, "since")),
+			Until:     strings.TrimSpace(optString(req, "until")),
+		}
+		// A subtree filter only means something once a project is resolved:
+		// a cross-project search is already wider than any subtree.
+		if searchProject != "" && boolArg(req, "include_children", false) {
+			if slugs, subErr := s.SubtreeSlugs(searchProject); subErr == nil && len(slugs) > 0 {
+				opts.Projects = slugs
+			}
+		}
+		if taskRef := strings.TrimSpace(optString(req, "task")); taskRef != "" {
+			if searchProject == "" {
+				return toolError("missing_field", "task narrows a search to one project's task, so it needs a project", nil), nil
+			}
+			task, taskErr := s.ResolveTaskRef(searchProject, taskRef)
+			if taskErr != nil {
+				return toolError("unknown_task", fmt.Sprintf("task %q not found in project %s", taskRef, searchProject), nil), nil
+			}
+			opts.TaskSyncID = task.SyncID
+		}
+
+		page, err := s.SearchPaged(query, opts)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Search error: %s. Try simpler keywords.", err)), nil
 		}
+		results := page.Results
 
 		if len(results) == 0 {
 			// JW4: use respondWithProject even for empty results.
-			return respondWithProject(detRes, fmt.Sprintf("No memories found for: %q", query), nil), nil
+			return respondWithProject(detRes, fmt.Sprintf("No memories found for: %q", query), map[string]any{
+				"results": []map[string]any{},
+				"total":   page.Total,
+				"offset":  page.Offset,
+				"limit":   page.Limit,
+			}), nil
 		}
 
 		// Batch-load relations for all results (REQ-002). Avoids N+1.
@@ -1090,7 +1216,11 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 		}
 
 		var b strings.Builder
-		fmt.Fprintf(&b, "Found %d memories:\n\n", len(results))
+		if page.Total > len(results) {
+			fmt.Fprintf(&b, "Found %d memories (%d-%d of %d):\n\n", len(results), page.Offset+1, page.Offset+len(results), page.Total)
+		} else {
+			fmt.Fprintf(&b, "Found %d memories:\n\n", len(results))
+		}
 		anyTruncated := false
 		structuredResults := make([]map[string]any, 0, len(results))
 		for i, r := range results {
@@ -1184,16 +1314,26 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 		}
 
 		// JW4: use respondWithProject for the success path (REQ-314).
-		return respondWithProject(detRes, b.String(), map[string]any{"results": structuredResults}), nil
+		return respondWithProject(detRes, b.String(), map[string]any{
+			"results": structuredResults,
+			"total":   page.Total,
+			"offset":  page.Offset,
+			"limit":   page.Limit,
+		}), nil
 	}
 }
 
-func handlePin(s *store.Store, pinned bool) server.ToolHandlerFunc {
+// handlePin backs both mem_pin and mem_unpin. defaultPinned is the state the
+// tool it was registered for sets; mem_pin also takes an explicit `pinned`
+// argument so a caller that already tracks the state can set either one
+// without switching tools.
+func handlePin(s *store.Store, defaultPinned bool) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := int64(intArg(req, "id", 0))
 		if id == 0 {
 			return mcp.NewToolResultError("id is required"), nil
 		}
+		pinned := boolArg(req, "pinned", defaultPinned)
 
 		var err error
 		if pinned {
@@ -1221,6 +1361,59 @@ func handlePin(s *store.Store, pinned bool) server.ToolHandlerFunc {
 		})
 		return mcp.NewToolResultText(string(out)), nil
 	}
+}
+
+// saveLink is the resolved task-and-graph half of a mem_save call, together
+// with where the graph commit was taken from.
+type saveLink struct {
+	link store.ObservationLink
+	// graphCommitSource is "arg" when the caller passed graph_commit and
+	// "card" when it came from the project card. It is empty when the call
+	// carried no graph_ref at all.
+	graphCommitSource string
+}
+
+// resolveSaveLink turns mem_save's task, role, graph_ref and graph_commit
+// arguments into the link AddObservationLinked takes.
+//
+// A graph_ref with no commit falls back to the project card's graph_commit: a
+// caller that already stamped the card has named the graph once, and repeating
+// the commit on every save is how the two drift apart. When neither exists the
+// save is refused rather than storing a reference that points nowhere.
+func resolveSaveLink(s *store.Store, project string, req mcp.CallToolRequest) (saveLink, *mcp.CallToolResult) {
+	var out saveLink
+
+	role := strings.TrimSpace(optString(req, "role"))
+	if role != "" && !enumContains(taskLinkRoleEnum, role) {
+		return out, toolError("invalid_enum", fmt.Sprintf("role %q is invalid", role), map[string]any{"allowed": taskLinkRoleEnum})
+	}
+	if taskRef := strings.TrimSpace(optString(req, "task")); taskRef != "" {
+		task, err := s.ResolveTaskRef(project, taskRef)
+		if err != nil {
+			return out, toolError("unknown_task", fmt.Sprintf("task %q not found in project %s", taskRef, project), nil)
+		}
+		out.link.Task = &task
+		out.link.Role = role
+	}
+
+	graphRef := strings.TrimSpace(optString(req, "graph_ref"))
+	if graphRef == "" {
+		return out, nil
+	}
+	out.link.GraphRef = graphRef
+	if commit := strings.TrimSpace(optString(req, "graph_commit")); commit != "" {
+		out.link.GraphCommit = commit
+		out.graphCommitSource = "arg"
+		return out, nil
+	}
+	if card, err := s.GetProjectCard(project); err == nil && card.GraphCommit != nil && strings.TrimSpace(*card.GraphCommit) != "" {
+		out.link.GraphCommit = strings.TrimSpace(*card.GraphCommit)
+		out.graphCommitSource = "card"
+		return out, nil
+	}
+	return out, toolError("graph_commit_required",
+		fmt.Sprintf("graph_ref requires graph_commit, and project %s carries none on its card", project),
+		map[string]any{"hint": "pass graph_commit, or stamp the project card so every save can inherit it"})
 }
 
 func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server.ToolHandlerFunc {
@@ -1313,7 +1506,12 @@ func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server
 
 		truncated := len(content) > s.MaxObservationLength()
 
-		savedID, err := s.AddObservation(store.AddObservationParams{
+		link, linkErr := resolveSaveLink(s, project, req)
+		if linkErr != nil {
+			return linkErr, nil
+		}
+
+		saved, err := s.AddObservationLinked(store.AddObservationParams{
 			SessionID: sessionID,
 			Type:      typ,
 			Title:     title,
@@ -1321,10 +1519,23 @@ func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server
 			Project:   project,
 			Scope:     scope,
 			TopicKey:  topicKey,
-		})
+		}, &link.link)
 		if err != nil {
+			switch {
+			case errors.Is(err, store.ErrCrossProjectLink):
+				return toolError("cross_project_link", "observation and task belong to different projects", nil), nil
+			case errors.Is(err, store.ErrGraphCommitRequired):
+				return toolError("graph_commit_required", err.Error(), nil), nil
+			case errors.Is(err, store.ErrGraphCommitNotFullSHA):
+				// A commit that was passed and is wrong asks for a different
+				// repair from one that is missing, and mem_task_link already
+				// names it this way.
+				return toolError("graph_commit_invalid", err.Error(),
+					map[string]any{"hint": "pass the full 40-character commit sha, as git rev-parse HEAD prints it"}), nil
+			}
 			return mcp.NewToolResultError("Failed to save: " + err.Error()), nil
 		}
+		savedID := saved.ObservationID
 
 		if capturePrompt && activity != nil {
 			if prompt, ok := activity.CurrentPrompt(sessionID, project); ok {
@@ -1359,6 +1570,15 @@ func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server
 		// Post-transaction conflict candidate detection (REQ-001).
 		// Errors are logged and swallowed — detection failure never fails the save.
 		extra := map[string]any{}
+		if saved.LinkedTaskSyncID != "" {
+			extra["linked_task"] = saved.LinkedTaskSyncID
+			extra["role"] = saved.Role
+			msg += fmt.Sprintf("\nLinked to task %s as %s.", saved.LinkedTaskSyncID, saved.Role)
+		}
+		if link.graphCommitSource != "" {
+			extra["refs_added"] = saved.RefsAdded
+			extra["graph_commit_source"] = link.graphCommitSource
+		}
 		// Build CandidateOptions, forwarding any MCPConfig overrides.
 		// nil fields mean "use store defaults"; explicit pointer values override.
 		candOpts := store.CandidateOptions{
@@ -1706,7 +1926,7 @@ func handleContext(s *store.Store, cfg MCPConfig, activity *SessionActivity) ser
 		sessionID := defaultSessionID(project)
 		activity.RecordToolCall(sessionID)
 
-		contextResult, err := s.FormatContext(contextProject, scope)
+		contextResult, err := s.FormatContextLimited(contextProject, scope, intArg(req, "limit", 0))
 		if err != nil {
 			return mcp.NewToolResultError("Failed to get context: " + err.Error()), nil
 		}
@@ -2923,7 +3143,25 @@ func resolveReadProject(s *store.Store, override string) (projectpkg.DetectionRe
 // respondWithProject wraps a tool result by prepending the project envelope
 // fields (project, project_source, project_path) to the text output.
 // extra is an optional map of additional fields to include.
+//
+// The envelope also carries a structured `data` object mirroring what the
+// prose `result` says: the extra fields, plus the text itself. A caller that
+// reads only `data` therefore sees everything the envelope carries, while
+// `result` stays exactly what it always was.
 func respondWithProject(res projectpkg.DetectionResult, text string, extra map[string]any) *mcp.CallToolResult {
+	data := make(map[string]any, len(extra)+1)
+	for k, v := range extra {
+		data[k] = v
+	}
+	data["text"] = text
+	return respondWithProjectData(res, text, extra, data)
+}
+
+// respondWithProjectData is respondWithProject for a tool that has a richer
+// structured answer than its prose result — a result list, a page of a
+// collection — and wants `data` to carry it without duplicating every field
+// at the top level of the envelope.
+func respondWithProjectData(res projectpkg.DetectionResult, text string, extra map[string]any, data map[string]any) *mcp.CallToolResult {
 	envelope := map[string]any{
 		"project":        res.Project,
 		"project_source": res.Source,
@@ -2936,6 +3174,7 @@ func respondWithProject(res projectpkg.DetectionResult, text string, extra map[s
 	for k, v := range extra {
 		envelope[k] = v
 	}
+	envelope["data"] = data
 	out, _ := jsonMarshal(envelope)
 	return mcp.NewToolResultText(string(out))
 }
@@ -3053,10 +3292,28 @@ func addErrorMetadata(result *mcp.CallToolResult, metadata map[string]any) {
 
 // errorWithMeta returns a structured tool error result with error_code,
 // message, available_projects, and a hint for resolution.
+// toolError builds the error envelope every tool in this package answers with.
+// It emits both error vocabularies the package grew — {"error","code"} for the
+// engram-projects tools and {"error_code","message"} for the rest — so a
+// caller that reads either pair keeps working.
+func toolError(code, message string, fields map[string]any) *mcp.CallToolResult {
+	envelope := map[string]any{
+		"error":      message,
+		"error_code": code,
+		"code":       code,
+		"message":    message,
+	}
+	for k, v := range fields {
+		envelope[k] = v
+	}
+	out, _ := jsonMarshal(envelope)
+	result := mcp.NewToolResultText(string(out))
+	result.IsError = true
+	return result
+}
+
 func errorWithMeta(code, msg string, availableProjects []string) *mcp.CallToolResult {
 	envelope := map[string]any{
-		"error_code":         code,
-		"message":            msg,
 		"available_projects": availableProjects,
 	}
 	switch code {
@@ -3081,10 +3338,7 @@ func errorWithMeta(code, msg string, availableProjects []string) *mcp.CallToolRe
 	case "unresolvable_project":
 		envelope["hint"] = "Pass project explicitly, set ENGRAM_PROJECT, or run from inside a git repository (or a repo with .engram/config.json) so the write has a trustworthy destination."
 	}
-	out, _ := jsonMarshal(envelope)
-	result := mcp.NewToolResultText(string(out))
-	result.IsError = true
-	return result
+	return toolError(code, msg, envelope)
 }
 
 // jsonMarshal marshals v to JSON. Named to allow test injection if needed.

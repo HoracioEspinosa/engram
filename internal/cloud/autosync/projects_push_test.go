@@ -59,6 +59,8 @@ func mixedPendingMutations() []store.SyncMutation {
 		{Seq: 2, Project: "nextcloud", Entity: store.SyncEntityTask, EntityKey: "task-1", Op: store.SyncOpUpsert, Payload: `{"sync_id":"task-1"}`},
 		{Seq: 3, Project: "nextcloud", Entity: store.SyncEntityPrompt, EntityKey: "prompt-1", Op: store.SyncOpUpsert, Payload: `{"sync_id":"prompt-1"}`},
 		{Seq: 4, Project: "nextcloud", Entity: store.SyncEntityEvidence, EntityKey: "evd-1", Op: store.SyncOpUpsert, Payload: `{"sync_id":"evd-1"}`},
+		{Seq: 5, Project: "nextcloud", Entity: store.SyncEntityProjectAlias, EntityKey: "nc", Op: store.SyncOpUpsert, Payload: `{"alias":"nc"}`},
+		{Seq: 6, Project: "nextcloud", Entity: store.SyncEntityBenchmark, EntityKey: "bench-1", Op: store.SyncOpUpsert, Payload: `{"sync_id":"bench-1"}`},
 	}
 }
 
@@ -82,13 +84,17 @@ func TestPushSplitsUpstreamAndProjectsIntoTwoChunks(t *testing.T) {
 	if len(tr.batches) != 2 {
 		t.Fatalf("expected two recorded batches, got %d", len(tr.batches))
 	}
+	projectsEntities := map[string]bool{
+		store.SyncEntityTask: true, store.SyncEntityEvidence: true,
+		store.SyncEntityProjectAlias: true, store.SyncEntityBenchmark: true,
+	}
 	for _, e := range tr.batches[0] {
-		if e.Entity == store.SyncEntityTask || e.Entity == store.SyncEntityEvidence {
+		if projectsEntities[e.Entity] {
 			t.Fatalf("engram-projects entity %q travelled in the first chunk", e.Entity)
 		}
 	}
 	for _, e := range tr.batches[1] {
-		if e.Entity != store.SyncEntityTask && e.Entity != store.SyncEntityEvidence {
+		if !projectsEntities[e.Entity] {
 			t.Fatalf("upstream entity %q travelled in the second chunk", e.Entity)
 		}
 	}
@@ -96,8 +102,8 @@ func TestPushSplitsUpstreamAndProjectsIntoTwoChunks(t *testing.T) {
 	ls.mu.Lock()
 	acked := append([]int64(nil), ls.ackedSeqs...)
 	ls.mu.Unlock()
-	if len(acked) != 4 {
-		t.Fatalf("expected all four sequences acked, got %v", acked)
+	if len(acked) != len(mixedPendingMutations()) {
+		t.Fatalf("expected every sequence acked, got %v", acked)
 	}
 }
 
@@ -118,8 +124,8 @@ func TestPushKeepsUpstreamAckedWhenTheServerRefusesTheNewEntities(t *testing.T) 
 	if !errors.As(err, &unsupported) {
 		t.Fatalf("expected an unsupportedEntityError, got %T: %v", err, err)
 	}
-	if unsupported.pending != 2 {
-		t.Fatalf("expected the two engram-projects mutations to stay pending, got %d", unsupported.pending)
+	if unsupported.pending != 4 {
+		t.Fatalf("expected the four engram-projects mutations to stay pending, got %d", unsupported.pending)
 	}
 
 	ls.mu.Lock()
@@ -171,7 +177,16 @@ func TestSplitProjectsMutationsPreservesJournalOrder(t *testing.T) {
 	if len(upstream) != 2 || upstream[0].Seq != 1 || upstream[1].Seq != 3 {
 		t.Fatalf("upstream half lost its order: %+v", upstream)
 	}
-	if len(projects) != 2 || projects[0].Seq != 2 || projects[1].Seq != 4 {
-		t.Fatalf("engram-projects half lost its order: %+v", projects)
+	// The alias and the benchmark belong to the engram-projects half: a server
+	// image that predates them rejects that chunk with a reason code, whereas
+	// leaving them upstream would have the whole batch rejected instead.
+	wantSeqs := []int64{2, 4, 5, 6}
+	if len(projects) != len(wantSeqs) {
+		t.Fatalf("engram-projects half = %+v, want %d mutations", projects, len(wantSeqs))
+	}
+	for i, want := range wantSeqs {
+		if projects[i].Seq != want {
+			t.Fatalf("engram-projects half lost its order: %+v", projects)
+		}
 	}
 }

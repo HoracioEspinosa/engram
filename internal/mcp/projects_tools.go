@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	projectpkg "github.com/HoracioEspinosa/engram/internal/project"
 	"github.com/HoracioEspinosa/engram/internal/runbooks"
@@ -33,6 +34,11 @@ var (
 	obsSyncIDPattern      = regexp.MustCompile(`^obs-[0-9a-f]{16,32}$`)
 	sha256ToolPattern     = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	runbookIDToolPattern  = regexp.MustCompile(`^RB-[0-9]{3}$`)
+	// A card's icon and color are tokens a renderer resolves, not literal
+	// glyphs: the palette decides what "accent" looks like, and the icon set
+	// decides what "fish" draws as. Both shapes are pinned by the schema.
+	projectIconPattern  = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	projectColorPattern = regexp.MustCompile(`^(#[0-9a-f]{6}|[a-z][a-z0-9-]*)$`)
 )
 
 var reservedProjectSlugs = map[string]bool{"migrate": true, "current": true}
@@ -42,11 +48,12 @@ func isValidProjectSlug(slug string) bool {
 }
 
 var taskKindEnum = []string{"feature", "bugfix", "refactor", "incident", "migration", "spike"}
-var taskStateEnum = []string{"open", "analysis", "in_progress", "review", "verified", "done", "blocked", "cancelled"}
+var taskStateEnum = []string{"open", "analysis", "in_progress", "review", "verified", "done", "blocked", "cancelled", "pending", "archived", "unverified"}
 var taskListStateEnum = append([]string{"active"}, taskStateEnum...)
 var jiraStatusCategoryEnum = []string{"new", "indeterminate", "done"}
 var taskLinkRoleEnum = []string{"context", "decision", "root_cause", "evidence", "summary"}
-var evidenceKindEnum = []string{"png", "gif", "mp4", "json", "log", "txt"}
+var evidenceKindEnum = []string{"png", "jpg", "gif", "webp", "svg", "mp4", "webm", "json", "csv", "log", "txt", "md", "patch", "diff", "pdf", "html", "zip", "har", "other"}
+var evidenceCategoryEnum = []string{"analysis", "plans", "runbooks", "reports", "patches", "evidences", "evidences-qa", "benchmarks", "scripts", "assets", "exports"}
 var runbookCategoryEnum = []string{"auth", "database", "queue", "network", "performance", "data-integrity", "registration"}
 var runbookPatternEnum = []string{"missing-files", "auth-access", "file-save-failure", "sync-upload", "registration-subscription", "other"}
 var runbookSeverityEnum = []string{"P1", "P2", "P3", "P4"}
@@ -54,7 +61,8 @@ var runbookStatusEnum = []string{"draft", "verified", "outdated"}
 var runbookAutomationLevelEnum = []string{"manual", "assisted", "autonomous-with-gate"}
 var runbookSourceEnum = []string{"knowledge-mcp", "vault-fs"}
 var matchModeEnum = []string{"all", "any"}
-var contextPackSectionEnum = []string{"header", "card", "pointers", "pinned", "observations", "evidence", "runbooks", "refs", "footer"}
+var projectKindEnum = []string{"umbrella", "repo", "instance", "service", "dataset", "knowledge"}
+var contextPackSectionEnum = []string{"header", "card", "hierarchy", "pointers", "pinned", "observations", "evidence", "benchmarks", "runbooks", "refs", "footer"}
 var contextPackFormatEnum = []string{"markdown", "json"}
 
 func enumContains(values []string, v string) bool {
@@ -136,12 +144,17 @@ func clampInt(v, min, max, def int) int {
 // envelope shared by every engram-projects tool (RFC §5.0). result may be any
 // JSON-marshalable value: a structured object (card, task, ...) or a plain
 // string (mem_context_pack's markdown format).
+//
+// `data` carries the same value as `result` so one field name reads the
+// structured answer of every tool in this package, whichever envelope helper
+// built it.
 func respondProjectResult(res projectpkg.DetectionResult, result any) *mcp.CallToolResult {
 	envelope := map[string]any{
 		"project":        res.Project,
 		"project_source": res.Source,
 		"project_path":   res.Path,
 		"result":         result,
+		"data":           result,
 	}
 	if res.Warning != "" {
 		envelope["warning"] = res.Warning
@@ -150,18 +163,11 @@ func respondProjectResult(res projectpkg.DetectionResult, result any) *mcp.CallT
 	return mcp.NewToolResultText(string(out))
 }
 
-// projectToolError builds the {"error", "code", ...fields} envelope used by
-// every engram-projects tool error (RFC §5.0) — distinct from errorWithMeta's
-// {"error_code","message",...} shape used by the rest of this package.
+// projectToolError builds the error envelope used by every engram-projects
+// tool (RFC §5.0). It delegates to toolError, which emits this package's two
+// error vocabularies side by side.
 func projectToolError(code, message string, fields map[string]any) *mcp.CallToolResult {
-	envelope := map[string]any{"error": message, "code": code}
-	for k, v := range fields {
-		envelope[k] = v
-	}
-	out, _ := jsonMarshal(envelope)
-	result := mcp.NewToolResultText(string(out))
-	result.IsError = true
-	return result
+	return toolError(code, message, fields)
 }
 
 // knowledgeRefToolError maps the knowledge_ref shape rule (RFC §9.1/§9.2)
@@ -279,6 +285,7 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("project", mcp.Description("Slug; optional, resolved by precedence when omitted")),
 				mcp.WithBoolean("include_counts", mcp.DefaultBool(true), mcp.Description("Include the counts section")),
 				mcp.WithBoolean("include_graph_summary", mcp.DefaultBool(false), mcp.Description("Include the graph_summary blob on the card, when present")),
+				mcp.WithBoolean("include_graph_status", mcp.DefaultBool(true), mcp.Description("Include data.graph: the stamped commit, the repository HEAD, and whether the graph still describes the working copy")),
 			),
 			handleProjectCard(s, cfg),
 		)
@@ -305,6 +312,13 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("graph_path", mcp.DefaultString("graphify-out/graph.json"), mcp.Description("Repo-relative path")),
 				mcp.WithBoolean("sync_graph", mcp.DefaultBool(false)),
 				mcp.WithString("repo_dir", mcp.Description("Absolute repo root used only when sync_graph=true; defaults to project_path")),
+				mcp.WithString("parent", mcp.Description("Slug of the parent card this project hangs from. Empty string detaches it. A parent that would close a cycle or push the subtree past the depth limit is refused and the card is still returned.")),
+				mcp.WithString("kind", mcp.Enum(projectKindEnum...), mcp.Description("What sort of thing the project is")),
+				mcp.WithString("description", mcp.MaxLength(1000)),
+				mcp.WithString("icon", mcp.Pattern(`^[a-z][a-z0-9-]*$`), mcp.MaxLength(32), mcp.Description("Lowercase icon token the icon set resolves, such as fish or database")),
+				mcp.WithString("color", mcp.Pattern(`^(#[0-9a-f]{6}|[a-z][a-z0-9-]*)$`), mcp.MaxLength(32), mcp.Description("Lowercase palette role token, such as accent, or a lowercase #rrggbb triple")),
+				mcp.WithArray("tags", mcp.WithStringItems(), mcp.Description("Free-form labels for the project")),
+				mcp.WithArray("aliases", mcp.WithStringItems(), mcp.Description("Other names that resolve to this project. An alias that already owns memories of its own is refused by name in data.alias_errors.")),
 			),
 			queuedWriteHandler(writeQueue, handleProjectUpsert(s, cfg)),
 		)
@@ -332,6 +346,11 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("pr_url"),
 				mcp.WithString("knowledge_ref"),
 				mcp.WithString("assignee"),
+				mcp.WithString("slug", mcp.Pattern(`^[a-z0-9][a-z0-9-]*$`), mcp.MaxLength(64), mcp.Description("Short stable name for the task, unique inside the project")),
+				mcp.WithString("summary", mcp.MaxLength(1000), mcp.Description("What the task is about, in prose")),
+				mcp.WithString("pending_note", mcp.MaxLength(1000), mcp.Description("What is still missing before the task can move on")),
+				mcp.WithString("vault_path", mcp.Description("Vault-relative folder holding this task's working files")),
+				mcp.WithString("parent_task", mcp.Description("Parent task in any reference form: PROJ-123 | task-<hex> | #42 | change:<sdd_change> | slug")),
 			),
 			queuedWriteHandler(writeQueue, handleTaskUpsert(s, cfg)),
 		)
@@ -355,6 +374,12 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithNumber("limit", mcp.Min(1), mcp.Max(100), mcp.DefaultNumber(20)),
 				mcp.WithNumber("offset", mcp.Min(0), mcp.DefaultNumber(0)),
 				mcp.WithNumber("stale_after_hours", mcp.Min(1), mcp.DefaultNumber(24)),
+				mcp.WithString("match_mode", mcp.Enum(matchModeEnum...), mcp.DefaultString("all"),
+					mcp.Description("How query's tokens combine: all (default) needs every token, any needs one of them")),
+				mcp.WithBoolean("include_archived", mcp.DefaultBool(false),
+					mcp.Description("Bring archived tasks back into the listing. Archived work is history, so it is left out by default.")),
+				mcp.WithBoolean("include_children", mcp.DefaultBool(false),
+					mcp.Description("List the project and every project under it in the hierarchy. data.projects names the ones covered.")),
 			),
 			handleTaskList(s, cfg),
 		)
@@ -405,6 +430,8 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("manifest_path", mcp.Description("Relative path of manifest.json for the ticket")),
 				mcp.WithBoolean("attached_jira", mcp.DefaultBool(false)),
 				mcp.WithString("attached_confluence_url"),
+				mcp.WithString("category", mcp.Enum(evidenceCategoryEnum...), mcp.DefaultString("evidences"),
+					mcp.Description("Vault folder the file belongs to")),
 			),
 			queuedWriteHandler(writeQueue, handleEvidenceAdd(s, cfg)),
 		)
@@ -424,8 +451,12 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("task"),
 				mcp.WithBoolean("attached_jira"),
 				mcp.WithString("kind", mcp.Enum(evidenceKindEnum...)),
+				mcp.WithString("category", mcp.Enum(evidenceCategoryEnum...), mcp.Description("Narrow the listing to one vault folder")),
+				mcp.WithString("query", mcp.Description("Full-text search over the path, what the capture proves, its category and its kind")),
 				mcp.WithNumber("limit", mcp.Min(1), mcp.Max(200), mcp.DefaultNumber(50)),
 				mcp.WithNumber("offset", mcp.Min(0), mcp.DefaultNumber(0)),
+				mcp.WithBoolean("include_children", mcp.DefaultBool(false),
+					mcp.Description("List the project and every project under it in the hierarchy. data.projects names the ones covered.")),
 			),
 			handleEvidenceList(s, cfg),
 		)
@@ -489,7 +520,8 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("category", mcp.Enum(runbookCategoryEnum...)),
 				mcp.WithString("pattern", mcp.Enum(runbookPatternEnum...)),
 				mcp.WithBoolean("include_stale", mcp.DefaultBool(true)),
-				mcp.WithString("match_mode", mcp.Enum(matchModeEnum...), mcp.DefaultString("any")),
+				mcp.WithString("match_mode", mcp.Enum(matchModeEnum...), mcp.DefaultString("any"),
+					mcp.Description("How query's tokens combine. Defaults to any, unlike every other search here: a symptom is pasted from a log, and demanding every token of it finds nothing.")),
 				mcp.WithNumber("limit", mcp.Min(1), mcp.Max(20), mcp.DefaultNumber(5)),
 			),
 			handleRunbookFind(s),
@@ -556,9 +588,166 @@ func handleProjectCard(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result["sync"] = sync
+		result["hierarchy"] = projectHierarchy(s, card)
+		if inherited := inheritedCardFields(s, card); len(inherited) > 0 {
+			result["inherited"] = inherited
+		}
+		if optBoolDefault(req, "include_graph_status", true) {
+			result["graph"] = graphStatus(s, card, detRes.Path)
+		}
 
 		return respondProjectResult(detRes, result), nil
 	}
+}
+
+// projectHierarchy reports where a card sits in the tree: its parent, its
+// depth, and the cards that hang directly from it. The tree is what makes a
+// group of related projects readable as one thing, so a card that does not say
+// where it sits is a card the reader has to go looking for.
+func projectHierarchy(s *store.Store, card store.ProjectCard) map[string]any {
+	hierarchy := map[string]any{"depth": card.Depth, "children": []string{}}
+	if card.ParentSlug != nil {
+		hierarchy["parent"] = *card.ParentSlug
+	}
+	nodes, err := s.ProjectTree(card.Slug, false)
+	if err != nil {
+		return hierarchy
+	}
+	children := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		if node.ParentSlug != nil && *node.ParentSlug == card.Slug {
+			children = append(children, node.Slug)
+		}
+	}
+	hierarchy["children"] = children
+	return hierarchy
+}
+
+// inheritedFields are the card fields a child may take from an ancestor when
+// it carries none of its own. They are the ones that describe the thing the
+// subtree shares — the repository, the Jira project, the documentation hub —
+// rather than the ones that identify one card.
+var inheritedFields = []struct {
+	name  string
+	value func(store.ProjectCard) string
+}{
+	{"repo_url", func(c store.ProjectCard) string { return derefString(c.RepoURL) }},
+	{"jira_component", func(c store.ProjectCard) string { return derefString(c.JiraComponent) }},
+	{"knowledge_hub_path", func(c store.ProjectCard) string { return derefString(c.KnowledgeHubPath) }},
+	{"owner", func(c store.ProjectCard) string { return derefString(c.Owner) }},
+	{"icon", func(c store.ProjectCard) string { return derefString(c.Icon) }},
+	{"color", func(c store.ProjectCard) string { return derefString(c.Color) }},
+}
+
+// inheritedCardFields walks up the tree and reports, per field the card leaves
+// empty, the value an ancestor carries and which ancestor it came from. It is
+// what lets a reader tell "this project has no owner" from "this project takes
+// its owner from the umbrella above it".
+func inheritedCardFields(s *store.Store, card store.ProjectCard) map[string]any {
+	inherited := map[string]any{}
+	current := card
+	// maxProjectDepth is 3, so the walk is bounded by the schema itself; the
+	// counter only guards against a parent chain that a direct write corrupted.
+	for hop := 0; hop < 8 && current.ParentSlug != nil; hop++ {
+		parent, err := s.GetProjectCard(*current.ParentSlug)
+		if err != nil {
+			break
+		}
+		for _, field := range inheritedFields {
+			if _, taken := inherited[field.name]; taken {
+				continue
+			}
+			if field.value(card) != "" {
+				continue
+			}
+			if value := field.value(parent); value != "" {
+				inherited[field.name] = map[string]any{"value": value, "from": parent.Slug}
+			}
+		}
+		current = parent
+	}
+	return inherited
+}
+
+// graphStatus answers whether the stamped graph still describes the working
+// copy. The check needs the repository, so outside one it falls back to the
+// verdict the last check stamped on the card rather than reporting a graph as
+// fresh on no evidence.
+func graphStatus(s *store.Store, card store.ProjectCard, repoDir string) map[string]any {
+	status := map[string]any{
+		"commit":        derefString(card.GraphCommit),
+		"head":          "",
+		"stale":         false,
+		"stale_reason":  derefString(card.GraphStaleReason),
+		"changed_files": 0,
+		"checked_at":    derefString(card.GraphCheckedAt),
+	}
+	if card.GraphChangedFiles != nil {
+		status["changed_files"] = *card.GraphChangedFiles
+	}
+	if reason := derefString(card.GraphStaleReason); reason != "" && reason != "fresh" {
+		status["stale"] = true
+	}
+	commit := derefString(card.GraphCommit)
+	if commit == "" {
+		status["stale"] = true
+		status["stale_reason"] = "no_graph_commit"
+		return status
+	}
+	if strings.TrimSpace(repoDir) == "" {
+		return status
+	}
+	staleness, err := projectpkg.CheckStaleness(repoDir, commit, card.GraphPath, time.Now().UTC())
+	if err != nil {
+		return status
+	}
+	status["head"] = staleness.HeadCommit
+	status["stale"] = staleness.Stale
+	status["stale_reason"] = staleness.Reason
+	status["changed_files"] = staleness.ChangedFiles
+	status["checked_at"] = staleness.CheckedAt
+	// The verdict is about this working copy, so it is stamped locally and
+	// never replicated.
+	_ = s.StampGraphStaleness(card.Slug, staleness.Reason, staleness.ChangedFiles, staleness.CheckedAt)
+	return status
+}
+
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return strings.TrimSpace(*v)
+}
+
+// projectScope is the set of projects a listing covers: the one that was
+// resolved, or the whole subtree below it when the caller asked for the
+// children. A project with no card has no subtree, so it answers as itself.
+func projectScope(s *store.Store, project string, includeChildren bool) []string {
+	if !includeChildren {
+		return []string{project}
+	}
+	slugs, err := s.SubtreeSlugs(project)
+	if err != nil || len(slugs) == 0 {
+		return []string{project}
+	}
+	return slugs
+}
+
+// pageSlice cuts one page out of a list already joined from several queries.
+// Each query applied the offset to its own rows, so the joined list is paged
+// again here rather than trusted to be a page already.
+func pageSlice[T any](items []T, offset, limit int) []T {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(items) {
+		return nil
+	}
+	items = items[offset:]
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items
 }
 
 func optBoolDefault(req mcp.CallToolRequest, key string, def bool) bool {
@@ -582,6 +771,18 @@ func handleProjectUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			return projectToolError("invalid_slug", fmt.Sprintf("invalid project slug %q", project), nil), nil
 		}
 
+		if kind := optString(req, "kind"); kind != "" && !enumContains(projectKindEnum, kind) {
+			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), map[string]any{"allowed": projectKindEnum}), nil
+		}
+		if icon := optString(req, "icon"); icon != "" && !projectIconPattern.MatchString(icon) {
+			return projectToolError("invalid_icon", fmt.Sprintf("icon %q is not an icon token", icon),
+				map[string]any{"hint": "an icon is a lowercase token the icon set resolves, such as fish or database — not an emoji"}), nil
+		}
+		if color := optString(req, "color"); color != "" && !projectColorPattern.MatchString(color) {
+			return projectToolError("invalid_color", fmt.Sprintf("color %q is not a color token", color),
+				map[string]any{"hint": "a color is a lowercase palette role token, such as accent, or a lowercase #rrggbb triple"}), nil
+		}
+
 		params := store.UpsertProjectCardParams{
 			Slug:             project,
 			DisplayName:      optStringPtr(req, "display_name"),
@@ -592,6 +793,20 @@ func handleProjectUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			KnowledgeHubPath: optStringPtr(req, "knowledge_hub_path"),
 			Owner:            optStringPtr(req, "owner"),
 			GraphPath:        optStringPtr(req, "graph_path"),
+			Kind:             optStringPtr(req, "kind"),
+			Description:      optStringPtr(req, "description"),
+			Icon:             optStringPtr(req, "icon"),
+			Color:            optStringPtr(req, "color"),
+		}
+		// tags is stored as a JSON array, so an empty list is still a value:
+		// it is how a caller clears the labels a card used to carry.
+		if hasArg(req, "tags") {
+			encoded, encodeErr := json.Marshal(optStringSlice(req, "tags"))
+			if encodeErr != nil {
+				return projectToolError("invalid_enum", "tags must be an array of strings", nil), nil
+			}
+			tags := string(encoded)
+			params.Tags = &tags
 		}
 		card, created, err := s.UpsertProjectCard(params)
 		if err != nil {
@@ -599,6 +814,53 @@ func handleProjectUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 		}
 
 		result := map[string]any{"card": card, "created": created}
+
+		// The parent is a second write, and it can be refused after the card
+		// already exists. The card is returned with the typed error rather than
+		// swallowed, so the caller knows what it created before the refusal.
+		if hasArg(req, "parent") {
+			var parent *string
+			if slug := strings.TrimSpace(optString(req, "parent")); slug != "" {
+				normalized, _ := store.NormalizeProject(slug)
+				parent = &normalized
+			}
+			switch err := s.SetProjectParent(project, parent); {
+			case errors.Is(err, store.ErrProjectCycle):
+				return projectToolError("project_cycle", err.Error(), map[string]any{"card": card, "created": created}), nil
+			case errors.Is(err, store.ErrProjectDepthExceeded):
+				return projectToolError("project_depth_exceeded", err.Error(), map[string]any{"card": card, "created": created}), nil
+			case err != nil:
+				return projectToolError("parent_rejected", err.Error(), map[string]any{"card": card, "created": created}), nil
+			}
+			if refreshed, refreshErr := s.GetProjectCard(project); refreshErr == nil {
+				card = refreshed
+				result["card"] = card
+			}
+		}
+
+		// An alias that already owns memories of its own is refused by name:
+		// folding it into this project would move rows nobody asked to move.
+		if aliases := optStringSlice(req, "aliases"); len(aliases) > 0 {
+			added := make([]string, 0, len(aliases))
+			aliasErrors := map[string]any{}
+			for _, alias := range aliases {
+				// 'manual' is the source a person chose this alias, which is what a
+				// tool call is; the machine-derived sources belong to the detector.
+				err := s.UpsertProjectAlias(alias, project, "manual")
+				switch {
+				case err == nil:
+					added = append(added, alias)
+				case errors.Is(err, store.ErrAliasOwnsRows):
+					aliasErrors[alias] = map[string]any{"code": "alias_owns_rows", "message": err.Error()}
+				default:
+					aliasErrors[alias] = map[string]any{"code": "alias_rejected", "message": err.Error()}
+				}
+			}
+			result["aliases_added"] = added
+			if len(aliasErrors) > 0 {
+				result["alias_errors"] = aliasErrors
+			}
+		}
 
 		if optBoolDefault(req, "sync_graph", false) {
 			repoDir := optString(req, "repo_dir")
@@ -674,6 +936,11 @@ func handleTaskUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			PRUrl:              optStringPtr(req, "pr_url"),
 			KnowledgeRef:       optStringPtr(req, "knowledge_ref"),
 			Assignee:           optStringPtr(req, "assignee"),
+			Slug:               optStringPtr(req, "slug"),
+			Summary:            optStringPtr(req, "summary"),
+			PendingNote:        optStringPtr(req, "pending_note"),
+			VaultPath:          optStringPtr(req, "vault_path"),
+			ParentTask:         optStringPtr(req, "parent_task"),
 		}
 		result, err := s.UpsertTask(params)
 		if err != nil {
@@ -688,6 +955,9 @@ func handleTaskUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			if errors.As(err, &conflict) {
 				return projectToolError("task_key_conflict", conflict.Error(),
 					map[string]any{"existing_project": conflict.ExistingProject}), nil
+			}
+			if errors.Is(err, store.ErrUnknownTask) {
+				return projectToolError("unknown_task", fmt.Sprintf("parent_task %q not found in project %s", optString(req, "parent_task"), detRes.Project), nil), nil
 			}
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -715,21 +985,42 @@ func handleTaskList(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), nil), nil
 		}
 
+		matchMode := optString(req, "match_mode")
+		if matchMode != "" && !enumContains(matchModeEnum, matchMode) {
+			return projectToolError("invalid_enum", fmt.Sprintf("match_mode %q is invalid", matchMode), map[string]any{"allowed": matchModeEnum}), nil
+		}
+
 		filter := store.TaskListFilter{
 			State:           state,
 			Kind:            optString(req, "kind"),
 			JiraKey:         optString(req, "jira_key"),
 			Query:           optString(req, "query"),
+			MatchMode:       matchMode,
+			IncludeArchived: optBoolDefault(req, "include_archived", false),
 			Limit:           clampInt(intArg(req, "limit", 20), 1, 100, 20),
 			Offset:          intArg(req, "offset", 0),
 			StaleAfterHours: clampInt(intArg(req, "stale_after_hours", 24), 1, 1<<30, 24),
 		}
-		items, total, err := s.ListTasks(detRes.Project, filter)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		scope := projectScope(s, detRes.Project, optBoolDefault(req, "include_children", false))
+		var items []store.TaskListItem
+		total := 0
+		// Each project in the subtree is listed on its own and the pages are
+		// joined, because a task list is scoped to one project in the store and
+		// a subtree is a reader's question, not a storage one.
+		for _, slug := range scope {
+			page, count, err := s.ListTasks(slug, filter)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			items = append(items, page...)
+			total += count
+		}
+		if len(scope) > 1 {
+			items = pageSlice(items, filter.Offset, filter.Limit)
 		}
 		return respondProjectResult(detRes, map[string]any{
 			"items": items, "total": total, "limit": filter.Limit, "offset": filter.Offset,
+			"projects": scope,
 		}), nil
 	}
 }
@@ -796,6 +1087,9 @@ func handleTaskLink(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			return projectToolError("cross_project_link", "observation and task belong to different projects", nil), nil
 		case errors.Is(err, store.ErrGraphCommitRequired):
 			return projectToolError("graph_commit_required", "graph_ref requires graph_commit", nil), nil
+		case errors.Is(err, store.ErrGraphCommitNotFullSHA):
+			return projectToolError("graph_commit_invalid", err.Error(),
+				map[string]any{"hint": "pass the full 40-character commit sha, as git rev-parse HEAD prints it"}), nil
 		case err != nil:
 			if refErr := knowledgeRefToolError(err); refErr != nil {
 				return refErr, nil
@@ -827,7 +1121,11 @@ func handleEvidenceAdd(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			return projectToolError("invalid_sha256", fmt.Sprintf("sha256 %q is not 64 lowercase hex chars", sha256), nil), nil
 		}
 		if !enumContains(evidenceKindEnum, kind) {
-			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), nil), nil
+			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), map[string]any{"allowed": evidenceKindEnum}), nil
+		}
+		category := optString(req, "category")
+		if category != "" && !enumContains(evidenceCategoryEnum, category) {
+			return projectToolError("invalid_enum", fmt.Sprintf("category %q is invalid", category), map[string]any{"allowed": evidenceCategoryEnum}), nil
 		}
 		// An evidence path names a file inside the evidence directory, so it is
 		// checked for what it RESOLVES to, not for how it starts. Rejecting a
@@ -860,6 +1158,7 @@ func handleEvidenceAdd(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			Task:                  task,
 			Path:                  path,
 			SHA256:                sha256,
+			Category:              category,
 			Kind:                  kind,
 			Proves:                proves,
 			ConfigStamp:           optStringPtr(req, "config_stamp"),
@@ -891,11 +1190,16 @@ func handleEvidenceList(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 		filter := store.EvidenceListFilter{
 			AttachedJira: optBoolPtr(req, "attached_jira"),
 			Kind:         optString(req, "kind"),
+			Category:     optString(req, "category"),
+			Query:        optString(req, "query"),
 			Limit:        clampInt(intArg(req, "limit", 50), 1, 200, 50),
 			Offset:       intArg(req, "offset", 0),
 		}
 		if kind := filter.Kind; kind != "" && !enumContains(evidenceKindEnum, kind) {
 			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), nil), nil
+		}
+		if category := filter.Category; category != "" && !enumContains(evidenceCategoryEnum, category) {
+			return projectToolError("invalid_enum", fmt.Sprintf("category %q is invalid", category), map[string]any{"allowed": evidenceCategoryEnum}), nil
 		}
 		if taskRef := optString(req, "task"); taskRef != "" {
 			task, err := s.ResolveTaskRef(detRes.Project, taskRef)
@@ -908,12 +1212,25 @@ func handleEvidenceList(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			filter.TaskSyncID = task.SyncID
 		}
 
-		items, total, totalBytes, err := s.ListEvidence(detRes.Project, filter)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		scope := projectScope(s, detRes.Project, optBoolDefault(req, "include_children", false))
+		var items []store.EvidenceListItem
+		total := 0
+		var totalBytes int64
+		for _, slug := range scope {
+			page, count, bytes, err := s.ListEvidence(slug, filter)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			items = append(items, page...)
+			total += count
+			totalBytes += bytes
+		}
+		if len(scope) > 1 {
+			items = pageSlice(items, filter.Offset, filter.Limit)
 		}
 		return respondProjectResult(detRes, map[string]any{
 			"items": items, "total": total, "total_bytes": totalBytes, "limit": filter.Limit, "offset": filter.Offset,
+			"projects": scope,
 		}), nil
 	}
 }
