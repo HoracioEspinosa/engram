@@ -63,9 +63,12 @@ type SemanticRunnerFactory func(name string) (store.SemanticRunner, error)
 type SemanticPromptBuilder func(a, b store.ObservationSnippet) string
 
 type Server struct {
-	store      *store.Store
-	mux        *http.ServeMux
-	port       int
+	store *store.Store
+	mux   *http.ServeMux
+	port  int
+	// host is the interface the HTTP API binds to. Empty means "resolve at
+	// Start time": ENGRAM_HOST when set, the loopback default otherwise.
+	host       string
 	listen     func(network, address string) (net.Listener, error)
 	serve      func(net.Listener, http.Handler) error
 	onWrite    func() // called after successful local writes (for autosync notification)
@@ -84,6 +87,12 @@ func New(s *store.Store, port int) *Server {
 	srv.mux = http.NewServeMux()
 	srv.routes()
 	return srv
+}
+
+// SetHost overrides the interface the HTTP API binds to, taking precedence
+// over ENGRAM_HOST. An empty value hands the decision back to Start.
+func (s *Server) SetHost(host string) {
+	s.host = host
 }
 
 // SetOnWrite configures a callback invoked after every successful local write.
@@ -156,8 +165,31 @@ func requireAuth(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// listenAddr renders the TCP address the HTTP API binds to.
+//
+// An empty host means the loopback interface: this API is a local agent
+// surface with an optional bearer token, so binding anywhere else has to be
+// asked for explicitly. net.JoinHostPort brackets IPv6 literals, which a
+// plain "host:port" concatenation would leave ambiguous.
+func listenAddr(host string, port int) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+// resolveHost picks the bind interface: an explicit SetHost wins, then
+// ENGRAM_HOST, then the loopback default applied by listenAddr.
+func (s *Server) resolveHost() string {
+	if strings.TrimSpace(s.host) != "" {
+		return s.host
+	}
+	return os.Getenv("ENGRAM_HOST")
+}
+
 func (s *Server) Start() error {
-	addr := fmt.Sprintf("127.0.0.1:%d", s.port)
+	addr := listenAddr(s.resolveHost(), s.port)
 	listenFn := s.listen
 	if listenFn == nil {
 		listenFn = net.Listen
