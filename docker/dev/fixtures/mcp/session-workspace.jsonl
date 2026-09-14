@@ -1,0 +1,20 @@
+{"jsonrpc": "2.0", "id": 100, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "engram-dev-smoke-workspace", "version": "0.1.0"}}}
+{"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
+{"jsonrpc": "2.0", "id": 101, "method": "tools/list", "params": {}}
+{"jsonrpc": "2.0", "id": 102, "method": "tools/call", "params": {"name": "mem_project_upsert", "arguments": {"project": "koi-garden", "knowledge_hub_path": "/vault/koi-garden"}}}
+{"jsonrpc": "2.0", "id": 103, "method": "tools/call", "params": {"name": "mem_task_upsert", "arguments": {"project": "koi-garden", "jira_key": "KOI-1099", "slug": "lookup-timeout", "vault_path": "koi-garden/KOI-1099-lookup-timeout"}}}
+{"jsonrpc": "2.0", "id": 104, "method": "tools/call", "params": {"name": "mem_project_tree", "arguments": {"root": "koi-garden", "include_counts": true}}}
+{"jsonrpc": "2.0", "id": 105, "method": "tools/call", "params": {"name": "mem_evidence_scan", "arguments": {"task": "KOI-1099", "dry_run": true}}}
+{"jsonrpc": "2.0", "id": 106, "method": "tools/call", "params": {"name": "mem_benchmark_add", "arguments": {"task": "KOI-1099", "name": "lookup-timeout", "metric": "lookup.p95", "unit": "ms", "value": 1512, "baseline": true, "captured_at": "2026-08-20 10:00:00"}}}
+{"jsonrpc": "2.0", "id": 107, "method": "tools/call", "params": {"name": "mem_benchmark_list", "arguments": {"task": "KOI-1099"}}}
+{"jsonrpc": "2.0", "id": 108, "method": "tools/call", "params": {"name": "mem_benchmark_import", "arguments": {"task": "KOI-1099", "path": "/vault/koi-garden/KOI-1099-lookup-timeout/benchmarks/baseline-run1.json", "dry_run": true}}}
+{"jsonrpc": "2.0", "id": 109, "method": "tools/call", "params": {"name": "mem_vault_sync", "arguments": {"root": "/vault", "dry_run": true}}}
+{"jsonrpc": "2.0", "id": 110, "method": "tools/call", "params": {"name": "mem_workspace_search", "arguments": {"query": "lookup", "project": "koi-garden", "subtree": true}}}
+{"jsonrpc": "2.0", "id": 111, "method": "tools/call", "params": {"name": "mem_project_tree", "arguments": {"root": "estanque-fantasma"}}}
+{"jsonrpc": "2.0", "id": 112, "method": "tools/call", "params": {"name": "mem_evidence_scan", "arguments": {"task": "KOI-9999"}}}
+{"jsonrpc": "2.0", "id": 113, "method": "tools/call", "params": {"name": "mem_benchmark_add", "arguments": {"task": "KOI-1099", "name": "lookup-timeout", "metric": "lookup.p99", "unit": "furlongs", "value": 1}}}
+{"jsonrpc": "2.0", "id": 114, "method": "tools/call", "params": {"name": "mem_benchmark_list", "arguments": {"task": "KOI-9999"}}}
+{"jsonrpc": "2.0", "id": 115, "method": "tools/call", "params": {"name": "mem_benchmark_import", "arguments": {"task": "KOI-1099", "path": "/vault/koi-garden/KOI-1099-lookup-timeout/benchmarks/no-existe.json"}}}
+{"jsonrpc": "2.0", "id": 116, "method": "tools/call", "params": {"name": "mem_benchmark_import", "arguments": {"task": "KOI-1099", "path": "/vault/Runbooks/services.json"}}}
+{"jsonrpc": "2.0", "id": 117, "method": "tools/call", "params": {"name": "mem_vault_sync", "arguments": {"root": "/vault-que-no-existe"}}}
+{"jsonrpc": "2.0", "id": 118, "method": "tools/call", "params": {"name": "mem_workspace_search", "arguments": {"query": "l"}}}
