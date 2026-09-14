@@ -542,7 +542,8 @@ func splitProjectsMutations(batch []store.SyncMutation) (upstream, projects []st
 	for _, mut := range batch {
 		switch mut.Entity {
 		case store.SyncEntityProjectCard, store.SyncEntityTask, store.SyncEntityEvidence,
-			store.SyncEntityTaskLink, store.SyncEntityObservationRef:
+			store.SyncEntityTaskLink, store.SyncEntityObservationRef,
+			store.SyncEntityProjectAlias, store.SyncEntityBenchmark:
 			projects = append(projects, mut)
 		default:
 			upstream = append(upstream, mut)

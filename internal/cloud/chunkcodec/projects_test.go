@@ -217,3 +217,150 @@ func TestCanonicalizeForProject_UpstreamEntitiesAreUntouched(t *testing.T) {
 		t.Fatalf("session directory was altered: %v", got)
 	}
 }
+
+// TestCanonicalizeForProject_CarriesTheWorkspaceEntities pins the two entities
+// the workspace writes and the fields the hierarchy added.
+//
+// The payload structs here are a second, independent copy of the store's, so a
+// column that the store replicates but this file never declared is dropped on
+// the way out — silently, because encoding a struct cannot fail on a field it
+// does not know. A card that arrives at the other end with its parent gone and
+// its kind back at the default still compares equal to a replica that lost the
+// same fields, which is why this is asserted on the payload rather than on a
+// round trip.
+func TestCanonicalizeForProject_CarriesTheWorkspaceEntities(t *testing.T) {
+	cases := []struct {
+		name    string
+		entity  string
+		payload string
+		wantKey string
+		fields  map[string]any
+	}{
+		{
+			name:   "a card carries its hierarchy and its appearance",
+			entity: store.SyncEntityProjectCard,
+			payload: `{"slug":"koi-garden-pond-02","sync_id":"proj-2","display_name":"Pond 02",` +
+				`"default_branch":"master","jira_project":"KOI","graph_path":"graphify-out/graph.json",` +
+				`"created_at":"2026-01-01 09:00:00","updated_at":"2026-01-01 09:00:00","project":"wrong",` +
+				`"parent_slug":"koi-garden","depth":1,"kind":"instance","description":"el segundo estanque",` +
+				`"icon":"pond","color":"accent","tags":"[\"instance\",\"pond\"]"}`,
+			wantKey: "proj-2",
+			fields: map[string]any{
+				"parent_slug": "koi-garden", "depth": float64(1), "kind": "instance",
+				"description": "el segundo estanque", "icon": "pond", "color": "accent",
+				"tags": `["instance","pond"]`,
+			},
+		},
+		{
+			name:   "a task carries the fields the vault gave it",
+			entity: store.SyncEntityTask,
+			payload: `{"sync_id":"task-2","project":"wrong","jira_key":"KOI-1099","title":"t",` +
+				`"kind":"bugfix","state":"pending","created_at":"2026-01-01 10:00:00",` +
+				`"updated_at":"2026-01-01 10:00:00","slug":"lookup-timeout","summary":"el lookup falla",` +
+				`"pending_note":"falta validar","vault_path":"koi-garden/KOI-1099-lookup-timeout",` +
+				`"parent_task_sync_id":"task-1"}`,
+			wantKey: "task-2",
+			fields: map[string]any{
+				"slug": "lookup-timeout", "summary": "el lookup falla", "pending_note": "falta validar",
+				"vault_path": "koi-garden/KOI-1099-lookup-timeout", "parent_task_sync_id": "task-1",
+			},
+		},
+		{
+			name:   "evidence carries its category and the clock of its location",
+			entity: store.SyncEntityEvidence,
+			payload: `{"sync_id":"evd-2","project":"wrong","task_sync_id":"task-1","path":"analysis/a.md",` +
+				`"sha256":"` + validSHA + `","category":"analysis","kind":"md","proves":"it works",` +
+				`"captured_at":"2026-01-04 10:00:00","created_at":"2026-01-04 10:00:00",` +
+				`"occurred_at":"2026-01-04 10:00:00","location_set_at":"2026-01-04 10:00:00"}`,
+			wantKey: "evd-2",
+			fields:  map[string]any{"category": "analysis", "location_set_at": "2026-01-04 10:00:00"},
+		},
+		{
+			name:   "an alias travels under its own name",
+			entity: store.SyncEntityProjectAlias,
+			payload: `{"alias":"koi_garden","sync_id":"alias-1","slug":"koi-garden","source":"manual",` +
+				`"created_at":"2026-01-06 10:00:00","updated_at":"2026-01-06 10:00:00","project":"wrong"}`,
+			wantKey: "koi_garden",
+			fields:  map[string]any{"alias": "koi_garden", "slug": "koi-garden", "source": "manual"},
+		},
+		{
+			name:   "a benchmark travels with the direction it is read against",
+			entity: store.SyncEntityBenchmark,
+			payload: `{"sync_id":"bench-1","project":"wrong","task_sync_id":"task-1","name":"lookup",` +
+				`"metric":"lookup.p95","unit":"ms","direction":"lower","value":1512,"baseline":true,` +
+				`"baseline_set_at":"2026-01-06 10:00:00","captured_at":"2026-01-06 10:00:00",` +
+				`"source":"manual","created_at":"2026-01-06 10:00:00"}`,
+			wantKey: "bench-1",
+			fields: map[string]any{
+				"metric": "lookup.p95", "unit": "ms", "direction": "lower",
+				"value": float64(1512), "baseline": true, "source": "manual",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutation := canonicalMutation(t, chunkWith(tc.entity, "", store.SyncOpUpsert, tc.payload), "koi-garden")
+			if mutation.EntityKey != tc.wantKey {
+				t.Fatalf("entity_key = %q, want %q", mutation.EntityKey, tc.wantKey)
+			}
+			if got := payloadField(t, mutation, "project"); got != "koi-garden" {
+				t.Fatalf("payload project = %v, want the chunk project", got)
+			}
+			for key, want := range tc.fields {
+				if got := payloadField(t, mutation, key); got != want {
+					t.Errorf("payload %s = %#v, want %#v", key, got, want)
+				}
+			}
+		})
+	}
+}
+
+// TestCanonicalizeForProject_RejectsAnUnusableWorkspacePayload pins the refusals
+// for the two new entities: an identity that is missing, and a measurement with
+// no unit to compare it in.
+func TestCanonicalizeForProject_RejectsAnUnusableWorkspacePayload(t *testing.T) {
+	cases := []struct {
+		name    string
+		entity  string
+		op      string
+		payload string
+		want    string
+	}{
+		{
+			name: "an alias with no slug", entity: store.SyncEntityProjectAlias, op: store.SyncOpUpsert,
+			payload: `{"alias":"koi_garden","sync_id":"alias-1","project":"wrong"}`,
+			want:    "slug is required",
+		},
+		{
+			name: "an alias pointing at itself", entity: store.SyncEntityProjectAlias, op: store.SyncOpUpsert,
+			payload: `{"alias":"koi-garden","sync_id":"alias-1","slug":"koi-garden","project":"wrong"}`,
+			want:    "cannot point at itself",
+		},
+		{
+			name: "a benchmark with no metric", entity: store.SyncEntityBenchmark, op: store.SyncOpUpsert,
+			payload: `{"sync_id":"bench-1","project":"wrong","task_sync_id":"task-1","name":"lookup",` +
+				`"unit":"ms","direction":"lower","value":1,"captured_at":"2026-01-06 10:00:00","source":"manual"}`,
+			want: "metric is required",
+		},
+		{
+			name: "a benchmark with a direction nothing reads", entity: store.SyncEntityBenchmark, op: store.SyncOpUpsert,
+			payload: `{"sync_id":"bench-1","project":"wrong","task_sync_id":"task-1","name":"lookup",` +
+				`"metric":"lookup.p95","unit":"ms","direction":"sideways","value":1,` +
+				`"captured_at":"2026-01-06 10:00:00","source":"manual"}`,
+			want: "direction",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := CanonicalizeForProject(chunkWith(tc.entity, "", tc.op, tc.payload), "koi-garden")
+			if err == nil {
+				t.Fatal("expected the payload to be rejected")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want one mentioning %q", err, tc.want)
+			}
+		})
+	}
+}
