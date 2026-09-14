@@ -1,0 +1,20 @@
+--- a/internal/auth/autologin.go
++++ b/internal/auth/autologin.go
+@@ -2,12 +2,15 @@
+ 
+ import "time"
+ 
++// autologinTokenTTL must outlive the gap between the app loading and its
++// first call to /api/autologin on a real device, not just on localhost.
++const autologinTokenTTL = 5 * time.Minute
++
+ func IssueAutologinToken(userID string) (Token, error) {
+ 	now := time.Now().UTC()
+-	ttl := 5 * time.Second
+ 	return Token{
+ 		UserID:    userID,
+ 		IssuedAt:  now,
+-		ExpiresAt: now.Add(ttl),
++		ExpiresAt: now.Add(autologinTokenTTL),
+ 	}, nil
+ }

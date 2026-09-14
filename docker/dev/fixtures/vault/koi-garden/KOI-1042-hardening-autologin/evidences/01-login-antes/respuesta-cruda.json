@@ -1,0 +1,9 @@
+{
+  "status": 401,
+  "error": "invalid_token",
+  "detail": "autologin token expired 2.8s after issue",
+  "token_ttl_seconds": 5,
+  "token_age_seconds": 7.8,
+  "instance": "koi-garden-pond-01",
+  "captured_at": "2026-08-10T09:15:22Z"
+}

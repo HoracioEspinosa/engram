@@ -1,0 +1,108 @@
+{
+  "entries": [
+    {
+      "id": "RB-001",
+      "vault_path": "Runbooks/auth/RB-001-autologin-token-expirado.md",
+      "title": "Autologin falla con token expirado",
+      "service": "koi-garden",
+      "category": "auth",
+      "pattern": "auth-access",
+      "severity": "P2",
+      "status": "verified",
+      "symptoms": [
+        "El autologin regresa a la pantalla de acceso en vez de entrar directo al estanque",
+        "La respuesta de /api/autologin devuelve 401 invalid_token",
+        "El síntoma aparece siempre unos segundos después de abrir la aplicación"
+      ],
+      "tags": [],
+      "owner": "equipo-koi-garden",
+      "automation_level": "assisted",
+      "last_updated": "2026-08-14",
+      "last_verified": "2026-09-01",
+      "needs_review": false
+    },
+    {
+      "id": "RB-002",
+      "vault_path": "Runbooks/auth/RB-002-sesion-huerfana.md",
+      "title": "Sesión huérfana no se limpia al cerrar el estanque",
+      "service": "koi-garden",
+      "category": "auth",
+      "pattern": "auth-access",
+      "severity": "P3",
+      "status": "outdated",
+      "symptoms": [
+        "El contador de \"usuarios conectados\" del panel nunca baja aunque todos cerraron sesión",
+        "Cerrar la pestaña sin usar el botón \"Salir\" deja la sesión marcada como activa",
+        "Reaparece un aviso de \"sesión duplicada\" al volver a entrar desde el mismo dispositivo"
+      ],
+      "tags": [],
+      "owner": "equipo-koi-garden",
+      "automation_level": "manual",
+      "last_updated": "2026-02-01",
+      "last_verified": "2026-02-10",
+      "needs_review": true
+    },
+    {
+      "id": "RB-003",
+      "vault_path": "Runbooks/performance/RB-003-listado-lento-estanque.md",
+      "title": "Listado de peces del estanque responde lento",
+      "service": "koi-garden-pond-02",
+      "category": "performance",
+      "pattern": "other",
+      "severity": "P2",
+      "status": "verified",
+      "symptoms": [
+        "El listado de peces tarda más de 3 segundos en cargar en la instancia pond-02",
+        "El indicador de carga queda girando antes de mostrar resultados",
+        "El problema es más notorio con el filtro de \"todos los estanques\" activo"
+      ],
+      "tags": [],
+      "owner": "equipo-koi-garden",
+      "automation_level": "assisted",
+      "last_updated": "2026-08-30",
+      "last_verified": "2026-09-05",
+      "needs_review": false
+    },
+    {
+      "id": "RB-004",
+      "vault_path": "Runbooks/data-integrity/RB-004-thumbnails-corruptos.md",
+      "title": "Miniaturas corruptas tras la migración de thumbnails",
+      "service": "tsukimi-bridge",
+      "category": "data-integrity",
+      "pattern": "file-save-failure",
+      "severity": "P1",
+      "status": "draft",
+      "symptoms": [
+        "Algunas miniaturas de la galería se ven como un cuadro gris o roto",
+        "El archivo original abre bien, pero su miniatura pesa 0 bytes",
+        "El problema apareció después de correr la migración de thumbnails de TSU-204"
+      ],
+      "tags": [],
+      "owner": "equipo-tsukimi-bridge",
+      "automation_level": "manual",
+      "last_updated": "2026-09-10",
+      "needs_review": false
+    },
+    {
+      "id": "RB-005",
+      "vault_path": "Runbooks/network/RB-005-timeout-lookup.md",
+      "title": "Timeout en el lookup de peces entre estanques",
+      "service": "koi-garden-pond-02",
+      "category": "network",
+      "pattern": "other",
+      "severity": "P1",
+      "status": "verified",
+      "symptoms": [
+        "Buscar un pez por su código entre estanques falla con timeout a los 30 segundos",
+        "El error solo ocurre cuando el lookup cruza de pond-02 a otro estanque",
+        "Los reintentos automáticos no mejoran la tasa de éxito"
+      ],
+      "tags": [],
+      "owner": "equipo-koi-garden",
+      "automation_level": "assisted",
+      "last_updated": "2026-09-02",
+      "last_verified": "2026-09-08",
+      "needs_review": false
+    }
+  ]
+}

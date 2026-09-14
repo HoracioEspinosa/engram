@@ -1,0 +1,13 @@
+{
+  "engram_benchmark": "v1",
+  "task": "KOI-1099",
+  "name": "lookup-timeout",
+  "captured_at": "2026-08-21T10:00:00Z",
+  "config_stamp": "pond-02 / cache on",
+  "baseline": false,
+  "notes": "misma prueba con timeout explícito aplicado y caché de resolución de estanques activada",
+  "metrics": [
+    { "metric": "lookup.p95", "unit": "ms", "value": 980 },
+    { "metric": "lookup.errors", "unit": "count", "value": 1 }
+  ]
+}
