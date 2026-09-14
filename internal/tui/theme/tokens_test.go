@@ -2,18 +2,41 @@ package theme
 
 import "testing"
 
-// rfcTokenHex is rfc-tui.md §8.1's table, transcribed verbatim: one hex
-// literal per semantic token, per registered palette. It exists only so
-// TestPaletteFieldsMatchRFCTokens can compare a Palette field against the
-// exact value the RFC assigns its token, instead of against another field of
-// the same struct — a check derived from the struct under test can never
-// catch a field holding the wrong token's colour, only two fields holding
-// different colours from each other.
-var rfcTokenHex = map[string]struct {
+// specTokenHex is the palette table every registered theme was specified
+// from, transcribed verbatim: one hex literal per semantic token, per
+// palette. The four koi rows come from the workspace's own palette design,
+// the three below them from rfc-tui.md §8.1.
+//
+// It exists only so TestPaletteFieldsMatchSpecTokens can compare a Palette
+// field against the exact value the specification assigns its token, instead
+// of against another field of the same struct — a check derived from the
+// struct under test can never catch a field holding the wrong token's colour,
+// only two fields holding different colours from each other.
+var specTokenHex = map[string]struct {
 	base, surface, overlay, text, subtext              string
 	primary, secondary, success, warning, danger, info string
 	accent, highlight                                  string
 }{
+	"koi-pond": {
+		base: "#0d1b21", surface: "#16272f", overlay: "#57808c", text: "#e6edef", subtext: "#9fb6bd",
+		primary: "#ff9e5e", secondary: "#f4a8c0", success: "#96cf7f", warning: "#e9b949", danger: "#f4787f", info: "#74bde0",
+		accent: "#ecc369", highlight: "#7fe0d4",
+	},
+	"koi-day": {
+		base: "#f6f3ec", surface: "#e6dfd1", overlay: "#7d7263", text: "#20252a", subtext: "#54595d",
+		primary: "#9c4413", secondary: "#8f2f57", success: "#265c2a", warning: "#754b00", danger: "#a11f18", info: "#155273",
+		accent: "#71510f", highlight: "#0b5f5b",
+	},
+	"showa": {
+		base: "#0f0f11", surface: "#1c1c20", overlay: "#73737d", text: "#f2efe9", subtext: "#a8a49c",
+		primary: "#ff8552", secondary: "#f5d6c6", success: "#9ec97e", warning: "#dcb43f", danger: "#ff7a86", info: "#7cb8dd",
+		accent: "#e6b455", highlight: "#8ad7c8",
+	},
+	"ogon": {
+		base: "#151009", surface: "#231a10", overlay: "#8a7249", text: "#f6ead2", subtext: "#bda884",
+		primary: "#ffc247", secondary: "#f0d9a8", success: "#a5c96b", warning: "#f2a93b", danger: "#f4756a", info: "#8bbfc9",
+		accent: "#e79a3c", highlight: "#a8d8b0",
+	},
 	"catppuccin-mocha": {
 		base: "#1e1e2e", surface: "#313244", overlay: "#6c7086", text: "#cdd6f4", subtext: "#a6adc8",
 		primary: "#b4befe", secondary: "#cba6f7", success: "#a6e3a1", warning: "#f9e2af", danger: "#f38ba8", info: "#89b4fa",
@@ -31,22 +54,22 @@ var rfcTokenHex = map[string]struct {
 	},
 }
 
-// TestPaletteFieldsMatchRFCTokens ties every Palette field to the literal
-// hex value rfc-tui.md §8.1 assigns its token, per registered palette. It
+// TestPaletteFieldsMatchSpecTokens ties every Palette field to the literal
+// hex value its specification assigns that token, per registered palette. It
 // exists to catch a rotation: a palette whose field names no longer line up
-// with the RFC's tokens (e.g. the token "secondary" living under a field
+// with the spec's tokens (e.g. the token "secondary" living under a field
 // called Accent) trips neither the collision test
 // (TestNoTwoDistinctRolesShareAColour) nor the contrast test
 // (TestRegisteredPalettesAreLegible), because both compare fields to each
 // other and a rotation moves whole values, contrast and all — it never
-// produces a duplicate or an illegible pair. Only a check against the RFC's
+// produces a duplicate or an illegible pair. Only a check against the spec's
 // own literal values, independent of this struct, can catch that.
-func TestPaletteFieldsMatchRFCTokens(t *testing.T) {
+func TestPaletteFieldsMatchSpecTokens(t *testing.T) {
 	for _, name := range paletteNames() {
 		t.Run(name, func(t *testing.T) {
-			want, ok := rfcTokenHex[name]
+			want, ok := specTokenHex[name]
 			if !ok {
-				t.Fatalf("rfcTokenHex has no entry for registered palette %q", name)
+				t.Fatalf("specTokenHex has no entry for registered palette %q", name)
 			}
 			p := registry[name]()
 
@@ -71,7 +94,7 @@ func TestPaletteFieldsMatchRFCTokens(t *testing.T) {
 			}
 			for _, tc := range cases {
 				if tc.got != tc.want {
-					t.Errorf("token %q: Palette field holds %s, rfc-tui.md §8.1 fixes it at %s", tc.token, tc.got, tc.want)
+					t.Errorf("token %q: Palette field holds %s, the specification fixes it at %s", tc.token, tc.got, tc.want)
 				}
 			}
 		})

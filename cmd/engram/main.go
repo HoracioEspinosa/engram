@@ -2834,7 +2834,9 @@ Commands:
                      Launch interactive terminal UI
                        --project NAME  Open directly on a project's Dashboard, else the Selector.
                                        Also accepted as ENGRAM_PROJECT=NAME env var.
-                       --theme NAME    Palette: catppuccin-mocha (default) | kanagawa | elephant.
+                       --theme NAME    Palette: koi-pond (default) | koi-day | showa | ogon |
+                                       catppuccin-mocha | kanagawa | elephant. Run
+                                       "engram theme list" for what this build ships.
                                        Also accepted as ENGRAM_TUI_THEME=NAME env var, or the
                                        tui.theme key in <data-dir>/config.json.
   search <query>     Search memories [--type TYPE] [--project PROJECT] [--scope SCOPE] [--limit N]
@@ -2927,7 +2929,8 @@ Environment:
   ENGRAM_PROJECT     Process-level default project override.
                      For "engram serve": fallback for GET /sync/status with no project param.
                      For "engram mcp": sets DefaultProject, overriding cwd detection for all tools.
-  ENGRAM_TUI_THEME   Palette for "engram tui": catppuccin-mocha (default) | kanagawa | elephant.
+  ENGRAM_TUI_THEME   Palette for "engram tui": koi-pond (default) | koi-day | showa | ogon |
+                     catppuccin-mocha | kanagawa | elephant.
                      Precedence: --theme flag, then this var, then tui.theme in
                      <data-dir>/config.json, then the default.
   ENGRAM_HTTP_TOKEN  Optional Bearer auth for local HTTP server (engram serve).

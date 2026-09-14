@@ -679,15 +679,14 @@ func TestCmdTUILeavesProjectEmptyWhenNothingResolves(t *testing.T) {
 	}
 }
 
-// TestCmdTUIResolvesThemePrecedence pins rfc-tui.md §8.2's precedence chain
-// for the TUI's theme — flag, then ENGRAM_TUI_THEME, then tui.theme in
-// <data-dir>/config.json, then catppuccin-mocha — the same shape
+// TestCmdTUIResolvesThemePrecedence pins the precedence chain for the TUI's
+// theme — flag, then ENGRAM_TUI_THEME, then tui.theme in
+// <data-dir>/config.json, then theme.DefaultThemeName — the same shape
 // TestCmdTUIResolvesProjectPrecedence already pins for --project.
 //
-// --theme, ENGRAM_TUI_THEME and tui.theme did not exist before this task
-// (T-10.06), so unlike TestNoTwoDistinctRolesShareAColour in
-// internal/tui/theme, there is no pre-existing bug this test reproduces —
-// it was written alongside the implementation it pins.
+// The default tier is named rather than spelled: which palette ships as the
+// default is the theme package's decision, and a literal here would turn
+// changing it into a failure in a package that has no opinion on the matter.
 func TestCmdTUIResolvesThemePrecedence(t *testing.T) {
 	cfg := testConfig(t)
 	stubRuntimeHooks(t)
@@ -700,14 +699,14 @@ func TestCmdTUIResolvesThemePrecedence(t *testing.T) {
 		configFile string // "" = no config.json written for this case
 		want       string
 	}{
-		{name: "nothing set falls back to the default", args: []string{"engram", "tui"}, want: "catppuccin-mocha"},
+		{name: "nothing set falls back to the default", args: []string{"engram", "tui"}, want: theme.DefaultThemeName},
 		{name: "explicit flag wins with no env or config", args: []string{"engram", "tui", "--theme", "kanagawa"}, want: "kanagawa"},
 		{name: "equals form is accepted", args: []string{"engram", "tui", "--theme=elephant"}, want: "elephant"},
 		{name: "ENGRAM_TUI_THEME is used without a flag", args: []string{"engram", "tui"}, env: "kanagawa", want: "kanagawa"},
 		{name: "an explicit flag overrides ENGRAM_TUI_THEME", args: []string{"engram", "tui", "--theme", "elephant"}, env: "kanagawa", want: "elephant"},
 		{name: "tui.theme in config.json is used without a flag or env", args: []string{"engram", "tui"}, configFile: `{"tui":{"theme":"kanagawa"}}`, want: "kanagawa"},
 		{name: "ENGRAM_TUI_THEME overrides tui.theme", args: []string{"engram", "tui"}, env: "elephant", configFile: `{"tui":{"theme":"kanagawa"}}`, want: "elephant"},
-		{name: "an unknown --theme falls back to the default, not to a lower tier", args: []string{"engram", "tui", "--theme", "not-a-real-theme"}, env: "kanagawa", want: "catppuccin-mocha"},
+		{name: "an unknown --theme falls back to the default, not to a lower tier", args: []string{"engram", "tui", "--theme", "not-a-real-theme"}, env: "kanagawa", want: theme.DefaultThemeName},
 	}
 
 	for _, tc := range tests {

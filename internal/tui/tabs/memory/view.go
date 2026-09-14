@@ -12,30 +12,13 @@ import (
 
 // ─── Logo ────────────────────────────────────────────────────────────────────
 
+// renderLogo draws the workspace's wordmark above the dashboard.
+//
+// The mark itself lives in the theme package, with the palette that colours it
+// and the glyph vocabulary that decorates it — this view decides only what the
+// tagline says.
 func (m Model) renderLogo(version string) string {
-	logoText := []string{
-		`███████ ███    ██  ██████  ██████   █████  ███    ███ `,
-		`██      ████   ██ ██       ██   ██ ██   ██ ████  ████ `,
-		`█████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██ `,
-		`██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██ `,
-		`███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██ `,
-	}
-
-	var b strings.Builder
-
-	// Header line inside box (Cyber-Elephant Terminal)
-	b.WriteString(m.styles.LogoAccent.Render(" 🐘 SYSTEM ONLINE ") + strings.Repeat(" ", 32) + m.styles.LogoAccent.Render(" MEM: OK 100% ") + "\n\n")
-
-	// Logo body with gradient (logoText and the gradient are the same length)
-	for i, line := range logoText {
-		b.WriteString(" " + m.styles.LogoGradient[i].Render(line) + "\n")
-	}
-	b.WriteString("\n")
-
-	// Footer inside box
-	b.WriteString(m.styles.LogoTagline.Render(" > engram " + version + " — An elephant never forgets"))
-
-	return m.styles.LogoFrame.Render(b.String()) + "\n"
+	return m.styles.RenderWordmark("engram "+version+" — An elephant never forgets") + "\n"
 }
 
 // ─── View (screen router) ────────────────────────────────────────────────────
