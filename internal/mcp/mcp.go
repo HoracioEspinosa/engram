@@ -6,11 +6,17 @@
 //
 // Tool profiles allow agents to load only the tools they need:
 //
-//	engram mcp                    → all 19 tools (default)
-//	engram mcp --tools=agent      → 15 tools agents actually use (per skill files)
-//	engram mcp --tools=admin      → 4 tools for TUI/CLI (delete, stats, timeline, merge)
-//	engram mcp --tools=agent,admin → combine profiles
-//	engram mcp --tools=mem_save,mem_search → individual tool names
+//	engram mcp                                  → every registered tool (default)
+//	engram mcp --tools=agent                    → the 18 tools the memory protocols call
+//	engram mcp --tools=admin                    → 4 tools for TUI/CLI (delete, stats, timeline, merge)
+//	engram mcp --tools=projects                 → the 10 engram-projects tools
+//	engram mcp --tools=workspace                → the 7 workspace tools, plus card, task list and context pack
+//	engram mcp --tools=agent,projects,workspace → the recommended set for work inside a project repository
+//	engram mcp --tools=mem_save,mem_search      → individual tool names
+//
+// A profile is what an agent loads, not a partition of the registry: workspace
+// re-exports three projects tools on purpose, and the overlap is counted once
+// when profiles are combined.
 package mcp
 
 import (
