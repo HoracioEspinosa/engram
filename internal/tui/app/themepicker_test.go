@@ -123,8 +123,8 @@ func TestThemePreviewDoesNotPersist(t *testing.T) {
 	if m.styles.Palette.Name == before {
 		t.Fatalf("the workspace still shows %q after previewing another theme", before)
 	}
-	if len(settings.SetCalls) != 0 {
-		t.Errorf("previewing wrote %v to settings", settings.SetCalls)
+	if len(settings.SetCalls()) != 0 {
+		t.Errorf("previewing wrote %v to settings", settings.SetCalls())
 	}
 }
 
@@ -150,8 +150,8 @@ func TestEscapeRestoresTheThemeThePickerOpenedOn(t *testing.T) {
 	if got := m.styles.Palette.Name; got != original {
 		t.Errorf("after esc the workspace shows %q, want the original %q", got, original)
 	}
-	if len(settings.SetCalls) != 0 {
-		t.Errorf("cancelling wrote %v to settings", settings.SetCalls)
+	if len(settings.SetCalls()) != 0 {
+		t.Errorf("cancelling wrote %v to settings", settings.SetCalls())
 	}
 }
 
@@ -186,10 +186,10 @@ func TestThemeAppliedPersistsSetting(t *testing.T) {
 	if got := m.styles.Palette.Name; got != chosen.name {
 		t.Errorf("the workspace shows %q, want the chosen %q", got, chosen.name)
 	}
-	if len(settings.SetCalls) != 1 {
-		t.Fatalf("choosing wrote %d settings, want exactly one", len(settings.SetCalls))
+	if len(settings.SetCalls()) != 1 {
+		t.Fatalf("choosing wrote %d settings, want exactly one", len(settings.SetCalls()))
 	}
-	if got := settings.SetCalls[0]; got.Key != themeSettingKey || got.Value != chosen.name {
+	if got := settings.SetCalls()[0]; got.Key != themeSettingKey || got.Value != chosen.name {
 		t.Errorf("wrote %s=%s, want %s=%s", got.Key, got.Value, themeSettingKey, chosen.name)
 	}
 }
@@ -236,8 +236,8 @@ func TestInvalidThemeFallsBackWithNotice(t *testing.T) {
 	if got := m.styles.Palette.Name; got != original {
 		t.Errorf("the workspace repainted to %q, want to stay on %q", got, original)
 	}
-	if len(settings.SetCalls) != 0 {
-		t.Errorf("a refused theme was written to settings: %v", settings.SetCalls)
+	if len(settings.SetCalls()) != 0 {
+		t.Errorf("a refused theme was written to settings: %v", settings.SetCalls())
 	}
 	if !strings.Contains(m.themePicker.notice, broken.Invalid) {
 		t.Errorf("notice = %q, want it to carry %q", m.themePicker.notice, broken.Invalid)
@@ -321,7 +321,7 @@ func TestThemePickerReportsAStoreThatWillNotAnswer(t *testing.T) {
 // and saying so is more useful than refusing the theme.
 func TestAFailedSettingWriteStillPaintsTheTheme(t *testing.T) {
 	m, _, settings := pickerFixture(t)
-	settings.Err = errStub
+	settings.SetErr(errStub)
 	m = openPicker(t, m)
 
 	m, msg := press(t, m, keyDown)

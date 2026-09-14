@@ -112,18 +112,31 @@ type observationLinkedToTaskMsg struct {
 
 // ─── Model ───────────────────────────────────────────────────────────────────
 
+// UpdateChecker reports whether a newer release exists. It is a seam around
+// version.CheckLatest, whose default reaches GitHub over the network: a
+// golden suite that drives this tab through a real program otherwise renders
+// a banner whose text — and whose very presence — depends on whether an HTTP
+// response landed before the program quit.
+type UpdateChecker func(current string) version.CheckResult
+
+// defaultUpdateChecker is the seam's production implementation. It is named
+// at package scope because New's own "version" parameter shadows the package
+// this refers to.
+var defaultUpdateChecker UpdateChecker = version.CheckLatest
+
 type Model struct {
-	reader     data.MemoryReader
-	tasks      data.TaskReader
-	project    string
-	styles     theme.Styles
-	Version    string
-	Screen     Screen
-	PrevScreen Screen
-	Width      int
-	Height     int
-	Cursor     int
-	Scroll     int
+	reader      data.MemoryReader
+	tasks       data.TaskReader
+	project     string
+	styles      theme.Styles
+	updateCheck UpdateChecker
+	Version     string
+	Screen      Screen
+	PrevScreen  Screen
+	Width       int
+	Height      int
+	Cursor      int
+	Scroll      int
 
 	// Update notification
 	UpdateStatus version.CheckStatus
@@ -209,12 +222,23 @@ func New(r data.MemoryReader, version string) Model {
 	return Model{
 		reader:       r,
 		styles:       styles,
+		updateCheck:  defaultUpdateChecker,
 		Version:      version,
 		Screen:       ScreenDashboard,
 		SearchInput:  ti,
 		LinkQuery:    lq,
 		SetupSpinner: sp,
 	}
+}
+
+// WithUpdateChecker returns a copy of m that asks check instead of GitHub.
+// A nil check keeps the default, so a caller can pass one through
+// unconditionally.
+func (m Model) WithUpdateChecker(check UpdateChecker) Model {
+	if check != nil {
+		m.updateCheck = check
+	}
+	return m
 }
 
 // WithStyles returns a copy of m painted with styles instead of the default
@@ -260,7 +284,7 @@ func (Model) Title() string { return "Memory" }
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		loadStats(m.reader),
-		checkForUpdate(m.Version),
+		checkForUpdate(m.updateCheck, m.Version),
 	)
 }
 
@@ -295,9 +319,12 @@ func (m Model) SearchFor(query string) tea.Cmd {
 
 // ─── Commands (data loading) ─────────────────────────────────────────────────
 
-func checkForUpdate(v string) tea.Cmd {
+func checkForUpdate(check UpdateChecker, v string) tea.Cmd {
 	return func() tea.Msg {
-		return updateCheckMsg{result: version.CheckLatest(v)}
+		if check == nil {
+			check = defaultUpdateChecker
+		}
+		return updateCheckMsg{result: check(v)}
 	}
 }
 

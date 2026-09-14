@@ -42,6 +42,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
+	"github.com/HoracioEspinosa/engram/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
@@ -351,7 +352,8 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 	t.Setenv("ENGRAM_TIMEZONE", "UTC")
 
 	mem, projects, task, ev, rb := teatestFixtures(t)
-	m := app.New(mem, projects, task, ev, rb, e2eVersion, theme.Default(), screen.initialProject)
+	m := app.New(mem, projects, task, ev, rb, e2eVersion, theme.Default(), screen.initialProject).
+		WithUpdateChecker(quietUpdateCheck)
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(size.width, size.height))
 	var buf strings.Builder
@@ -378,6 +380,16 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 		t.Fatalf("scene %q rendered ANSI escapes: the color profile is not Ascii, so the golden would not be portable", screen.name)
 	}
 	return normalizeContextPackBuiltAt(out)
+}
+
+// quietUpdateCheck stands in for version.CheckLatest, which reaches GitHub
+// over the network. Left alone, the Memory dashboard renders a banner only
+// when the HTTP response beats tea.Quit — so two runs of the same scene
+// differ by a whole line, and the recorded golden depends on which side of
+// that race the machine happened to land on. An up-to-date result carries no
+// message, so no banner is drawn and every run renders the same frame.
+func quietUpdateCheck(string) version.CheckResult {
+	return version.CheckResult{Status: version.StatusUpToDate}
 }
 
 // contextPackBuiltAtPattern matches S5's "built HH:MM:SS" stamp

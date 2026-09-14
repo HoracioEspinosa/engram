@@ -215,8 +215,8 @@ func TestTaskFilterTogglesOnTheCursorRowAndBackToAll(t *testing.T) {
 		t.Fatal("t on a non-empty list should reload with a task filter")
 	}
 	m, _ = step(t, m, run(t, cmd))
-	if fake.LastFilter.TaskID != 9 {
-		t.Fatalf("LastFilter.TaskID = %d, want the cursor row's task 9", fake.LastFilter.TaskID)
+	if fake.LastFilter().TaskID != 9 {
+		t.Fatalf("LastFilter.TaskID = %d, want the cursor row's task 9", fake.LastFilter().TaskID)
 	}
 	if len(m.Items) != 1 || m.Items[0].TaskID != 9 {
 		t.Fatalf("Items = %+v, want only task 9's row", m.Items)
@@ -227,8 +227,8 @@ func TestTaskFilterTogglesOnTheCursorRowAndBackToAll(t *testing.T) {
 		t.Fatal("t again should clear the filter back to all")
 	}
 	m, _ = step(t, m, run(t, cmd))
-	if fake.LastFilter.TaskID != 0 {
-		t.Fatalf("LastFilter.TaskID = %d, want 0 (cleared)", fake.LastFilter.TaskID)
+	if fake.LastFilter().TaskID != 0 {
+		t.Fatalf("LastFilter.TaskID = %d, want 0 (cleared)", fake.LastFilter().TaskID)
 	}
 	if len(m.Items) != 2 {
 		t.Fatalf("Items = %+v, want both rows once the filter clears", m.Items)

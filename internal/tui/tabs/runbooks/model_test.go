@@ -72,8 +72,8 @@ func TestRefreshReRunsTheActiveSearch(t *testing.T) {
 		t.Fatal("Refresh with an active query should reload it")
 	}
 	run(t, cmd)
-	if fake.LastSearch.Query != "preview" {
-		t.Fatalf("LastSearch.Query = %q, want the active search re-issued", fake.LastSearch.Query)
+	if fake.LastSearch().Query != "preview" {
+		t.Fatalf("LastSearch.Query = %q, want the active search re-issued", fake.LastSearch().Query)
 	}
 }
 

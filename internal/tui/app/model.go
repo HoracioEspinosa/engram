@@ -113,6 +113,16 @@ func New(mem data.MemoryReader, projects data.ProjectReader, task data.TaskReade
 	return m
 }
 
+// WithUpdateChecker returns a copy of the root whose Memory tab asks check
+// for the release banner instead of GitHub. A golden suite driving the real
+// program uses it to keep the banner out of the frame it snapshots: whether
+// an HTTP response beats tea.Quit is not something a reproducible render can
+// depend on.
+func (m Model) WithUpdateChecker(check memory.UpdateChecker) Model {
+	m.memory = m.memory.WithUpdateChecker(check)
+	return m
+}
+
 // withStyles returns a copy of the root repainted in a style set, with every
 // tab repainted alongside it.
 //

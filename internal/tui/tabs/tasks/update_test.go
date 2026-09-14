@@ -257,8 +257,8 @@ func TestListSearchEnterAppliesTheQuery(t *testing.T) {
 		t.Fatal("search input should blur once submitted")
 	}
 	m, _ = step(t, m, run(t, cmd))
-	if fake.LastListFilter.Query != "api" {
-		t.Fatalf("reader saw query %q, want %q", fake.LastListFilter.Query, "api")
+	if fake.LastListFilter().Query != "api" {
+		t.Fatalf("reader saw query %q, want %q", fake.LastListFilter().Query, "api")
 	}
 }
 
@@ -443,8 +443,8 @@ func TestDetailStateChangeWritesThroughTheReaderAndReloads(t *testing.T) {
 		t.Fatal("enter in the state picker should write the new state")
 	}
 	m, cmd = step(t, m, run(t, cmd))
-	if len(fake.UpdateStateCalls) != 1 || fake.UpdateStateCalls[0].ID != 1 || fake.UpdateStateCalls[0].State != stateOptions[1] {
-		t.Fatalf("UpdateStateCalls = %+v, want one call for task 1 with state %q", fake.UpdateStateCalls, stateOptions[1])
+	if len(fake.UpdateStateCalls()) != 1 || fake.UpdateStateCalls()[0].ID != 1 || fake.UpdateStateCalls()[0].State != stateOptions[1] {
+		t.Fatalf("UpdateStateCalls = %+v, want one call for task 1 with state %q", fake.UpdateStateCalls(), stateOptions[1])
 	}
 	if m.ChangingState {
 		t.Fatal("the picker should close once the write completes")
@@ -472,8 +472,8 @@ func TestDetailStateChangeEscCancelsWithoutWriting(t *testing.T) {
 	if m.ChangingState {
 		t.Fatal("esc should close the picker")
 	}
-	if len(fake.UpdateStateCalls) != 0 {
-		t.Fatalf("UpdateStateCalls = %+v, want none", fake.UpdateStateCalls)
+	if len(fake.UpdateStateCalls()) != 0 {
+		t.Fatalf("UpdateStateCalls = %+v, want none", fake.UpdateStateCalls())
 	}
 }
 
@@ -502,8 +502,8 @@ func TestDetailLinkObservationFlow(t *testing.T) {
 	// observation, the same two-hop chain TestDetailStateChangeWritesThrough
 	// TheReaderAndReloads exercises for the state mirror write.
 	m, cmd = step(t, m, run(t, cmd))
-	if len(fake.LinkCalls) != 1 || fake.LinkCalls[0].TaskID != 1 || fake.LinkCalls[0].ObservationID != 42 {
-		t.Fatalf("LinkCalls = %+v, want one call linking observation 42 to task 1", fake.LinkCalls)
+	if len(fake.LinkCalls()) != 1 || fake.LinkCalls()[0].TaskID != 1 || fake.LinkCalls()[0].ObservationID != 42 {
+		t.Fatalf("LinkCalls = %+v, want one call linking observation 42 to task 1", fake.LinkCalls())
 	}
 	if m.Linking {
 		t.Fatal("the link input should close once the write completes")
@@ -532,8 +532,8 @@ func TestDetailLinkObservationRejectsNonNumericInput(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("an invalid observation id must not issue a write")
 	}
-	if len(fake.LinkCalls) != 0 {
-		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls)
+	if len(fake.LinkCalls()) != 0 {
+		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls())
 	}
 	if m.ErrorMsg == "" {
 		t.Fatal("an invalid observation id should surface an error")
@@ -961,8 +961,8 @@ func TestHandleLinkInputKeysEnterWithNoDetailClosesWithoutLinking(t *testing.T) 
 	if m.Linking {
 		t.Fatal("the input should still close")
 	}
-	if len(fake.LinkCalls) != 0 {
-		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls)
+	if len(fake.LinkCalls()) != 0 {
+		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls())
 	}
 }
 

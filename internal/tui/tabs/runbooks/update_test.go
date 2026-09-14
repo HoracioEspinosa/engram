@@ -163,10 +163,10 @@ func TestAllToggleWhileSearchingReRunsTheSameSearch(t *testing.T) {
 		t.Fatal("a should reload")
 	}
 	run(t, cmd)
-	if fake.LastSearch.Query != "preview" {
-		t.Fatalf("LastSearch.Query = %q, want the active search re-issued, not dropped", fake.LastSearch.Query)
+	if fake.LastSearch().Query != "preview" {
+		t.Fatalf("LastSearch.Query = %q, want the active search re-issued, not dropped", fake.LastSearch().Query)
 	}
-	if !fake.LastSearch.All {
+	if !fake.LastSearch().All {
 		t.Fatal("LastSearch.All should reflect the toggle just applied")
 	}
 }

@@ -118,8 +118,8 @@ func TestLinkQuerySubmitLoadsMatchingTasks(t *testing.T) {
 
 	updatedModel, _ = m.Update(cmd())
 	m = updatedModel.(Model)
-	if fake.LastListFilter.Query != "previews" || fake.LastListFilter.Limit != 20 {
-		t.Fatalf("LastListFilter = %+v, want Query=previews Limit=20", fake.LastListFilter)
+	if fake.LastListFilter().Query != "previews" || fake.LastListFilter().Limit != 20 {
+		t.Fatalf("LastListFilter = %+v, want Query=previews Limit=20", fake.LastListFilter())
 	}
 	if len(m.LinkResults) != 1 || m.LinkResults[0].ID != 7 {
 		t.Fatalf("LinkResults = %+v, want the one task matching \"previews\"", m.LinkResults)
@@ -180,8 +180,8 @@ func TestLinkPickerEnterLinksTheObservationAndNavigatesToTheTask(t *testing.T) {
 	}
 
 	linkedMsg := run(t, cmd)
-	if len(fake.LinkCalls) != 1 || fake.LinkCalls[0].TaskID != 9 || fake.LinkCalls[0].ObservationID != 99 {
-		t.Fatalf("LinkCalls = %+v, want one call linking observation 99 to task 9", fake.LinkCalls)
+	if len(fake.LinkCalls()) != 1 || fake.LinkCalls()[0].TaskID != 9 || fake.LinkCalls()[0].ObservationID != 99 {
+		t.Fatalf("LinkCalls = %+v, want one call linking observation 99 to task 9", fake.LinkCalls())
 	}
 
 	_, cmd2 := m.Update(linkedMsg)
@@ -214,8 +214,8 @@ func TestLinkPickerEscCancelsFromTheQueryBox(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("esc should not issue a write")
 	}
-	if len(fake.LinkCalls) != 0 {
-		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls)
+	if len(fake.LinkCalls()) != 0 {
+		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls())
 	}
 }
 

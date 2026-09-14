@@ -123,7 +123,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	fx := newTestFixture(t)
 
 	t.Run("checkForUpdate", func(t *testing.T) {
-		msg := checkForUpdate("dev")()
+		msg := checkForUpdate(nil, "dev")()
 		loaded, ok := msg.(updateCheckMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -300,5 +300,37 @@ func TestSearchForLandsOnSearchResultsRegardlessOfWhoAskedForIt(t *testing.T) {
 	}
 	if len(next.SearchResults) == 0 {
 		t.Fatal("expected at least one search result for the seeded needle observation")
+	}
+}
+
+// TestUpdateCheckerSeamReplacesTheNetworkCall covers the seam a golden suite
+// needs: without it the banner's content, and whether it appears at all,
+// depend on a GitHub HTTP call racing tea.Quit.
+func TestUpdateCheckerSeamReplacesTheNetworkCall(t *testing.T) {
+	var asked string
+	m := New(newTestFixture(t).reader(), "1.2.3").WithUpdateChecker(func(current string) version.CheckResult {
+		asked = current
+		return version.CheckResult{Status: version.StatusUpdateAvailable, Message: "v9 is out"}
+	})
+
+	msg := checkForUpdate(m.updateCheck, m.Version)()
+	loaded, ok := msg.(updateCheckMsg)
+	if !ok {
+		t.Fatalf("message type = %T", msg)
+	}
+	if asked != "1.2.3" {
+		t.Fatalf("checker asked about %q, want the running version", asked)
+	}
+	if loaded.result.Message != "v9 is out" {
+		t.Fatalf("result = %+v, want the injected one", loaded.result)
+	}
+}
+
+// TestUpdateCheckerKeepsTheDefaultWhenNil lets a caller forward an unset
+// checker without having to branch on it.
+func TestUpdateCheckerKeepsTheDefaultWhenNil(t *testing.T) {
+	m := New(newTestFixture(t).reader(), "dev").WithUpdateChecker(nil)
+	if m.updateCheck == nil {
+		t.Fatal("a nil checker cleared the default instead of keeping it")
 	}
 }

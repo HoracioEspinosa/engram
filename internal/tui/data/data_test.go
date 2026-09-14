@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/project"
@@ -187,8 +188,8 @@ func TestFakeMemoryReturnsWhatItWasGiven(t *testing.T) {
 	if results, _ := f.Search("needle", store.SearchOptions{}); len(results) != 1 {
 		t.Fatalf("results = %d, want 1", len(results))
 	}
-	if len(f.Queries) != 1 || f.Queries[0] != "needle" {
-		t.Fatalf("recorded queries = %v", f.Queries)
+	if len(f.Queries()) != 1 || f.Queries()[0] != "needle" {
+		t.Fatalf("recorded queries = %v", f.Queries())
 	}
 	if recent, _ := f.RecentObservations(1); len(recent) != 1 {
 		t.Fatalf("recent = %d, want the limit to apply", len(recent))
@@ -208,8 +209,8 @@ func TestFakeMemoryReturnsWhatItWasGiven(t *testing.T) {
 	if err := f.DeleteSession("s2"); err != nil {
 		t.Fatalf("DeleteSession: %v", err)
 	}
-	if len(f.DeletedSessions) != 1 || f.DeletedSessions[0] != "s2" {
-		t.Fatalf("recorded deletes = %v", f.DeletedSessions)
+	if len(f.DeletedSessions()) != 1 || f.DeletedSessions()[0] != "s2" {
+		t.Fatalf("recorded deletes = %v", f.DeletedSessions())
 	}
 }
 
@@ -508,8 +509,8 @@ func TestFakeMemoryErrShortCircuitsEveryCall(t *testing.T) {
 	if err := f.DeleteSession("s1"); !errors.Is(err, boom) {
 		t.Errorf("DeleteSession error = %v", err)
 	}
-	if len(f.DeletedSessions) != 0 {
-		t.Fatalf("a failing delete must not be recorded, got %v", f.DeletedSessions)
+	if len(f.DeletedSessions()) != 0 {
+		t.Fatalf("a failing delete must not be recorded, got %v", f.DeletedSessions())
 	}
 }
 
@@ -588,8 +589,8 @@ func TestFakeEvidenceFiltersByTaskIDAndAttached(t *testing.T) {
 	if len(byTask) != 2 {
 		t.Fatalf("task filter = %+v, want the 2 rows under task 5", byTask)
 	}
-	if f.LastFilter.TaskID != 5 {
-		t.Fatalf("LastFilter = %+v, want the task filter just issued recorded", f.LastFilter)
+	if f.LastFilter().TaskID != 5 {
+		t.Fatalf("LastFilter = %+v, want the task filter just issued recorded", f.LastFilter())
 	}
 
 	yes := true
@@ -698,7 +699,7 @@ func TestFakeRunbookFiltersByProjectAndAllToggle(t *testing.T) {
 	if len(scoped) != 1 || scoped[0].ID != "RB-900" {
 		t.Fatalf("scoped = %+v, want only RB-900", scoped)
 	}
-	if f.LastListAll {
+	if f.LastListAll() {
 		t.Fatalf("LastListAll = true, want false to have been recorded")
 	}
 
@@ -709,7 +710,7 @@ func TestFakeRunbookFiltersByProjectAndAllToggle(t *testing.T) {
 	if len(all) != 2 {
 		t.Fatalf("all = %+v, want both rows", all)
 	}
-	if !f.LastListAll {
+	if !f.LastListAll() {
 		t.Fatalf("LastListAll = false, want true to have been recorded")
 	}
 }
@@ -729,8 +730,8 @@ func TestFakeRunbookSearchMatchesTitleAndSymptoms(t *testing.T) {
 	if len(results) != 1 || results[0].ID != "RB-901" {
 		t.Fatalf("results = %+v, want only the symptom match RB-901", results)
 	}
-	if f.LastSearch.Project != "acme" || f.LastSearch.Query != "503" || f.LastSearch.Limit != 10 {
-		t.Fatalf("LastSearch = %+v, want the issued filter recorded", f.LastSearch)
+	if f.LastSearch().Project != "acme" || f.LastSearch().Query != "503" || f.LastSearch().Limit != 10 {
+		t.Fatalf("LastSearch = %+v, want the issued filter recorded", f.LastSearch())
 	}
 }
 
@@ -866,8 +867,8 @@ func TestFakeTaskReturnsWhatItWasGiven(t *testing.T) {
 	if err != nil || len(filtered) != 1 || filtered[0].ID != 7 {
 		t.Fatalf("ListTasks(query=needle) = %+v, err %v", filtered, err)
 	}
-	if f.LastListFilter.Query != "needle" {
-		t.Fatalf("LastListFilter = %+v, want the issued query recorded", f.LastListFilter)
+	if f.LastListFilter().Query != "needle" {
+		t.Fatalf("LastListFilter = %+v, want the issued query recorded", f.LastListFilter())
 	}
 
 	paged, err := f.ListTasks("acme", store.TaskListFilter{Limit: 5, Offset: 22})
@@ -886,15 +887,15 @@ func TestFakeTaskReturnsWhatItWasGiven(t *testing.T) {
 	if err := f.UpdateState(1, "review"); err != nil {
 		t.Fatalf("UpdateState: %v", err)
 	}
-	if len(f.UpdateStateCalls) != 1 || f.UpdateStateCalls[0].State != "review" {
-		t.Fatalf("UpdateStateCalls = %+v, want the call recorded", f.UpdateStateCalls)
+	if len(f.UpdateStateCalls()) != 1 || f.UpdateStateCalls()[0].State != "review" {
+		t.Fatalf("UpdateStateCalls = %+v, want the call recorded", f.UpdateStateCalls())
 	}
 
 	if err := f.LinkObservation(1, 42); err != nil {
 		t.Fatalf("LinkObservation: %v", err)
 	}
-	if len(f.LinkCalls) != 1 || f.LinkCalls[0].ObservationID != 42 {
-		t.Fatalf("LinkCalls = %+v, want the call recorded", f.LinkCalls)
+	if len(f.LinkCalls()) != 1 || f.LinkCalls()[0].ObservationID != 42 {
+		t.Fatalf("LinkCalls = %+v, want the call recorded", f.LinkCalls())
 	}
 
 	pack, err := f.ContextPack(1)
@@ -928,14 +929,14 @@ func TestFakeTaskErrShortCircuitsButStillRecordsTheAttemptedWrite(t *testing.T) 
 	if err := f.UpdateState(1, "review"); !errors.Is(err, boom) {
 		t.Errorf("UpdateState error = %v", err)
 	}
-	if len(f.UpdateStateCalls) != 1 {
-		t.Fatalf("UpdateStateCalls = %+v, want the attempt recorded even on failure", f.UpdateStateCalls)
+	if len(f.UpdateStateCalls()) != 1 {
+		t.Fatalf("UpdateStateCalls = %+v, want the attempt recorded even on failure", f.UpdateStateCalls())
 	}
 	if err := f.LinkObservation(1, 2); !errors.Is(err, boom) {
 		t.Errorf("LinkObservation error = %v", err)
 	}
-	if len(f.LinkCalls) != 1 {
-		t.Fatalf("LinkCalls = %+v, want the attempt recorded even on failure", f.LinkCalls)
+	if len(f.LinkCalls()) != 1 {
+		t.Fatalf("LinkCalls = %+v, want the attempt recorded even on failure", f.LinkCalls())
 	}
 }
 
@@ -1911,8 +1912,8 @@ func TestFakeBenchmarkReturnsWhatItWasGiven(t *testing.T) {
 	if err != nil || len(page.Items) != 1 {
 		t.Fatalf("ListBenchmarks(metric filter) = (%+v, %v)", page, err)
 	}
-	if f.LastFilter.Metric != "p95" {
-		t.Fatalf("LastFilter = %+v", f.LastFilter)
+	if f.LastFilter().Metric != "p95" {
+		t.Fatalf("LastFilter = %+v", f.LastFilter())
 	}
 
 	taskBenches, err := f.TaskBenchmarks("task-1")
@@ -1957,8 +1958,8 @@ func TestFakeGraphReturnsWhatItWasGivenAndRecordsSyncCalls(t *testing.T) {
 	if err != nil || synced.Nodes != 6 {
 		t.Fatalf("SyncGraph = (%+v, %v)", synced, err)
 	}
-	if len(f.SyncCalls) != 1 || f.SyncCalls[0] != "acme" {
-		t.Fatalf("SyncCalls = %v", f.SyncCalls)
+	if len(f.SyncCalls()) != 1 || f.SyncCalls()[0] != "acme" {
+		t.Fatalf("SyncCalls = %v", f.SyncCalls())
 	}
 }
 
@@ -2000,8 +2001,8 @@ func TestFakeThemeReturnsWhatItWasGivenAndRecordsWrites(t *testing.T) {
 	if err := f.ResetTheme("koi-pond", json.RawMessage(`{}`)); err != nil {
 		t.Fatalf("ResetTheme: %v", err)
 	}
-	if len(f.Saved) != 1 || len(f.Deleted) != 1 || len(f.ResetCalls) != 1 {
-		t.Fatalf("writes not recorded: saved=%d deleted=%d reset=%d", len(f.Saved), len(f.Deleted), len(f.ResetCalls))
+	if len(f.Saved()) != 1 || len(f.Deleted()) != 1 || len(f.ResetCalls()) != 1 {
+		t.Fatalf("writes not recorded: saved=%d deleted=%d reset=%d", len(f.Saved()), len(f.Deleted()), len(f.ResetCalls()))
 	}
 }
 
@@ -2022,9 +2023,9 @@ func TestFakeThemeErrShortCircuitsButStillRecordsTheAttemptedWrite(t *testing.T)
 	if err := f.ResetTheme("x", nil); err == nil {
 		t.Fatal("ResetTheme should fail")
 	}
-	if len(f.Saved) != 1 || len(f.Deleted) != 1 || len(f.ResetCalls) != 1 {
+	if len(f.Saved()) != 1 || len(f.Deleted()) != 1 || len(f.ResetCalls()) != 1 {
 		t.Fatalf("attempted writes not recorded despite the error: saved=%d deleted=%d reset=%d",
-			len(f.Saved), len(f.Deleted), len(f.ResetCalls))
+			len(f.Saved()), len(f.Deleted()), len(f.ResetCalls()))
 	}
 }
 
@@ -2045,8 +2046,8 @@ func TestFakeSettingsReturnsWhatItWasGivenAndRecordsWrites(t *testing.T) {
 	if err := f.SetSetting("tui.icons", "nerd"); err != nil {
 		t.Fatalf("SetSetting: %v", err)
 	}
-	if f.Values["tui.icons"] != "nerd" || len(f.SetCalls) != 1 {
-		t.Fatalf("SetSetting did not update Values/SetCalls: %+v %v", f.Values, f.SetCalls)
+	if f.Value("tui.icons") != "nerd" || len(f.SetCalls()) != 1 {
+		t.Fatalf("SetSetting did not update Values/SetCalls: %+v %v", f.Values, f.SetCalls())
 	}
 }
 
@@ -2076,8 +2077,8 @@ func TestFakeSearchFiltersByKindsAndRecordsTheQuery(t *testing.T) {
 	if err != nil || len(only) != 1 || only[0].Kind != SearchKindTask {
 		t.Fatalf("SearchWorkspace(task only) = (%+v, %v)", only, err)
 	}
-	if f.LastQuery.Text != "x" {
-		t.Fatalf("LastQuery = %+v", f.LastQuery)
+	if f.LastQuery().Text != "x" {
+		t.Fatalf("LastQuery = %+v", f.LastQuery())
 	}
 }
 
@@ -2149,8 +2150,8 @@ func TestFakeMemoryScopedMethodsFilterAndPaginate(t *testing.T) {
 	if err != nil || len(sessPage.Items) != 1 || sessPage.Items[0].Project != "acme" {
 		t.Fatalf("RecentSessionsScoped = (%+v, %v)", sessPage, err)
 	}
-	if f.LastScope.Project != "acme" {
-		t.Fatalf("LastScope = %+v", f.LastScope)
+	if f.LastScope().Project != "acme" {
+		t.Fatalf("LastScope = %+v", f.LastScope())
 	}
 
 	// Subtree widens the scope through SubtreeSlugs.
@@ -2170,5 +2171,99 @@ func TestFakeMemoryScopedMethodsFilterAndPaginate(t *testing.T) {
 	}
 	if _, err := errFake.SearchScoped("x", ProjectScope{}, 1, 0); err == nil {
 		t.Fatal("SearchScoped should fail")
+	}
+}
+
+// TestFakeSpiesAreSafeUnderConcurrency drives every fake from several
+// goroutines at once, the way Bubble Tea runs a tab's Init and Refresh
+// commands. It only fails under -race, which is the point: the records each
+// fake keeps are written from command goroutines and read from the test's.
+func TestFakeSpiesAreSafeUnderConcurrency(t *testing.T) {
+	memory := &FakeMemory{Observations: []store.Observation{{ID: 1}}}
+	tasks := &FakeTask{ItemsByProject: map[string][]store.TaskListItem{"acme": {{Task: store.Task{ID: 1}}}}}
+	evidence := &FakeEvidence{ItemsByProject: map[string][]store.EvidenceListItem{"acme": {{Evidence: store.Evidence{ID: 1}}}}}
+	runbooks := &FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": {{Title: "one"}}}}
+	benchmarks := &FakeBenchmark{ByProject: map[string][]Benchmark{"acme": {{}}}}
+	graph := &FakeGraph{StateByProject: map[string]GraphState{"acme": {}}}
+	themes := &FakeTheme{}
+	settings := &FakeSettings{}
+	search := &FakeSearch{Hits: []SearchHit{{Kind: "task"}}}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = memory.Search("needle", store.SearchOptions{})
+			_, _ = memory.SearchScoped("needle", ProjectScope{Project: "acme"}, 10, 0)
+			_ = memory.DeleteSession("s1")
+			_, _ = tasks.ListTasks("acme", store.TaskListFilter{Query: "a"})
+			_, _ = tasks.ListTasksPage("acme", store.TaskListFilter{Query: "a"})
+			_ = tasks.UpdateState(1, "review")
+			_ = tasks.LinkObservation(1, 2)
+			_, _ = evidence.ListEvidence("acme", store.EvidenceListFilter{})
+			_, _ = evidence.ListEvidencePage("acme", store.EvidenceListFilter{})
+			_, _ = runbooks.ListRunbooks("acme", true)
+			_, _ = runbooks.ListRunbooksPage("acme", true, RunbookFilter{})
+			_, _ = runbooks.SearchRunbooks("acme", true, "one", 5)
+			_, _ = benchmarks.ListBenchmarks("acme", BenchmarkFilter{})
+			_, _ = graph.SyncGraph("acme")
+			_ = themes.SaveTheme(store.ThemeRecord{Name: "koi-pond"})
+			_ = themes.DeleteTheme("koi-pond")
+			_ = themes.ResetTheme("koi-pond", nil)
+			_ = settings.SetSetting("tui.theme", "koi-pond")
+			_, _, _ = settings.Setting("tui.theme")
+			_, _ = search.SearchWorkspace(SearchQuery{Text: "x"})
+		}()
+	}
+
+	// The test goroutine reads the records while the writers are still
+	// running: an unguarded field races here, not only between two commands.
+	for i := 0; i < 8; i++ {
+		_ = memory.Queries()
+		_ = memory.DeletedSessions()
+		_ = memory.LastScope()
+		_ = tasks.LastListFilter()
+		_ = tasks.UpdateStateCalls()
+		_ = tasks.LinkCalls()
+		_ = evidence.LastFilter()
+		_ = runbooks.LastListAll()
+		_ = runbooks.LastSearch()
+		_ = benchmarks.LastFilter()
+		_ = graph.SyncCalls()
+		_ = themes.Saved()
+		_ = themes.Deleted()
+		_ = themes.ResetCalls()
+		_ = settings.SetCalls()
+		_ = settings.Value("tui.theme")
+		_ = search.LastQuery()
+	}
+	wg.Wait()
+
+	if len(memory.Queries()) != 16 {
+		t.Fatalf("recorded %d queries, want one per Search and SearchScoped call", len(memory.Queries()))
+	}
+	if len(tasks.UpdateStateCalls()) != 8 || len(tasks.LinkCalls()) != 8 {
+		t.Fatalf("task calls = %d state, %d link, want 8 of each", len(tasks.UpdateStateCalls()), len(tasks.LinkCalls()))
+	}
+	if len(graph.SyncCalls()) != 8 || len(settings.SetCalls()) != 8 {
+		t.Fatalf("sync=%d settings=%d, want 8 of each", len(graph.SyncCalls()), len(settings.SetCalls()))
+	}
+}
+
+// TestSetErrFailsAFakeWhileItIsInUse covers the accessor a test needs when it
+// breaks a reader after the program is already running: assigning Err
+// directly would race with the command goroutine reading it.
+func TestSetErrFailsAFakeWhileItIsInUse(t *testing.T) {
+	f := &FakeSettings{}
+	if _, _, err := f.Setting("tui.theme"); err != nil {
+		t.Fatalf("Setting before SetErr = %v, want no error", err)
+	}
+	f.SetErr(errors.New("boom"))
+	if _, _, err := f.Setting("tui.theme"); err == nil {
+		t.Fatal("Setting after SetErr should fail")
+	}
+	if err := f.SetSetting("tui.theme", "koi-day"); err == nil {
+		t.Fatal("SetSetting after SetErr should fail")
 	}
 }

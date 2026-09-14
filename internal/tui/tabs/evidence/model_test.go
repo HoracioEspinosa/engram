@@ -95,8 +95,8 @@ func TestOpenForTaskScopesTheListToTheGivenTaskAndReloads(t *testing.T) {
 		t.Fatal("OpenForTask should return a non-nil command")
 	}
 	m, _ = step(t, m, run(t, cmd))
-	if fake.LastFilter.TaskID != 9 {
-		t.Fatalf("LastFilter.TaskID = %d, want 9", fake.LastFilter.TaskID)
+	if fake.LastFilter().TaskID != 9 {
+		t.Fatalf("LastFilter.TaskID = %d, want 9", fake.LastFilter().TaskID)
 	}
 	if len(m.Items) != 1 || m.Items[0].TaskID != 9 {
 		t.Fatalf("Items = %+v, want only task 9's row", m.Items)
