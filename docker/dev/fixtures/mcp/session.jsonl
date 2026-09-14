@@ -12,6 +12,6 @@
 {"jsonrpc": "2.0", "id": 10, "method": "tools/call", "params": {"name": "mem_task_list", "arguments": {"project": "koi-garden", "state": "active", "limit": 100}}}
 {"jsonrpc": "2.0", "id": 11, "method": "tools/call", "params": {"name": "mem_context_pack", "arguments": {"project": "koi-garden", "task": "KOI-1099"}}}
 {"jsonrpc": "2.0", "id": 12, "method": "tools/call", "params": {"name": "mem_project_card", "arguments": {"project": "koi-garden", "include_counts": true}}}
-{"jsonrpc": "2.0", "id": 13, "method": "tools/call", "params": {"name": "mem_project_upsert", "arguments": {"project": "Koi_Garden", "display_name": "Koi Garden Inválido"}}}
+{"jsonrpc": "2.0", "id": 13, "method": "tools/call", "params": {"name": "mem_project_upsert", "arguments": {"project": "Fantasma_Inexistente", "display_name": "Proyecto Inválido"}}}
 {"jsonrpc": "2.0", "id": 14, "method": "tools/call", "params": {"name": "mem_evidence_add", "arguments": {"task": "KOI-1099", "path": "/etc/passwd", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "kind": "png", "proves": "intento de path traversal absoluto"}}}
 {"jsonrpc": "2.0", "id": 15, "method": "tools/call", "params": {"name": "mem_task_link", "arguments": {"task": "KOI-1099", "observation_id": 1, "role": "root_cause", "graph_ref": "LookupClient.Resolve"}}}
