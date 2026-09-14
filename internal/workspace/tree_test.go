@@ -122,145 +122,35 @@ func TestTreeDoctorIsQuietOnAHealthyTree(t *testing.T) {
 		t.Fatalf("SetProjectParent: %v", err)
 	}
 
-	faults, err := TreeDoctor(s, false)
-	if err != nil {
-		t.Fatalf("TreeDoctor: %v", err)
-	}
-	if len(faults) != 0 {
-		t.Fatalf("faults = %+v, want none", faults)
-	}
-}
-
-// TestTreeDoctorFindsAnOrphanAndDetachesIt pins the repair for the one fault
-// ordinary use produces: a parent that was retired while something still hung
-// from it. The card is reported, and --fix moves it where a person can see it
-// rather than guessing where it belonged.
-func TestTreeDoctorFindsAnOrphanAndDetachesIt(t *testing.T) {
-	s := newStore(t)
-	for _, slug := range []string{"koi-garden", "koi-garden-pond-01"} {
-		if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: slug}); err != nil {
-			t.Fatalf("UpsertProjectCard(%s): %v", slug, err)
+	for _, fix := range []bool{false, true} {
+		faults, err := TreeDoctor(s, fix)
+		if err != nil {
+			t.Fatalf("TreeDoctor(fix=%v): %v", fix, err)
+		}
+		if len(faults) != 0 {
+			t.Fatalf("faults = %+v, want none", faults)
 		}
 	}
-	parent := "koi-garden"
-	if err := s.SetProjectParent("koi-garden-pond-01", &parent); err != nil {
-		t.Fatalf("SetProjectParent: %v", err)
-	}
-	// Retiring the umbrella leaves the instance pointing at a card no live
-	// query returns. The foreign key is still satisfied — the row is there —
-	// which is exactly why this needs a doctor rather than a constraint.
-	if _, err := s.DB().Exec(
-		`UPDATE project_cards SET deleted_at = '2026-09-14 10:00:00' WHERE slug = 'koi-garden'`); err != nil {
-		t.Fatalf("retire the umbrella: %v", err)
-	}
 
-	faults, err := TreeDoctor(s, false)
-	if err != nil {
-		t.Fatalf("TreeDoctor: %v", err)
-	}
-	if len(faults) != 1 || faults[0].Fault != FaultOrphan {
-		t.Fatalf("faults = %+v, want one orphan", faults)
-	}
-	if faults[0].Fixed {
-		t.Error("a report without --fix must not repair anything")
-	}
-
-	fixed, err := TreeDoctor(s, true)
-	if err != nil {
-		t.Fatalf("TreeDoctor(fix): %v", err)
-	}
-	if len(fixed) != 1 || !fixed[0].Fixed {
-		t.Fatalf("faults = %+v, want the orphan detached", fixed)
-	}
-
+	// Nothing was wrong, so --fix left the tree exactly as it was.
 	card, err := s.GetProjectCard("koi-garden-pond-01")
 	if err != nil {
 		t.Fatalf("GetProjectCard: %v", err)
 	}
-	if card.ParentSlug != nil || card.Depth != 0 {
-		t.Fatalf("card is at parent %v depth %d, want the top of the tree", card.ParentSlug, card.Depth)
-	}
-
-	after, err := TreeDoctor(s, false)
-	if err != nil {
-		t.Fatalf("TreeDoctor: %v", err)
-	}
-	if len(after) != 0 {
-		t.Fatalf("faults = %+v after the repair, want none", after)
+	if card.ParentSlug == nil || *card.ParentSlug != "koi-garden" || card.Depth != 1 {
+		t.Fatalf("card moved to parent %v depth %d", card.ParentSlug, card.Depth)
 	}
 }
 
-// TestDiagnoseCardNamesEveryFault covers the verdicts a live database cannot
-// be talked into producing.
-//
-// The schema's own trigger refuses a depth that disagrees with the chain and a
-// card that is its own parent, so those rows can only arrive another way — a
-// restore, or a sync from a peer whose schema predates the trigger. The doctor
-// exists for exactly that, and the only honest way to test it is to hand the
-// diagnosis the shape it is meant to catch.
-func TestDiagnoseCardNamesEveryFault(t *testing.T) {
-	ptr := func(s string) *string { return &s }
-
-	cases := []struct {
-		name  string
-		cards map[string]treeCard
-		slug  string
-		fault string
-		ok    bool
-	}{
-		{
-			name:  "a root at a depth it cannot be at",
-			cards: map[string]treeCard{"a": {depth: 2}},
-			slug:  "a", fault: FaultDepth, ok: true,
-		},
-		{
-			name:  "a depth that disagrees with the chain",
-			cards: map[string]treeCard{"a": {}, "b": {parent: ptr("a"), depth: 2}},
-			slug:  "b", fault: FaultDepth, ok: true,
-		},
-		{
-			name:  "a card that is its own ancestor",
-			cards: map[string]treeCard{"a": {parent: ptr("b"), depth: 1}, "b": {parent: ptr("a"), depth: 1}},
-			slug:  "a", fault: FaultCycle, ok: true,
-		},
-		{
-			name:  "a parent with no live card",
-			cards: map[string]treeCard{"b": {parent: ptr("gone"), depth: 1}},
-			slug:  "b", fault: FaultOrphan, ok: true,
-		},
-		{
-			name: "a chain deeper than the tree allows",
-			cards: map[string]treeCard{
-				"a": {}, "b": {parent: ptr("a"), depth: 1},
-				"c": {parent: ptr("b"), depth: 2}, "d": {parent: ptr("c"), depth: 3},
-			},
-			slug: "d", fault: FaultDepth, ok: true,
-		},
-		{
-			name:  "a healthy root",
-			cards: map[string]treeCard{"a": {}},
-			slug:  "a",
-		},
-		{
-			name:  "a healthy child",
-			cards: map[string]treeCard{"a": {}, "b": {parent: ptr("a"), depth: 1}},
-			slug:  "b",
-		},
+// TestTreeFaultVocabularyMatchesTheStore pins the delegation: the doctor is the
+// store's, and a surface that branches on these names must be reading the same
+// ones the diagnosis emits.
+func TestTreeFaultVocabularyMatchesTheStore(t *testing.T) {
+	if FaultOrphan != store.TreeFaultOrphan || FaultCycle != store.TreeFaultCycle || FaultDepth != store.TreeFaultDepth {
+		t.Fatalf("fault names %q/%q/%q do not match the store's", FaultOrphan, FaultCycle, FaultDepth)
 	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			fault, ok := diagnoseCard(tc.cards, tc.slug)
-			if ok != tc.ok {
-				t.Fatalf("diagnosed = %v, want %v (fault %+v)", ok, tc.ok, fault)
-			}
-			if ok && fault.Fault != tc.fault {
-				t.Fatalf("fault = %q, want %q", fault.Fault, tc.fault)
-			}
-			if ok && fault.Detail == "" {
-				t.Error("a fault with no detail tells nobody what to fix")
-			}
-		})
+	if MaxProjectDepth != store.MaxProjectDepth {
+		t.Fatalf("MaxProjectDepth = %d, want the store's %d", MaxProjectDepth, store.MaxProjectDepth)
 	}
 }
 

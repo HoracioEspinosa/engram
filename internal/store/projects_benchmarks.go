@@ -128,6 +128,25 @@ func scanBenchmark(row interface{ Scan(dest ...any) error }) (Benchmark, error) 
 	return b, err
 }
 
+// FindBenchmark returns the measurement a task already holds under this
+// (name, metric, captured_at), and whether there was one.
+//
+// It is the read half of AddBenchmark's idempotency key, exposed so a dry run
+// can report a re-import as a no-op rather than as work.
+func (s *Store) FindBenchmark(taskSyncID, name, metric, capturedAt string) (Benchmark, bool, error) {
+	b, err := scanBenchmark(s.readDB().QueryRow(
+		`SELECT `+benchmarkSelectColumns+` FROM benchmarks
+		 WHERE task_sync_id = ? AND name = ? AND metric = ? AND captured_at = ? AND deleted_at IS NULL`,
+		taskSyncID, strings.TrimSpace(name), strings.TrimSpace(metric), strings.TrimSpace(capturedAt)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Benchmark{}, false, nil
+	}
+	if err != nil {
+		return Benchmark{}, false, fmt.Errorf("engram-projects: check duplicate benchmark: %w", err)
+	}
+	return b, true, nil
+}
+
 // AddBenchmark records one measurement, idempotent by
 // (task_sync_id, name, metric, captured_at): the same run registered twice is
 // the same number, not two.
@@ -159,16 +178,13 @@ func (s *Store) AddBenchmark(p AddBenchmarkParams) (AddBenchmarkResult, error) {
 		capturedAt = s.nowUTC()
 	}
 
-	existing, err := scanBenchmark(s.db.QueryRow(
-		`SELECT `+benchmarkSelectColumns+` FROM benchmarks
-		 WHERE task_sync_id = ? AND name = ? AND metric = ? AND captured_at = ? AND deleted_at IS NULL`,
-		p.Task.SyncID, name, metric, capturedAt))
-	if err == nil {
+	existing, found, err := s.FindBenchmark(p.Task.SyncID, name, metric, capturedAt)
+	if err != nil {
+		return out, err
+	}
+	if found {
 		out.Benchmark = existing
 		return out, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return out, fmt.Errorf("engram-projects: check duplicate benchmark: %w", err)
 	}
 
 	now := s.nowUTC()

@@ -171,15 +171,6 @@ func isBenchmarkRun(f vault.File) bool {
 // the read half of AddEvidence's idempotency key, which a dry run needs in
 // order to say "update" where an apply would.
 func evidenceExists(s *store.Store, taskSyncID, sha string) (bool, error) {
-	var one int
-	err := s.DB().QueryRow(
-		`SELECT 1 FROM evidence WHERE task_sync_id = ? AND sha256 = ? AND deleted_at IS NULL LIMIT 1`,
-		taskSyncID, sha).Scan(&one)
-	if isNoRows(err) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("engram-workspace: check evidence: %w", err)
-	}
-	return true, nil
+	_, found, err := s.FindEvidenceBySHA(taskSyncID, sha)
+	return found, err
 }

@@ -15,13 +15,10 @@
 package workspace
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -104,116 +101,44 @@ type Skip struct {
 
 // ─── Task resolution ─────────────────────────────────────────────────────────
 
-var (
-	taskSyncIDRef = regexp.MustCompile(`^task-[0-9a-f]{16}$`)
-	jiraKeyRef    = regexp.MustCompile(`^[A-Z][A-Z0-9]+-[0-9]+$`)
-	localIDRef    = regexp.MustCompile(`^#([0-9]+)$`)
-	changeRef     = regexp.MustCompile(`^change:([a-z0-9][a-z0-9-]*)$`)
-)
-
-// taskColumns is the projection ResolveTask scans. It is deliberately the
-// subset this package uses rather than the store's whole task projection: a
-// column added to the table must not silently change what a scan here expects.
-const taskColumns = `id, sync_id, project, jira_key, sdd_change, title, kind, state,
-	slug, summary, pending_note, vault_path`
-
 // ResolveTask resolves a task reference across the whole store, in the five
 // forms the workspace surfaces accept: a Jira key, a task sync id, "#<id>",
 // "change:<sdd-change>", and a task slug.
 //
-// The store's own ResolveTaskRef is scoped to one project and knows the first
-// four forms. The workspace operations are given a reference without a
-// project — the task is what names the project, not the other way round — so
-// the lookup happens here, over store.DB(), and a reference that answers in
-// two projects is refused rather than decided by row order.
+// The lookup itself belongs to the store, which owns the tasks table; this only
+// republishes its two refusals under the codes a surface reports them with.
 func ResolveTask(s *store.Store, ref string) (store.Task, error) {
-	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		return store.Task{}, fmt.Errorf("%w: empty reference", ErrUnknownTask)
-	}
+	return resolveTaskIn(s, "", ref)
+}
 
-	var (
-		column string
-		value  any
-	)
+// resolveTaskIn resolves a reference, scoped to project when it is named, and
+// maps the store's sentinels onto this package's coded errors.
+func resolveTaskIn(s *store.Store, project, ref string) (store.Task, error) {
+	t, err := s.ResolveTaskRef(project, ref)
 	switch {
-	case taskSyncIDRef.MatchString(ref):
-		column, value = "sync_id", ref
-	case jiraKeyRef.MatchString(ref):
-		column, value = "jira_key", ref
-	case localIDRef.MatchString(ref):
-		id, err := strconv.ParseInt(localIDRef.FindStringSubmatch(ref)[1], 10, 64)
-		if err != nil {
-			return store.Task{}, fmt.Errorf("%w: %s", ErrUnknownTask, ref)
-		}
-		column, value = "id", id
-	case changeRef.MatchString(ref):
-		column, value = "sdd_change", changeRef.FindStringSubmatch(ref)[1]
-	default:
-		column, value = "slug", ref
-	}
-
-	rows, err := s.DB().Query(
-		`SELECT `+taskColumns+` FROM tasks WHERE `+column+` = ? AND deleted_at IS NULL ORDER BY id`, value)
-	if err != nil {
-		return store.Task{}, fmt.Errorf("engram-workspace: resolve task %s: %w", ref, err)
-	}
-	defer rows.Close()
-
-	var found []store.Task
-	for rows.Next() {
-		var t store.Task
-		if err := rows.Scan(&t.ID, &t.SyncID, &t.Project, &t.JiraKey, &t.SDDChange, &t.Title,
-			&t.Kind, &t.State, &t.Slug, &t.Summary, &t.PendingNote, &t.VaultPath); err != nil {
-			return store.Task{}, fmt.Errorf("engram-workspace: scan task %s: %w", ref, err)
-		}
-		found = append(found, t)
-	}
-	if err := rows.Err(); err != nil {
-		return store.Task{}, fmt.Errorf("engram-workspace: resolve task %s: %w", ref, err)
-	}
-
-	switch len(found) {
-	case 0:
+	case err == nil:
+		return t, nil
+	case errors.Is(err, store.ErrAmbiguousTask):
+		return store.Task{}, fmt.Errorf("%w: %s", ErrAmbiguousTask, err)
+	case errors.Is(err, store.ErrUnknownTask):
 		return store.Task{}, fmt.Errorf("%w: %s", ErrUnknownTask, ref)
-	case 1:
-		return found[0], nil
-	}
-	projects := make([]string, 0, len(found))
-	for _, t := range found {
-		projects = append(projects, t.Project)
-	}
-	return store.Task{}, fmt.Errorf("%w: %s resolves in %s", ErrAmbiguousTask, ref, strings.Join(projects, ", "))
-}
-
-// findTaskBySlug returns the task a project keeps under slug, or
-// sql.ErrNoRows. It is the lookup key an import uses for the task folders that
-// carry no Jira ticket.
-func findTaskBySlug(s *store.Store, project, slug string) (store.Task, error) {
-	var t store.Task
-	err := s.DB().QueryRow(
-		`SELECT `+taskColumns+` FROM tasks WHERE project = ? AND slug = ? AND deleted_at IS NULL ORDER BY id LIMIT 1`,
-		project, slug).
-		Scan(&t.ID, &t.SyncID, &t.Project, &t.JiraKey, &t.SDDChange, &t.Title,
-			&t.Kind, &t.State, &t.Slug, &t.Summary, &t.PendingNote, &t.VaultPath)
-	if err != nil {
+	default:
 		return store.Task{}, err
 	}
-	return t, nil
 }
 
-// findTaskByJiraKey returns the task holding a Jira key anywhere in the store.
-// Keys are unique across projects, so the project is not part of the lookup.
-func findTaskByJiraKey(s *store.Store, key string) (store.Task, error) {
-	var t store.Task
-	err := s.DB().QueryRow(
-		`SELECT `+taskColumns+` FROM tasks WHERE jira_key = ? AND deleted_at IS NULL LIMIT 1`, key).
-		Scan(&t.ID, &t.SyncID, &t.Project, &t.JiraKey, &t.SDDChange, &t.Title,
-			&t.Kind, &t.State, &t.Slug, &t.Summary, &t.PendingNote, &t.VaultPath)
-	if err != nil {
-		return store.Task{}, err
+// findTaskIn returns the task project keeps under ref and whether there was
+// one. It is the lookup an import decides "create or update" with, so a miss is
+// an ordinary answer rather than a failure.
+func findTaskIn(s *store.Store, project, ref string) (store.Task, bool, error) {
+	t, err := s.ResolveTaskRef(project, ref)
+	if errors.Is(err, store.ErrUnknownTask) || errors.Is(err, store.ErrAmbiguousTask) {
+		return store.Task{}, false, nil
 	}
-	return t, nil
+	if err != nil {
+		return store.Task{}, false, err
+	}
+	return t, true, nil
 }
 
 // ─── Vault location ──────────────────────────────────────────────────────────
@@ -424,6 +349,3 @@ func runPathFor(root, path string) string {
 	}
 	return filepath.Base(path)
 }
-
-// isNoRows reports the "nothing matched" case of a single-row lookup.
-func isNoRows(err error) bool { return errors.Is(err, sql.ErrNoRows) }

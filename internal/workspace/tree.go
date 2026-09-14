@@ -100,16 +100,17 @@ func ensureParentCard(s *store.Store, slug string) (store.ProjectCard, bool, err
 	return card, created, nil
 }
 
-// The faults a tree can be in.
+// The faults a tree can be in. The store diagnoses them; these names are the
+// spelling a surface publishes, kept equal to the store's by construction.
 const (
 	// FaultOrphan is a card pointing at a parent that is gone.
-	FaultOrphan = "orphan"
+	FaultOrphan = store.TreeFaultOrphan
 	// FaultCycle is a card that is its own ancestor. Only a write that
 	// bypassed SetProjectParent can produce one.
-	FaultCycle = "cycle"
+	FaultCycle = store.TreeFaultCycle
 	// FaultDepth is a card whose recorded depth disagrees with its chain, or
 	// sits deeper than the tree allows.
-	FaultDepth = "depth"
+	FaultDepth = store.TreeFaultDepth
 )
 
 // TreeFault is one thing wrong with the hierarchy.
@@ -129,103 +130,29 @@ type TreeFault struct {
 // with an invisible wrong one; a card at the top of the tree is at least
 // somewhere a person can see it and move it on purpose.
 func TreeDoctor(s *store.Store, fix bool) ([]TreeFault, error) {
-	rows, err := s.DB().Query(
-		`SELECT slug, parent_slug, depth FROM project_cards WHERE deleted_at IS NULL ORDER BY slug`)
+	report, err := s.ProjectTreeDoctor()
+	if fix {
+		report, err = s.RepairProjectTree()
+	}
 	if err != nil {
-		return nil, fmt.Errorf("engram-workspace: read project cards: %w", err)
+		return nil, err
 	}
-	cards := map[string]treeCard{}
-	var slugs []string
-	for rows.Next() {
-		var slug string
-		var c treeCard
-		if err := rows.Scan(&slug, &c.parent, &c.depth); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("engram-workspace: scan project card: %w", err)
-		}
-		cards[slug] = c
-		slugs = append(slugs, slug)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, fmt.Errorf("engram-workspace: read project cards: %w", err)
-	}
-	rows.Close()
 
-	faults := []TreeFault{}
-	for _, slug := range slugs {
-		fault, ok := diagnoseCard(cards, slug)
-		if !ok {
-			continue
-		}
-		if fix {
-			if err := s.SetProjectParent(slug, nil); err != nil {
-				fault.Detail += "; detaching failed: " + err.Error()
-			} else {
-				fault.Fixed = true
-			}
+	faults := make([]TreeFault, 0, len(report.Faults))
+	for _, f := range report.Faults {
+		fault := TreeFault{Slug: f.Slug, Fault: f.Fault, Detail: f.Detail, Fixed: f.Repaired}
+		if f.RepairError != "" {
+			fault.Detail += "; detaching failed: " + f.RepairError
 		}
 		faults = append(faults, fault)
 	}
 	return faults, nil
 }
 
-// treeCard is the pair of columns a tree's integrity is decided by.
-type treeCard struct {
-	parent *string
-	depth  int
-}
-
-// diagnoseCard walks one card's ancestry and reports the first fault it finds.
-func diagnoseCard(cards map[string]treeCard, slug string) (TreeFault, bool) {
-	c := cards[slug]
-	if c.parent == nil {
-		if c.depth != 0 {
-			return TreeFault{Slug: slug, Fault: FaultDepth,
-				Detail: fmt.Sprintf("has no parent but records depth %d", c.depth)}, true
-		}
-		return TreeFault{}, false
-	}
-
-	seen := map[string]bool{slug: true}
-	hops := 0
-	current := slug
-	for {
-		parent := cards[current].parent
-		if parent == nil {
-			break
-		}
-		if _, ok := cards[*parent]; !ok {
-			return TreeFault{Slug: slug, Fault: FaultOrphan,
-				Detail: fmt.Sprintf("parent %q has no live card", *parent)}, true
-		}
-		if seen[*parent] {
-			return TreeFault{Slug: slug, Fault: FaultCycle,
-				Detail: fmt.Sprintf("is its own ancestor through %q", *parent)}, true
-		}
-		seen[*parent] = true
-		hops++
-		if hops > len(cards) {
-			return TreeFault{Slug: slug, Fault: FaultCycle,
-				Detail: "ancestry does not terminate"}, true
-		}
-		current = *parent
-	}
-	if hops != c.depth {
-		return TreeFault{Slug: slug, Fault: FaultDepth,
-			Detail: fmt.Sprintf("records depth %d but sits %d level(s) below its root", c.depth, hops)}, true
-	}
-	if hops >= MaxProjectDepth {
-		return TreeFault{Slug: slug, Fault: FaultDepth,
-			Detail: fmt.Sprintf("sits %d level(s) below its root, past the %d the tree allows", hops, MaxProjectDepth-1)}, true
-	}
-	return TreeFault{}, false
-}
-
 // MaxProjectDepth mirrors the deepest a card may sit below a root. The store
-// owns the rule and enforces it on every write; the doctor needs the number to
-// name a row that got past it.
-const MaxProjectDepth = 3
+// owns the rule and enforces it on every write; a surface needs the number to
+// explain a row that got past it.
+const MaxProjectDepth = store.MaxProjectDepth
 
 // treeConflictCode maps a reparenting refusal onto the envelope code it is
 // published under.

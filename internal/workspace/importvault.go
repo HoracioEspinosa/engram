@@ -356,24 +356,20 @@ func importRuns(s *store.Store, task store.Task, root, taskDir string, runs []va
 // existingTask finds the row a vault folder already corresponds to, by Jira key
 // when the folder names one and by (project, slug) otherwise.
 func existingTask(s *store.Store, project, jiraKey, slug string) (store.Task, bool, error) {
+	// A Jira key is unique across projects, so it is looked up without one;
+	// a slug only means something inside the project that keeps it.
 	if jiraKey != "" {
-		t, err := findTaskByJiraKey(s, jiraKey)
-		if err == nil {
-			return t, true, nil
-		}
-		if !isNoRows(err) {
+		t, found, err := findTaskIn(s, "", jiraKey)
+		if err != nil {
 			return store.Task{}, false, fmt.Errorf("engram-workspace: look up %s: %w", jiraKey, err)
 		}
-		return store.Task{}, false, nil
+		return t, found, nil
 	}
-	t, err := findTaskBySlug(s, project, slug)
-	if err == nil {
-		return t, true, nil
-	}
-	if !isNoRows(err) {
+	t, found, err := findTaskIn(s, project, slug)
+	if err != nil {
 		return store.Task{}, false, fmt.Errorf("engram-workspace: look up %s/%s: %w", project, slug, err)
 	}
-	return store.Task{}, false, nil
+	return t, found, nil
 }
 
 // stateFor picks the state a task is in: the vault README's task map first,
@@ -448,16 +444,6 @@ func countMetrics(runs []vault.RunFile) int {
 // benchmarkExists is the read half of AddBenchmark's idempotency key, which a
 // dry run needs in order to report a re-import as a no-op rather than as work.
 func benchmarkExists(s *store.Store, taskSyncID, name, metric, capturedAt string) (bool, error) {
-	var one int
-	err := s.DB().QueryRow(
-		`SELECT 1 FROM benchmarks
-		 WHERE task_sync_id = ? AND name = ? AND metric = ? AND captured_at = ? AND deleted_at IS NULL
-		 LIMIT 1`, taskSyncID, name, metric, capturedAt).Scan(&one)
-	if isNoRows(err) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("engram-workspace: check benchmark: %w", err)
-	}
-	return true, nil
+	_, found, err := s.FindBenchmark(taskSyncID, name, metric, capturedAt)
+	return found, err
 }
