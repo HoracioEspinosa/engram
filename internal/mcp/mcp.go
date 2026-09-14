@@ -2554,7 +2554,7 @@ func resolveSaveWriteProject(s *store.Store, projectChoice string, explicitProje
 			}
 		}
 
-		exists, err := s.ProjectExists(project)
+		exists, err := s.ProjectKnown(project)
 		if err != nil {
 			return projectpkg.DetectionResult{}, err
 		}
@@ -2843,7 +2843,7 @@ func resolveReadProject(s *store.Store, override string) (projectpkg.DetectionRe
 		return resolveWriteProject()
 	}
 	normalized, _ := store.NormalizeProject(override)
-	exists, err := s.ProjectExists(normalized)
+	exists, err := s.ProjectKnown(normalized)
 	if err != nil {
 		return projectpkg.DetectionResult{}, err
 	}

@@ -518,3 +518,29 @@ func TestTaskLink_KnowledgeRefShapeRule(t *testing.T) {
 		t.Fatalf("unexpected error: %v", callResultJSON(t, res))
 	}
 }
+
+// TestReadToolsAcceptCardOnlyProject covers the window between mem_project_upsert
+// and the first observation: the card is the project's only row, and a read tool
+// given that project by name has to serve it rather than call it unknown.
+func TestReadToolsAcceptCardOnlyProject(t *testing.T) {
+	t.Chdir(t.TempDir())
+	s := newMCPTestStore(t)
+	cfg := MCPConfig{DefaultProject: "koi-garden"}
+
+	upsert := callProjectTool(t, handleProjectUpsert(s, cfg), map[string]any{"project": "koi-garden"})
+	if upsert.IsError {
+		t.Fatalf("mem_project_upsert: %v", callResultJSON(t, upsert))
+	}
+	if exists, err := s.ProjectExists("koi-garden"); err != nil || exists {
+		t.Fatalf("ProjectExists = %v, %v; want false, nil so the card is the only backing row", exists, err)
+	}
+
+	list := callProjectTool(t, handleTaskList(s, cfg), map[string]any{"project": "koi-garden"})
+	if list.IsError {
+		t.Fatalf("mem_task_list on a card-only project: %v", callResultJSON(t, list))
+	}
+	body := callResultJSON(t, list)
+	if got := body["project"]; got != "koi-garden" {
+		t.Fatalf("project = %v; want koi-garden", got)
+	}
+}

@@ -21,13 +21,12 @@
 #     a name that disappears between runs fails here, which is the whole
 #     point of keeping the additive rule enforceable rather than aspirational.
 #
-# One behaviour of the current binary is held fixed rather than worked around,
-# because a suite that skips what it cannot fix stops measuring it:
-#   * Read tools do not recognise a project that only has a card (ids 6, 9-12
-#     and 16).
-# It is pinned to the exact code it reports today. A pinned expectation that
-# starts succeeding is a FAIL, not a silent pass: the day the behaviour changes,
-# the assertion has to be promoted rather than forgotten.
+# No behaviour is held fixed today: every call either succeeds or is rejected
+# for an input that is invalid on purpose. When a defect this suite is not
+# allowed to fix shows up, assert_pinned_failure below records it against the
+# exact code it reports, so it stays measured instead of skipped — and a pinned
+# expectation that starts succeeding is a FAIL, not a silent pass: the day the
+# behaviour changes, the assertion has to be promoted rather than forgotten.
 #
 # The transport is NDJSON: mcp-go's stdio server reads one JSON value per line
 # and writes one per line, so every line of the capture is independently
@@ -282,17 +281,17 @@ assert_ok 3 "id 3 mem_project_upsert"
 # id 16 — the card written by id 3 is read back before anything else has been
 # written to this store, so this is the one call that isolates the read path
 # from whether an observation happens to exist.
-assert_pinned_failure 16 "id 16 mem_project_card does not see a project that only has a card" unknown_project
+assert_ok 16 "id 16 mem_project_card reads a project that only has a card"
 
 assert_ok 4 "id 4 mem_task_upsert"
 assert_ok 5 "id 5 mem_save accepts the project the process was started with"
-assert_pinned_failure 6 "id 6 mem_search does not see the project" unknown_project
+assert_ok 6 "id 6 mem_search"
 assert_ok 7 "id 7 mem_get_observation reads back what id 5 wrote"
 assert_ok 8 "id 8 mem_evidence_add"
-assert_pinned_failure 9 "id 9 mem_evidence_list does not see the project" unknown_project
-assert_pinned_failure 10 "id 10 mem_task_list does not see the project" unknown_project
-assert_pinned_failure 11 "id 11 mem_context_pack does not see the project" unknown_project
-assert_pinned_failure 12 "id 12 mem_project_card does not see the project" unknown_project
+assert_ok 9 "id 9 mem_evidence_list"
+assert_ok 10 "id 10 mem_task_list"
+assert_ok 11 "id 11 mem_context_pack"
+assert_ok 12 "id 12 mem_project_card"
 
 assert_error_code 13 "id 13 mem_project_upsert refuses an explicit project it does not already know" unknown_project
 assert_error_code 14 "id 14 mem_evidence_add refuses an absolute evidence path" absolute_path_rejected

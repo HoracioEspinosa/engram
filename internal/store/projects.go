@@ -236,6 +236,47 @@ func (s *Store) ProjectCardExists(slug string) (bool, error) {
 	return true, nil
 }
 
+// ProjectKnown reports whether the store recognises a project at all: it has
+// rows in observations, sessions, prompts or enrollment (ProjectExists), or it
+// has a project card and nothing else yet. Read and save tools resolve an
+// explicit project through this so a card created by mem_project_upsert is
+// usable before its first observation lands, instead of being reported unknown
+// until something happens to be written under it.
+//
+// project_cards belongs to the engram-projects extension, so a store that never
+// created that schema falls back to ProjectExists alone rather than erroring.
+func (s *Store) ProjectKnown(slug string) (bool, error) {
+	exists, err := s.ProjectExists(slug)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return true, nil
+	}
+	cardExists, cardErr := s.ProjectCardExists(slug)
+	if cardErr == nil {
+		return cardExists, nil
+	}
+	if present, presentErr := s.projectCardsTableExists(); presentErr == nil && !present {
+		return false, nil
+	}
+	return false, cardErr
+}
+
+// projectCardsTableExists tells a store without the engram-projects schema apart
+// from one whose project_cards query failed for any other reason.
+func (s *Store) projectCardsTableExists() (bool, error) {
+	var name string
+	err := s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='project_cards'`).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ensureMinimalProjectCard creates a card with display_name = slug when none
 // exists yet. Returns cardCreated=true when it had to create one. Used by
 // UpsertTask and AddEvidence, whose parent RFC sections require a task's
