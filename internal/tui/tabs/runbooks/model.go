@@ -47,7 +47,7 @@ type runbooksLoadedMsg struct {
 	project string
 	all     bool
 	query   string
-	items   []store.RunbookIndexRow
+	page    data.Page[store.RunbookIndexRow]
 	err     error
 }
 
@@ -80,7 +80,7 @@ type editorClosedMsg struct {
 
 // Model is the Runbooks tab's state.
 type Model struct {
-	reader   data.RunbookReader
+	reader   data.RunbookSource
 	projects data.ProjectReader
 	styles   theme.Styles
 	project  string
@@ -90,9 +90,13 @@ type Model struct {
 	Height int
 
 	// Index (S8).
-	Items       []store.RunbookIndexRow
-	Cursor      int
-	Scroll      int
+	Items  []store.RunbookIndexRow
+	Cursor int
+	Scroll int
+	// Total is how many runbooks the scope and filter match in the store,
+	// not how many came back on this page.
+	Total       int
+	Filter      data.RunbookFilter
 	All         bool // "a" toggle: this project only (false) vs every project (true)
 	Query       string
 	Searching   bool
@@ -117,7 +121,7 @@ type Model struct {
 // the root scopes it with WithProject once one is active, exactly as it
 // constructs evidence.Model — see app.Model.New and the selector's "enter"
 // key.
-func New(reader data.RunbookReader, projects data.ProjectReader) Model {
+func New(reader data.RunbookSource, projects data.ProjectReader) Model {
 	search := textinput.New()
 	search.Placeholder = "Search symptoms..."
 	search.CharLimit = 200
@@ -157,6 +161,8 @@ func (m Model) WithProject(project string) Model {
 	m.Items = nil
 	m.Cursor = 0
 	m.Scroll = 0
+	m.Total = 0
+	m.Filter = data.RunbookFilter{}
 	m.Query = ""
 	m.Searching = false
 	m.SearchInput.SetValue("")
@@ -171,6 +177,26 @@ func (m Model) WithProject(project string) Model {
 	return m
 }
 
+// HasPrevPage reports whether a page of runbooks sits before the one on
+// screen. A ranked search is never paged — SearchRunbooks takes a limit and
+// no offset — so it always reports false.
+func (m Model) HasPrevPage() bool { return m.Query == "" && m.Filter.Offset > 0 }
+
+// HasNextPage reports whether a page of runbooks sits after the one on
+// screen, read from the store's own total.
+func (m Model) HasNextPage() bool {
+	return m.Query == "" && m.Filter.Offset+len(m.Items) < m.Total
+}
+
+// pageLimit is the page size in force: the filter's own, or the default the
+// store applies when it has none.
+func (m Model) pageLimit() int {
+	if m.Filter.Limit > 0 {
+		return m.Filter.Limit
+	}
+	return pageSize
+}
+
 // Title is the label the tab bar shows for this tab.
 func (Model) Title() string { return "Runbooks" }
 
@@ -181,7 +207,7 @@ func (m Model) Init() tea.Cmd {
 	if m.project == "" {
 		return nil
 	}
-	return loadRunbookIndex(m.reader, m.project, m.All)
+	return loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
 }
 
 // Refresh reloads the data behind the current screen: the index or the
@@ -194,5 +220,5 @@ func (m Model) Refresh() tea.Cmd {
 	if m.Query != "" {
 		return searchRunbooks(m.reader, m.project, m.All, m.Query, searchLimit)
 	}
-	return loadRunbookIndex(m.reader, m.project, m.All)
+	return loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
 }

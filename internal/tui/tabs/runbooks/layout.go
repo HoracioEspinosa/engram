@@ -17,6 +17,11 @@ const (
 	// help footer and any banner above the list/body.
 	indexChrome = 5
 	viewChrome  = 8
+
+	// pageSize is how many rows the page keys move by. store.ListRunbooks
+	// defaults to 50 when Limit is unset, so paging by the same number keeps
+	// one "page" meaning the same thing whether or not a limit was ever set.
+	pageSize = 50
 )
 
 // Widths of the index row's fixed columns, in terminal cells.

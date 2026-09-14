@@ -156,6 +156,7 @@ func goldenScenes() []goldenScene {
 			m.memory.Screen = memory.ScreenSearchResults
 			m.memory.SearchQuery = "wal"
 			m.memory.SearchResults = goldenSearchResults()
+			m.memory.SearchTotal = len(m.memory.SearchResults)
 			m.memory.Cursor = 1
 			return m
 		}},
@@ -163,6 +164,7 @@ func goldenScenes() []goldenScene {
 			m.memory.Screen = memory.ScreenSearchResults
 			m.memory.SearchQuery = "wal"
 			m.memory.SearchResults = goldenSearchResults()
+			m.memory.SearchTotal = len(m.memory.SearchResults)
 			m.memory.Cursor = 3
 			m.memory.Scroll = 1
 			return m
@@ -175,6 +177,7 @@ func goldenScenes() []goldenScene {
 		{name: "recent", build: func(m Model) Model {
 			m.memory.Screen = memory.ScreenRecent
 			m.memory.RecentObservations = goldenObservations()
+			m.memory.RecentTotal = len(m.memory.RecentObservations)
 			m.memory.Cursor = 2
 			return m
 		}},
@@ -185,6 +188,7 @@ func goldenScenes() []goldenScene {
 		{name: "recent-copy-feedback", build: func(m Model) Model {
 			m.memory.Screen = memory.ScreenRecent
 			m.memory.RecentObservations = goldenObservations()
+			m.memory.RecentTotal = len(m.memory.RecentObservations)
 			m.memory.CopyFeedback = "✓ Copied!"
 			return m
 		}},

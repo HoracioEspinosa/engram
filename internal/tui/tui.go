@@ -30,11 +30,11 @@ type Model = app.Model
 // each screen is backed by the same store cmd/engram opened.
 func New(s *store.Store, version string, project string, palette theme.Palette) Model {
 	return app.New(
-		data.NewMemoryReader(s),
+		data.NewMemorySource(s),
 		data.NewProjectReader(s),
-		data.NewTaskReader(s),
-		data.NewEvidenceReader(s),
-		data.NewRunbookReader(s),
+		data.NewTaskSource(s),
+		data.NewEvidenceSource(s),
+		data.NewRunbookSource(s),
 		version,
 		theme.New(palette),
 		project,

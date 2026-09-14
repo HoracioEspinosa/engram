@@ -156,8 +156,8 @@ func (m Model) viewSearchResults() string {
 	var b strings.Builder
 
 	resultCount := len(m.SearchResults)
-	header := fmt.Sprintf("  Search: %q — %d result", m.SearchQuery, resultCount)
-	if resultCount != 1 {
+	header := fmt.Sprintf("  Search: %q — %d result", m.SearchQuery, m.SearchTotal)
+	if m.SearchTotal != 1 {
 		header += "s"
 	}
 	b.WriteString(m.styles.Header.Render(header))
@@ -181,9 +181,10 @@ func (m Model) viewSearchResults() string {
 		b.WriteString(m.renderObservationListItem(i, r.ID, r.Type, r.Title, r.Content, r.CreatedAt, r.Project, r.State(), r.ReviewAfter, r.Pinned))
 	}
 
-	// Scroll indicator
-	if resultCount > visibleItems {
-		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.Scroll+1, end, resultCount))
+	// Range indicator: absolute positions against the store's own hit count,
+	// not against the slice that fits on this page.
+	if m.SearchTotal > visibleItems {
+		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.SearchOffset+m.Scroll+1, m.SearchOffset+end, m.SearchTotal))
 	}
 
 	return b.String()
@@ -195,7 +196,7 @@ func (m Model) viewRecent() string {
 	var b strings.Builder
 
 	count := len(m.RecentObservations)
-	header := fmt.Sprintf("  Recent Observations — %d total", count)
+	header := fmt.Sprintf("  Recent Observations — %d total", m.RecentTotal)
 	b.WriteString(m.styles.Header.Render(header))
 	b.WriteString("\n")
 
@@ -217,8 +218,8 @@ func (m Model) viewRecent() string {
 		b.WriteString(m.renderObservationListItem(i, o.ID, o.Type, o.Title, o.Content, o.CreatedAt, o.Project, o.State(), o.ReviewAfter, o.Pinned))
 	}
 
-	if count > visibleItems {
-		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.Scroll+1, end, count))
+	if m.RecentTotal > visibleItems {
+		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.RecentOffset+m.Scroll+1, m.RecentOffset+end, m.RecentTotal))
 	}
 
 	return b.String()

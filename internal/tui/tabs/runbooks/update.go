@@ -78,7 +78,14 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 		m.ErrorMsg = ""
 		m.All = msg.all
 		m.Query = msg.query
-		m.Items = msg.items
+		m.Items = msg.page.Items
+		m.Total = msg.page.Total
+		m.Filter.Offset = msg.page.Offset
+		if msg.query == "" {
+			// A ranked search echoes its own limit, which is the search cap
+			// rather than a page size; only the index page sets the filter's.
+			m.Filter.Limit = msg.page.Limit
+		}
 		if m.Cursor >= len(m.Items) {
 			m.Cursor = 0
 			m.Scroll = 0
@@ -168,7 +175,29 @@ func (m Model) handleIndexKeys(key string) (tabs.Tab, tea.Cmd) {
 		}
 	case "a":
 		m.All = !m.All
+		m.Filter.Offset = 0
 		return m, m.reload()
+	case "n":
+		// Advance one page, and stop on the last one.
+		if !m.HasNextPage() {
+			return m, nil
+		}
+		limit := m.pageLimit()
+		m.Filter.Offset += limit
+		m.Filter.Limit = limit
+		return m, loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
+	case "p":
+		// Step one page back; the first page stays put.
+		if !m.HasPrevPage() {
+			return m, nil
+		}
+		limit := m.pageLimit()
+		m.Filter.Offset -= limit
+		if m.Filter.Offset < 0 {
+			m.Filter.Offset = 0
+		}
+		m.Filter.Limit = limit
+		return m, loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
 	case "/":
 		m.Searching = true
 		m.SearchInput.SetValue(m.Query)
@@ -208,7 +237,7 @@ func (m Model) reload() tea.Cmd {
 	if m.Query != "" {
 		return searchRunbooks(m.reader, m.project, m.All, m.Query, searchLimit)
 	}
-	return loadRunbookIndex(m.reader, m.project, m.All)
+	return loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
 }
 
 func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
@@ -219,7 +248,8 @@ func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 		query := strings.TrimSpace(m.SearchInput.Value())
 		if query == "" {
 			m.Query = ""
-			return m, loadRunbookIndex(m.reader, m.project, m.All)
+			m.Filter.Offset = 0
+			return m, loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
 		}
 		return m, searchRunbooks(m.reader, m.project, m.All, query, searchLimit)
 	case tea.KeyEsc:

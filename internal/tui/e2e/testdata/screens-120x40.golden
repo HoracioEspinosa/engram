@@ -146,26 +146,26 @@
     o open with system viewer • c copy sha256 • p copy path • m manifest • enter task • r refresh • esc/q back  
                                                                                                                 
 ═══ s8-runbooks-index ═══
-                                                                                                                          
-  0 Dashboard  1 Memory  2 Tasks  3 Evidence  [4 Runbooks]  5 Cloud                                                       
-                                                                                                                          
-                                                                                                                          
-    Runbooks (this project · a toggle)                                                                                    
-                                                                                                                          
-  ▸ RB-900    Preview endpoint returns 503 under load  acme         performance    —            new ⚠                     
-                                                                                                                          
-    runbooks 1-1 of 1                                                                                                     
-                                                                                                                          
-  ┌─────────────────────────────────────────────────────────────┐                                                         
-  │                                                             │                                                         
-  │  RB-900 · status verified · exec_count 0 · last_exec never  │                                                         
-  │  vault Runbooks/RB-900.md                                   │                                                         
-  │                                                             │                                                         
-  └─────────────────────────────────────────────────────────────┘                                                         
-                                                                                                                          
-                                                                                                                          
-    j/k move • g/G top/bottom • enter view • c copy vault path • a all/project • / search • t executions • r refresh • …  
-                                                                                                                          
+                                                                                                                         
+  0 Dashboard  1 Memory  2 Tasks  3 Evidence  [4 Runbooks]  5 Cloud                                                      
+                                                                                                                         
+                                                                                                                         
+    Runbooks (this project · a toggle)                                                                                   
+                                                                                                                         
+  ▸ RB-900    Preview endpoint returns 503 under load  acme         performance    —            new ⚠                    
+                                                                                                                         
+    runbooks 1-1 of 1                                                                                                    
+                                                                                                                         
+  ┌─────────────────────────────────────────────────────────────┐                                                        
+  │                                                             │                                                        
+  │  RB-900 · status verified · exec_count 0 · last_exec never  │                                                        
+  │  vault Runbooks/RB-900.md                                   │                                                        
+  │                                                             │                                                        
+  └─────────────────────────────────────────────────────────────┘                                                        
+                                                                                                                         
+                                                                                                                         
+    j/k move • g/G top/bottom • enter view • c copy vault path • a all/project • / search • t executions • p/n page • …  
+                                                                                                                         
 ═══ s9-runbooks-markdown ═══
                                                                                                                           
   0 Dashboard  1 Memory  2 Tasks  3 Evidence  [4 Runbooks]  5 Cloud                                                       

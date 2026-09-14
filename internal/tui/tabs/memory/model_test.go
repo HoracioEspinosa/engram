@@ -68,8 +68,8 @@ func newTestFixture(t *testing.T) testFixture {
 }
 
 // reader wraps the fixture store in the interface the tab consumes.
-func (f testFixture) reader() data.MemoryReader {
-	return data.NewMemoryReader(f.store)
+func (f testFixture) reader() data.MemorySource {
+	return data.NewMemorySource(f.store)
 }
 
 func TestNewInitializesModelDefaults(t *testing.T) {
@@ -148,7 +148,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("searchMemories", func(t *testing.T) {
-		msg := searchMemories(fx.reader(), "needle")()
+		msg := searchMemories(fx.reader(), "needle", 0)()
 		loaded, ok := msg.(searchResultsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -159,13 +159,13 @@ func TestDataLoadingCommands(t *testing.T) {
 		if loaded.query != "needle" {
 			t.Fatalf("query = %q", loaded.query)
 		}
-		if len(loaded.results) == 0 {
+		if len(loaded.page.Items) == 0 {
 			t.Fatal("expected at least one search result")
 		}
 	})
 
 	t.Run("loadRecentObservations", func(t *testing.T) {
-		msg := loadRecentObservations(fx.reader())()
+		msg := loadRecentObservations(fx.reader(), 0)()
 		loaded, ok := msg.(recentObservationsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -173,8 +173,8 @@ func TestDataLoadingCommands(t *testing.T) {
 		if loaded.err != nil {
 			t.Fatalf("unexpected error: %v", loaded.err)
 		}
-		if len(loaded.observations) < 2 {
-			t.Fatalf("observations = %d, want >= 2", len(loaded.observations))
+		if len(loaded.page.Items) < 2 {
+			t.Fatalf("observations = %d, want >= 2", len(loaded.page.Items))
 		}
 	})
 

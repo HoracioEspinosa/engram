@@ -51,8 +51,8 @@ func TestRefreshReloadsTheIndexWithNoActiveSearch(t *testing.T) {
 	if !ok {
 		t.Fatalf("Refresh produced %T, want runbooksLoadedMsg", run(t, cmd))
 	}
-	if len(msg.items) != 1 || msg.items[0].ID != "RB-900" {
-		t.Fatalf("Refresh loaded %+v, want the seeded RB-900", msg.items)
+	if len(msg.page.Items) != 1 || msg.page.Items[0].ID != "RB-900" {
+		t.Fatalf("Refresh loaded %+v, want the seeded RB-900", msg.page.Items)
 	}
 }
 

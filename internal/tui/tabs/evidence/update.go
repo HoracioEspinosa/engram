@@ -42,7 +42,14 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 		}
 		m.ErrorMsg = ""
 		m.Filter = msg.filter
-		m.Items = msg.items
+		// The page echoes back the window the store applied, so the filter
+		// carries the limit it defaulted to rather than the zero the caller
+		// may have sent.
+		m.Filter.Offset = msg.page.Offset
+		m.Filter.Limit = msg.page.Limit
+		m.Items = msg.page.Items
+		m.Total = msg.page.Total
+		m.TotalBytes = msg.page.TotalBytes
 		if m.Cursor >= len(m.Items) {
 			m.Cursor = 0
 			m.Scroll = 0
@@ -134,6 +141,28 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 		return m.toggleTaskFilter()
 	case "a":
 		return m.toggleAttachedFilter()
+	case "n":
+		// Advance one page, and stop on the last one: the store's total says
+		// where the list ends, so nothing is inferred from a short page.
+		if !m.HasNextPage() {
+			return m, nil
+		}
+		limit := m.pageLimit()
+		m.Filter.Offset += limit
+		m.Filter.Limit = limit
+		return m, loadEvidence(m.reader, m.project, m.Filter)
+	case "p":
+		// Step one page back; the first page stays put.
+		if !m.HasPrevPage() {
+			return m, nil
+		}
+		limit := m.pageLimit()
+		m.Filter.Offset -= limit
+		if m.Filter.Offset < 0 {
+			m.Filter.Offset = 0
+		}
+		m.Filter.Limit = limit
+		return m, loadEvidence(m.reader, m.project, m.Filter)
 	case "esc", "q":
 		return m, tabs.Home()
 	}
@@ -148,12 +177,14 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 func (m Model) toggleTaskFilter() (tabs.Tab, tea.Cmd) {
 	if m.Filter.TaskID != 0 {
 		m.Filter.TaskID = 0
+		m.Filter.Offset = 0
 		return m, loadEvidence(m.reader, m.project, m.Filter)
 	}
 	if len(m.Items) == 0 || m.Cursor >= len(m.Items) {
 		return m, nil
 	}
 	m.Filter.TaskID = m.Items[m.Cursor].TaskID
+	m.Filter.Offset = 0
 	return m, loadEvidence(m.reader, m.project, m.Filter)
 }
 
@@ -166,6 +197,7 @@ func (m Model) toggleAttachedFilter() (tabs.Tab, tea.Cmd) {
 		yes := true
 		m.Filter.AttachedJira = &yes
 	}
+	m.Filter.Offset = 0
 	return m, loadEvidence(m.reader, m.project, m.Filter)
 }
 

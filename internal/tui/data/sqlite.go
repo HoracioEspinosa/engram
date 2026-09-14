@@ -40,6 +40,13 @@ func NewScopedMemoryReader(s *store.Store) ScopedMemoryReader {
 	return sqliteMemory{store: s}
 }
 
+// NewMemorySource wraps an engram store as everything the Memory tab reads
+// through: the original MemoryReader plus the scoped, paged surface the
+// range indicator and the page keys need.
+func NewMemorySource(s *store.Store) MemorySource {
+	return sqliteMemory{store: s}
+}
+
 func (r sqliteMemory) Stats() (*store.Stats, error) {
 	return r.store.Stats()
 }
@@ -368,6 +375,12 @@ func NewTaskPageReader(s *store.Store) TaskPageReader {
 	return sqliteTask{store: s}
 }
 
+// NewTaskSource wraps an engram store as everything the Tasks tab reads
+// through: TaskReader's method set plus TaskPageReader's.
+func NewTaskSource(s *store.Store) TaskSource {
+	return sqliteTask{store: s}
+}
+
 func (r sqliteTask) ListTasks(taskProject string, f store.TaskListFilter) ([]store.TaskListItem, error) {
 	if r.store == nil {
 		return nil, ErrStoreUnavailable
@@ -567,6 +580,12 @@ func NewEvidencePageReader(s *store.Store) EvidencePageReader {
 	return sqliteEvidence{store: s}
 }
 
+// NewEvidenceSource wraps an engram store as everything the Evidence tab
+// reads through: EvidenceReader's method set plus EvidencePageReader's.
+func NewEvidenceSource(s *store.Store) EvidenceSource {
+	return sqliteEvidence{store: s}
+}
+
 func (r sqliteEvidence) ListEvidence(project string, f store.EvidenceListFilter) ([]store.EvidenceListItem, error) {
 	if r.store == nil {
 		return nil, ErrStoreUnavailable
@@ -657,6 +676,12 @@ func NewRunbookReader(s *store.Store) RunbookReader {
 //
 // A nil store yields a reader whose queries report ErrStoreUnavailable.
 func NewRunbookPageReader(s *store.Store) RunbookPageReader {
+	return sqliteRunbook{store: s}
+}
+
+// NewRunbookSource wraps an engram store as everything the Runbooks tab
+// reads through: RunbookReader's method set plus RunbookPageReader's.
+func NewRunbookSource(s *store.Store) RunbookSource {
 	return sqliteRunbook{store: s}
 }
 

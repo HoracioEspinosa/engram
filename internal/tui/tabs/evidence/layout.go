@@ -17,6 +17,11 @@ const (
 	// header, help footer and any banner above the list/body.
 	listChrome   = 4
 	detailChrome = 14
+
+	// pageSize is how many rows the page keys move by. store.ListEvidence
+	// defaults to 50 when Limit is unset, so paging by the same number keeps
+	// one "page" meaning the same thing whether or not a limit was ever set.
+	pageSize = 50
 )
 
 // Widths of the list row's fixed columns, in terminal cells.

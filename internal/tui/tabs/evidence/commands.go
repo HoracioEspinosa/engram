@@ -9,10 +9,14 @@ import (
 
 // loadEvidence returns the command that lists project's evidence under f
 // (rfc-tui.md §9.2's "S6 Evidence list" query).
-func loadEvidence(r data.EvidenceReader, project string, f store.EvidenceListFilter) tea.Cmd {
+//
+// It asks for the page rather than the bare slice: the store counts the
+// whole match — rows and bytes — in the same round trip, and the footer has
+// no honest total to report without it.
+func loadEvidence(r data.EvidenceSource, project string, f store.EvidenceListFilter) tea.Cmd {
 	return func() tea.Msg {
-		items, err := r.ListEvidence(project, f)
-		return evidenceLoadedMsg{project: project, filter: f, items: items, err: err}
+		page, err := r.ListEvidencePage(project, f)
+		return evidenceLoadedMsg{project: project, filter: f, page: page, err: err}
 	}
 }
 

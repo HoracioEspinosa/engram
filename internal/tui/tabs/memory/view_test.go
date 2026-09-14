@@ -75,6 +75,7 @@ func TestViewSearchResultsAndScrollIndicator(t *testing.T) {
 		{Observation: store.Observation{ID: 3, Type: "bugfix", Title: "three", Content: "c", CreatedAt: "2026-01-01"}},
 		{Observation: store.Observation{ID: 4, Type: "bugfix", Title: "four", Content: "d", CreatedAt: "2026-01-01"}},
 	}
+	m.SearchTotal = len(m.SearchResults)
 
 	out := m.viewSearchResults()
 	if !strings.Contains(out, "Search: \"needle\"") {
@@ -85,6 +86,7 @@ func TestViewSearchResultsAndScrollIndicator(t *testing.T) {
 	}
 
 	m.SearchResults = nil
+	m.SearchTotal = 0
 	out = m.viewSearchResults()
 	if !strings.Contains(out, "No memories found") {
 		t.Fatal("empty result state missing")
@@ -172,6 +174,7 @@ func TestViewDashboardSearchAndRecent(t *testing.T) {
 		{ID: 3, Type: "bugfix", Title: "three", Content: "c", CreatedAt: "2026-01-01"},
 		{ID: 4, Type: "bugfix", Title: "four", Content: "d", CreatedAt: "2026-01-01"},
 	}
+	m.RecentTotal = len(m.RecentObservations)
 	out = m.viewRecent()
 	if !strings.Contains(out, "Recent Observations") {
 		t.Fatal("recent view should render title")
@@ -181,6 +184,7 @@ func TestViewDashboardSearchAndRecent(t *testing.T) {
 	}
 
 	m.RecentObservations = nil
+	m.RecentTotal = 0
 	out = m.viewRecent()
 	if !strings.Contains(out, "No observations yet") {
 		t.Fatal("recent view should render empty state")

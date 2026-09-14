@@ -63,7 +63,7 @@ func (m Model) viewIndex() string {
 		for i := m.Scroll; i < end; i++ {
 			b.WriteString(m.viewRunbookRow(m.Items[i], i == m.Cursor))
 		}
-		b.WriteString(shared.RangeIndicator(m.styles, "runbooks", m.Scroll+1, end, len(m.Items)))
+		b.WriteString(shared.RangeIndicator(m.styles, "runbooks", m.Filter.Offset+m.Scroll+1, m.Filter.Offset+end, m.Total))
 		b.WriteString("\n")
 
 		if m.Cursor < len(m.Items) {

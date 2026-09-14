@@ -63,8 +63,8 @@ func (m Model) pageLimit() int {
 // ─── messages (data loaded) ─────────────────────────────────────────────────
 
 type tasksLoadedMsg struct {
-	items []store.TaskListItem
-	err   error
+	page data.Page[store.TaskListItem]
+	err  error
 }
 
 type taskDetailLoadedMsg struct {
@@ -96,7 +96,7 @@ type contextPackLoadedMsg struct {
 
 // Model is the Tasks tab's state.
 type Model struct {
-	reader  data.TaskReader
+	reader  data.TaskSource
 	styles  theme.Styles
 	project string
 
@@ -105,9 +105,14 @@ type Model struct {
 	Height int
 
 	// List (S3).
-	Items       []store.TaskListItem
-	Cursor      int
-	Scroll      int
+	Items  []store.TaskListItem
+	Cursor int
+	Scroll int
+	// Total is how many tasks the filter matches in the store, not how many
+	// came back on this page: the range indicator reports the count the
+	// query itself produced, and the page keys need it to know where the
+	// last page ends.
+	Total       int
 	Filter      store.TaskListFilter
 	Searching   bool
 	SearchInput textinput.Model
@@ -135,7 +140,7 @@ type Model struct {
 // project: the root scopes it with WithProject once one is active, exactly
 // as it constructs app.dashboardModel — see app.Model.New and the selector's
 // "enter" key.
-func New(r data.TaskReader) Model {
+func New(r data.TaskSource) Model {
 	search := textinput.New()
 	search.Placeholder = "Search tasks..."
 	search.CharLimit = 200
@@ -178,11 +183,20 @@ func (m Model) WithProject(project string) Model {
 	m.Items = nil
 	m.Cursor = 0
 	m.Scroll = 0
+	m.Total = 0
 	m.Filter = store.TaskListFilter{}
 	m.Detail = nil
 	m.ErrorMsg = ""
 	return m
 }
+
+// HasPrevPage reports whether a page of tasks sits before the one on screen.
+func (m Model) HasPrevPage() bool { return m.Filter.Offset > 0 }
+
+// HasNextPage reports whether a page of tasks sits after the one on screen.
+// It reads the store's own total rather than guessing from a short page, so
+// the last page stays put instead of wrapping round to the first.
+func (m Model) HasNextPage() bool { return m.Filter.Offset+len(m.Items) < m.Total }
 
 // Title is the label the tab bar shows for this tab.
 func (Model) Title() string { return "Tasks" }

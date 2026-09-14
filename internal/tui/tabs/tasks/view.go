@@ -64,7 +64,9 @@ func (m Model) viewList() string {
 		for i := m.Scroll; i < end; i++ {
 			b.WriteString(m.viewTaskRow(m.Items[i], i == m.Cursor))
 		}
-		b.WriteString(shared.RangeIndicator(m.styles, "tasks", m.Scroll+1, end, len(m.Items)))
+		// The range is absolute: the page's own offset plus the window
+		// scrolled inside it, against the total the store counted.
+		b.WriteString(shared.RangeIndicator(m.styles, "tasks", m.Filter.Offset+m.Scroll+1, m.Filter.Offset+end, m.Total))
 		b.WriteString("\n")
 	}
 

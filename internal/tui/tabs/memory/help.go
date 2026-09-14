@@ -21,6 +21,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
 			key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "link to task")),
+			key.NewBinding(key.WithKeys("p", "n"), key.WithHelp("p/n", "page")),
 			key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search again")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
@@ -32,6 +33,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
 			key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "link to task")),
+			key.NewBinding(key.WithKeys("p", "n"), key.WithHelp("p/n", "page")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
 	case ScreenObservationDetail:

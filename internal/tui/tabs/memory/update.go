@@ -59,7 +59,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			m.ErrorMsg = msg.err.Error()
 			return m, nil
 		}
-		m.SearchResults = msg.results
+		m.SearchResults = msg.page.Items
+		m.SearchTotal = msg.page.Total
+		m.SearchOffset = msg.page.Offset
 		m.SearchQuery = msg.query
 		m.Screen = ScreenSearchResults
 		m.Cursor = 0
@@ -71,7 +73,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			m.ErrorMsg = msg.err.Error()
 			return m, nil
 		}
-		m.RecentObservations = msg.observations
+		m.RecentObservations = msg.page.Items
+		m.RecentTotal = msg.page.Total
+		m.RecentOffset = msg.page.Offset
 		return m, nil
 
 	case observationDetailMsg:
@@ -271,7 +275,8 @@ func (m Model) handleDashboardSelection() (tabs.Tab, tea.Cmd) {
 		m.Screen = ScreenRecent
 		m.Cursor = 0
 		m.Scroll = 0
-		return m, loadRecentObservations(m.reader)
+		m.RecentOffset = 0
+		return m, loadRecentObservations(m.reader, 0)
 	case 2: // Sessions
 		m.PrevScreen = ScreenDashboard
 		m.Screen = ScreenSessions
@@ -310,7 +315,8 @@ func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 		query := m.SearchInput.Value()
 		if query != "" {
 			m.SearchInput.Blur()
-			return m, searchMemories(m.reader, query)
+			m.SearchOffset = 0
+			return m, searchMemories(m.reader, query, 0)
 		}
 		return m, nil
 	case "esc":
@@ -391,6 +397,22 @@ func (m Model) handleSearchResultsKeys(key string) (tabs.Tab, tea.Cmd) {
 		if len(m.SearchResults) > 0 && m.Cursor < len(m.SearchResults) {
 			return m.startLinking(m.SearchResults[m.Cursor].ID)
 		}
+	case "n":
+		// Advance one page of hits, and stop on the last one.
+		if !m.HasNextSearchPage() {
+			return m, nil
+		}
+		return m, searchMemories(m.reader, m.SearchQuery, m.SearchOffset+memoryPageSize)
+	case "p":
+		// Step one page back; the first page stays put.
+		if !m.HasPrevSearchPage() {
+			return m, nil
+		}
+		offset := m.SearchOffset - memoryPageSize
+		if offset < 0 {
+			offset = 0
+		}
+		return m, searchMemories(m.reader, m.SearchQuery, offset)
 	case "/", "s":
 		m.PrevScreen = ScreenSearchResults
 		m.Screen = ScreenSearch
@@ -456,6 +478,22 @@ func (m Model) handleRecentKeys(key string) (tabs.Tab, tea.Cmd) {
 		if len(m.RecentObservations) > 0 && m.Cursor < len(m.RecentObservations) {
 			return m.startLinking(m.RecentObservations[m.Cursor].ID)
 		}
+	case "n":
+		// Advance one page, and stop on the last one.
+		if !m.HasNextRecentPage() {
+			return m, nil
+		}
+		return m, loadRecentObservations(m.reader, m.RecentOffset+memoryPageSize)
+	case "p":
+		// Step one page back; the first page stays put.
+		if !m.HasPrevRecentPage() {
+			return m, nil
+		}
+		offset := m.RecentOffset - memoryPageSize
+		if offset < 0 {
+			offset = 0
+		}
+		return m, loadRecentObservations(m.reader, offset)
 	case "esc", "q":
 		m.Screen = ScreenDashboard
 		m.Cursor = 0
@@ -795,7 +833,7 @@ func (m Model) refreshScreen(screen Screen) tea.Cmd {
 	case ScreenDashboard:
 		return loadStats(m.reader)
 	case ScreenRecent:
-		return loadRecentObservations(m.reader)
+		return loadRecentObservations(m.reader, m.RecentOffset)
 	case ScreenSessions:
 		return loadRecentSessions(m.reader)
 	default:

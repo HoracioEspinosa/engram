@@ -28,6 +28,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all/project")),
 			key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "executions")),
+			key.NewBinding(key.WithKeys("p", "n"), key.WithHelp("p/n", "page")),
 			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}

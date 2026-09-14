@@ -32,6 +32,11 @@ const (
 	// content, and minDetailWrap the narrowest wrap width worth rendering.
 	detailWrapMargin = 6
 	minDetailWrap    = 20
+
+	// memoryPageSize is how many rows one page of search results or recent
+	// observations holds — the same 50 both screens already asked for before
+	// either of them could page.
+	memoryPageSize = 50
 )
 
 // Widths of the tab's fixed columns, in terminal cells.

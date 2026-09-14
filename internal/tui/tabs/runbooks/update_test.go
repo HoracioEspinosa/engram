@@ -2,6 +2,7 @@ package runbooks
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +56,7 @@ func sampleRunbook(id, project, title string, stale bool) store.RunbookIndexRow 
 	}
 }
 
-func newModel(reader data.RunbookReader, projects data.ProjectReader) Model {
+func newModel(reader data.RunbookSource, projects data.ProjectReader) Model {
 	if projects == nil {
 		projects = &data.FakeProject{}
 	}
@@ -282,7 +283,7 @@ func TestRunbooksLoadedIgnoresAResponseForAnAbandonedProject(t *testing.T) {
 	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")
 	m.Items = []store.RunbookIndexRow{sampleRunbook("RB-900", "acme", "Stale runbook", true)}
 
-	m, _ = step(t, m, runbooksLoadedMsg{project: "other", items: nil})
+	m, _ = step(t, m, runbooksLoadedMsg{project: "other"})
 
 	if len(m.Items) != 1 {
 		t.Fatal("a load response for a project the user left must not clobber the current list")
@@ -676,4 +677,87 @@ func TestEscFromTheViewReturnsToTheIndexAndReloads(t *testing.T) {
 
 func containsFold(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
+// TestRangeIndicatorShowsStoreTotal: the footer counts every runbook the
+// scope matched, not the page on screen.
+func TestRangeIndicatorShowsStoreTotal(t *testing.T) {
+	items := make([]store.RunbookIndexRow, pageSize+3)
+	for i := range items {
+		items[i] = sampleRunbook(fmt.Sprintf("RB-%03d", i+1), "acme", "runbook", false)
+	}
+	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": items}}
+	m := withHeight(newModel(fake, nil).WithProject("acme"), 40)
+	m, _ = step(t, m, run(t, m.Init()))
+
+	if m.Total != len(items) {
+		t.Fatalf("Total = %d, want the store's own %d", m.Total, len(items))
+	}
+	if got := m.View(); !strings.Contains(got, fmt.Sprintf("of %d", len(items))) {
+		t.Fatalf("range indicator does not report the store total %d:\n%s", len(items), got)
+	}
+}
+
+func TestPrevPageIsDisabledOnTheFirstPage(t *testing.T) {
+	items := make([]store.RunbookIndexRow, pageSize+3)
+	for i := range items {
+		items[i] = sampleRunbook(fmt.Sprintf("RB-%03d", i+1), "acme", "runbook", false)
+	}
+	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": items}}
+	m := newModel(fake, nil).WithProject("acme")
+	m, _ = step(t, m, run(t, m.Init()))
+
+	updated, cmd := m.handleIndexKeys("p")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("p on the first page should not re-query the store")
+	}
+	if m.Filter.Offset != 0 {
+		t.Fatalf("Offset = %d, want the first page to stay put", m.Filter.Offset)
+	}
+}
+
+func TestNextPageStopsAtTheLastPage(t *testing.T) {
+	items := make([]store.RunbookIndexRow, pageSize+3)
+	for i := range items {
+		items[i] = sampleRunbook(fmt.Sprintf("RB-%03d", i+1), "acme", "runbook", false)
+	}
+	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": items}}
+	m := newModel(fake, nil).WithProject("acme")
+	m, _ = step(t, m, run(t, m.Init()))
+
+	updated, cmd := m.handleIndexKeys("n")
+	m = updated.(Model)
+	m, _ = step(t, m, run(t, cmd))
+	if m.Filter.Offset != pageSize || len(m.Items) != 3 {
+		t.Fatalf("second page = offset %d with %d items, want %d and 3", m.Filter.Offset, len(m.Items), pageSize)
+	}
+
+	updated, cmd = m.handleIndexKeys("n")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("n on the last page should not re-query the store")
+	}
+	if m.Filter.Offset != pageSize {
+		t.Fatalf("Offset = %d, want the last page to stay put", m.Filter.Offset)
+	}
+}
+
+// TestASearchIsNeverPaged: SearchRunbooks takes a limit and no offset, so
+// the page keys have nowhere to step while a query is active.
+func TestASearchIsNeverPaged(t *testing.T) {
+	items := make([]store.RunbookIndexRow, pageSize+3)
+	for i := range items {
+		items[i] = sampleRunbook(fmt.Sprintf("RB-%03d", i+1), "acme", "runbook", false)
+	}
+	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": items}}
+	m := newModel(fake, nil).WithProject("acme")
+	m, _ = step(t, m, run(t, searchRunbooks(fake, "acme", false, "runbook", searchLimit)))
+
+	if m.Query != "runbook" {
+		t.Fatalf("Query = %q, want the search to be active", m.Query)
+	}
+	if m.HasNextPage() || m.HasPrevPage() {
+		t.Fatal("a ranked search reports pages it cannot fetch")
+	}
 }

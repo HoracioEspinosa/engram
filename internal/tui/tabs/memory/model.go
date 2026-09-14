@@ -60,14 +60,14 @@ type statsLoadedMsg struct {
 }
 
 type searchResultsMsg struct {
-	results []store.SearchResult
-	query   string
-	err     error
+	page  data.Page[store.SearchResult]
+	query string
+	err   error
 }
 
 type recentObservationsMsg struct {
-	observations []store.Observation
-	err          error
+	page data.Page[store.Observation]
+	err  error
 }
 
 type observationDetailMsg struct {
@@ -125,7 +125,7 @@ type UpdateChecker func(current string) version.CheckResult
 var defaultUpdateChecker UpdateChecker = version.CheckLatest
 
 type Model struct {
-	reader      data.MemoryReader
+	reader      data.MemorySource
 	tasks       data.TaskReader
 	project     string
 	styles      theme.Styles
@@ -152,6 +152,10 @@ type Model struct {
 	SearchInput   textinput.Model
 	SearchQuery   string
 	SearchResults []store.SearchResult
+	// SearchTotal and SearchOffset page the results: the total is what the
+	// store found for the query, not what fits on the screen.
+	SearchTotal  int
+	SearchOffset int
 
 	// Link to task (rfc-tui.md §7.2's "L", the only addition rfc-tui.md §5
 	// lists for the memory screens): a task-search overlay available from
@@ -168,6 +172,10 @@ type Model struct {
 
 	// Recent observations
 	RecentObservations []store.Observation
+	// RecentTotal and RecentOffset page the recent list, the same way
+	// SearchTotal and SearchOffset page the results.
+	RecentTotal  int
+	RecentOffset int
 
 	// Observation detail
 	SelectedObservation *store.Observation
@@ -202,7 +210,7 @@ type Model struct {
 }
 
 // New creates the Memory tab bound to the given reader.
-func New(r data.MemoryReader, version string) Model {
+func New(r data.MemorySource, version string) Model {
 	styles := theme.Default()
 
 	ti := textinput.New()
@@ -276,6 +284,20 @@ func (m Model) WithProject(project string) Model {
 // default.
 func (m Model) Styles() theme.Styles { return m.styles }
 
+// HasPrevSearchPage and HasNextSearchPage report whether a page of results
+// sits before or after the one on screen.
+func (m Model) HasPrevSearchPage() bool { return m.SearchOffset > 0 }
+func (m Model) HasNextSearchPage() bool {
+	return m.SearchOffset+len(m.SearchResults) < m.SearchTotal
+}
+
+// HasPrevRecentPage and HasNextRecentPage are the same two readings for the
+// recent-observations list.
+func (m Model) HasPrevRecentPage() bool { return m.RecentOffset > 0 }
+func (m Model) HasNextRecentPage() bool {
+	return m.RecentOffset+len(m.RecentObservations) < m.RecentTotal
+}
+
 // Title is the label the tab bar shows for this tab.
 func (Model) Title() string { return "Memory" }
 
@@ -314,7 +336,7 @@ func (m Model) OpenObservation(id int64) tea.Cmd {
 // Screen to ScreenSearchResults regardless of who asked, the same way
 // OpenObservation relies on observationDetailMsg's handler to switch screens.
 func (m Model) SearchFor(query string) tea.Cmd {
-	return searchMemories(m.reader, query)
+	return searchMemories(m.reader, query, 0)
 }
 
 // ─── Commands (data loading) ─────────────────────────────────────────────────
@@ -328,56 +350,63 @@ func checkForUpdate(check UpdateChecker, v string) tea.Cmd {
 	}
 }
 
-func loadStats(r data.MemoryReader) tea.Cmd {
+func loadStats(r data.MemorySource) tea.Cmd {
 	return func() tea.Msg {
 		stats, err := r.Stats()
 		return statsLoadedMsg{stats: stats, err: err}
 	}
 }
 
-func searchMemories(r data.MemoryReader, query string) tea.Cmd {
+// searchMemories asks for one page of hits rather than a flat top-50: the
+// page carries the count the query found, which is what the range indicator
+// reports and what the page keys stop at.
+//
+// The scope is empty — every project — because scoping Memory to the active
+// project is a separate change; what this call fixes is the count, not which
+// rows are counted.
+func searchMemories(r data.MemorySource, query string, offset int) tea.Cmd {
 	return func() tea.Msg {
-		results, err := r.Search(query, store.SearchOptions{Limit: 50})
-		return searchResultsMsg{results: results, query: query, err: err}
+		page, err := r.SearchScoped(query, data.ProjectScope{}, memoryPageSize, offset)
+		return searchResultsMsg{page: page, query: query, err: err}
 	}
 }
 
-func loadRecentObservations(r data.MemoryReader) tea.Cmd {
+func loadRecentObservations(r data.MemorySource, offset int) tea.Cmd {
 	return func() tea.Msg {
-		obs, err := r.RecentObservations(50)
-		return recentObservationsMsg{observations: obs, err: err}
+		page, err := r.RecentObservationsScoped(data.ProjectScope{}, memoryPageSize, offset)
+		return recentObservationsMsg{page: page, err: err}
 	}
 }
 
-func loadObservationDetail(r data.MemoryReader, id int64) tea.Cmd {
+func loadObservationDetail(r data.MemorySource, id int64) tea.Cmd {
 	return func() tea.Msg {
 		obs, err := r.Observation(id)
 		return observationDetailMsg{observation: obs, err: err}
 	}
 }
 
-func loadTimeline(r data.MemoryReader, obsID int64) tea.Cmd {
+func loadTimeline(r data.MemorySource, obsID int64) tea.Cmd {
 	return func() tea.Msg {
 		tl, err := r.Timeline(obsID, 10, 10)
 		return timelineMsg{timeline: tl, err: err}
 	}
 }
 
-func loadRecentSessions(r data.MemoryReader) tea.Cmd {
+func loadRecentSessions(r data.MemorySource) tea.Cmd {
 	return func() tea.Msg {
 		sessions, err := r.RecentSessions(50)
 		return recentSessionsMsg{sessions: sessions, err: err}
 	}
 }
 
-func loadSessionObservations(r data.MemoryReader, sessionID string) tea.Cmd {
+func loadSessionObservations(r data.MemorySource, sessionID string) tea.Cmd {
 	return func() tea.Msg {
 		obs, err := r.SessionObservations(sessionID, 200)
 		return sessionObservationsMsg{observations: obs, err: err}
 	}
 }
 
-func deleteSession(r data.MemoryReader, sessionID string) tea.Cmd {
+func deleteSession(r data.MemorySource, sessionID string) tea.Cmd {
 	return func() tea.Msg {
 		if r == nil {
 			return sessionDeletedMsg{sessionID: sessionID, err: data.ErrStoreUnavailable}

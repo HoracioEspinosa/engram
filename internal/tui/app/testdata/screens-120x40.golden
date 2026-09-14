@@ -245,24 +245,24 @@
     enter search • esc back                                            
                                                                        
 ═══ search-results ═══
-                                                                                                                        
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                     
-                                                                                                                        
-    Search: "wal" — 4 results                                                                                           
-                                                                                                                        
-  ───────────────────────────                                                                                           
-                                                                                                                        
-    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                             
-      SQLite WAL keeps readers unblocked while the MCP server writes.                                                   
-  ▸ #102   [bugfix      ] [needs_review]  Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                       
-    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                
-      Header line carries id, type and badges; preview carries content.                                                 
-    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                   
-      Rendered bytes must survive a package move untouched.                                                             
-                                                                                                                        
-    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • / search again • esc/q back   
-                                                                                                                        
+                                                                                                                         
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
+                                                                                                                         
+    Search: "wal" — 4 results                                                                                            
+                                                                                                                         
+  ───────────────────────────                                                                                            
+                                                                                                                         
+    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                              
+      SQLite WAL keeps readers unblocked while the MCP server writes.                                                    
+  ▸ #102   [bugfix      ] [needs_review]  Session delete refused when observations remain  engram  2026-01-15 10:05:00   
+      Guard the delete path so orphan observations cannot appear.                                                        
+    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                 
+      Header line carries id, type and badges; preview carries content.                                                  
+    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                    
+      Rendered bytes must survive a package move untouched.                                                              
+                                                                                                                         
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • p/n page • / search again • …  
+                                                                                                                         
 ═══ search-results-scrolled ═══
                                                                                                                          
   0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
@@ -278,21 +278,21 @@
   ▸ #104   [note        ]  Golden files are the refactor oracle  2026-01-16 08:00:00                                     
       Rendered bytes must survive a package move untouched.                                                              
                                                                                                                          
-    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • / search again • esc/q back    
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • p/n page • / search again • …  
                                                                                                                          
 ═══ search-results-empty ═══
-                                                                                                                       
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                    
-                                                                                                                       
-    Search: "no-such-thing" — 0 results                                                                                
-                                                                                                                       
-  ─────────────────────────────────────                                                                                
-                                                                                                                       
-                                                                                                                       
-    No memories found. Try a different query.                                                                          
-                                                                                                                       
-    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • / search again • esc/q back  
-                                                                                                                       
+                                                                                                                         
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
+                                                                                                                         
+    Search: "no-such-thing" — 0 results                                                                                  
+                                                                                                                         
+  ─────────────────────────────────────                                                                                  
+                                                                                                                         
+                                                                                                                         
+    No memories found. Try a different query.                                                                            
+                                                                                                                         
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • p/n page • / search again • …  
+                                                                                                                         
 ═══ recent ═══
                                                                                                                          
   0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
@@ -310,21 +310,21 @@
     #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                    
       Rendered bytes must survive a package move untouched.                                                              
                                                                                                                          
-    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • esc/q back                     
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • p/n page • esc/q back          
                                                                                                                          
 ═══ recent-empty ═══
-                                                                                                      
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                   
-                                                                                                      
-    Recent Observations — 0 total                                                                     
-                                                                                                      
-  ───────────────────────────────                                                                     
-                                                                                                      
-                                                                                                      
-    No observations yet.                                                                              
-                                                                                                      
-    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • esc/q back  
-                                                                                                      
+                                                                                                                 
+  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                              
+                                                                                                                 
+    Recent Observations — 0 total                                                                                
+                                                                                                                 
+  ───────────────────────────────                                                                                
+                                                                                                                 
+                                                                                                                 
+    No observations yet.                                                                                         
+                                                                                                                 
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • p/n page • esc/q back  
+                                                                                                                 
 ═══ recent-copy-feedback ═══
                                                                                                                          
   0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
@@ -344,7 +344,7 @@
                                                                                                                          
    ✓ Copied!                                                                                                             
                                                                                                                          
-    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • esc/q back                     
+    j/k navigate • g/G top/bottom • enter detail • c copy • t timeline • L link to task • p/n page • esc/q back          
                                                                                                                          
 ═══ observation-detail-loading ═══
                                                                      

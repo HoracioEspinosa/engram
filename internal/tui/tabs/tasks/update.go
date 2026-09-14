@@ -49,7 +49,14 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			return m, nil
 		}
 		m.ErrorMsg = ""
-		m.Items = msg.items
+		m.Items = msg.page.Items
+		m.Total = msg.page.Total
+		// The page echoes back the window the store actually applied, so the
+		// filter carries the limit it defaulted to rather than the zero the
+		// caller may have sent — otherwise the page keys and the footer
+		// would each be reasoning about a different page size.
+		m.Filter.Offset = msg.page.Offset
+		m.Filter.Limit = msg.page.Limit
 		if m.Cursor >= len(m.Items) {
 			m.Cursor = 0
 			m.Scroll = 0
@@ -178,27 +185,22 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 		m.SearchInput.Focus()
 		return m, nil
 	case "n":
-		// Advance one page; wrap back to the start once a page comes back
-		// short, since that is the only "was this the last page" signal
-		// store.ListTasks gives back through TaskReader (rfc-tui.md §9.2's
-		// list query carries no total, only LIMIT/OFFSET).
-		limit := m.pageLimit()
-		if len(m.Items) < limit {
-			m.Filter.Offset = 0
-		} else {
-			m.Filter.Offset += limit
+		// Advance one page, and stop on the last one. The store's own total
+		// says where the list ends, so there is nothing left to infer from a
+		// short page and no reason to wrap round to the start.
+		if !m.HasNextPage() {
+			return m, nil
 		}
+		limit := m.pageLimit()
+		m.Filter.Offset += limit
 		m.Filter.Limit = limit
 		return m, loadTasks(m.reader, m.project, m.Filter)
 	case "p":
-		// Step one page back. Unlike "n" this needs no total: the offset
-		// alone says whether there is a page behind this one, and the first
-		// page stays put rather than wrapping round to an end nobody can
-		// locate without a count.
-		limit := m.pageLimit()
-		if m.Filter.Offset == 0 {
+		// Step one page back; the first page stays put.
+		if !m.HasPrevPage() {
 			return m, nil
 		}
+		limit := m.pageLimit()
 		m.Filter.Offset -= limit
 		if m.Filter.Offset < 0 {
 			m.Filter.Offset = 0

@@ -46,7 +46,7 @@ const (
 type evidenceLoadedMsg struct {
 	project string
 	filter  store.EvidenceListFilter
-	items   []store.EvidenceListItem
+	page    data.EvidencePage
 	err     error
 }
 
@@ -65,7 +65,7 @@ type manifestLoadedMsg struct {
 
 // Model is the Evidence tab's state.
 type Model struct {
-	reader  data.EvidenceReader
+	reader  data.EvidenceSource
 	styles  theme.Styles
 	project string
 
@@ -77,7 +77,12 @@ type Model struct {
 	Items  []store.EvidenceListItem
 	Cursor int
 	Scroll int
-	Filter store.EvidenceListFilter
+	// Total is how many evidence rows the filter matches in the store, and
+	// TotalBytes how much they weigh together — both counted over the whole
+	// match, not over the page on screen.
+	Total      int
+	TotalBytes int64
+	Filter     store.EvidenceListFilter
 
 	// Detail (S7).
 	Selected        *store.EvidenceListItem
@@ -95,7 +100,7 @@ type Model struct {
 // no project: the root scopes it with WithProject once one is active, exactly
 // as it constructs tasks.Model — see app.Model.New and the selector's "enter"
 // key.
-func New(r data.EvidenceReader) Model {
+func New(r data.EvidenceSource) Model {
 	return Model{reader: r, styles: theme.Default()}
 }
 
@@ -123,6 +128,8 @@ func (m Model) WithProject(project string) Model {
 	m.Items = nil
 	m.Cursor = 0
 	m.Scroll = 0
+	m.Total = 0
+	m.TotalBytes = 0
 	m.Filter = store.EvidenceListFilter{}
 	m.Selected = nil
 	m.Manifest = nil
@@ -131,6 +138,24 @@ func (m Model) WithProject(project string) Model {
 	m.ManifestErr = ""
 	m.ErrorMsg = ""
 	return m
+}
+
+// HasPrevPage reports whether a page of evidence sits before the one on
+// screen.
+func (m Model) HasPrevPage() bool { return m.Filter.Offset > 0 }
+
+// HasNextPage reports whether a page of evidence sits after the one on
+// screen, read from the store's own total rather than guessed from a short
+// page.
+func (m Model) HasNextPage() bool { return m.Filter.Offset+len(m.Items) < m.Total }
+
+// pageLimit is the page size in force: the filter's own, or the default the
+// store applies when it has none.
+func (m Model) pageLimit() int {
+	if m.Filter.Limit > 0 {
+		return m.Filter.Limit
+	}
+	return pageSize
 }
 
 // Title is the label the tab bar shows for this tab.

@@ -52,7 +52,7 @@ func (m Model) viewList() string {
 		for i := m.Scroll; i < end; i++ {
 			b.WriteString(m.viewEvidenceRow(m.Items[i], i == m.Cursor))
 		}
-		b.WriteString(shared.RangeIndicator(m.styles, "files", m.Scroll+1, end, len(m.Items)))
+		b.WriteString(shared.RangeIndicator(m.styles, "files", m.Filter.Offset+m.Scroll+1, m.Filter.Offset+end, m.Total))
 		b.WriteString("\n")
 	}
 

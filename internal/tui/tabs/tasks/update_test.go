@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -262,7 +263,10 @@ func TestListSearchEnterAppliesTheQuery(t *testing.T) {
 	}
 }
 
-func TestListNextPageAdvancesOffsetThenWrapsOnAShortPage(t *testing.T) {
+// TestNextPageStopsAtTheLastPage: with the store's own total in hand there
+// is nothing left to infer from a short page, so the last page stays put
+// instead of wrapping round to the first.
+func TestNextPageStopsAtTheLastPage(t *testing.T) {
 	items := make([]store.TaskListItem, pageSize+5)
 	for i := range items {
 		items[i] = store.TaskListItem{Task: sampleTask(int64(i+1), fmt.Sprintf("ACME-%d", i+1), "open")}
@@ -286,17 +290,18 @@ func TestListNextPageAdvancesOffsetThenWrapsOnAShortPage(t *testing.T) {
 
 	updated, cmd = m.handleListKeys("n")
 	m = updated.(Model)
-	m, _ = step(t, m, run(t, cmd))
-	if m.Filter.Offset != 0 {
-		t.Fatalf("offset after a short page = %d, want wrapped back to 0", m.Filter.Offset)
+	if cmd != nil {
+		t.Fatal("n on the last page should not re-query the store")
+	}
+	if m.Filter.Offset != pageSize {
+		t.Fatalf("offset after n on the last page = %d, want it to stay at %d", m.Filter.Offset, pageSize)
 	}
 }
 
-// TestListPreviousPageStepsBackAndStopsAtTheFirst covers the other half of
-// the page pair. Unlike "n" it needs no total: the offset alone says whether
-// there is a page behind this one, so the first page stays put instead of
-// wrapping round to an end the reader cannot locate.
-func TestListPreviousPageStepsBackAndStopsAtTheFirst(t *testing.T) {
+// TestPrevPageIsDisabledOnTheFirstPage covers the other half of the page
+// pair: the offset alone says whether there is a page behind this one, so
+// the first page stays put and issues no query.
+func TestPrevPageIsDisabledOnTheFirstPage(t *testing.T) {
 	items := make([]store.TaskListItem, pageSize+5)
 	for i := range items {
 		items[i] = store.TaskListItem{Task: sampleTask(int64(i+1), fmt.Sprintf("ACME-%d", i+1), "open")}
@@ -788,7 +793,7 @@ func TestTasksLoadedClampsAnOutOfRangeCursor(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")
 	m.Cursor, m.Scroll = 5, 3
 
-	m, _ = step(t, m, tasksLoadedMsg{items: []store.TaskListItem{{Task: sampleTask(1, "ACME-1", "open")}}})
+	m, _ = step(t, m, tasksLoadedMsg{page: data.Page[store.TaskListItem]{Items: []store.TaskListItem{{Task: sampleTask(1, "ACME-1", "open")}}, Total: 1, Limit: 20}})
 	if m.Cursor != 0 || m.Scroll != 0 {
 		t.Fatalf("Cursor/Scroll = %d/%d, want reset to 0/0 once the reload is shorter", m.Cursor, m.Scroll)
 	}
@@ -1246,5 +1251,35 @@ func TestWithProjectResetsListAndDetailState(t *testing.T) {
 
 	if m.Screen != ScreenList || len(m.Items) != 0 || m.Cursor != 0 || m.Filter.State != "" || m.Detail != nil || m.ErrorMsg != "" {
 		t.Fatalf("WithProject left stale state: %+v", m)
+	}
+}
+
+// TestRangeIndicatorShowsStoreTotal: the footer counts what the filter
+// matched in the store, not what fits on the page. Seeding more rows than
+// one page holds is what makes the two numbers differ — an adapter that
+// dropped the total would render "of 20" here.
+func TestRangeIndicatorShowsStoreTotal(t *testing.T) {
+	items := make([]store.TaskListItem, pageSize+7)
+	for i := range items {
+		items[i] = store.TaskListItem{Task: sampleTask(int64(i+1), fmt.Sprintf("ACME-%d", i+1), "open")}
+	}
+	fake := &data.FakeTask{ItemsByProject: map[string][]store.TaskListItem{"acme": items}}
+	m := New(fake).WithProject("acme")
+	m.Height = 40
+	m, _ = step(t, m, run(t, m.Init()))
+
+	if m.Total != len(items) {
+		t.Fatalf("Total = %d, want the store's own %d", m.Total, len(items))
+	}
+	if got := m.View(); !strings.Contains(got, fmt.Sprintf("of %d", len(items))) {
+		t.Fatalf("range indicator does not report the store total %d:\n%s", len(items), got)
+	}
+
+	// On the second page the range is absolute, not page-relative.
+	updated, cmd := m.handleListKeys("n")
+	m = updated.(Model)
+	m, _ = step(t, m, run(t, cmd))
+	if got := m.View(); !strings.Contains(got, fmt.Sprintf("tasks %d-%d of %d", pageSize+1, len(items), len(items))) {
+		t.Fatalf("second page range is not absolute:\n%s", got)
 	}
 }

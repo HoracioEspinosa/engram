@@ -84,7 +84,7 @@ type Model struct {
 // The root never opens or wraps a store itself; whoever builds it decides
 // which store backs each reader, so a tab can never end up bound to a
 // different (or missing) store than its siblings.
-func New(mem data.MemoryReader, projects data.ProjectReader, task data.TaskReader, evidenceReader data.EvidenceReader, runbookReader data.RunbookReader, version string, styles theme.Styles, initialProject string) Model {
+func New(mem data.MemorySource, projects data.ProjectReader, task data.TaskSource, evidenceReader data.EvidenceSource, runbookReader data.RunbookSource, version string, styles theme.Styles, initialProject string) Model {
 	m := Model{
 		version:     version,
 		active:      tabs.Memory,

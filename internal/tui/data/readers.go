@@ -203,6 +203,17 @@ type TaskPageReader interface {
 	VaultDir(id int64) (dir string, ok bool, err error)
 }
 
+// TaskSource is everything the Tasks tab reads through. It is the union of
+// the two interfaces above rather than a third method set: the sqlite
+// adapter and FakeTask each satisfy both already, so the union adds no
+// implementation. What it adds is a guarantee at the wiring point — a tab
+// bound to a source can always say how many tasks the filter matched, not
+// only which ones fit on the page.
+type TaskSource interface {
+	TaskReader
+	TaskPageReader
+}
+
 // EvidenceReader is the surface the Evidence tab needs: the project's
 // evidence list, optionally filtered by task and/or attached status (S6).
 // S7's detail adds nothing the store must be queried for beyond what a list
@@ -227,6 +238,14 @@ type EvidencePageReader interface {
 	// falls under, with how many rows sit in each, for the "t" filter's
 	// counts.
 	Categories(project string) ([]CategoryCount, error)
+}
+
+// EvidenceSource is everything the Evidence tab reads through, the union of
+// EvidenceReader and EvidencePageReader — see TaskSource for why the union
+// exists.
+type EvidenceSource interface {
+	EvidenceReader
+	EvidencePageReader
 }
 
 // RunbookReader is the surface the Runbooks tab needs: the browsable index
@@ -266,6 +285,14 @@ type RunbookPageReader interface {
 	// ListRunbooksPage is ListRunbooks with f's further filters (stale,
 	// category, pattern, status) and the page's own total size alongside it.
 	ListRunbooksPage(project string, all bool, f RunbookFilter) (Page[store.RunbookIndexRow], error)
+}
+
+// RunbookSource is everything the Runbooks tab reads through, the union of
+// RunbookReader and RunbookPageReader — see TaskSource for why the union
+// exists.
+type RunbookSource interface {
+	RunbookReader
+	RunbookPageReader
 }
 
 // MemoryReader is the surface the Memory tab needs: the observation, session
@@ -316,6 +343,14 @@ type ScopedMemoryReader interface {
 	// RecentSessionsScoped is RecentSessions narrowed to scope and paged,
 	// with the same capped-window Total as SearchScoped.
 	RecentSessionsScoped(scope ProjectScope, limit, offset int) (Page[store.SessionSummary], error)
+}
+
+// MemorySource is everything the Memory tab reads through, the union of
+// MemoryReader and ScopedMemoryReader — see TaskSource for why the union
+// exists.
+type MemorySource interface {
+	MemoryReader
+	ScopedMemoryReader
 }
 
 // ProjectScope narrows a workspace-wide read to one project, optionally
