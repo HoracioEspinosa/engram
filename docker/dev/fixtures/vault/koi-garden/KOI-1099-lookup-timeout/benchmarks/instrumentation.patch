@@ -1,0 +1,24 @@
+--- a/internal/lookup/client.go
++++ b/internal/lookup/client.go
+@@ -1,6 +1,7 @@
+ package lookup
+ 
+ import (
++	"context"
+ 	"time"
+ )
+ 
+@@ -8,6 +9,12 @@
+ 	transport Transport
+ }
+ 
++// resolveTimeout bounds a single cross-pond lookup explicitly, instead of
++// falling back to the transport's much larger default.
++const resolveTimeout = 2 * time.Second
++
+ func (c *LookupClient) Resolve(code string) (Fish, error) {
+-	return c.transport.Lookup(code)
++	ctx, cancel := context.WithTimeout(context.Background(), resolveTimeout)
++	defer cancel()
++	return c.transport.LookupContext(ctx, code)
+ }

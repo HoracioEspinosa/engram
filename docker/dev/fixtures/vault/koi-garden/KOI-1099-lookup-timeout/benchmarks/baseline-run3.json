@@ -1,0 +1,12 @@
+{
+  "scenarios": {
+    "warm": {
+      "total": {
+        "ops": {
+          "resolve": 2
+        }
+      }
+    }
+  },
+  "wallClockMs": 2594.9
+}

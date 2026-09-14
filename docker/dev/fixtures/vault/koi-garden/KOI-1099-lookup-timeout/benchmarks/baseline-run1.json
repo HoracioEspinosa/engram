@@ -1,0 +1,13 @@
+{
+  "engram_benchmark": "v1",
+  "task": "KOI-1099",
+  "name": "lookup-timeout",
+  "captured_at": "2026-08-20T10:00:00Z",
+  "config_stamp": "pond-02 / cache off",
+  "baseline": true,
+  "notes": "corrida base antes de fijar un timeout explícito en LookupClient.Resolve",
+  "metrics": [
+    { "metric": "lookup.p95", "unit": "ms", "value": 1512 },
+    { "metric": "lookup.errors", "unit": "count", "value": 3 }
+  ]
+}

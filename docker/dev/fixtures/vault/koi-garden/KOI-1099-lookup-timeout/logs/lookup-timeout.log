@@ -1,0 +1,7 @@
+2026-08-19T14:02:11Z INFO  lookup: resolving code=KOI-PZ-0917 from=pond-02 to=pond-01
+2026-08-19T14:02:41Z ERROR lookup: context deadline exceeded after 30.002s code=KOI-PZ-0917
+2026-08-19T14:02:41Z WARN  lookup: retry 1/2 code=KOI-PZ-0917
+2026-08-19T14:03:11Z ERROR lookup: context deadline exceeded after 30.001s code=KOI-PZ-0917
+2026-08-19T14:03:11Z WARN  lookup: retry 2/2 code=KOI-PZ-0917
+2026-08-19T14:03:41Z ERROR lookup: context deadline exceeded after 30.003s code=KOI-PZ-0917
+2026-08-19T14:03:41Z ERROR lookup: giving up after 2 retries code=KOI-PZ-0917

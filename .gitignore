@@ -26,6 +26,9 @@ Thumbs.db
 .codex/skills
 .github/skills
 .gemini/skills
+
+# Agent definitions copied by setup.sh. The source of truth is agents/*.md.
+.claude/agents
 engram-dev
 .atl/
 .release-notes-beta.md
@@ -36,3 +39,13 @@ bin/
 
 # Regenerable code graph, never versioned.
 graphify-out/
+
+# Throwaway output from the dockerized dev/validation environment.
+docker/dev/out/
+
+# Compiled binaries that a stray `go build` inside the package directory
+# leaves behind. `go build ./cmd/engram` writes to the current directory, so
+# running it from inside cmd/engram drops a 17 MB executable named after the
+# package right next to the sources.
+cmd/engram/main
+cmd/engram/gentle-creation
