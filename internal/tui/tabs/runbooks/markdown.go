@@ -2,12 +2,17 @@ package runbooks
 
 import (
 	"errors"
+	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/ansi"
 	glamourstyles "github.com/charmbracelet/glamour/styles"
@@ -96,16 +101,39 @@ func readRunbookMarkdown(vaultPath string) (content string, exists bool, err err
 //     whatever glamour still emitted once the resolved profile is Ascii,
 //     which is exactly the condition under which every other screen's
 //     lipgloss output is already escape-free.
+//
+// The chroma formatter is chosen from the same resolved profile, so a code
+// block quantises its colours exactly as far as the rest of the screen does.
 func renderMarkdown(source string, width int, palette theme.Palette) (string, error) {
 	if width <= 0 {
 		width = defaultRenderWidth
 	}
 	profile := lipgloss.ColorProfile()
-	renderer, err := glamour.NewTermRenderer(
-		glamour.WithStyles(glamourStyleConfig(palette)),
+
+	// The style is registered before the lock below is taken, not inside it:
+	// chromaStyleMu is not reentrant, and nothing ever removes an entry from
+	// chroma's registry, so a style registered here is still there to render
+	// with.
+	cfg := glamourStyleConfig(palette, profile)
+
+	options := []glamour.TermRendererOption{
+		glamour.WithStyles(cfg),
 		glamour.WithColorProfile(profile),
 		glamour.WithWordWrap(width),
-	)
+	}
+	if profile != termenv.Ascii {
+		options = append(options, glamour.WithChromaFormatter(chromaFormatterFor(profile)))
+	}
+
+	// The render itself is serialised for the same reason the registration is:
+	// with CodeBlock.Chroma nil, glamour reaches chroma's unsynchronised
+	// registry map by name from inside Render, outside any lock of its own.
+	// Markdown is loaded from a tea.Cmd, so two tabs rendering at once would
+	// be two goroutines reading that map while a third writes it.
+	chromaStyleMu.Lock()
+	defer chromaStyleMu.Unlock()
+
+	renderer, err := glamour.NewTermRenderer(options...)
 	if err != nil {
 		return source, err
 	}
@@ -122,16 +150,26 @@ func renderMarkdown(source string, width int, palette theme.Palette) (string, er
 // glamourStyleConfig derives a glamour ansi.StyleConfig from palette,
 // starting from glamour's own DarkStyleConfig (for its prefixes, indents and
 // bullet/blockquote/table formatting, none of which rfc-tui.md §8 assigns a
-// semantic token to) and overriding only the colour fields the palette
-// actually has an opinion about. Chroma (code block syntax highlighting) is
-// left at DarkStyleConfig's own scheme: rfc-tui.md §8.1's token table has no
-// entry for source-code tokens, so recolouring them would be this package's
-// own invention rather than something the RFC specifies.
+// semantic token to) and overriding the colour fields the palette has an
+// opinion about — the code block's syntax scheme included.
+//
+// Syntax colours have to come from the palette because glamour's own are
+// written for a dark terminal and a code block is drawn straight onto the
+// terminal ground: chroma's TTY formatters clear the style's background
+// before emitting anything (formatters/tty_indexed.go and tty_truecolour.go
+// both open with clearBackground), so there is no panel under the block to
+// lift its contrast. Against a light palette's Base those fixed colours read
+// down to 1.02:1 — a block nobody can read.
+//
+// profile decides whether a syntax scheme is attached at all. Under Ascii the
+// theme name stays empty so glamour falls back to rendering the block as
+// plain text in CodeBlock.Color, which is what keeps a run with no terminal
+// attached free of escape sequences.
 //
 // This mapping — which glamour element gets which Palette field — is this
 // task's own composition; rfc-tui.md §8.2 says only that glamour.WithStyles
 // must be built "desde la misma paleta", not which element gets which role.
-func glamourStyleConfig(p theme.Palette) ansi.StyleConfig {
+func glamourStyleConfig(p theme.Palette, profile termenv.Profile) ansi.StyleConfig {
 	cfg := glamourstyles.DarkStyleConfig
 
 	cfg.Document.Color = hexPtr(p.Text)
@@ -147,10 +185,135 @@ func glamourStyleConfig(p theme.Palette) ansi.StyleConfig {
 	cfg.LinkText.Color = hexPtr(p.Primary)
 	cfg.Code.Color = hexPtr(p.Accent)
 	cfg.Code.BackgroundColor = hexPtr(p.Surface)
-	cfg.CodeBlock.Color = hexPtr(p.Subtext)
+	cfg.CodeBlock.Color = hexPtr(p.Text)
 	cfg.HorizontalRule.Color = hexPtr(p.Overlay)
 
+	// The scheme is handed over by name rather than through CodeBlock.Chroma.
+	// glamour derives a chroma style from that field but registers it under
+	// one fixed name and only when that name is free, so the first palette to
+	// draw a code block would own every code block for the life of the
+	// process — and this workspace swaps palettes while it runs.
+	cfg.CodeBlock.Chroma = nil
+	if profile != termenv.Ascii {
+		cfg.CodeBlock.Theme = ensureChromaStyle(p)
+	} else {
+		cfg.CodeBlock.Theme = ""
+	}
+
 	return cfg
+}
+
+// chromaStyleMu guards chroma's style registry, which is a plain map with no
+// synchronisation of its own (styles/api.go), and the renders that read it.
+var chromaStyleMu sync.Mutex
+
+// ensureChromaStyle registers palette's syntax scheme if it is not registered
+// already and returns the name to ask for it by.
+//
+// The name is derived from the palette's colours rather than from its name
+// because a row in the themes table shadows a builtin while keeping its name
+// (theme.Selection.Stored): two different palettes answering to "koi-pond"
+// would otherwise share one registered style, and the one that got there
+// first would win.
+func ensureChromaStyle(p theme.Palette) string {
+	name := chromaStyleName(p)
+
+	chromaStyleMu.Lock()
+	defer chromaStyleMu.Unlock()
+	if _, ok := styles.Registry[name]; !ok {
+		styles.Register(chroma.MustNewStyle(name, chromaStyleEntries(p)))
+	}
+	return name
+}
+
+// chromaStyleName hashes the palette's colours into a registry key. The hash
+// only has to separate palettes that differ, so the cheapest one in the
+// standard library is the right one.
+func chromaStyleName(p theme.Palette) string {
+	h := fnv.New32a()
+	for _, c := range []lipgloss.Color{
+		p.Base, p.Surface, p.Overlay, p.Text, p.Subtext,
+		p.Primary, p.Secondary, p.Accent, p.Highlight,
+		p.Success, p.Warning, p.Danger, p.Info,
+	} {
+		_, _ = h.Write([]byte(c))
+		_, _ = h.Write([]byte{0})
+	}
+	return fmt.Sprintf("engram-%08x", h.Sum32())
+}
+
+// chromaStyleEntries maps every token type glamour styles onto a palette role.
+//
+// Which role a token gets is this package's composition — rfc-tui.md §8.1
+// assigns no token to a keyword or a string literal — but it is not free
+// choice: a code block is drawn on Base with no panel under it, so every
+// colour here has to be one the palette already keeps legible against Base.
+// Info is deliberately unused for that reason, and the emphasis glamour's own
+// scheme gives a token is kept.
+//
+// No entry carries a background. chroma's TTY formatters strip backgrounds
+// before emitting, so a "bg:" here would be a colour nobody ever sees.
+func chromaStyleEntries(p theme.Palette) chroma.StyleEntries {
+	var (
+		text      = string(p.Text)
+		subtext   = string(p.Subtext)
+		primary   = string(p.Primary)
+		secondary = string(p.Secondary)
+		accent    = string(p.Accent)
+		highlight = string(p.Highlight)
+		success   = string(p.Success)
+		danger    = string(p.Danger)
+	)
+	return chroma.StyleEntries{
+		// Background is the root every token without an entry inherits from,
+		// so it carries the default foreground rather than a ground.
+		chroma.Background:          text,
+		chroma.Text:                text,
+		chroma.Name:                text,
+		chroma.NameOther:           text,
+		chroma.Punctuation:         text,
+		chroma.Operator:            text,
+		chroma.Comment:             subtext + " italic",
+		chroma.CommentPreproc:      subtext,
+		chroma.Keyword:             primary + " bold",
+		chroma.KeywordReserved:     primary,
+		chroma.KeywordNamespace:    primary,
+		chroma.KeywordType:         primary,
+		chroma.Literal:             success,
+		chroma.LiteralString:       success,
+		chroma.LiteralStringEscape: success,
+		chroma.LiteralNumber:       success,
+		chroma.LiteralDate:         success,
+		chroma.NameFunction:        secondary,
+		chroma.NameClass:           secondary + " bold underline",
+		chroma.NameBuiltin:         accent,
+		chroma.NameConstant:        accent,
+		chroma.NameDecorator:       accent,
+		chroma.NameException:       accent,
+		chroma.NameTag:             highlight,
+		chroma.NameAttribute:       highlight,
+		chroma.Error:               danger + " bold",
+		chroma.GenericDeleted:      danger,
+		chroma.GenericInserted:     success,
+		chroma.GenericEmph:         text + " italic",
+		chroma.GenericStrong:       text + " bold",
+		chroma.GenericSubheading:   secondary,
+	}
+}
+
+// chromaFormatterFor picks the chroma formatter that matches the profile
+// lipgloss detected, so a code block is quantised exactly as far as the rest
+// of the screen is and no further. Naming a truecolor formatter on a terminal
+// that reports 256 colours is the coupling WithColorProfile exists to avoid.
+func chromaFormatterFor(profile termenv.Profile) string {
+	switch profile {
+	case termenv.TrueColor:
+		return "terminal16m"
+	case termenv.ANSI256:
+		return "terminal256"
+	default:
+		return "terminal16"
+	}
 }
 
 // hexPtr adapts a Palette colour (always a "#rrggbb" lipgloss.Color, since
