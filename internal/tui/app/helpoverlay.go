@@ -75,6 +75,11 @@ func (m Model) activeScreenHelp() []key.Binding {
 func (m Model) viewHelpOverlay() string {
 	h := help.New()
 	h.ShowAll = true
+	// The overlay is composited over the body now, so it has to fit inside
+	// the frame that is still drawn around it.
+	if width := m.width - overlayChromeCells; width > 0 {
+		h.Width = width
+	}
 	h.Styles.FullKey = m.styles.TabActive
 	h.Styles.FullDesc = m.styles.DetailValue
 	h.Styles.FullSeparator = m.styles.Help

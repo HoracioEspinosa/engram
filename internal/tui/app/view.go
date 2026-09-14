@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // View draws the application frame around the active screen's body. The
@@ -31,19 +33,15 @@ func (m Model) View() string {
 		}
 	}
 
+	// Both overlays carry their own footer: the screen underneath is not
+	// answering keys while one is open, so its hints would name keys that do
+	// nothing.
 	if m.themePicker.open {
-		// The theme overlay takes the screen the same way the "?" overlay
-		// below does, and carries its own footer: the screen underneath is
-		// not answering keys, so its hints would name keys that do nothing.
-		return m.styles.App.Render(m.viewThemePicker())
+		return m.styles.App.Render(m.compose(body, m.viewThemePicker()))
 	}
 
 	if m.showHelp {
-		// The "?" overlay (rfc-tui.md §7.1) replaces the body outright
-		// rather than compositing over it: bubbles has no layering
-		// primitive in the v1 line this fork stays on (rfc-tui.md §6), and
-		// a full-screen swap keeps the overlay legible at 80 columns too.
-		return m.styles.App.Render(m.viewHelpOverlay())
+		return m.styles.App.Render(m.compose(body, m.viewHelpOverlay()))
 	}
 
 	if hints := shared.HintsFrom(m.styles, m.activeScreenHelp(), m.width); hints != "" {
@@ -51,4 +49,41 @@ func (m Model) View() string {
 	}
 
 	return m.styles.App.Render(body)
+}
+
+// overlayChromeCells and overlayChromeRows are what an overlay's own content
+// must give back to whatever frames it: the app frame's horizontal padding,
+// the panel's border and padding, and a margin either side so the screen
+// underneath stays visible around it.
+const (
+	overlayChromeCells = 12
+	overlayChromeRows  = 12
+)
+
+// compose centres panel over body instead of replacing it. An overlay that
+// swapped the whole screen threw away the very thing it was describing —
+// the list, the detail, the tab the user pressed "?" on — and left them
+// navigating back by memory.
+//
+// The panel is framed in Overlay and never filled: §6.9's rule for a
+// translucent terminal is that a panel is delimited by its border, so the
+// cells Composite replaces carry the panel's own content and nothing else.
+func (m Model) compose(body, panel string) string {
+	framed := m.styles.Panel.Render(panel)
+
+	// The frame's own padding is not part of body, so the area the panel is
+	// centred in is the body's rendered extent rather than the terminal's —
+	// widened to the panel when the screen underneath is the narrower of the
+	// two.
+	width := max(lipgloss.Width(body), lipgloss.Width(framed))
+	height := max(lipgloss.Height(body), lipgloss.Height(framed))
+
+	// Composite only paints on rows the base already has, so a body shorter
+	// than the panel is grown first: an overlay clipped by whatever happened
+	// to be underneath it would lose its own footer.
+	if grow := height - lipgloss.Height(body); grow > 0 {
+		body += strings.Repeat("\n", grow)
+	}
+
+	return shared.Centered(body, framed, width, height)
 }

@@ -385,11 +385,11 @@ func (d themeItemDelegate) Render(w io.Writer, m list.Model, index int, listItem
 // which a floating panel would not be.
 func (m Model) viewThemePicker() string {
 	l := m.themePicker.list
-	height := m.height - 8
+	height := m.height - overlayChromeRows
 	if height < 3 {
 		height = 3
 	}
-	width := m.width - 6
+	width := m.width - overlayChromeCells
 	if width < 20 {
 		width = 20
 	}

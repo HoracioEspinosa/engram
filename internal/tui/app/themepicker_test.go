@@ -456,7 +456,9 @@ func TestThemePickerFooterMatchesItsBindings(t *testing.T) {
 	m, _, _ := pickerFixture(t)
 	m = openPicker(t, m)
 
-	lines := strings.Split(ansi.Strip(m.View()), "\n")
+	// The panel is composited over the body, so the footer to check is the
+	// overlay's own last line, not the last line of the screen.
+	lines := strings.Split(ansi.Strip(m.viewThemePicker()), "\n")
 	footer := ""
 	for i := len(lines) - 1; i >= 0; i-- {
 		if line := strings.TrimSpace(lines[i]); line != "" {

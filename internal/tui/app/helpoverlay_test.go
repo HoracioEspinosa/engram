@@ -8,6 +8,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func questionMark() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")} }
@@ -178,4 +179,49 @@ func TestHelpOverlayOpensFromTheDashboardAndSelector(t *testing.T) {
 	if !sel.showHelp {
 		t.Fatal("\"?\" should open help from the Selector")
 	}
+}
+
+// TestHelpOverlayKeepsTheBodyVisible pins the layering contract: the overlay
+// is composited over the screen it describes, so the tab bar and the list
+// underneath stay on screen around the panel instead of being erased by it.
+func TestHelpOverlayKeepsTheBodyVisible(t *testing.T) {
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.KoiPond()), "")
+	m.active = tabs.Tasks
+	m.screen = screenTab
+	m.width, m.height = 120, 40
+
+	beneath := ansi.Strip(m.View())
+	withOverlay := ansi.Strip(m.mustToggleHelp(t).View())
+
+	// The tab bar is the least ambiguous landmark: it is drawn by the frame
+	// on every tab screen and has nothing to do with the help panel itself.
+	// Both ends of it are checked, so the panel is shown to be sitting in
+	// the middle of a row the body still owns rather than on top of the lot.
+	for _, mark := range []string{"0 Dashboard", "5 Cloud"} {
+		if !strings.Contains(beneath, mark) {
+			t.Fatalf("the screen under the overlay has no %q to begin with:\n%s", mark, beneath)
+		}
+		if !strings.Contains(withOverlay, mark) {
+			t.Fatalf("the overlay erased %q instead of compositing over the body:\n%s", mark, withOverlay)
+		}
+	}
+	if !strings.Contains(withOverlay, "Help") {
+		t.Fatalf("the overlay itself is missing:\n%s", withOverlay)
+	}
+
+	// Composite replaces cells, it does not insert rows: an overlay that
+	// pushed the body down would change the frame's height.
+	if got, want := len(strings.Split(withOverlay, "\n")), len(strings.Split(beneath, "\n")); got < want {
+		t.Fatalf("the frame lost %d rows under the overlay", want-got)
+	}
+}
+
+// mustToggleHelp presses "?" and returns the model that came back.
+func (m Model) mustToggleHelp(t *testing.T) Model {
+	t.Helper()
+	next, _ := step(t, m, questionMark())
+	if !next.showHelp {
+		t.Fatal("\"?\" did not open the overlay")
+	}
+	return next
 }

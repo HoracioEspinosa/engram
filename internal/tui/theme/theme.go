@@ -269,6 +269,9 @@ type Styles struct {
 	SearchHighlight lipgloss.Style
 	NoResults       lipgloss.Style
 
+	// Panel frames a floating overlay over the screen it was opened from.
+	Panel lipgloss.Style
+
 	// Wordmark.
 	LogoFrame    lipgloss.Style
 	LogoAccent   lipgloss.Style
@@ -447,6 +450,14 @@ func New(p Palette) Styles {
 		Italic(true).
 		PaddingLeft(2).
 		MarginTop(1)
+
+	// A panel is delimited by its border, never by a fill: a translucent
+	// terminal shows the desktop through any Background(), which is why the
+	// only legibility this palette promises is against Base.
+	s.Panel = lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(p.Overlay).
+		Padding(0, 1)
 
 	s.LogoFrame = lipgloss.NewStyle().
 		Border(wordmarkBorder()).
