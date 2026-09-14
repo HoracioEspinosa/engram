@@ -56,7 +56,16 @@ type MCPConfig struct {
 	// mem_save call (REQ-001). nil means "use the store default" (3).
 	// An explicit pointer value (including 0) is forwarded directly.
 	Limit *int
+
+	// ServerVersion is the version the MCP initialize handshake reports to the
+	// host. It carries the binary's own version so a host can tell which
+	// engram it is talking to. Empty means "dev".
+	ServerVersion string
 }
+
+// defaultServerVersion is what the initialize handshake reports when the
+// binary was built without version information.
+const defaultServerVersion = "dev"
 
 var suggestTopicKey = store.SuggestTopicKey
 
@@ -253,9 +262,13 @@ func NewServerWithConfig(s *store.Store, cfg MCPConfig, allowlist map[string]boo
 }
 
 func newServerWithActivity(s *store.Store, cfg MCPConfig, allowlist map[string]bool, activity *SessionActivity) *server.MCPServer {
+	serverVersion := strings.TrimSpace(cfg.ServerVersion)
+	if serverVersion == "" {
+		serverVersion = defaultServerVersion
+	}
 	srv := server.NewMCPServer(
 		"engram",
-		"0.1.0",
+		serverVersion,
 		server.WithToolCapabilities(true),
 		server.WithInstructions(serverInstructions),
 	)
