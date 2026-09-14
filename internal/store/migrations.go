@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 )
 
 // The core schema is created with CREATE TABLE IF NOT EXISTS and CREATE INDEX IF
@@ -98,6 +100,63 @@ func (s *Store) recordMigration(id string) error {
 		`INSERT OR IGNORE INTO schema_migrations (id, applied_at) VALUES (?, datetime('now'))`, id,
 	); err != nil {
 		return fmt.Errorf("engram: record migration %s: %w", id, err)
+	}
+	return nil
+}
+
+// availableBytesFor is the seam the headroom check goes through, so a test can
+// describe a filesystem with no room without having to fill one.
+var availableBytesFor = availableBytes
+
+// rebuildHeadroom is the free space a rebuilding migration demands, as a
+// multiple of the database size: one copy for the backup, one for the table
+// SQLite builds alongside the old one, and one so the filesystem is not left at
+// zero when the migration finishes.
+const rebuildHeadroom = 3
+
+// rebuild runs a migration that rewrites a table rather than adding to it. A
+// rebuild is the one migration a database cannot recover from on its own — the
+// old table is gone by the time anything can fail — so the whole file is copied
+// first, and the migration refuses to start when there is no room to copy it.
+// The body runs at most once, like any other ledger entry.
+func (s *Store) rebuild(id string, fn func() error) error {
+	return s.once(id, func() error {
+		if err := s.backupBeforeRebuild(id); err != nil {
+			return err
+		}
+		return fn()
+	})
+}
+
+// backupBeforeRebuild copies the database to engram.db.pre-<id>.bak. VACUUM INTO
+// writes a consistent copy from inside SQLite, which a file copy cannot promise
+// while the WAL holds committed pages the main file does not.
+func (s *Store) backupBeforeRebuild(id string) error {
+	dbPath := filepath.Join(s.cfg.DataDir, "engram.db")
+	info, err := os.Stat(dbPath)
+	if err != nil {
+		return fmt.Errorf("engram: stat database before rebuild: %w", err)
+	}
+	size := uint64(info.Size())
+
+	free, err := availableBytesFor(s.cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("engram: read free space before rebuild: %w", err)
+	}
+	if needed := size * rebuildHeadroom; free < needed {
+		return fmt.Errorf(
+			"engram: %s rebuilds a table and needs %d bytes free in %s, but only %d are available; free up space and run again",
+			id, needed, s.cfg.DataDir, free)
+	}
+
+	backupPath := filepath.Join(s.cfg.DataDir, "engram.db.pre-"+id+".bak")
+	// VACUUM INTO refuses to overwrite, so a backup left by an attempt that
+	// failed after the copy is removed rather than turned into a hard stop.
+	if err := os.Remove(backupPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("engram: clear stale rebuild backup: %w", err)
+	}
+	if _, err := s.execHook(s.db, `VACUUM INTO ?`, backupPath); err != nil {
+		return fmt.Errorf("engram: back up database before %s: %w", id, err)
 	}
 	return nil
 }

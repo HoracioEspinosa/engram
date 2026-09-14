@@ -2,6 +2,8 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -200,5 +202,106 @@ func TestObservationProjectFilterUsesIndex(t *testing.T) {
 	plan := explain(t, counts)
 	if !strings.Contains(plan, "idx_obs_project_lower") || strings.Contains(plan, "SCAN observations") {
 		t.Fatalf("the card counter query does not use idx_obs_project_lower: %s", plan)
+	}
+}
+
+// TestRebuildMigrationWritesBackup pins the safety net around a migration that
+// rebuilds a table: before the body runs, the whole database is copied next to
+// itself, so a rebuild that goes wrong can be undone by restoring one file.
+func TestRebuildMigrationWritesBackup(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.CreateSession("sess-rebuild", "koi-garden", ""); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := s.AddObservation(AddObservationParams{
+			SessionID: "sess-rebuild", Type: "discovery", Project: "koi-garden",
+			Title: fmt.Sprintf("row %d", i), Content: fmt.Sprintf("content %d", i),
+		}); err != nil {
+			t.Fatalf("AddObservation: %v", err)
+		}
+	}
+
+	const id = "test-0001-rebuild"
+	ran := 0
+	if err := s.rebuild(id, func() error { ran++; return nil }); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if ran != 1 {
+		t.Fatalf("migration body ran %d time(s); want 1", ran)
+	}
+
+	backup := filepath.Join(s.cfg.DataDir, "engram.db.pre-"+id+".bak")
+	if _, err := os.Stat(backup); err != nil {
+		t.Fatalf("backup not written: %v", err)
+	}
+
+	var live int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM observations`).Scan(&live); err != nil {
+		t.Fatalf("count live observations: %v", err)
+	}
+	db, err := openDB("sqlite", backup)
+	if err != nil {
+		t.Fatalf("open backup: %v", err)
+	}
+	defer db.Close()
+	var backedUp int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM observations`).Scan(&backedUp); err != nil {
+		t.Fatalf("count backed up observations: %v", err)
+	}
+	if backedUp != live {
+		t.Fatalf("backup holds %d observation(s); the database holds %d", backedUp, live)
+	}
+
+	// The ledger covers a rebuild like any other migration: a second call is a
+	// no-op and does not copy the database again.
+	if err := s.rebuild(id, func() error { ran++; return nil }); err != nil {
+		t.Fatalf("second rebuild: %v", err)
+	}
+	if ran != 1 {
+		t.Fatalf("migration body ran %d time(s) across two calls; want 1", ran)
+	}
+}
+
+// TestRebuildRefusesWithoutDiskSpace pins the other half: a rebuild that cannot
+// be backed up does not start, because a half-rebuilt table with no copy to
+// restore from is the one outcome the backup exists to prevent.
+func TestRebuildRefusesWithoutDiskSpace(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.CreateSession("sess-cramped", "koi-garden", ""); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if _, err := s.AddObservation(AddObservationParams{
+		SessionID: "sess-cramped", Type: "discovery", Project: "koi-garden",
+		Title: "row", Content: "content",
+	}); err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	orig := availableBytesFor
+	t.Cleanup(func() { availableBytesFor = orig })
+	availableBytesFor = func(string) (uint64, error) { return 1, nil }
+
+	const id = "test-0002-rebuild"
+	ran := false
+	err := s.rebuild(id, func() error { ran = true; return nil })
+	if err == nil {
+		t.Fatal("expected the rebuild to refuse without room for a backup")
+	}
+	if !strings.Contains(err.Error(), id) {
+		t.Fatalf("error does not name the migration: %v", err)
+	}
+	if ran {
+		t.Fatal("the migration body ran despite the refusal")
+	}
+	if _, statErr := os.Stat(filepath.Join(s.cfg.DataDir, "engram.db.pre-"+id+".bak")); !os.IsNotExist(statErr) {
+		t.Fatalf("a backup was written despite the refusal: %v", statErr)
+	}
+	applied, err := s.migrationApplied(id)
+	if err != nil {
+		t.Fatalf("migrationApplied: %v", err)
+	}
+	if applied {
+		t.Fatal("the ledger recorded a migration that never ran")
 	}
 }
