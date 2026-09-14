@@ -99,12 +99,20 @@ const taskSelectColumns = `id, sync_id, project, jira_key, sdd_change, title, ki
 	created_at, updated_at, closed_at, slug, summary, pending_note, vault_path,
 	parent_task_id, parent_task_sync_id`
 
-func scanTask(row interface{ Scan(dest ...any) error }) (Task, error) {
-	var t Task
-	err := row.Scan(&t.ID, &t.SyncID, &t.Project, &t.JiraKey, &t.SDDChange, &t.Title, &t.Kind, &t.State,
+// taskScanTargets lists the destinations taskSelectColumns scans into, in the
+// same order. A query that appends columns of its own to that projection reuses
+// this rather than spelling the task's fields a second time, so a column added
+// to the table cannot end up scanned in one place and forgotten in the other.
+func taskScanTargets(t *Task) []any {
+	return []any{&t.ID, &t.SyncID, &t.Project, &t.JiraKey, &t.SDDChange, &t.Title, &t.Kind, &t.State,
 		&t.JiraStatus, &t.JiraStatusCategory, &t.StateSyncedAt, &t.Branch, &t.PRUrl, &t.KnowledgeRef, &t.Assignee,
 		&t.CreatedAt, &t.UpdatedAt, &t.ClosedAt, &t.Slug, &t.Summary, &t.PendingNote, &t.VaultPath,
-		&t.ParentTaskID, &t.ParentTaskSyncID)
+		&t.ParentTaskID, &t.ParentTaskSyncID}
+}
+
+func scanTask(row interface{ Scan(dest ...any) error }) (Task, error) {
+	var t Task
+	err := row.Scan(taskScanTargets(&t)...)
 	return t, err
 }
 
@@ -402,9 +410,38 @@ type TaskListItem struct {
 	StateStale   bool `json:"state_stale"`
 }
 
+// defaultTaskListLimit is the page size a listing takes when the caller names
+// none. It is spelled once so ListTasksPage reports the same number the query
+// actually applied.
+const defaultTaskListLimit = 20
+
+// taskListQuery reads one page of tasks and everything the page needs in a
+// single round trip.
+//
+// The two counters are correlated subqueries rather than joins: a join to
+// task_observations and another to evidence would multiply the rows against
+// each other and force a GROUP BY over the whole task projection to undo the
+// damage. Each subquery is driven by its own index on task_id, so it costs a
+// lookup per row on the page — not per row in the table.
+//
+// total comes from COUNT(*) OVER (), which SQLite (3.25 and later) evaluates
+// over the whole filtered set before LIMIT is applied. That is the number a
+// pager needs, and it used to cost a second query that repeated the same
+// predicate — and could disagree with the page whenever a write landed between
+// the two.
+const taskListQuery = `
+SELECT %s,
+       (SELECT COUNT(*) FROM task_observations o WHERE o.task_id = t.id),
+       (SELECT COUNT(*) FROM evidence e WHERE e.task_id = t.id AND e.deleted_at IS NULL),
+       COUNT(*) OVER ()
+FROM tasks t
+WHERE %s
+ORDER BY t.updated_at DESC
+LIMIT ? OFFSET ?`
+
 // ListTasks lists tasks for a project applying TaskListFilter (RFC §5.4).
 func (s *Store) ListTasks(project string, f TaskListFilter) ([]TaskListItem, int, error) {
-	where := []string{"project = ?", "deleted_at IS NULL"}
+	where := []string{"t.project = ?", "t.deleted_at IS NULL"}
 	args := []any{project}
 
 	// An explicitly named state, one or many, is always honoured as asked.
@@ -417,86 +454,91 @@ func (s *Store) ListTasks(project string, f TaskListFilter) ([]TaskListItem, int
 			placeholders = append(placeholders, "?")
 			args = append(args, state)
 		}
-		where = append(where, "state IN ("+strings.Join(placeholders, ",")+")")
+		where = append(where, "t.state IN ("+strings.Join(placeholders, ",")+")")
 	case f.State != "" && f.State != "active":
-		where = append(where, "state = ?")
+		where = append(where, "t.state = ?")
 		args = append(args, f.State)
 	case f.IncludeArchived:
-		where = append(where, "state NOT IN ('done','cancelled')")
+		where = append(where, "t.state NOT IN ('done','cancelled')")
 	default:
-		where = append(where, "state NOT IN ('done','cancelled','archived')")
+		where = append(where, "t.state NOT IN ('done','cancelled','archived')")
 	}
 	if f.Kind != "" {
-		where = append(where, "kind = ?")
+		where = append(where, "t.kind = ?")
 		args = append(args, f.Kind)
 	}
 	if f.JiraKey != "" {
-		where = append(where, "jira_key = ?")
+		where = append(where, "t.jira_key = ?")
 		args = append(args, f.JiraKey)
 	}
 	if strings.TrimSpace(f.Query) != "" {
-		where = append(where, "id IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)")
+		where = append(where, "t.id IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)")
 		args = append(args, sanitizeFTS(f.Query))
 	}
 	whereSQL := strings.Join(where, " AND ")
 
-	rdb := s.readDB()
-
-	var total int
-	if err := rdb.QueryRow(`SELECT COUNT(*) FROM tasks WHERE `+whereSQL, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("engram-projects: count tasks: %w", err)
-	}
-
 	limit := f.Limit
 	if limit <= 0 {
-		limit = 20
+		limit = defaultTaskListLimit
 	}
-	listArgs := append(append([]any{}, args...), limit, f.Offset)
-	rows, err := rdb.Query(`SELECT `+taskSelectColumns+` FROM tasks WHERE `+whereSQL+
-		` ORDER BY updated_at DESC LIMIT ? OFFSET ?`, listArgs...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("engram-projects: list tasks: %w", err)
-	}
-	// Reads come from the dedicated pool (readpool.go), which has room for
-	// this cursor and the nested per-task counts at the same time. Every row
-	// is still drained and rows.Close()d up front rather than nested: the
-	// pool is small, and holding one of its connections open across two count
-	// queries per task would starve every other reader.
-	var tasksPage []Task
-	for rows.Next() {
-		t, err := scanTask(rows)
-		if err != nil {
-			rows.Close()
-			return nil, 0, err
-		}
-		tasksPage = append(tasksPage, t)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, 0, err
-	}
-	rows.Close()
-
 	staleAfterHours := f.StaleAfterHours
 	if staleAfterHours <= 0 {
 		staleAfterHours = 24
 	}
 
-	items := make([]TaskListItem, 0, len(tasksPage))
-	for _, t := range tasksPage {
-		item := TaskListItem{Task: t}
-		if err := rdb.QueryRow(`SELECT COUNT(*) FROM task_observations WHERE task_id = ?`, t.ID).
-			Scan(&item.Observations); err != nil {
+	rdb := s.readDB()
+	query := fmt.Sprintf(taskListQuery, prefixColumns(taskSelectColumns, "t"), whereSQL)
+	listArgs := append(append([]any{}, args...), limit, f.Offset)
+	rows, err := s.queryHook(rdb, query, listArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("engram-projects: list tasks: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]TaskListItem, 0, limit)
+	total := 0
+	for rows.Next() {
+		var item TaskListItem
+		dest := append(taskScanTargets(&item.Task), &item.Observations, &item.Evidence, &total)
+		if err := rows.Scan(dest...); err != nil {
 			return nil, 0, err
 		}
-		if err := rdb.QueryRow(`SELECT COUNT(*) FROM evidence WHERE task_id = ? AND deleted_at IS NULL`, t.ID).
-			Scan(&item.Evidence); err != nil {
-			return nil, 0, err
-		}
-		item.StateStale = isTaskStateStale(t.StateSyncedAt, staleAfterHours)
+		item.StateStale = isTaskStateStale(item.StateSyncedAt, staleAfterHours)
 		items = append(items, item)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if len(items) > 0 {
+		return items, total, nil
+	}
+
+	// An empty page carries no window function to read the total from. At
+	// offset zero that is the honest answer — nothing matched. Past the end it
+	// is not: the rows exist, this page just starts after them, and a pager
+	// told "zero" has no way back. Only that case pays for a second query.
+	if f.Offset <= 0 {
+		return items, 0, nil
+	}
+	if err := s.queryRowHook(rdb, `SELECT COUNT(*) FROM tasks t WHERE `+whereSQL, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("engram-projects: count tasks: %w", err)
+	}
 	return items, total, nil
+}
+
+// ListTasksPage is ListTasks with the page's own shape reported alongside it,
+// so a caller that paginates does not have to remember which default limit the
+// store applied.
+func (s *Store) ListTasksPage(project string, f TaskListFilter) (Page[TaskListItem], error) {
+	items, total, err := s.ListTasks(project, f)
+	if err != nil {
+		return Page[TaskListItem]{}, err
+	}
+	limit := f.Limit
+	if limit <= 0 {
+		limit = defaultTaskListLimit
+	}
+	return Page[TaskListItem]{Items: items, Total: total, Limit: limit, Offset: f.Offset}, nil
 }
 
 func isTaskStateStale(stateSyncedAt *string, staleAfterHours int) bool {

@@ -526,6 +526,13 @@ type queryer interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
+// rowQueryer is the single-row read surface. It is separate from queryer so a
+// path that reads one row keeps saying so, and so the hook that counts round
+// trips sees both shapes rather than only the cursor one.
+type rowQueryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
 type rowScanner interface {
 	Next() bool
 	Scan(dest ...any) error
@@ -561,11 +568,12 @@ func closeRowsWithError(rows rowScanner, err error) error {
 }
 
 type storeHooks struct {
-	exec    func(db execer, query string, args ...any) (sql.Result, error)
-	query   func(db queryer, query string, args ...any) (*sql.Rows, error)
-	queryIt func(db queryer, query string, args ...any) (rowScanner, error)
-	beginTx func(db *sql.DB) (*sql.Tx, error)
-	commit  func(tx *sql.Tx) error
+	exec     func(db execer, query string, args ...any) (sql.Result, error)
+	query    func(db queryer, query string, args ...any) (*sql.Rows, error)
+	queryRow func(db rowQueryer, query string, args ...any) *sql.Row
+	queryIt  func(db queryer, query string, args ...any) (rowScanner, error)
+	beginTx  func(db *sql.DB) (*sql.Tx, error)
+	commit   func(tx *sql.Tx) error
 }
 
 func defaultStoreHooks() storeHooks {
@@ -575,6 +583,9 @@ func defaultStoreHooks() storeHooks {
 		},
 		query: func(db queryer, query string, args ...any) (*sql.Rows, error) {
 			return db.Query(query, args...)
+		},
+		queryRow: func(db rowQueryer, query string, args ...any) *sql.Row {
+			return db.QueryRow(query, args...)
 		},
 		queryIt: func(db queryer, query string, args ...any) (rowScanner, error) {
 			rows, err := db.Query(query, args...)
@@ -609,6 +620,13 @@ func (s *Store) queryHook(db queryer, query string, args ...any) (*sql.Rows, err
 		return s.hooks.query(db, query, args...)
 	}
 	return db.Query(query, args...)
+}
+
+func (s *Store) queryRowHook(db rowQueryer, query string, args ...any) *sql.Row {
+	if s.hooks.queryRow != nil {
+		return s.hooks.queryRow(db, query, args...)
+	}
+	return db.QueryRow(query, args...)
 }
 
 func (s *Store) queryItHook(db queryer, query string, args ...any) (rowScanner, error) {

@@ -321,11 +321,7 @@ ORDER BY tree.path`
 // so a join that also carries a `slug` column stays unambiguous without the
 // column list being written a second time.
 func prefixedProjectCardColumns(alias string) string {
-	parts := strings.Split(projectCardSelectColumns, ",")
-	for i, part := range parts {
-		parts[i] = alias + "." + strings.TrimSpace(part)
-	}
-	return strings.Join(parts, ", ")
+	return prefixColumns(projectCardSelectColumns, alias)
 }
 
 // ProjectTree returns the cards under root in preorder, or the whole forest

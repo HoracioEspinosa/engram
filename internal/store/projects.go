@@ -249,6 +249,17 @@ const projectCardSelectColumns = `slug, display_name, repo_url, default_branch, 
 	owner, created_at, updated_at, parent_slug, depth, kind, description, icon, color, tags,
 	graph_stale_reason, graph_changed_files, graph_checked_at`
 
+// prefixColumns qualifies every column of a comma-separated projection with a
+// table alias, so a query that joins or correlates keeps the list unambiguous
+// without writing it out a second time.
+func prefixColumns(columns, alias string) string {
+	parts := strings.Split(columns, ",")
+	for i, part := range parts {
+		parts[i] = alias + "." + strings.TrimSpace(part)
+	}
+	return strings.Join(parts, ", ")
+}
+
 func scanProjectCard(row interface{ Scan(dest ...any) error }) (ProjectCard, error) {
 	var c ProjectCard
 	err := row.Scan(&c.Slug, &c.DisplayName, &c.RepoURL, &c.DefaultBranch, &c.JiraProject,
