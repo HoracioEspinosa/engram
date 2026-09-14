@@ -95,11 +95,19 @@ services:
     environment:
       ENGRAM_DATABASE_URL: postgres://engram_dev:dev_only_pw@postgres-dev:5432/engram_dev?sslmode=disable
       # Local-only, >= 32 chars, distinct from cloud.DefaultJWTSecret.
-      # validateCloudServeAuthConfig() does not even read this while
-      # ENGRAM_CLOUD_INSECURE_NO_AUTH=1, but it is kept valid so flipping
-      # that flag off later does not also require editing this file.
+      # validateCloudServeAuthConfig() requires a non-default secret as soon as
+      # ENGRAM_CLOUD_TOKEN is set together with a project allowlist.
       ENGRAM_JWT_SECRET: engram-dev-workspace-local-only-jwt-secret-not-for-prod
-      ENGRAM_CLOUD_INSECURE_NO_AUTH: "1"
+      # The dev cloud runs authenticated rather than under
+      # ENGRAM_CLOUD_INSECURE_NO_AUTH=1, which the server accepts at startup but
+      # which leaves every /sync/* route answering
+      # 403 "forbidden: principal is required": cloudserver.authorizeProjectScope
+      # asks for a principal whenever a principal-project authorizer is wired,
+      # and the insecure path never puts one in the request context. A legacy
+      # sync token resolves to a principal the allowlist alone authorizes, which
+      # is the scope this stack wants anyway. Local-only and never a real secret;
+      # every client in scripts/dev/ presents the same value.
+      ENGRAM_CLOUD_TOKEN: ${ENGRAM_DEV_CLOUD_TOKEN:-engram-dev-workspace-local-only-sync-token}
       ENGRAM_CLOUD_ALLOWED_PROJECTS: koi-garden,koi-garden-pond-01,koi-garden-pond-02,tsukimi-bridge
       ENGRAM_CLOUD_HOST: 0.0.0.0
       ENGRAM_PORT: "28081"
