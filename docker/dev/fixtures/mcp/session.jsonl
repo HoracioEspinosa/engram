@@ -2,6 +2,7 @@
 {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
 {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
 {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "mem_project_upsert", "arguments": {"project": "koi-garden", "display_name": "Koi Garden", "default_branch": "main"}}}
+{"jsonrpc": "2.0", "id": 16, "method": "tools/call", "params": {"name": "mem_project_card", "arguments": {"project": "koi-garden", "include_counts": true}}}
 {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "mem_task_upsert", "arguments": {"project": "koi-garden", "jira_key": "KOI-1099", "title": "lookup timeout en el estanque", "kind": "bugfix", "state": "in_progress"}}}
 {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "mem_save", "arguments": {"project": "koi-garden", "type": "decision", "title": "sdd/koi-workspace/smoke", "topic_key": "sdd/koi-workspace/smoke", "content": "seeded by mcp-smoke.sh"}}}
 {"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "mem_search", "arguments": {"project": "koi-garden", "query": "sdd/koi-workspace/smoke"}}}

@@ -87,6 +87,81 @@ in_container() {
   docker exec -i "$CONTAINER" "$@"
 }
 
+# mcp_session_lockstep <in.jsonl> <out.jsonl> <stderr> -- <command...>
+# runs one MCP session, sending a request only once the previous one has been
+# answered, and appends every response line to <out.jsonl> in arrival order.
+#
+# The stdio server runs tool calls on a worker pool, so a file piped whole lets
+# a read overtake the write it depends on; sending one request per response
+# keeps the fixture's order.
+#
+# A line carrying an `id` is followed by a wait for the response with that same
+# id. A notification carries no id, is answered by nothing, and is therefore
+# sent without waiting. The command talks to two FIFOs rather than to a pipe
+# because a pipe is only writable while its reader lives: the session has to
+# stay open across the whole fixture, one line at a time.
+mcp_session_lockstep() {
+  local in_file="$1" out_file="$2" err_file="$3"
+  shift 3
+  [ "${1:-}" = "--" ] || fail "mcp_session_lockstep: the command must follow a -- separator"
+  shift
+  [ "$#" -gt 0 ] || fail "mcp_session_lockstep: no command given after --"
+  [ -f "$in_file" ] || fail "mcp_session_lockstep: missing session fixture: $in_file"
+
+  require_cmd mkfifo jq
+
+  local work
+  work="$(mktemp -d)"
+  mkfifo "$work/in" "$work/out"
+  : >"$out_file"
+
+  "$@" <"$work/in" >"$work/out" 2>"$err_file" &
+  local pid=$!
+
+  # Order matters: the command opens its stdin FIFO first and blocks until a
+  # writer appears, then its stdout FIFO and blocks until a reader appears, so
+  # the two ends are opened here in the same order.
+  exec 3>"$work/in" 4<"$work/out"
+
+  local line id reply reply_id rc
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    printf '%s\n' "$line" >&3
+    id="$(printf '%s' "$line" | jq -r '.id // empty' 2>/dev/null || true)"
+    [ -n "$id" ] || continue
+    while :; do
+      if IFS= read -r -t 30 reply <&4; then
+        [ -n "$reply" ] || continue
+        printf '%s\n' "$reply" >>"$out_file"
+        reply_id="$(printf '%s' "$reply" | jq -r '.id // empty' 2>/dev/null || true)"
+        [ "$reply_id" = "$id" ] && break
+      else
+        rc=$?
+        exec 3>&- 4<&-
+        kill "$pid" 2>/dev/null || true
+        rm -rf "$work"
+        [ "$rc" -gt 128 ] && fail "no response for id $id within 30s"
+        fail "the session ended before a response for id $id arrived; see $err_file"
+      fi
+    done
+  done <"$in_file"
+
+  exec 3>&-
+  # Whatever the server writes on its way out is drained rather than left in
+  # the FIFO: an unread line would block its exit on a full pipe, and the
+  # capture is supposed to hold every line the session produced.
+  while IFS= read -r -t 5 reply <&4; do
+    [ -n "$reply" ] || continue
+    printf '%s\n' "$reply" >>"$out_file"
+  done
+  exec 4<&-
+
+  local status=0
+  wait "$pid" || status=$?
+  rm -rf "$work"
+  return "$status"
+}
+
 # dev_volume resolves a declared volume name to the real Docker volume.
 # docker-compose.dev.yml pins an explicit `name:` on every volume, so the real
 # name is the bare one and this resolves to it. The prefixed lookup stays as a
