@@ -211,6 +211,11 @@ func (s *Store) evidenceLimitsForTask(taskSyncID, extraKind string, extraSize in
 	return limits, nil
 }
 
+// defaultEvidenceListLimit is the page size an evidence listing takes when the
+// caller names none. It is spelled once so ListEvidencePage reports the same
+// number the query actually applied.
+const defaultEvidenceListLimit = 50
+
 // EvidenceListFilter holds mem_evidence_list's filter parameters.
 type EvidenceListFilter struct {
 	TaskSyncID string // "" lists the whole project
@@ -278,17 +283,17 @@ func (s *Store) ListEvidence(project string, f EvidenceListFilter) ([]EvidenceLi
 
 	var total int
 	var totalBytes sql.NullInt64
-	if err := rdb.QueryRow(`SELECT COUNT(*), SUM(e.size_bytes) FROM evidence e WHERE `+whereSQL, args...).
+	if err := s.queryRowHook(rdb, `SELECT COUNT(*), SUM(e.size_bytes) FROM evidence e WHERE `+whereSQL, args...).
 		Scan(&total, &totalBytes); err != nil {
 		return nil, 0, 0, fmt.Errorf("engram-projects: count evidence: %w", err)
 	}
 
 	limit := f.Limit
 	if limit <= 0 {
-		limit = 50
+		limit = defaultEvidenceListLimit
 	}
 	listArgs := append(append([]any{}, args...), limit, f.Offset)
-	rows, err := rdb.Query(`
+	rows, err := s.queryHook(rdb, `
 		SELECT e.id, e.sync_id, e.project, e.task_id, e.task_sync_id, e.path, e.sha256, e.category, e.kind,
 		       e.proves, e.config_stamp, e.captured_at, e.attached_jira, e.attached_confluence_url,
 		       e.size_bytes, e.manifest_path, t.jira_key, t.title
@@ -316,6 +321,22 @@ func (s *Store) ListEvidence(project string, f EvidenceListFilter) ([]EvidenceLi
 		items = append(items, item)
 	}
 	return items, total, totalBytes.Int64, rows.Err()
+}
+
+// ListEvidencePage is ListEvidence with the page's own shape reported alongside
+// it. The byte total stays a separate return rather than a field on the page:
+// it is a property of the filtered set, not of the page, and folding it into
+// Page would make it mean something different there than everywhere else.
+func (s *Store) ListEvidencePage(project string, f EvidenceListFilter) (Page[EvidenceListItem], int64, error) {
+	items, total, totalBytes, err := s.ListEvidence(project, f)
+	if err != nil {
+		return Page[EvidenceListItem]{}, 0, err
+	}
+	limit := f.Limit
+	if limit <= 0 {
+		limit = defaultEvidenceListLimit
+	}
+	return Page[EvidenceListItem]{Items: items, Total: total, Limit: limit, Offset: f.Offset}, totalBytes, nil
 }
 
 func nullableInt64(v *int64) any {

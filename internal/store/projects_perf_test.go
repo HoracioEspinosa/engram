@@ -172,6 +172,123 @@ func TestListTasksPageReportsTotalAndOffset(t *testing.T) {
 	}
 }
 
+func TestFindRunbooksIssuesOneQuery(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	const project = "koi-runbooks"
+	seedCountedCard(t, s, project, 0, 0, 0, 6)
+
+	var statements []string
+	countingReadHooks(s, &statements)
+
+	items, total, err := s.FindRunbooks(RunbookFindParams{
+		Query: project, IncludeStale: true, Limit: 2,
+	})
+	if err != nil {
+		t.Fatalf("FindRunbooks: %v", err)
+	}
+	if len(statements) != 1 {
+		t.Fatalf("expected exactly 1 query, got %d:\n%s", len(statements), strings.Join(statements, "\n---\n"))
+	}
+	if total != 6 {
+		t.Fatalf("expected the total to cover every match (6), got %d", total)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected the page to honour the limit (2), got %d", len(items))
+	}
+	for _, item := range items {
+		if item.Project != project || item.Title == "" {
+			t.Errorf("incomplete runbook hit: %+v", item)
+		}
+	}
+}
+
+func TestListRunbooksPageReportsTotal(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	const project = "koi-runbook-page"
+	seedCountedCard(t, s, project, 0, 0, 0, 5)
+
+	page, err := s.ListRunbooksPage(project, RunbookListFilter{Limit: 2, Offset: 2})
+	if err != nil {
+		t.Fatalf("ListRunbooksPage: %v", err)
+	}
+	if page.Total != 5 {
+		t.Errorf("expected total 5, got %d", page.Total)
+	}
+	if page.Limit != 2 || page.Offset != 2 {
+		t.Errorf("expected limit=2 offset=2, got limit=%d offset=%d", page.Limit, page.Offset)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("expected 2 items on the page, got %d", len(page.Items))
+	}
+
+	def, err := s.ListRunbooksPage(project, RunbookListFilter{})
+	if err != nil {
+		t.Fatalf("ListRunbooksPage(default): %v", err)
+	}
+	if def.Limit != defaultRunbookListLimit {
+		t.Errorf("expected the default limit %d, got %d", defaultRunbookListLimit, def.Limit)
+	}
+	if def.Total != 5 || len(def.Items) != 5 {
+		t.Errorf("expected every runbook on the default page, got total=%d items=%d", def.Total, len(def.Items))
+	}
+}
+
+func TestListEvidencePageReportsTotalAndBytes(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+	const project = "koi-evidence-page"
+	if _, _, err := s.UpsertProjectCard(UpsertProjectCardParams{Slug: project}); err != nil {
+		t.Fatalf("UpsertProjectCard: %v", err)
+	}
+	key := "EVID-1"
+	title := "evidence page"
+	kind := "bugfix"
+	res, err := s.UpsertTask(UpsertTaskParams{Project: project, JiraKey: &key, Title: &title, Kind: &kind})
+	if err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+	var wantBytes int64
+	for i := 0; i < 5; i++ {
+		size := int64(100 * (i + 1))
+		wantBytes += size
+		if _, _, _, err := s.AddEvidence(AddEvidenceParams{
+			Task:      res.Task,
+			Path:      fmt.Sprintf("%s/%s/evidences/shot-%d.png", project, key, i),
+			SHA256:    fmt.Sprintf("%064x", i+1),
+			Kind:      "png",
+			Proves:    fmt.Sprintf("capture %d", i),
+			SizeBytes: &size,
+		}); err != nil {
+			t.Fatalf("AddEvidence: %v", err)
+		}
+	}
+
+	page, totalBytes, err := s.ListEvidencePage(project, EvidenceListFilter{Limit: 2, Offset: 1})
+	if err != nil {
+		t.Fatalf("ListEvidencePage: %v", err)
+	}
+	if page.Total != 5 {
+		t.Errorf("expected total 5, got %d", page.Total)
+	}
+	if page.Limit != 2 || page.Offset != 1 {
+		t.Errorf("expected limit=2 offset=1, got limit=%d offset=%d", page.Limit, page.Offset)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("expected 2 items on the page, got %d", len(page.Items))
+	}
+	// The byte total belongs to the filtered set, not to the page.
+	if totalBytes != wantBytes {
+		t.Errorf("expected %d bytes across the filtered set, got %d", wantBytes, totalBytes)
+	}
+
+	def, _, err := s.ListEvidencePage(project, EvidenceListFilter{})
+	if err != nil {
+		t.Fatalf("ListEvidencePage(default): %v", err)
+	}
+	if def.Limit != defaultEvidenceListLimit {
+		t.Errorf("expected the default limit %d, got %d", defaultEvidenceListLimit, def.Limit)
+	}
+}
+
 // runbookIDSeq hands out the three-digit ids runbook_index demands. They are
 // unique across this file so two projects seeded in the same test never collide
 // on one — the index is keyed by id alone, not by (project, id).
