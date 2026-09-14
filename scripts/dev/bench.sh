@@ -58,12 +58,14 @@ fi
 GOMOD_VOLUME="$(ensure_volume engram-dev-gomod)"
 GOBUILD_VOLUME="$(ensure_volume engram-dev-gobuild)"
 TARGET="$BENCH_OUT/${LABEL}.txt"
+set_git_mount_args
 
 log "benchmarking $BENCH_PACKAGES (6 samples) into $TARGET"
 docker run --rm \
   -v "$ROOT_DIR:/src" \
   -v "${GOMOD_VOLUME}:/go/pkg/mod" \
   -v "${GOBUILD_VOLUME}:/root/.cache/go-build" \
+  "${GIT_MOUNT_ARGS[@]+"${GIT_MOUNT_ARGS[@]}"}" \
   -w /src \
   "$GO_IMAGE" \
   go test -run '^$' -bench "$BENCH_PATTERN" -benchmem -count=6 $BENCH_PACKAGES \
