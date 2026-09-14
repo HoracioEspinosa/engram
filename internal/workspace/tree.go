@@ -44,6 +44,15 @@ func SuggestTree(s *store.Store) ([]store.ProjectTreeSuggestion, error) {
 	return s.SuggestProjectTree()
 }
 
+// SuggestSeparatorPairs reports the projects that are one project written more
+// than one way. They are reported next to the tree suggestions and never
+// applied by them: a name spelled with an underscore is not a child of the same
+// name spelled with a hyphen, it is the same project, and only a merge joins
+// them back.
+func SuggestSeparatorPairs(s *store.Store) ([]store.ProjectSeparatorPair, error) {
+	return s.SuggestProjectSeparatorPairs()
+}
+
 // ApplySuggestedTree carries out suggestions somebody accepted.
 //
 // A suggested parent that has no card is created — the whole point of the

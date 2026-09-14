@@ -189,19 +189,42 @@ func cmdProjectTreeSuggest(cfg store.Config, slug string, args []string) {
 		suggestions = []store.ProjectTreeSuggestion{}
 	}
 
-	result := map[string]any{"suggestions": suggestions}
+	// The separator pairs ride along with the families: both are answers to
+	// "what is wrong with how these projects are named", and only one of them
+	// the tree can fix.
+	pairs, err := workspace.SuggestSeparatorPairs(s)
+	if err != nil {
+		fatal(err)
+		return
+	}
+	if pairs == nil {
+		pairs = []store.ProjectSeparatorPair{}
+	}
+
+	result := map[string]any{"suggestions": suggestions, "separator_pairs": pairs}
 	projPrintResult(*jsonOut, projLooseScope(slug), result, func() {
-		if len(suggestions) == 0 {
+		if len(suggestions) == 0 && len(pairs) == 0 {
 			fmt.Println("no families to group")
 			return
 		}
-		table := &projTable{headers: []string{"PARENT", "EXISTS", "CHILDREN", "REASON"}}
-		for _, s := range suggestions {
-			table.add(s.Parent, projYesNo(s.ParentExists), strings.Join(s.Children, ", "), s.Reason)
+		if len(suggestions) > 0 {
+			table := &projTable{headers: []string{"PARENT", "EXISTS", "CHILDREN", "REASON"}}
+			for _, s := range suggestions {
+				table.add(s.Parent, projYesNo(s.ParentExists), strings.Join(s.Children, ", "), s.Reason)
+			}
+			table.render(os.Stdout)
+			fmt.Println()
 		}
-		table.render(os.Stdout)
-		fmt.Println()
-		fmt.Println("nothing was changed; run: engram project tree apply --from-suggest")
+		if len(pairs) > 0 {
+			fmt.Println("one project spelled more than one way (a tree cannot fix this; see: engram projects merge):")
+			for _, pair := range pairs {
+				fmt.Printf("  %s: %s\n", pair.Folded, strings.Join(pair.Names, ", "))
+			}
+			fmt.Println()
+		}
+		if len(suggestions) > 0 {
+			fmt.Println("nothing was changed; run: engram project tree apply --from-suggest")
+		}
 	})
 }
 

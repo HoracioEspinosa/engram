@@ -442,30 +442,57 @@ func projectFamilyStem(slug string) string {
 	return folded[:idx]
 }
 
-// SuggestProjectTree proposes a parent for every group of cards that reads as
-// numbered instances of one product, folding the separator each slug happens to
-// use so "nextcloud_00" and "nextcloud-02" land in the same family. It writes
-// nothing: the proposal is for a person to accept, and a slug that looks like
-// an instance is not proof that it is one.
-func (s *Store) SuggestProjectTree() ([]ProjectTreeSuggestion, error) {
+// Why a group was proposed.
+const (
+	// SuggestReasonExistingPrefix is a family whose parent is a project the
+	// store already answers to.
+	SuggestReasonExistingPrefix = "existing_prefix_project"
+	// SuggestReasonSharedPrefix is a family of numbered instances whose common
+	// stem names no project yet.
+	SuggestReasonSharedPrefix = "shared_prefix"
+	// SuggestReasonSharedPrefixAndRepo is the same, with every member pointing
+	// at one git remote.
+	SuggestReasonSharedPrefixAndRepo = "shared_prefix_and_repo_url"
+)
+
+// knownProject is one name this store answers to, however it came to: a project
+// card, or a name observations were saved under and nothing else.
+type knownProject struct {
+	slug    string
+	folded  string
+	parent  *string
+	repoURL *string
+	hasCard bool
+}
+
+// knownProjects returns every project the store answers to, in slug order:
+// the live cards, plus the names only observations mention.
+//
+// Reading cards alone would see almost nothing on a real database. A card is
+// something a person makes on purpose, and most projects are just the name a
+// session saved its memory under — so a grouping that ignores them groups the
+// handful of projects that least need it.
+func (s *Store) knownProjects() ([]knownProject, error) {
+	byFolded := map[string]*knownProject{}
+	order := []string{}
+
 	rows, err := s.readDB().Query(
 		`SELECT slug, parent_slug, repo_url FROM project_cards WHERE deleted_at IS NULL ORDER BY slug`)
 	if err != nil {
 		return nil, fmt.Errorf("engram-projects: read project cards for suggestions: %w", err)
 	}
-	type card struct {
-		slug    string
-		parent  *string
-		repoURL *string
-	}
-	var cards []card
 	for rows.Next() {
-		var c card
-		if err := rows.Scan(&c.slug, &c.parent, &c.repoURL); err != nil {
+		var k knownProject
+		if err := rows.Scan(&k.slug, &k.parent, &k.repoURL); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("engram-projects: scan project card for suggestions: %w", err)
 		}
-		cards = append(cards, c)
+		k.hasCard = true
+		k.folded = FoldProjectSeparators(k.slug)
+		if _, seen := byFolded[k.slug]; !seen {
+			order = append(order, k.slug)
+		}
+		byFolded[k.slug] = &k
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -473,41 +500,128 @@ func (s *Store) SuggestProjectTree() ([]ProjectTreeSuggestion, error) {
 	}
 	rows.Close()
 
-	existing := make(map[string]bool, len(cards))
-	for _, c := range cards {
-		existing[c.slug] = true
+	obsRows, err := s.readDB().Query(
+		`SELECT DISTINCT lower(project) FROM observations
+		 WHERE project IS NOT NULL AND trim(project) <> '' AND deleted_at IS NULL
+		 ORDER BY 1`)
+	if err != nil {
+		return nil, fmt.Errorf("engram-projects: read observation projects for suggestions: %w", err)
+	}
+	for obsRows.Next() {
+		var slug string
+		if err := obsRows.Scan(&slug); err != nil {
+			obsRows.Close()
+			return nil, fmt.Errorf("engram-projects: scan observation project for suggestions: %w", err)
+		}
+		if _, seen := byFolded[slug]; seen {
+			continue
+		}
+		byFolded[slug] = &knownProject{slug: slug, folded: FoldProjectSeparators(slug)}
+		order = append(order, slug)
+	}
+	if err := obsRows.Err(); err != nil {
+		obsRows.Close()
+		return nil, fmt.Errorf("engram-projects: read observation projects for suggestions: %w", err)
+	}
+	obsRows.Close()
+
+	sort.Strings(order)
+	out := make([]knownProject, 0, len(order))
+	for _, slug := range order {
+		out = append(out, *byFolded[slug])
+	}
+	return out, nil
+}
+
+// longestKnownPrefix returns the longest project in known that slug reads as a
+// child of — "koi-garden" for "koi-garden-pond-01" — or "" when none does.
+// Longest wins so a "koi-garden-pond" that does exist takes its own instances
+// back from "koi-garden".
+func longestKnownPrefix(known []knownProject, slug, folded string) string {
+	best := ""
+	bestLen := 0
+	for _, candidate := range known {
+		if candidate.slug == slug || candidate.folded == folded {
+			continue
+		}
+		if !strings.HasPrefix(folded, candidate.folded+"-") {
+			continue
+		}
+		if len(candidate.folded) > bestLen {
+			best, bestLen = candidate.slug, len(candidate.folded)
+		}
+	}
+	return best
+}
+
+// SuggestProjectTree proposes a parent for every group of projects that reads
+// as members of one product, folding the separator each name happens to use so
+// "nextcloud_00" and "nextcloud-02" land in the same family.
+//
+// A project the store already answers to always wins over an invented stem: a
+// family of "koi-garden-pond-01" and "koi-garden-pond-02" belongs under the
+// "koi-garden" that is already there, not under a "koi-garden-pond" this would
+// have to create next to it. Only when nothing answers to the common prefix is
+// the numbered-instance stem proposed as a new umbrella.
+//
+// It writes nothing: the proposal is for a person to accept, and a name that
+// looks like an instance is not proof that it is one.
+func (s *Store) SuggestProjectTree() ([]ProjectTreeSuggestion, error) {
+	known, err := s.knownProjects()
+	if err != nil {
+		return nil, err
 	}
 
-	families := map[string][]card{}
-	for _, c := range cards {
-		if c.parent != nil {
+	cards := make(map[string]bool, len(known))
+	for _, k := range known {
+		if k.hasCard {
+			cards[k.slug] = true
+		}
+	}
+
+	type family struct {
+		members  []knownProject
+		existing bool
+	}
+	families := map[string]*family{}
+	for _, k := range known {
+		if k.parent != nil {
 			// Already placed: a suggestion would second-guess a decision
 			// somebody already made.
 			continue
 		}
-		stem := projectFamilyStem(c.slug)
-		if stem == "" {
+		parent := longestKnownPrefix(known, k.slug, k.folded)
+		existing := parent != ""
+		if !existing {
+			parent = projectFamilyStem(k.slug)
+		}
+		if parent == "" {
 			continue
 		}
-		families[stem] = append(families[stem], c)
+		f, ok := families[parent]
+		if !ok {
+			f = &family{existing: existing}
+			families[parent] = f
+		}
+		f.members = append(f.members, k)
 	}
 
-	stems := make([]string, 0, len(families))
-	for stem := range families {
-		stems = append(stems, stem)
+	parents := make([]string, 0, len(families))
+	for parent := range families {
+		parents = append(parents, parent)
 	}
-	sort.Strings(stems)
+	sort.Strings(parents)
 
-	suggestions := make([]ProjectTreeSuggestion, 0, len(stems))
-	for _, stem := range stems {
-		members := families[stem]
-		if len(members) < 2 {
+	suggestions := make([]ProjectTreeSuggestion, 0, len(parents))
+	for _, parent := range parents {
+		f := families[parent]
+		if len(f.members) < 2 {
 			continue
 		}
-		children := make([]string, 0, len(members))
+		children := make([]string, 0, len(f.members))
 		sharedRepo := ""
 		sameRepo := true
-		for i, m := range members {
+		for i, m := range f.members {
 			children = append(children, m.slug)
 			repo := strings.TrimSpace(ptrOrEmpty(m.repoURL))
 			if i == 0 {
@@ -519,16 +633,66 @@ func (s *Store) SuggestProjectTree() ([]ProjectTreeSuggestion, error) {
 			}
 		}
 		sort.Strings(children)
-		reason := "shared_prefix"
-		if sameRepo && sharedRepo != "" {
-			reason = "shared_prefix_and_repo_url"
+
+		reason := SuggestReasonSharedPrefix
+		switch {
+		case f.existing:
+			reason = SuggestReasonExistingPrefix
+		case sameRepo && sharedRepo != "":
+			reason = SuggestReasonSharedPrefixAndRepo
 		}
 		suggestions = append(suggestions, ProjectTreeSuggestion{
-			Parent:       stem,
+			Parent:       parent,
 			Children:     children,
 			Reason:       reason,
-			ParentExists: existing[stem],
+			ParentExists: cards[parent],
 		})
 	}
 	return suggestions, nil
+}
+
+// ProjectSeparatorPair is a set of project names that differ only in the
+// character somebody typed between the words.
+type ProjectSeparatorPair struct {
+	// Folded is the single comparison form all the names collapse to.
+	Folded string `json:"folded"`
+	// Names are the spellings in use, in name order.
+	Names []string `json:"names"`
+}
+
+// SuggestProjectSeparatorPairs reports the projects that are one project
+// written more than one way.
+//
+// The tree cannot fix these: "ai_engram" is not a child of "ai-engram", it is
+// the same project, and reparenting one under the other would leave the memory
+// split across two names that both still resolve. Naming them is the whole
+// contribution — the repair is `engram projects merge`, which is destructive
+// enough that nothing here should reach for it.
+func (s *Store) SuggestProjectSeparatorPairs() ([]ProjectSeparatorPair, error) {
+	known, err := s.knownProjects()
+	if err != nil {
+		return nil, err
+	}
+
+	byFolded := map[string][]string{}
+	for _, k := range known {
+		byFolded[k.folded] = append(byFolded[k.folded], k.slug)
+	}
+
+	folded := make([]string, 0, len(byFolded))
+	for f, names := range byFolded {
+		if len(names) < 2 {
+			continue
+		}
+		folded = append(folded, f)
+	}
+	sort.Strings(folded)
+
+	pairs := make([]ProjectSeparatorPair, 0, len(folded))
+	for _, f := range folded {
+		names := byFolded[f]
+		sort.Strings(names)
+		pairs = append(pairs, ProjectSeparatorPair{Folded: f, Names: names})
+	}
+	return pairs, nil
 }

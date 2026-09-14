@@ -428,6 +428,32 @@ func TestTreeSuggestNeverApplies(t *testing.T) {
 	}
 }
 
+// TestTreeSuggestReportsSeparatorPairs pins the second half of the envelope:
+// the projects that are one project written more than one way. The tree cannot
+// join them back, so naming them is all the command does about it.
+func TestTreeSuggestReportsSeparatorPairs(t *testing.T) {
+	cfg := testConfig(t)
+	stubExit(t)
+	stubDetection(t, "koi-garden", t.TempDir())
+	for _, slug := range []string{"koi-garden", "koi_garden"} {
+		seedCard(t, cfg, slug)
+	}
+
+	stdout, _ := runProject(t, cfg, "tree", "suggest", "--json")
+	result := decodeEnvelope(t, stdout)["result"].(map[string]any)
+	pairs, ok := result["separator_pairs"].([]any)
+	if !ok || len(pairs) != 1 {
+		t.Fatalf("separator_pairs = %v, want the one family spelled two ways", result["separator_pairs"])
+	}
+	pair := pairs[0].(map[string]any)
+	if pair["folded"] != "koi-garden" {
+		t.Fatalf("folded = %v, want koi-garden", pair["folded"])
+	}
+	if names := pair["names"].([]any); len(names) != 2 {
+		t.Fatalf("names = %v, want both spellings", names)
+	}
+}
+
 // TestTreeDoctorReportsAConsistentTree pins the doctor's quiet answer, which
 // is the one it gives most of the time.
 func TestTreeDoctorReportsAConsistentTree(t *testing.T) {
