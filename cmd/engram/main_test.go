@@ -599,9 +599,9 @@ func TestCmdSyncStatusExportAndImport(t *testing.T) {
 
 	// workDir has no git repo, so cwd detection would only ever produce a
 	// directory-name guess; an explicit --project is required since
-	// resolveWriteProject-equivalent detection now refuses that guess
-	// (ADR-057 §3). It also keeps this round trip scoped to the project the
-	// observation was actually seeded under.
+	// resolveWriteProject-equivalent detection now refuses that guess.
+	// It also keeps this round trip scoped to the project the observation
+	// was actually seeded under.
 	withArgs(t, "engram", "sync", "--status", "--project", "sync-project")
 	statusOut, statusErr := captureOutput(t, func() { cmdSync(exportCfg) })
 	if statusErr != "" {
@@ -641,8 +641,8 @@ func TestCmdSyncStatusExportAndImport(t *testing.T) {
 
 // TestCmdSyncDefaultProjectNoData used to pin that a plain, non-git
 // directory's basename ("repo-name") became the default sync project. That
-// was exactly the ADR-057 defect: local export decides where data lands,
-// and a directory-name guess is not a fact — "repo-name" could easily not
+// was exactly the defect this test now guards against: local export decides
+// where data lands, and a directory-name guess is not a fact — "repo-name" could easily not
 // be the project's real name (a clone under a renamed folder, a worktree,
 // a tarball extracted under a different name). It now pins the opposite:
 // without --project, ENGRAM_PROJECT, or a git-backed cwd, export refuses
@@ -931,7 +931,7 @@ func TestCmdProjectsConsolidateNoSimilar(t *testing.T) {
 
 	// Stub detectProjectFull to return the known canonical from a git-backed
 	// source: consolidation picks the merge target from cwd detection, which
-	// must be a fact and not a directory-name guess (ADR-057 §3).
+	// must be a fact and not a directory-name guess.
 	old := detectProjectFull
 	detectProjectFull = func(string) project.DetectionResult {
 		return project.DetectionResult{Project: "unique-project", Source: project.SourceGitRoot}
@@ -1036,7 +1036,7 @@ func TestCmdProjectsConsolidateSingleProject(t *testing.T) {
 // no --project flag at all, so a directory-name guess used to be the only
 // way it ever picked a merge target. Consolidation moves every "similar"
 // existing project's memories into that target, which is exactly the class
-// of write ADR-057 §3 says must not accept a guess in silence.
+// of write that must not accept a guess in silence.
 func TestCmdProjectsConsolidateRejectsDirBasenameGuess(t *testing.T) {
 	cfg := testConfig(t)
 	workDir := t.TempDir()
@@ -1181,9 +1181,9 @@ func TestCmdMCPDetectsProjectFromGit(t *testing.T) {
 
 // TestCmdSyncUsesDetectProject pins that cmdSync's default (no --project, no
 // --all) project comes from detectProjectFull, not filepath.Base. It mocks
-// detectProjectFull with a git-backed source (SourceGitRoot): per ADR-057
-// §3, sync decides where data lands, so only a fact-backed source may be
-// used silently — a directory-name guess is refused instead (see
+// detectProjectFull with a git-backed source (SourceGitRoot): sync decides
+// where data lands, so only a fact-backed source may be used silently — a
+// directory-name guess is refused instead (see
 // TestCmdSyncRejectsDirBasenameGuess).
 func TestCmdSyncUsesDetectProject(t *testing.T) {
 	workDir := t.TempDir()
@@ -1207,8 +1207,8 @@ func TestCmdSyncUsesDetectProject(t *testing.T) {
 	}
 }
 
-// TestCmdSyncRejectsDirBasenameGuess ties the ADR-057 write-decider rule to
-// the CLI's local sync path named explicitly in that decision: without
+// TestCmdSyncRejectsDirBasenameGuess ties the write-decider rule to
+// the CLI's local sync path: without
 // --project, --all, or a git-backed cwd, `engram sync` must refuse to scope
 // an export/import to a directory-name guess instead of silently using it.
 func TestCmdSyncRejectsDirBasenameGuess(t *testing.T) {

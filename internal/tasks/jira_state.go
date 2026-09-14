@@ -1,6 +1,5 @@
 // Package tasks derives engram-projects task lifecycle state from the
-// literal Jira status strings mirrored by mem_task_upsert (RFC
-// rfc-engram-projects.md §5.3).
+// literal Jira status strings mirrored by mem_task_upsert.
 package tasks
 
 import (

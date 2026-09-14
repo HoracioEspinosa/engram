@@ -18,7 +18,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// ─── E2E Round-trip test (REQ-212) ───────────────────────────────────────────
+// ─── E2E Round-trip test ──────────────────────────────────────────────────
 
 // TestAutosyncPushPullRoundTrip tests the full push/pull cycle using a real
 // httptest server and real autosync.Manager.
@@ -127,7 +127,7 @@ func TestAutosyncPushPullRoundTrip(t *testing.T) {
 		mgr.Status().Phase, mgr.Status().LastError)
 }
 
-// TestLocalWriteDuringTransport500 verifies REQ-212: local writes succeed even
+// TestLocalWriteDuringTransport500 verifies that local writes succeed even
 // when the cloud transport is returning 500.
 func TestLocalWriteDuringTransport500(t *testing.T) {
 	// Fake cloud server always returns 500.
@@ -178,7 +178,7 @@ func TestLocalWriteDuringTransport500(t *testing.T) {
 	}
 }
 
-// TestGoroutineIsolationConcurrentWrites verifies REQ-212: 1000 concurrent local
+// TestGoroutineIsolationConcurrentWrites verifies that 1000 concurrent local
 // writes complete without deadlock while autosync is running in the background.
 func TestGoroutineIsolationConcurrentWrites(t *testing.T) {
 	// Fake cloud server with artificial delay to simulate network I/O.

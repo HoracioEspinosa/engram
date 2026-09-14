@@ -1,7 +1,6 @@
 package mcp
 
-// Phase D.5 — mem_judge handler tests.
-// REQ-003 | Design §6
+// mem_judge handler tests.
 
 import (
 	"context"
@@ -65,7 +64,6 @@ func seedJudgeFixture(t *testing.T, s *store.Store) (judgmentID string, sourceSy
 }
 
 // TestHandleJudge_HappyPath — judging a valid pending relation creates a judged row.
-// REQ-003 happy path | Design §6
 func TestHandleJudge_HappyPath(t *testing.T) {
 	s := newMCPTestStore(t)
 	judgmentID, _, _ := seedJudgeFixture(t, s)
@@ -108,7 +106,6 @@ func TestHandleJudge_HappyPath(t *testing.T) {
 }
 
 // TestHandleJudge_OptionalFieldsStayNull — omitting optional fields leaves them NULL.
-// REQ-003 edge case | Design §6.2
 func TestHandleJudge_OptionalFieldsStayNull(t *testing.T) {
 	s := newMCPTestStore(t)
 	judgmentID, _, _ := seedJudgeFixture(t, s)
@@ -148,7 +145,6 @@ func TestHandleJudge_OptionalFieldsStayNull(t *testing.T) {
 }
 
 // TestHandleJudge_UnknownID_IsError — unknown judgment_id returns IsError=true.
-// REQ-003 negative | Design §6.3
 func TestHandleJudge_UnknownID_IsError(t *testing.T) {
 	s := newMCPTestStore(t)
 
@@ -171,7 +167,6 @@ func TestHandleJudge_UnknownID_IsError(t *testing.T) {
 }
 
 // TestHandleJudge_InvalidVerb_IsError — invalid relation verb returns IsError=true, row unchanged.
-// REQ-003 negative | Design §6.3
 func TestHandleJudge_InvalidVerb_IsError(t *testing.T) {
 	s := newMCPTestStore(t)
 	judgmentID, _, _ := seedJudgeFixture(t, s)
@@ -201,7 +196,6 @@ func TestHandleJudge_InvalidVerb_IsError(t *testing.T) {
 }
 
 // TestHandleJudge_Idempotent_Overwrite — re-judging overwrites the existing verdict.
-// REQ-003 | Design §6.4
 func TestHandleJudge_Idempotent_Overwrite(t *testing.T) {
 	s := newMCPTestStore(t)
 	judgmentID, _, _ := seedJudgeFixture(t, s)

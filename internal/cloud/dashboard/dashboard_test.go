@@ -204,7 +204,7 @@ func (s parityStoreStub) ListDistinctTypes() ([]string, error) {
 	return s.distinctTypes, nil
 }
 
-// ListAuditEntriesPaginated — no-op stub for interface parity (REQ-409).
+// ListAuditEntriesPaginated — no-op stub for interface parity.
 func (s parityStoreStub) ListAuditEntriesPaginated(_ context.Context, _ cloudstore.AuditFilter, _, _ int) ([]cloudstore.DashboardAuditRow, int, error) {
 	return s.auditRows, len(s.auditRows), nil
 }
@@ -933,7 +933,7 @@ func newAuthedMux(store DashboardStore, isAdmin bool) *http.ServeMux {
 }
 
 // TestDashboardLayoutHTMLStructure asserts the full shell class hierarchy
-// in the rendered layout. Satisfies REQ-107.
+// in the rendered layout.
 func TestDashboardLayoutHTMLStructure(t *testing.T) {
 	mux := newAuthedMux(parityStoreStub{}, false)
 	rec := httptest.NewRecorder()
@@ -963,7 +963,7 @@ func TestDashboardLayoutHTMLStructure(t *testing.T) {
 }
 
 // TestStatusRibbonAndFooterPresent asserts that the status ribbon and footer
-// are present in the rendered layout. Satisfies REQ-107.
+// are present in the rendered layout.
 func TestStatusRibbonAndFooterPresent(t *testing.T) {
 	mux := newAuthedMux(parityStoreStub{}, false)
 	rec := httptest.NewRecorder()
@@ -982,7 +982,7 @@ func TestStatusRibbonAndFooterPresent(t *testing.T) {
 }
 
 // TestNavTabsRenderedCorrectly asserts that the nav tab hrefs are correct for
-// an admin user. Satisfies REQ-107.
+// an admin user.
 func TestNavTabsRenderedCorrectly(t *testing.T) {
 	mux := newAuthedMux(parityStoreStub{}, true)
 	rec := httptest.NewRecorder()
@@ -1001,7 +1001,7 @@ func TestNavTabsRenderedCorrectly(t *testing.T) {
 	}
 }
 
-// TestLoginPageTokenFormAndCopy asserts login page structure. Satisfies REQ-111.
+// TestLoginPageTokenFormAndCopy asserts login page structure.
 func TestLoginPageTokenFormAndCopy(t *testing.T) {
 	mux := newAuthedMux(parityStoreStub{}, false)
 	rec := httptest.NewRecorder()
@@ -1023,7 +1023,7 @@ func TestLoginPageTokenFormAndCopy(t *testing.T) {
 }
 
 // TestGetDisplayNameFallback asserts that when GetDisplayName is nil, the
-// Principal.DisplayName() returns "OPERATOR". Satisfies REQ-103.
+// Principal.DisplayName() returns "OPERATOR".
 func TestGetDisplayNameFallback(t *testing.T) {
 	mux := http.NewServeMux()
 	Mount(mux, MountConfig{
@@ -1046,7 +1046,7 @@ func TestGetDisplayNameFallback(t *testing.T) {
 }
 
 // TestPrincipalBridgeNoPanicOnEmptyContext asserts that an empty-string return
-// from GetDisplayName is treated as absent and falls back to "OPERATOR". Satisfies REQ-113.
+// from GetDisplayName is treated as absent and falls back to "OPERATOR".
 func TestPrincipalBridgeNoPanicOnEmptyContext(t *testing.T) {
 	mux := http.NewServeMux()
 	Mount(mux, MountConfig{
@@ -1299,7 +1299,7 @@ func newAuthedAdminMux(store DashboardStore) *http.ServeMux {
 	return mux
 }
 
-// TestDashboardHomeHTMXWiring asserts the home page emits correct HTMX attributes. Satisfies REQ-108.
+// TestDashboardHomeHTMXWiring asserts the home page emits correct HTMX attributes.
 func TestDashboardHomeHTMXWiring(t *testing.T) {
 	mux := newAuthedMux(parityStoreStub{}, false)
 	rec := httptest.NewRecorder()
@@ -1315,7 +1315,7 @@ func TestDashboardHomeHTMXWiring(t *testing.T) {
 	}
 }
 
-// TestBrowserPageHTMXWiring asserts the browser page emits HTMX attributes. Satisfies REQ-108.
+// TestBrowserPageHTMXWiring asserts the browser page emits HTMX attributes.
 func TestBrowserPageHTMXWiring(t *testing.T) {
 	mux := newAuthedMux(parityStoreStub{}, false)
 	rec := httptest.NewRecorder()
@@ -1332,7 +1332,7 @@ func TestBrowserPageHTMXWiring(t *testing.T) {
 	}
 }
 
-// TestProjectsPageHTMXWiring asserts the projects page emits HTMX attributes. Satisfies REQ-108.
+// TestProjectsPageHTMXWiring asserts the projects page emits HTMX attributes.
 func TestProjectsPageHTMXWiring(t *testing.T) {
 	mux := newAuthedMux(parityStoreStub{}, false)
 	rec := httptest.NewRecorder()
@@ -1613,7 +1613,7 @@ func TestAdminContributorsRouteIsGone(t *testing.T) {
 	}
 }
 
-// TestAdminPageSurfacePresent asserts admin page has ADMIN SURFACE copy. Satisfies REQ-107, REQ-112.
+// TestAdminPageSurfacePresent asserts admin page has ADMIN SURFACE copy.
 func TestAdminPageSurfacePresent(t *testing.T) {
 	mux := newAuthedAdminMux(parityStoreStub{
 		systemHealth: cloudstore.DashboardSystemHealth{DBConnected: true, Projects: 1, Sessions: 5},
@@ -1629,7 +1629,7 @@ func TestAdminPageSurfacePresent(t *testing.T) {
 	}
 }
 
-// TestAdminHealthPageRendersMetrics asserts admin health page renders DB status and counts. Satisfies REQ-106.
+// TestAdminHealthPageRendersMetrics asserts admin health page renders DB status and counts.
 func TestAdminHealthPageRendersMetrics(t *testing.T) {
 	mux := newAuthedAdminMux(parityStoreStub{
 		systemHealth: cloudstore.DashboardSystemHealth{DBConnected: true, Projects: 2, Sessions: 10, Observations: 50, Prompts: 5},
@@ -1648,7 +1648,7 @@ func TestAdminHealthPageRendersMetrics(t *testing.T) {
 }
 
 // TestAdminUsersPageRendersManagedUsersShell asserts admin users page shell has the
-// correct HTMX trigger for the managed-users list partial. Satisfies REQ-106.
+// correct HTMX trigger for the managed-users list partial.
 // cloud-user-token-management PR4: this surface renders managed cloud
 // principals, not contributor analytics (renamed from
 // TestAdminUsersPageRendersContributors).
@@ -1673,7 +1673,7 @@ func TestAdminUsersPageRendersManagedUsersShell(t *testing.T) {
 }
 
 // TestAdminSyncTogglePosts asserts POST /dashboard/admin/projects/myproject/sync with admin=true
-// returns 303 redirect. Satisfies REQ-112.
+// returns 303 redirect.
 func TestAdminSyncTogglePosts(t *testing.T) {
 	mux := newAuthedAdminMux(parityStoreStub{isProjectSyncEnabled: true})
 	body := strings.NewReader("enabled=false&reason=maintenance")
@@ -1686,7 +1686,7 @@ func TestAdminSyncTogglePosts(t *testing.T) {
 	}
 }
 
-// TestAdminSyncToggleRequiresAdmin asserts POST /dashboard/admin/projects/*/sync returns 403 for non-admin. Satisfies REQ-112.
+// TestAdminSyncToggleRequiresAdmin asserts POST /dashboard/admin/projects/*/sync returns 403 for non-admin.
 func TestAdminSyncToggleRequiresAdmin(t *testing.T) {
 	mux := newAuthedMux(parityStoreStub{}, false)
 	body := strings.NewReader("enabled=false&reason=maintenance")
@@ -1699,7 +1699,7 @@ func TestAdminSyncToggleRequiresAdmin(t *testing.T) {
 	}
 }
 
-// TestFullHTMXEndpointSurface asserts all 11 new routes return 200 + text/html for authed principal. Satisfies REQ-106.
+// TestFullHTMXEndpointSurface asserts all 11 new routes return 200 + text/html for authed principal.
 func TestFullHTMXEndpointSurface(t *testing.T) {
 	mux := newAuthedAdminMux(parityStoreStub{
 		projects:     []cloudstore.DashboardProjectRow{{Project: "proj-a", Sessions: 1}},
@@ -1737,7 +1737,7 @@ func TestFullHTMXEndpointSurface(t *testing.T) {
 	}
 }
 
-// TestCopyParityStrings asserts key copy strings are present on each page. Satisfies REQ-111.
+// TestCopyParityStrings asserts key copy strings are present on each page.
 func TestCopyParityStrings(t *testing.T) {
 	mux := newAuthedAdminMux(parityStoreStub{
 		systemHealth: cloudstore.DashboardSystemHealth{DBConnected: true},
@@ -2945,10 +2945,10 @@ func TestAdminUsersListRequires403ForNonAdmin(t *testing.T) {
 	}
 }
 
-// ─── REQ-408, REQ-409, REQ-410, REQ-411: Audit Log UI tests ──────────────────
+// ─── Audit Log UI tests ────────────────────────────────────────────────────
 
 // TestAdminAuditLogPageHTMXWiring verifies that AdminAuditLogPage renders with
-// the HTMX container that triggers loading the list partial. REQ-408 scenario 1, 2.5.1.
+// the HTMX container that triggers loading the list partial.
 func TestAdminAuditLogPageHTMXWiring(t *testing.T) {
 	store := parityStoreStub{}
 	mux := newAuthedAdminMux(store)
@@ -2967,7 +2967,7 @@ func TestAdminAuditLogPageHTMXWiring(t *testing.T) {
 }
 
 // TestAdminAuditLogListPartialRendersFilterInputs verifies that the list partial
-// renders filter inputs and a pagination bar. REQ-409 scenario 1, 2.5.2.
+// renders filter inputs and a pagination bar.
 func TestAdminAuditLogListPartialRendersFilterInputs(t *testing.T) {
 	store := parityStoreStub{
 		auditRows: []cloudstore.DashboardAuditRow{
@@ -2994,7 +2994,7 @@ func TestAdminAuditLogListPartialRendersFilterInputs(t *testing.T) {
 }
 
 // TestAdminAuditLogListPartialOutcomeDropdown verifies that the outcome dropdown
-// contains the exported constant value. REQ-410 scenario 2, 2.5.3.
+// contains the exported constant value.
 func TestAdminAuditLogListPartialOutcomeDropdown(t *testing.T) {
 	store := parityStoreStub{}
 	mux := newAuthedAdminMux(store)
@@ -3012,7 +3012,7 @@ func TestAdminAuditLogListPartialOutcomeDropdown(t *testing.T) {
 }
 
 // TestAdminNavAuditLogLinkInAllFourPages verifies that all four admin page shells
-// contain the "Audit Log" link after the adminNav refactor. REQ-411 all scenarios, 2.5.4.
+// contain the "Audit Log" link after the adminNav refactor.
 func TestAdminNavAuditLogLinkInAllFourPages(t *testing.T) {
 	store := parityStoreStub{}
 	mux := newAuthedAdminMux(store)
@@ -3047,7 +3047,7 @@ func TestAdminNavAuditLogLinkInAllFourPages(t *testing.T) {
 
 // ─── Phase 2.6: Handler and route tests ──────────────────────────────────────
 
-// TestAdminAuditLogShellRouteAdminAccess verifies admin can access audit log shell. REQ-408 scenario 1, 2.6.1.
+// TestAdminAuditLogShellRouteAdminAccess verifies admin can access audit log shell.
 func TestAdminAuditLogShellRouteAdminAccess(t *testing.T) {
 	mux := newAuthedAdminMux(parityStoreStub{})
 	rec := httptest.NewRecorder()
@@ -3057,7 +3057,7 @@ func TestAdminAuditLogShellRouteAdminAccess(t *testing.T) {
 	}
 }
 
-// TestAdminAuditLogShellRouteNonAdminDenied verifies non-admin gets 403. REQ-408 scenario 2, 2.6.2.
+// TestAdminAuditLogShellRouteNonAdminDenied verifies non-admin gets 403.
 func TestAdminAuditLogShellRouteNonAdminDenied(t *testing.T) {
 	mux := newAuthedMux(parityStoreStub{}, false) // isAdmin=false
 	rec := httptest.NewRecorder()
@@ -3067,7 +3067,7 @@ func TestAdminAuditLogShellRouteNonAdminDenied(t *testing.T) {
 	}
 }
 
-// TestAdminAuditLogListPartialAdminAccess verifies admin gets 200 with rows. REQ-409 scenario 1, 2.6.3.
+// TestAdminAuditLogListPartialAdminAccess verifies admin gets 200 with rows.
 func TestAdminAuditLogListPartialAdminAccess(t *testing.T) {
 	store := parityStoreStub{
 		auditRows: []cloudstore.DashboardAuditRow{
@@ -3089,7 +3089,7 @@ func TestAdminAuditLogListPartialAdminAccess(t *testing.T) {
 	}
 }
 
-// TestAdminAuditLogListFilterByContributor verifies contributor filter narrows rows. REQ-409 scenario 2, 2.6.4.
+// TestAdminAuditLogListFilterByContributor verifies contributor filter narrows rows.
 func TestAdminAuditLogListFilterByContributor(t *testing.T) {
 	store := parityStoreStub{
 		auditRows: []cloudstore.DashboardAuditRow{
@@ -3110,7 +3110,7 @@ func TestAdminAuditLogListFilterByContributor(t *testing.T) {
 	}
 }
 
-// TestAdminAuditLogListPartialNonAdminDenied verifies non-admin gets 403 on list. REQ-409 scenario 3, 2.6.5.
+// TestAdminAuditLogListPartialNonAdminDenied verifies non-admin gets 403 on list.
 func TestAdminAuditLogListPartialNonAdminDenied(t *testing.T) {
 	mux := newAuthedMux(parityStoreStub{}, false)
 	rec := httptest.NewRecorder()
@@ -3120,9 +3120,9 @@ func TestAdminAuditLogListPartialNonAdminDenied(t *testing.T) {
 	}
 }
 
-// ─── JW2: Deep-link filter propagation to initial hx-get ─────────────────────
+// ─── Deep-link filter propagation to initial hx-get ─────────────────────────
 
-// TestAdminAuditLogShellPropagatesFiltersToInitialHtmx verifies JW2: when the admin
+// TestAdminAuditLogShellPropagatesFiltersToInitialHtmx verifies that when the admin
 // audit log shell is loaded with filter query params (e.g. contributor=alice), the
 // initial hx-get URL must embed those same params so deep-linking preserves filters.
 func TestAdminAuditLogShellPropagatesFiltersToInitialHtmx(t *testing.T) {
@@ -3143,9 +3143,9 @@ func TestAdminAuditLogShellPropagatesFiltersToInitialHtmx(t *testing.T) {
 	}
 }
 
-// ─── JW6: parseAuditFilter date-only format + invalid format rejection ────────
+// ─── parseAuditFilter date-only format + invalid format rejection ──────────
 
-// TestAdminAuditLogListParsesDateOnlyFilter verifies JW6 part A: a date-only
+// TestAdminAuditLogListParsesDateOnlyFilter verifies part A: a date-only
 // value (YYYY-MM-DD) in the "from" param must be accepted and parsed correctly
 // (falling back from RFC3339 parse failure). Handler must return 200.
 func TestAdminAuditLogListParsesDateOnlyFilter(t *testing.T) {
@@ -3159,7 +3159,7 @@ func TestAdminAuditLogListParsesDateOnlyFilter(t *testing.T) {
 	}
 }
 
-// TestAdminAuditLogListRejectsInvalidTimeFormat verifies JW6 part B: a malformed
+// TestAdminAuditLogListRejectsInvalidTimeFormat verifies part B: a malformed
 // time value in the "from" param must result in HTTP 400 with error code
 // "invalid_time_format" rather than silently dropping the filter.
 func TestAdminAuditLogListRejectsInvalidTimeFormat(t *testing.T) {

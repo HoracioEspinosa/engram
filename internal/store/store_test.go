@@ -2501,8 +2501,8 @@ func TestMarkSyncPendingClearsDegradedMetadata(t *testing.T) {
 	}
 }
 
-// TestApplyObservationUpsertRejectsAStaleProjectRevert is the scenario
-// behind ADR-060's "the cloud can undo the consolidation on its own":
+// TestApplyObservationUpsertRejectsAStaleProjectRevert is the scenario where
+// the cloud could otherwise undo a consolidation on its own:
 // MergeProjects renames a row's project without minting a new updated_at
 // (mergeProjectScopedTableTx never touches it), so a pull that later
 // arrives carrying the pre-merge state — same content, same original
@@ -7381,7 +7381,7 @@ func TestMergeProjectsCoversEveryProjectScopedTable(t *testing.T) {
 }
 
 // TestMergeProjectsMovesEvidenceTasksRunbooksAndTombstones exercises the
-// four ordinary-column tables ADR-060's consolidation actually found rows
+// four ordinary-column tables project consolidation actually found rows
 // stranded in: evidence (10 rows), tasks (1 row), plus runbook_index and
 // prompt_tombstones, which have zero rows in production today but the same
 // gap in the code. It also confirms tasks_fts and runbook_index_fts — kept
@@ -8380,7 +8380,7 @@ func TestDeletePrompt_NotFound(t *testing.T) {
 	}
 }
 
-// ─── ProjectExists tests (Batch 2 — REQ-315) ─────────────────────────────────
+// ─── ProjectExists tests ────────────────────────────────────────────────────
 
 func TestProjectExists_EmptyStore(t *testing.T) {
 	s := newTestStore(t)
@@ -8491,7 +8491,7 @@ func TestProjectExists_Unknown(t *testing.T) {
 }
 
 // TestProjectExists_KnownViaEnrollmentOnly: a project enrolled via EnrollProject()
-// with no observations/sessions/prompts must still be found by ProjectExists (JC1).
+// with no observations/sessions/prompts must still be found by ProjectExists.
 func TestProjectExists_KnownViaEnrollmentOnly(t *testing.T) {
 	s := newTestStore(t)
 
@@ -9094,7 +9094,7 @@ func TestRepairDoesNotBackfillSessionsCloudWouldReject(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase F — Decay defaults wiring (REQ-006)
+// Decay defaults wiring
 // ---------------------------------------------------------------------------
 
 // queryReviewAfter returns the review_after and expires_at for a given observation ID.

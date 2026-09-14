@@ -144,7 +144,7 @@ func TestCheckLatest(t *testing.T) {
 		}
 	})
 
-	// This is the exact shape of the bug ADR-045 §2 documents: every tag this
+	// This is the exact shape of the bug this fixes: every tag this
 	// fork has ever published is marked prerelease, and the "latest release"
 	// endpoint excludes prereleases by design, so it 404s forever. The list
 	// endpoint returns them anyway; taking the first entry is the fix. Fed

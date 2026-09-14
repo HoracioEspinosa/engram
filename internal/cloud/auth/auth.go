@@ -185,7 +185,7 @@ func (s *Service) AuthorizeProject(project string) error {
 
 // EnrolledProjects returns the sorted list of projects that this Service is
 // authorized to serve. Used by cloudserver's mutation pull to filter mutations
-// to the caller's enrolled projects (REQ-202).
+// to the caller's enrolled projects.
 //
 // When the wildcard "*" is configured, nil is returned to signal "no project
 // filter" — callers must treat nil as "allow all" (matching the ListMutationsSince
@@ -231,7 +231,7 @@ func (a *ProjectScopeAuthorizer) AuthorizeProject(project string) error {
 
 // EnrolledProjects returns the sorted list of projects this authorizer allows.
 // Matches the cloudserver.EnrolledProjectsProvider contract so mutation pull
-// can filter server-side by the caller's enrolled projects (REQ-202) rather
+// can filter server-side by the caller's enrolled projects rather
 // than fail-closing to an empty result set.
 //
 // When the wildcard "*" is configured, nil is returned to signal "no project

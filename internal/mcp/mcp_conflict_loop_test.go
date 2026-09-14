@@ -1,10 +1,9 @@
 package mcp
 
-// Phase G — Integration tests: full save→judge→search lifecycle.
-// REQ-001 | REQ-002 | REQ-003 | REQ-004 | REQ-007 | REQ-009 | REQ-010
+// Integration tests: full save→judge→search lifecycle.
 //
-// These tests validate the complete conflict-surfacing lifecycle end-to-end
-// against the A-F implementation. They are intentionally LAYERED ON TOP of
+// These tests validate the complete conflict-surfacing lifecycle end-to-end.
+// They are intentionally LAYERED ON TOP of
 // the existing unit tests — they do not duplicate unit coverage, they verify
 // the components work correctly together.
 //
@@ -30,7 +29,7 @@ import (
 //  3. mem_judge one candidate as conflicts_with
 //  4. mem_search → B shows conflict annotation; A shows contested annotation
 //
-// REQ-001 (candidate detection), REQ-002 (search annotations), REQ-003 (mem_judge)
+// Covers candidate detection, search annotations, and mem_judge.
 func TestConflictLoop_SaveJudgeSearch(t *testing.T) {
 	s := newMCPTestStore(t)
 	saveH := handleSave(s, MCPConfig{}, NewSessionActivity(10*time.Minute))
@@ -92,7 +91,7 @@ func TestConflictLoop_SaveJudgeSearch(t *testing.T) {
 		t.Fatalf("G.1 candidates[0] not a map, got %T", candidates[0])
 	}
 
-	// Verify required candidate fields (REQ-001).
+	// Verify required candidate fields.
 	for _, field := range []string{"id", "sync_id", "title", "type", "score", "judgment_id"} {
 		if _, exists := firstCand[field]; !exists {
 			t.Errorf("G.1 candidates[0] missing required field %q", field)
@@ -132,7 +131,7 @@ func TestConflictLoop_SaveJudgeSearch(t *testing.T) {
 		t.Fatalf("G.1 mem_judge unexpected error: %s", callResultText(t, resJudge))
 	}
 
-	// Verify judgment was persisted (REQ-003).
+	// Verify judgment was persisted.
 	rel, err := s.GetRelation(judgmentID)
 	if err != nil {
 		t.Fatalf("G.1 GetRelation after judge: %v", err)
@@ -166,7 +165,7 @@ func TestConflictLoop_SaveJudgeSearch(t *testing.T) {
 		resultText = callResultText(t, searchRes)
 	}
 
-	// REQ-002: obs B (source of supersedes) should show "supersedes:" annotation.
+	// obs B (source of supersedes) should show "supersedes:" annotation.
 	// obs A (target of supersedes) should show "superseded_by:" annotation.
 	// At least one of these must appear after the mem_judge call.
 	hasAnnotation := strings.Contains(resultText, "supersedes:") ||
@@ -180,7 +179,7 @@ func TestConflictLoop_SaveJudgeSearch(t *testing.T) {
 //
 // Two simulated agents independently judge the same (A, B) pair.
 // Verifies both relations persist as separate rows and both appear in
-// GetRelationsForObservations (REQ-004).
+// GetRelationsForObservations.
 func TestConflictLoop_MultiActor(t *testing.T) {
 	s := newMCPTestStore(t)
 
@@ -258,7 +257,7 @@ func TestConflictLoop_MultiActor(t *testing.T) {
 		t.Fatalf("G.2 agent2 JudgeRelation: %v", err)
 	}
 
-	// ── Verify both rows exist (REQ-004: no UNIQUE constraint on source+target) ─
+	// ── Verify both rows exist (no UNIQUE constraint on source+target) ──────────
 	relationsMap, err := s.GetRelationsForObservations([]string{obsA.SyncID, obsB.SyncID})
 	if err != nil {
 		t.Fatalf("G.2 GetRelationsForObservations: %v", err)
@@ -271,7 +270,7 @@ func TestConflictLoop_MultiActor(t *testing.T) {
 			totalRels, len(aRels.AsSource), len(aRels.AsTarget))
 	}
 
-	// Verify both distinct verdicts are present (REQ-004).
+	// Verify both distinct verdicts are present.
 	seenCompatible := false
 	seenConflicts := false
 	for _, rel := range aRels.AsSource {
@@ -289,7 +288,7 @@ func TestConflictLoop_MultiActor(t *testing.T) {
 		t.Errorf("G.2 expected agent2 'conflicts_with' verdict in AsSource relations, not found")
 	}
 
-	// Verify sync_id uniqueness: both rows have distinct sync_ids (REQ-004 negative scenario).
+	// Verify sync_id uniqueness: both rows have distinct sync_ids (negative scenario).
 	rel1, err := s.GetRelation(rel1SyncID)
 	if err != nil {
 		t.Fatalf("G.2 GetRelation rel1: %v", err)
@@ -307,8 +306,8 @@ func TestConflictLoop_MultiActor(t *testing.T) {
 //
 // Save A and B. Judge them as conflicts. Hard-delete B.
 // Verifies:
-//   - relation rows become judgment_status='orphaned' (REQ-010)
-//   - mem_search results no longer surface orphaned relations (REQ-010)
+//   - relation rows become judgment_status='orphaned'
+//   - mem_search results no longer surface orphaned relations
 func TestConflictLoop_Orphaning(t *testing.T) {
 	s := newMCPTestStore(t)
 	searchH := handleSearch(s, MCPConfig{}, NewSessionActivity(10*time.Minute))
@@ -377,12 +376,12 @@ func TestConflictLoop_Orphaning(t *testing.T) {
 		t.Fatalf("G.3 expected relation to be judged before delete, got %q", relBefore.JudgmentStatus)
 	}
 
-	// Hard-delete B (REQ-010: relation must become orphaned, not cascade-deleted).
+	// Hard-delete B (relation must become orphaned, not cascade-deleted).
 	if err := s.DeleteObservation(obsBID, true); err != nil {
 		t.Fatalf("G.3 DeleteObservation (hard): %v", err)
 	}
 
-	// Verify relation row still exists but is now orphaned (REQ-010 happy path).
+	// Verify relation row still exists but is now orphaned (happy path).
 	relAfter, err := s.GetRelation(relSyncID)
 	if err != nil {
 		t.Fatalf("G.3 GetRelation after delete: %v (relation row must not be cascade-deleted)", err)
@@ -391,7 +390,7 @@ func TestConflictLoop_Orphaning(t *testing.T) {
 		t.Fatalf("G.3 expected judgment_status=orphaned after hard-delete, got %q", relAfter.JudgmentStatus)
 	}
 
-	// REQ-010 edge case: orphaned relations are invisible in search annotations.
+	// Edge case: orphaned relations are invisible in search annotations.
 	searchRes, err := searchH(context.Background(), mcppkg.CallToolRequest{
 		Params: mcppkg.CallToolParams{Arguments: map[string]any{
 			"query":   "Redis caching layer",
@@ -444,7 +443,7 @@ func TestConflictLoop_SyncRegression(t *testing.T) {
 	// ── Step 1: Save two similar observations. ────────────────────────────────
 	// Each save enqueues a session mutation + an observation mutation.
 	// FindCandidates also inserts relation rows — but those must NOT appear
-	// in sync_mutations (REQ-009).
+	// in sync_mutations.
 	resA, err := saveH(context.Background(), mcppkg.CallToolRequest{
 		Params: mcppkg.CallToolParams{Arguments: map[string]any{
 			"title":   "Database migration strategy uses Flyway",
@@ -496,7 +495,7 @@ func TestConflictLoop_SyncRegression(t *testing.T) {
 	assertNoRelationSyncMutations(t, s)
 
 	// ── Step 4: Verify observation sync payloads exclude decay fields. ────────
-	// REQ-009: new observation columns must NOT appear in the sync wire format.
+	// New observation columns must NOT appear in the sync wire format.
 	verifyObsSyncPayloadsExcludeDecayFields(t, s)
 }
 
@@ -504,8 +503,8 @@ func TestConflictLoop_SyncRegression(t *testing.T) {
 //
 // Simulates an older MCP client that only reads the top-level `result` string
 // from mem_save and mem_search responses. Verifies both tools still return
-// valid, readable responses even with the new envelope fields present.
-// REQ-007 | Design §4 (regression guard).
+// valid, readable responses even with the new envelope fields present
+// (regression guard).
 func TestConflictLoop_BackwardsCompat(t *testing.T) {
 	s := newMCPTestStore(t)
 	saveH := handleSave(s, MCPConfig{}, NewSessionActivity(10*time.Minute))
@@ -647,7 +646,7 @@ func assertNoRelationSyncMutations(t *testing.T, s *store.Store) {
 
 // verifyObsSyncPayloadsExcludeDecayFields checks that no sync_mutations payload
 // for observations contains review_after, expires_at, or embedding* fields.
-// REQ-009: new observation columns must NOT appear in the sync wire format.
+// New observation columns must NOT appear in the sync wire format.
 func verifyObsSyncPayloadsExcludeDecayFields(t *testing.T, s *store.Store) {
 	t.Helper()
 	payloads, err := s.ListObservationSyncPayloads()
@@ -666,7 +665,7 @@ func verifyObsSyncPayloadsExcludeDecayFields(t *testing.T, s *store.Store) {
 		}
 		for _, key := range forbiddenKeys {
 			if _, found := m[key]; found {
-				t.Errorf("G.4 sync payload must not contain %q (REQ-009), but found it in payload %d: %s", key, i, raw)
+				t.Errorf("G.4 sync payload must not contain %q, but found it in payload %d: %s", key, i, raw)
 			}
 		}
 	}

@@ -57,8 +57,7 @@ func printConflictsUsage() {
 // `scan --apply` inserts conflict relation rows scoped to this project, so
 // cwd detection must be backed by a fact — a directory-name guess is
 // refused here too, even though list/stats (also sharing this resolver)
-// are read-only, because the guess is not trustworthy for either
-// (ADR-057 §3).
+// are read-only, because the guess is not trustworthy for either.
 func resolveConflictsProject(explicit string) string {
 	if strings.TrimSpace(explicit) != "" {
 		return strings.TrimSpace(explicit)

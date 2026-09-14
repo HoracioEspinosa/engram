@@ -86,7 +86,7 @@ type DashboardStore interface {
 	GetContributorDetail(name string) (cloudstore.DashboardContributorRow, []cloudstore.DashboardSessionRow, []cloudstore.DashboardObservationRow, []cloudstore.DashboardPromptRow, error)
 	ListDistinctTypes() ([]string, error)
 
-	// Audit log (REQ-409).
+	// Audit log.
 	ListAuditEntriesPaginated(ctx context.Context, filter cloudstore.AuditFilter, limit, offset int) ([]cloudstore.DashboardAuditRow, int, error)
 }
 
@@ -139,7 +139,7 @@ func Mount(mux *http.ServeMux, cfg MountConfig) {
 	// R4-10: /dashboard/admin/contributors was a dead route (duplicate of /dashboard/contributors
 	// behind an extra admin gate). Removed to avoid confusion.
 
-	// 11 new routes — visual parity + composite-ID detail pages (REQ-106, Design Decision 3).
+	// 11 new routes — visual parity + composite-ID detail pages.
 	mux.HandleFunc("GET /dashboard/projects/list", h.requireSession(h.handleProjectsList))
 	mux.HandleFunc("GET /dashboard/projects/{name}/observations", h.requireSession(h.handleProjectObservationsPartial))
 	mux.HandleFunc("GET /dashboard/projects/{name}/sessions", h.requireSession(h.handleProjectSessionsPartial))
@@ -153,7 +153,7 @@ func Mount(mux *http.ServeMux, cfg MountConfig) {
 	mux.HandleFunc("GET /dashboard/observations/{project}/{sessionID}/{syncID}", h.requireSession(h.handleObservationDetail))
 	mux.HandleFunc("GET /dashboard/prompts/{project}/{sessionID}/{syncID}", h.requireSession(h.handlePromptDetail))
 
-	// Audit log routes — admin-gated (REQ-408, REQ-409).
+	// Audit log routes — admin-gated.
 	mux.HandleFunc("GET /dashboard/admin/audit-log", h.requireSession(h.handleAdminAuditLog))
 	mux.HandleFunc("GET /dashboard/admin/audit-log/list", h.requireSession(h.handleAdminAuditLogList))
 }
@@ -852,7 +852,7 @@ func (h *handlers) handleAdminHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAdminSyncTogglePost handles POST /dashboard/admin/projects/{name}/sync.
-// Admin-gated. Sets sync enabled/disabled for the project. Satisfies REQ-112, AD-6.
+// Admin-gated. Sets sync enabled/disabled for the project. Satisfies AD-6.
 func (h *handlers) handleAdminSyncTogglePost(w http.ResponseWriter, r *http.Request) {
 	p := h.principalFromRequest(r)
 	if !p.IsAdmin() {
@@ -907,7 +907,6 @@ func (h *handlers) handleAdminSyncToggleForm(w http.ResponseWriter, r *http.Requ
 }
 
 // handleSessionDetail handles GET /dashboard/sessions/{project}/{sessionID}.
-// Satisfies REQ-106, Design Decision 3, Design Decision 5.
 func (h *handlers) handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 	p := h.principalFromRequest(r)
 	project := strings.TrimSpace(r.PathValue("project"))
@@ -1057,9 +1056,9 @@ func renderHTMLStatus(w http.ResponseWriter, status int, body string) {
 // ─── Audit Log Handlers ───────────────────────────────────────────────────────
 
 // handleAdminAuditLog handles GET /dashboard/admin/audit-log (shell, admin-gated).
-// REQ-408: renders the AdminAuditLogPage templ component.
-// JW2: filter is parsed and forwarded to the initial hx-get URL for deep-linking.
-// JW6: invalid time formats yield 400.
+// Renders the AdminAuditLogPage templ component.
+// The filter is parsed and forwarded to the initial hx-get URL for deep-linking.
+// Invalid time formats yield 400.
 func (h *handlers) handleAdminAuditLog(w http.ResponseWriter, r *http.Request) {
 	p := h.principalFromRequest(r)
 	if !p.IsAdmin() {
@@ -1080,8 +1079,8 @@ func (h *handlers) handleAdminAuditLog(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAdminAuditLogList handles GET /dashboard/admin/audit-log/list (partial, admin-gated, HTMX).
-// REQ-409: renders AdminAuditLogListPartial with filter and pagination from query params.
-// JW6: invalid time format in from/to params yields 400 instead of silent drop.
+// Renders AdminAuditLogListPartial with filter and pagination from query params.
+// Invalid time format in from/to params yields 400 instead of silent drop.
 // N7: partial-only endpoint — always renders fragment, never a full Layout wrapper
 // (even for non-HTMX requests). Consistent with R6-2 partial-only contract.
 func (h *handlers) handleAdminAuditLogList(w http.ResponseWriter, r *http.Request) {
@@ -1109,7 +1108,7 @@ func (h *handlers) handleAdminAuditLogList(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// JW3: three-tier fallback pattern — consistent with other paginated handlers.
+	// Three-tier fallback pattern — consistent with other paginated handlers.
 	// Tier 1: initial fetch (above). Tier 2: clamped re-fetch on page-out-of-range.
 	// Tier 3: page-1 fallback when re-fetch fails and rows are empty.
 	pg, needsRefetch := reclampPagination(reqPage, pageSize, total)
@@ -1133,7 +1132,7 @@ func (h *handlers) handleAdminAuditLogList(w http.ResponseWriter, r *http.Reques
 
 // parseAuditTime tries RFC3339 then date-only (2006-01-02) formats.
 // Returns an error only when the value is non-empty and unparseable in either format.
-// JW6: accepting date-only prevents confusing silent drops while still being lenient.
+// Accepting date-only prevents confusing silent drops while still being lenient.
 func parseAuditTime(value string) (time.Time, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -1151,9 +1150,9 @@ func parseAuditTime(value string) (time.Time, error) {
 }
 
 // parseAuditFilter extracts AuditFilter fields from the request query params.
-// Text filters are trimmed; time filters accept RFC3339 or date-only (YYYY-MM-DD). REQ-410.
+// Text filters are trimmed; time filters accept RFC3339 or date-only (YYYY-MM-DD).
 // Returns the filter and an error string; on error, error is non-empty and the caller
-// should return a 400 response. JW6 fix.
+// should return a 400 response.
 func parseAuditFilter(r *http.Request) (cloudstore.AuditFilter, string) {
 	q := r.URL.Query()
 	filter := cloudstore.AuditFilter{

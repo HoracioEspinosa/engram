@@ -4607,8 +4607,8 @@ func ObservationDetailPage(observation *cloudstore.DashboardObservationRow, sess
 // ─── Phase 9: Audit Log Admin Views ─────────────────────────────────────────
 
 // AdminAuditLogPage renders the admin audit log shell page.
-// The HTMX container triggers loading the list partial on page load. REQ-408.
-// JW2: buildAuditListURL embeds active filter params into the initial hx-get URL
+// The HTMX container triggers loading the list partial on page load.
+// buildAuditListURL embeds active filter params into the initial hx-get URL
 // so that deep-linking /dashboard/admin/audit-log?contributor=alice preserves filters.
 func AdminAuditLogPage(displayName string, filter cloudstore.AuditFilter) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -4660,7 +4660,7 @@ func AdminAuditLogPage(displayName string, filter cloudstore.AuditFilter) templ.
 	})
 }
 
-// AdminAuditLogListPartial renders the audit log table with filters and pagination. REQ-409, REQ-410.
+// AdminAuditLogListPartial renders the audit log table with filters and pagination.
 func AdminAuditLogListPartial(entries []cloudstore.DashboardAuditRow, pg Pagination, filter cloudstore.AuditFilter) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

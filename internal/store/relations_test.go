@@ -238,7 +238,7 @@ func TestFindCandidates_BM25Floor(t *testing.T) {
 // ─── C.4 — TestFindCandidates_UnrelatedTitle ─────────────────────────────────
 
 // TestFindCandidates_UnrelatedTitle verifies that a dissimilar title produces
-// an empty candidates slice (negative case from REQ-001).
+// an empty candidates slice.
 func TestFindCandidates_UnrelatedTitle(t *testing.T) {
 	s := setupRelationsStore(t)
 
@@ -501,7 +501,7 @@ func TestJudgeRelation_InvalidVerb(t *testing.T) {
 // ─── C.7 — Multi-actor tests ─────────────────────────────────────────────────
 
 // TestMultiActor_TwoRowsForSamePair verifies two agents can produce two separate
-// relation rows for the same pair (REQ-004).
+// relation rows for the same pair.
 func TestMultiActor_TwoRowsForSamePair(t *testing.T) {
 	s := setupRelationsStore(t)
 
@@ -887,7 +887,7 @@ func TestFindCandidates_ExplicitZeroFloor(t *testing.T) {
 // ptrFloat64 is a test helper to create a *float64 from a literal.
 func ptrFloat64(v float64) *float64 { return &v }
 
-// ─── Phase C.1 — Push-side RED tests (REQ-001, REQ-003, REQ-011) ─────────────
+// ─── Push-side relation sync tests ──────────────────────────────────────────
 
 // setupEnrolledStore creates a test store with the standard "ses-rel-test"
 // session (project "proj-a") enrolled for cloud sync.
@@ -1137,8 +1137,8 @@ func TestJudgeRelation_MissingSource_EnqueuesEmptyProject(t *testing.T) {
 	}
 }
 
-// REQ-011 verify-followup: JudgeRelation with missing source MUST emit a
-// WARNING-level log mentioning the relation sync_id and the empty project.
+// JudgeRelation with missing source MUST emit a WARNING-level log
+// mentioning the relation sync_id and the empty project.
 func TestJudgeRelation_MissingSource_EmitsWarningLog(t *testing.T) {
 	s := setupEnrolledStore(t)
 

@@ -28,7 +28,7 @@ var (
 // GitHub's "latest release" endpoint excludes prereleases by design (see
 // docs.github.com/en/rest/releases/releases#get-the-latest-release), and
 // every tag this fork has published carries a prerelease identifier, so that
-// endpoint 404s forever (ADR-045 §2). The list includes prereleases, but its
+// endpoint 404s forever. The list includes prereleases, but its
 // order is not documented and not trusted here — see the selection loop in
 // CheckLatest for how the actual latest release gets picked.
 var (

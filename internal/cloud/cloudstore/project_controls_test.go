@@ -31,7 +31,7 @@ func openTestCloudStore(t *testing.T) *CloudStore {
 }
 
 // TestProjectSyncControlPersists round-trips SetProjectSyncEnabled and
-// verifies GetProjectSyncControl returns the updated state. Satisfies REQ-104.
+// verifies GetProjectSyncControl returns the updated state.
 func TestProjectSyncControlPersists(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -87,7 +87,7 @@ func TestProjectSyncControlPersists(t *testing.T) {
 }
 
 // TestProjectSyncControlUnknownProjectDefaultsEnabled asserts that IsProjectSyncEnabled
-// for a project with no control record returns true (safe default). Satisfies REQ-104.
+// for a project with no control record returns true (safe default).
 func TestProjectSyncControlUnknownProjectDefaultsEnabled(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -297,7 +297,7 @@ func TestInsertMutationBatchIsAtomicOnFailure(t *testing.T) {
 
 // TestProjectSyncControlListIncludesKnownChunkProjects asserts that
 // ListProjectSyncControls returns projects that appear in cloud_chunks
-// even if they have no explicit control row. Satisfies REQ-104.
+// even if they have no explicit control row.
 func TestProjectSyncControlListIncludesKnownChunkProjects(t *testing.T) {
 	cs := openTestCloudStore(t)
 

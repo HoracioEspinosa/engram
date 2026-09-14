@@ -48,7 +48,7 @@ type MCPConfig struct {
 	DefaultProject string
 
 	// BM25Floor overrides the default BM25 score floor used by FindCandidates
-	// during conflict candidate detection (REQ-001). The floor is the minimum
+	// during conflict candidate detection. The floor is the minimum
 	// acceptable BM25 rank (negative; closer to 0 = better match). Candidates
 	// whose score falls below this threshold are excluded.
 	//
@@ -59,7 +59,7 @@ type MCPConfig struct {
 	BM25Floor *float64
 
 	// Limit overrides the maximum number of conflict candidates returned per
-	// mem_save call (REQ-001). nil means "use the store default" (3).
+	// mem_save call. nil means "use the store default" (3).
 	// An explicit pointer value (including 0) is forwarded directly.
 	Limit *int
 
@@ -122,9 +122,9 @@ var ProfileAgent = map[string]bool{
 	"mem_capture_passive":   true, // extract learnings from text — referenced in Gemini/Codex protocol
 	"mem_save_prompt":       true, // save user prompts
 	"mem_update":            true, // update observation by ID — skills say "use mem_update when you have an exact ID to correct"
-	"mem_current_project":   true, // detect current project — recommended first call for agents (REQ-313)
-	"mem_judge":             true, // record verdict on a pending memory conflict (REQ-003, Phase D)
-	"mem_compare":           true, // persist an agent-judged semantic verdict via JudgeBySemantic (REQ-011, Phase G)
+	"mem_current_project":   true, // detect current project — recommended first call for agents
+	"mem_judge":             true, // record verdict on a pending memory conflict
+	"mem_compare":           true, // persist an agent-judged semantic verdict via JudgeBySemantic
 	"mem_doctor":            true, // read-only operational diagnostics for agents
 	"mem_review":            true, // list/mark observations whose review_after lifecycle is stale
 	"mem_pin":               true, // local pin for context priority
@@ -140,9 +140,9 @@ var ProfileAdmin = map[string]bool{
 	"mem_merge_projects": true, // destructive curation tool — not for agent use
 }
 
-// ProfileProjects contains the 10 engram-projects tools (RFC
-// rfc-engram-projects.md §5.11): project cards, tasks, evidence, the
-// runbook index, and the context pack. Intended for agents working in
+// ProfileProjects contains the 10 engram-projects tools: project cards,
+// tasks, evidence, the runbook index, and the context pack. Intended for
+// agents working in
 // project repos, not for the generic agent skill protocols ProfileAgent
 // is sourced from.
 var ProfileProjects = map[string]bool{
@@ -920,7 +920,7 @@ Duplicates are automatically detected and skipped — safe to call multiple time
 		)
 	}
 
-	// ─── mem_judge (profile: agent, eager) — REQ-003, Design §6 ─────────
+	// ─── mem_judge (profile: agent, eager) ──────────────────────────────
 	if shouldRegister("mem_judge", allowlist) {
 		srv.AddTool(
 			mcp.NewTool("mem_judge",
@@ -974,7 +974,7 @@ Re-judging an already-judged ID overwrites the verdict (deliberate revision).`),
 		)
 	}
 
-	// ─── mem_compare (profile: agent, eager) — REQ-011, Design §9 ────────
+	// ─── mem_compare (profile: agent, eager) ──────────────────────────────
 	if shouldRegister("mem_compare", allowlist) {
 		srv.AddTool(
 			mcp.NewTool("mem_compare",
@@ -1042,7 +1042,7 @@ ERROR: Returns IsError=true if IDs are unknown, relation is invalid, or cross-pr
 
 // handleCurrentProject implements mem_current_project. It NEVER returns an error
 // even on ambiguous cwd — it always returns a success result with whatever
-// detection info is available (REQ-313).
+// detection info is available.
 func handleCurrentProject(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		cwd, _ := os.Getwd()
@@ -1086,7 +1086,7 @@ func handleCurrentProject(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc 
 			envelope["warning"] = res.Warning
 		}
 		if res.Error != nil {
-			// REQ-313: not an error response — just surface the info.
+			// Not an error response — just surface the info.
 			envelope["error_hint"] = res.Error.Error()
 		}
 		out, _ := jsonMarshal(envelope)
@@ -1113,11 +1113,11 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 		// regardless of the project override or any auto-detected project. This
 		// keeps the cross-project flow independent of cwd-based detection so the
 		// agent can recall context from any project without knowing its key.
-		// REQ-391: personal scope is cross-project by definition, so a bare
+		// Personal scope is cross-project by definition, so a bare
 		// scope=personal request (no explicit project override) never needs a
 		// resolved project — resolution is skipped rather than required to
 		// succeed and then discarded, which otherwise fails this cross-project
-		// request in a directory with no resolvable project (ADR-057 §3).
+		// request in a directory with no resolvable project.
 		personalCrossProject := scope == "personal" && strings.TrimSpace(projectOverride) == ""
 
 		var detRes projectpkg.DetectionResult
@@ -1126,7 +1126,7 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 		case allProjects, personalCrossProject:
 			detRes = projectpkg.DetectionResult{Source: projectpkg.SourceAllProjects}
 		default:
-			// Resolve project: validate override or auto-detect (REQ-310, REQ-311)
+			// Resolve project: validate override or auto-detect.
 			res, err := resolveReadProjectWithProcessOverride(s, projectOverride, cfg.DefaultProject)
 			if err != nil {
 				var upe *unknownProjectError
@@ -1141,10 +1141,10 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 			detRes = res
 			project = detRes.Project
 			project, _ = store.NormalizeProject(project)
-			detRes.Project = project // JR2-1: keep envelope in sync with normalized query project
+			detRes.Project = project // keep envelope in sync with normalized query project
 		}
 
-		// REQ-391: personal scope is cross-project by definition. When scope=personal
+		// Personal scope is cross-project by definition. When scope=personal
 		// and no explicit project override was provided, clear the project filter so
 		// memories from all projects are visible (not just the cwd-detected one).
 		searchProject := project
@@ -1191,7 +1191,7 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 		results := page.Results
 
 		if len(results) == 0 {
-			// JW4: use respondWithProject even for empty results.
+			// Use respondWithProject even for empty results.
 			return respondWithProject(detRes, fmt.Sprintf("No memories found for: %q", query), map[string]any{
 				"results": []map[string]any{},
 				"total":   page.Total,
@@ -1200,7 +1200,7 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 			}), nil
 		}
 
-		// Batch-load relations for all results (REQ-002). Avoids N+1.
+		// Batch-load relations for all results. Avoids N+1.
 		syncIDs := make([]string, 0, len(results))
 		for _, r := range results {
 			if r.SyncID != "" {
@@ -1260,7 +1260,7 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 
 			// Append relation annotations. Skip orphaned (filtered by store).
 			//
-			// Annotation format contract (REQ-012, Design §7):
+			// Annotation format contract:
 			//   supersedes: #<id> (<title>)            judged supersedes
 			//   superseded_by: #<id> (<title>)         judged superseded_by
 			//   conflicts: #<id> (<title>)             judged conflicts_with
@@ -1313,7 +1313,7 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 			b.WriteString(nudge)
 		}
 
-		// JW4: use respondWithProject for the success path (REQ-314).
+		// Use respondWithProject for the success path.
 		return respondWithProject(detRes, b.String(), map[string]any{
 			"results": structuredResults,
 			"total":   page.Total,
@@ -1567,7 +1567,7 @@ func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server
 			msg += "\n" + similarWarning
 		}
 
-		// Post-transaction conflict candidate detection (REQ-001).
+		// Post-transaction conflict candidate detection.
 		// Errors are logged and swallowed — detection failure never fails the save.
 		extra := map[string]any{}
 		if saved.LinkedTaskSyncID != "" {
@@ -1595,7 +1595,7 @@ func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server
 			fmt.Fprintf(os.Stderr, "engram: FindCandidates error (non-fatal): %v\n", candErr)
 		}
 
-		// Fetch the saved observation's sync_id for the envelope (REQ-001).
+		// Fetch the saved observation's sync_id for the envelope.
 		var savedSyncID string
 		if obs, obsErr := s.GetObservation(savedID); obsErr == nil {
 			savedSyncID = obs.SyncID
@@ -1887,17 +1887,17 @@ func handleContext(s *store.Store, cfg MCPConfig, activity *SessionActivity) ser
 		projectOverride, _ := req.GetArguments()["project"].(string)
 		scope, _ := req.GetArguments()["scope"].(string)
 
-		// REQ-391: personal scope is cross-project by definition, so a bare
+		// Personal scope is cross-project by definition, so a bare
 		// scope=personal request (no explicit project override) never needs a
 		// resolved project — resolution is skipped rather than required to
 		// succeed and then discarded, which otherwise fails this cross-project
-		// request in a directory with no resolvable project (ADR-057 §3).
+		// request in a directory with no resolvable project.
 		var detRes projectpkg.DetectionResult
 		var project string
 		if scope == "personal" && strings.TrimSpace(projectOverride) == "" {
 			detRes = projectpkg.DetectionResult{Source: projectpkg.SourceAllProjects}
 		} else {
-			// Resolve project: validate override or auto-detect (REQ-310, REQ-311)
+			// Resolve project: validate override or auto-detect.
 			res, err := resolveReadProjectWithProcessOverride(s, projectOverride, cfg.DefaultProject)
 			if err != nil {
 				var upe *unknownProjectError
@@ -1912,10 +1912,10 @@ func handleContext(s *store.Store, cfg MCPConfig, activity *SessionActivity) ser
 			detRes = res
 			project = detRes.Project
 			project, _ = store.NormalizeProject(project)
-			detRes.Project = project // JR2-1: keep envelope in sync with normalized query project
+			detRes.Project = project // keep envelope in sync with normalized query project
 		}
 
-		// REQ-391: personal scope is cross-project by definition. When scope=personal
+		// Personal scope is cross-project by definition. When scope=personal
 		// and no explicit project override was provided, clear the project filter so
 		// observations from all projects are returned (not just the cwd-detected one).
 		contextProject := project
@@ -1959,7 +1959,7 @@ func handleStats(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		projectOverride, _ := req.GetArguments()["project"].(string)
 
-		// Resolve project: validate override or auto-detect (REQ-310, REQ-311, REQ-314)
+		// Resolve project: validate override or auto-detect.
 		detRes, err := resolveReadProjectWithProcessOverride(s, projectOverride, cfg.DefaultProject)
 		if err != nil {
 			var upe *unknownProjectError
@@ -2043,7 +2043,7 @@ func handleTimeline(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 		after := intArg(req, "after", 5)
 		projectOverride, _ := req.GetArguments()["project"].(string)
 
-		// Resolve project: validate override or auto-detect (REQ-310, REQ-311, REQ-314)
+		// Resolve project: validate override or auto-detect.
 		detRes, err := resolveReadProjectWithProcessOverride(s, projectOverride, cfg.DefaultProject)
 		if err != nil {
 			var upe *unknownProjectError
@@ -2112,7 +2112,7 @@ func handleGetObservation(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc 
 			return mcp.NewToolResultError(fmt.Sprintf("Observation #%d not found", id)), nil
 		}
 
-		// Resolve project from process override/cwd (REQ-310, REQ-314). No per-call
+		// Resolve project from process override/cwd. No per-call
 		// override possible for get-by-ID. Tolerant: don't fail the fetch on
 		// resolution error; degrade to plain text.
 		detRes, detErr := resolveReadProjectWithProcessOverride(s, "", cfg.DefaultProject)
@@ -2220,7 +2220,7 @@ func handleSessionStart(s *store.Store, cfg MCPConfig, activity *SessionActivity
 		id, _ := req.GetArguments()["id"].(string)
 		directory, _ := req.GetArguments()["directory"].(string)
 		resolvedDirectory := strings.TrimSpace(directory)
-		// project field intentionally not read — auto-detect only (REQ-308)
+		// project field intentionally not read — auto-detect only
 
 		detRes, err := resolveSessionStartProject(resolvedDirectory)
 		if err != nil {
@@ -2260,7 +2260,7 @@ func handleSessionEnd(s *store.Store, cfg MCPConfig, activity *SessionActivity) 
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id, _ := req.GetArguments()["id"].(string)
 		summary, _ := req.GetArguments()["summary"].(string)
-		// project field intentionally not read — auto-detect only (REQ-308)
+		// project field intentionally not read — auto-detect only
 
 		detRes, err := resolveWriteProject()
 		if err != nil && errors.Is(err, projectpkg.ErrInvalidConfig) {
@@ -2292,7 +2292,7 @@ func handleCapturePassive(s *store.Store, cfg MCPConfig, activity *SessionActivi
 		content, _ := req.GetArguments()["content"].(string)
 		sessionID, _ := req.GetArguments()["session_id"].(string)
 		source, _ := req.GetArguments()["source"].(string)
-		// project field intentionally not read — auto-detect only (REQ-308)
+		// project field intentionally not read — auto-detect only
 
 		detRes, err := resolveWriteProject()
 		if err != nil {
@@ -2404,7 +2404,7 @@ func handleJudge(s *store.Store, activity *SessionActivity) server.ToolHandlerFu
 // handleCompare implements mem_compare. The agent has already judged two
 // observations externally; this handler persists the verdict via JudgeBySemantic.
 //
-// Tool description contract (REQ-011, Design §9):
+// Tool description contract:
 // "Persist a semantic verdict you have already judged externally into Engram.
 // Accepts int IDs for both observations, resolves them to sync_ids, then
 // calls JudgeBySemantic. Returns the persisted relation's sync_id."
@@ -2598,7 +2598,7 @@ func (e *sessionProjectMismatchError) Error() string {
 // project.SourceDirBasename). A caller that decides where a memory lands
 // must not accept that guess as if it were certain — it is what let a
 // disabled repo-scope config drift 177 observations into the wrong project
-// slug in silence (ADR-057). Res still carries the guessed Project/Path for
+// slug in silence. Res still carries the guessed Project/Path for
 // diagnostics; callers must not use it to complete the write.
 type unresolvableProjectError struct {
 	Path string
@@ -2627,7 +2627,7 @@ func detectProject(dir string) projectpkg.DetectionResult {
 // directory. Returns ErrAmbiguousProject if cwd is a parent of multiple repos,
 // and *unresolvableProjectError if the only available source is a
 // directory-name guess (project.SourceDirBasename): a write must not land
-// silently under a guessed project (ADR-057 §3).
+// silently under a guessed project.
 func resolveWriteProject() (projectpkg.DetectionResult, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -3079,7 +3079,7 @@ func resolveAmbiguousChoicePath(ambiguousParent, choice string) string {
 
 // resolveReadProject validates an optional project override against the store.
 // If override is empty, falls back to auto-detection from cwd.
-// JW2: normalizes the override (lowercase+trim) before ProjectExists lookup so
+// Normalizes the override (lowercase+trim) before ProjectExists lookup so
 // that e.g. "MyApp" and "  myapp  " both resolve to the stored "myapp".
 func resolveReadProjectWithProcessOverride(s *store.Store, override, defaultProject string) (projectpkg.DetectionResult, error) {
 	if strings.TrimSpace(override) == "" {
@@ -3135,7 +3135,7 @@ func resolveReadProject(s *store.Store, override string) (projectpkg.DetectionRe
 	}
 	return projectpkg.DetectionResult{
 		Project: normalized,
-		Source:  projectpkg.SourceExplicitOverride, // JR2-2: use named constant
+		Source:  projectpkg.SourceExplicitOverride,
 		Path:    "",
 	}, nil
 }

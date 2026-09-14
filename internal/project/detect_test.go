@@ -11,7 +11,7 @@ import (
 
 // ─── IsGuessedSource unit tests ───────────────────────────────────────────────
 
-// TestIsGuessedSource pins the ADR-057 §3 contract: dir_basename is the only
+// TestIsGuessedSource pins the contract: dir_basename is the only
 // source a write-deciding caller must treat as unresolved. Every other
 // source DetectProjectFull can produce — including ambiguous, which already
 // carries its own error and empty Project — must not be flagged as a guess,
@@ -222,10 +222,10 @@ func TestDetectProject_GitRemoteCasing(t *testing.T) {
 	}
 }
 
-// ─── DetectProjectFull tests (Batch 1 — REQ-300 through REQ-307) ──────────────
+// ─── DetectProjectFull tests ────────────────────────────────────────────────
 
 // TestDetectProjectFull_Case1_Remote asserts Source=="git_remote" for a
-// t.TempDir git repo with remote origin URL (REQ-301).
+// t.TempDir git repo with remote origin URL.
 func TestDetectProjectFull_Case1_Remote(t *testing.T) {
 	dir := t.TempDir()
 	initGit(t, dir)
@@ -486,7 +486,7 @@ func TestDetectProjectFull_DoesNotLeakHomeAncestorConfigIntoNestedRepo(t *testin
 }
 
 // TestDetectProjectFull_Case1_PathIsRepoRoot asserts that Case 1 (git_remote)
-// sets Path to the git repository root, not the input directory (JS2).
+// sets Path to the git repository root, not the input directory.
 // When called from a subdir of a remote-configured repo, Path should equal the
 // root — consistent with Case 2 behavior.
 func TestDetectProjectFull_Case1_PathIsRepoRoot(t *testing.T) {
@@ -509,16 +509,16 @@ func TestDetectProjectFull_Case1_PathIsRepoRoot(t *testing.T) {
 	if res.Source != SourceGitRemote {
 		t.Errorf("Source = %q; want %q", res.Source, SourceGitRemote)
 	}
-	// JS2: Path must be repo root, not subdir.
+	// Path must be repo root, not subdir.
 	wantPath, _ := filepath.EvalSymlinks(root)
 	gotPath, _ := filepath.EvalSymlinks(res.Path)
 	if gotPath != wantPath {
-		t.Errorf("Case1 Path = %q; want repo root %q (JS2: consistent with Case2)", res.Path, root)
+		t.Errorf("Case1 Path = %q; want repo root %q (consistent with Case2)", res.Path, root)
 	}
 }
 
 // TestDetectProjectFull_Case1_NoRemote asserts fallthrough to git_root source
-// when no origin remote exists (REQ-301 fallback).
+// when no origin remote exists.
 func TestDetectProjectFull_Case1_NoRemote(t *testing.T) {
 	dir := t.TempDir()
 	initGit(t, dir)
@@ -537,7 +537,7 @@ func TestDetectProjectFull_Case1_NoRemote(t *testing.T) {
 }
 
 // TestDetectProjectFull_Case2_Subdir asserts Source=="git_root", Path==ancestor_root,
-// from a subdirectory two levels deep inside a git repo (REQ-302).
+// from a subdirectory two levels deep inside a git repo.
 func TestDetectProjectFull_Case2_Subdir(t *testing.T) {
 	root := t.TempDir()
 	initGit(t, root)
@@ -567,8 +567,7 @@ func TestDetectProjectFull_Case2_Subdir(t *testing.T) {
 }
 
 // TestDetectProjectFull_Case3_SingleChild asserts Source=="git_child",
-// Warning!="", Error==nil for a temp dir with exactly one git-repo subdirectory
-// (REQ-303).
+// Warning!="", Error==nil for a temp dir with exactly one git-repo subdirectory.
 func TestDetectProjectFull_Case3_SingleChild(t *testing.T) {
 	parent := t.TempDir()
 	child := filepath.Join(parent, "my-child-repo")
@@ -594,7 +593,7 @@ func TestDetectProjectFull_Case3_SingleChild(t *testing.T) {
 }
 
 // TestDetectProjectFull_Case4_MultiChild asserts Error==ErrAmbiguousProject,
-// len(AvailableProjects)==2, Project=="" for two git-repo children (REQ-304).
+// len(AvailableProjects)==2, Project=="" for two git-repo children.
 func TestDetectProjectFull_Case4_MultiChild(t *testing.T) {
 	parent := t.TempDir()
 	for _, name := range []string{"repo-alpha", "repo-beta"} {
@@ -619,7 +618,7 @@ func TestDetectProjectFull_Case4_MultiChild(t *testing.T) {
 }
 
 // TestDetectProjectFull_Case5_Basename asserts Source=="dir_basename",
-// Project==filepath.Base(dir), Error==nil for a plain non-git dir (REQ-305).
+// Project==filepath.Base(dir), Error==nil for a plain non-git dir.
 func TestDetectProjectFull_Case5_Basename(t *testing.T) {
 	parent := t.TempDir()
 	plain := filepath.Join(parent, "plain-dir")
@@ -643,7 +642,7 @@ func TestDetectProjectFull_Case5_Basename(t *testing.T) {
 	}
 }
 
-// TestChildScan_ShortCircuit asserts the scan stops after 2 repos (REQ-306).
+// TestChildScan_ShortCircuit asserts the scan stops after 2 repos.
 func TestChildScan_ShortCircuit(t *testing.T) {
 	parent := t.TempDir()
 	// Create 4 child repos — scan must short-circuit after 2.
@@ -666,7 +665,7 @@ func TestChildScan_ShortCircuit(t *testing.T) {
 	}
 }
 
-// TestChildScan_SkipNoise asserts node_modules and vendor are skipped (REQ-306).
+// TestChildScan_SkipNoise asserts node_modules and vendor are skipped.
 func TestChildScan_SkipNoise(t *testing.T) {
 	parent := t.TempDir()
 	// node_modules with .git inside — must NOT be counted.
@@ -693,7 +692,7 @@ func TestChildScan_SkipNoise(t *testing.T) {
 	}
 }
 
-// TestChildScan_SkipHidden asserts hidden directories are skipped (REQ-306).
+// TestChildScan_SkipHidden asserts hidden directories are skipped.
 func TestChildScan_SkipHidden(t *testing.T) {
 	parent := t.TempDir()
 	// Hidden dir with .git inside — must NOT be counted.
@@ -720,7 +719,7 @@ func TestChildScan_SkipHidden(t *testing.T) {
 }
 
 // TestDetectProject_MatchesFull asserts DetectProject returns same as
-// DetectProjectFull.Project for non-ambiguous cases (REQ-307 backward-compat wrapper).
+// DetectProjectFull.Project for non-ambiguous cases (the backward-compat wrapper).
 func TestDetectProject_MatchesFull(t *testing.T) {
 	dir := t.TempDir()
 	initGit(t, dir)
@@ -736,7 +735,7 @@ func TestDetectProject_MatchesFull(t *testing.T) {
 }
 
 // TestDetectProject_AmbiguousEmpty asserts DetectProject returns basename
-// (not empty) even on ambiguous cwd, maintaining CLI compat (REQ-307).
+// (not empty) even on ambiguous cwd, maintaining CLI compat.
 func TestDetectProject_AmbiguousEmpty(t *testing.T) {
 	parent := t.TempDir()
 	for _, name := range []string{"repo-a", "repo-b"} {

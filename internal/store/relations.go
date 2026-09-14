@@ -262,7 +262,6 @@ type Relation struct {
 
 	// Annotation fields — populated by GetRelationsForObservations via LEFT JOIN.
 	// Excluded from JSON output (used only for in-process annotation building).
-	// REQ-005, REQ-012 | Design §7, §8.
 	SourceIntID   int64  `json:"-"` // integer primary key of source observation
 	SourceTitle   string `json:"-"` // title of source observation; empty if missing/deleted
 	SourceMissing bool   `json:"-"` // true if source is soft-deleted or not found
@@ -589,12 +588,12 @@ func (s *Store) JudgeRelation(p JudgeRelationParams) (*Relation, error) {
 	}
 
 	if err := s.withTx(func(tx *sql.Tx) error {
-		// ── Cross-project guard (Phase 2, REQ-003) ─────────────────────────
+		// ── Cross-project guard ──────────────────────────────────────────────
 		// Derive source and target project for enrollment checks and the guard.
 		// Use the same session-fallback form as JudgeBySemantic so that enrolled
 		// projects whose observations have a blank project column (but whose session
 		// carries the project) are resolved correctly. Missing observation → empty
-		// string (REQ-011 edge) because the LEFT JOIN returns no row.
+		// string because the LEFT JOIN returns no row.
 		var srcProject, tgtProject string
 		_ = tx.QueryRow(
 			`SELECT coalesce(nullif(o.project,''), s.project, '')
@@ -642,9 +641,9 @@ func (s *Store) JudgeRelation(p JudgeRelationParams) (*Relation, error) {
 			return fmt.Errorf("JudgeRelation: update: %w", err)
 		}
 
-		// ── Enqueue sync mutation when project is enrolled (REQ-001) ───────
+		// ── Enqueue sync mutation when project is enrolled ──────────────────
 		// Derive project from source observation; empty string if source missing.
-		// (REQ-011: loud failure is the server's job; we enqueue project='' and log.)
+		// (Loud failure is the server's job; we enqueue project='' and log.)
 		//
 		// Enrollment check: prefer srcProject; fall back to tgtProject when source
 		// is missing locally (race condition). This ensures enqueue happens with
@@ -663,7 +662,7 @@ func (s *Store) JudgeRelation(p JudgeRelationParams) (*Relation, error) {
 			return nil // not enrolled — no mutation enqueued
 		}
 
-		// REQ-011: log at WARNING level when source observation is missing locally
+		// Log at WARNING level when source observation is missing locally
 		// (project='' race condition). The server will reject with 400; this log
 		// is the local breadcrumb so the gap is not silently swallowed.
 		if srcProject == "" {
@@ -705,7 +704,7 @@ func (s *Store) JudgeRelation(p JudgeRelationParams) (*Relation, error) {
 
 // validateCrossProjectGuard checks whether sourceID and targetID belong to the
 // same project. It returns ErrCrossProjectRelation when they are in different
-// projects. Both empty is allowed (observation may be missing locally — REQ-011).
+// projects. Both empty is allowed (observation may be missing locally).
 // This function is shared by JudgeRelation and JudgeBySemantic.
 func validateCrossProjectGuard(tx *sql.Tx, sourceID, targetID string) error {
 	var srcProject, tgtProject string
@@ -865,7 +864,7 @@ func (s *Store) JudgeBySemantic(p JudgeBySemanticParams) (string, error) {
 			return nil // not enrolled — backfill will cover it on enrollment
 		}
 
-		// REQ-011: log at WARNING level when source observation is missing locally
+		// Log at WARNING level when source observation is missing locally
 		// (project='' race condition). The server will reject with 400; this log
 		// is the local breadcrumb so the gap is not silently swallowed.
 		if srcProject == "" {
@@ -941,7 +940,7 @@ func (s *Store) getRelationTx(tx *sql.Tx, syncID string) (*Relation, error) {
 //
 // A single SQL query with IN/OR and LEFT JOINs avoids N+1 queries.
 // The returned Relation values are enriched with source/target integer IDs and
-// titles via LEFT JOIN, used by the MCP annotation builder (REQ-005, REQ-012).
+// titles via LEFT JOIN, used by the MCP annotation builder.
 // Missing or soft-deleted observations set the corresponding *Missing flag to true.
 func (s *Store) GetRelationsForObservations(syncIDs []string) (map[string]ObservationRelations, error) {
 	if len(syncIDs) == 0 {
@@ -960,7 +959,7 @@ func (s *Store) GetRelationsForObservations(syncIDs []string) (map[string]Observ
 	}
 
 	inClause := joinStrings(placeholders, ",")
-	// LEFT JOIN to observations for title enrichment (REQ-005, Design §8).
+	// LEFT JOIN to observations for title enrichment.
 	// source_missing / target_missing: observation is absent (not found) or soft-deleted.
 	query := fmt.Sprintf(`
 		SELECT r.id, r.sync_id,

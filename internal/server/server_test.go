@@ -1005,7 +1005,7 @@ func TestHandleDeletePrompt_BadID(t *testing.T) {
 	}
 }
 
-// ─── Phase E.1e — /sync/status exposes deferred + dead counts (REQ-007) ─────
+// ─── /sync/status exposes deferred + dead counts ────────────────────────────
 
 // TestSyncStatus_IncludesDeferredAndDeadCounts: 3 deferred + 1 dead →
 // /sync/status response must have deferred_count=3 and dead_count=1.
@@ -1043,7 +1043,7 @@ func TestSyncStatus_IncludesDeferredAndDeadCounts(t *testing.T) {
 	}
 }
 
-// ─── Conflict-Audit HTTP Tests (Phase E, REQ-006 thru REQ-011) ──────────────
+// ─── Conflict-Audit HTTP Tests ───────────────────────────────────────────────
 //
 // These tests cover the 6 new /conflicts/* routes.
 // Helpers below seed observations, relations, and deferred rows without
