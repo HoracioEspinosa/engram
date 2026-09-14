@@ -175,6 +175,42 @@ func TestKnowledgeRefDanglingCheck(t *testing.T) {
 		if result.Result != StatusWarning {
 			t.Fatalf("a directory standing in for a note was accepted: %+v", result)
 		}
+		// A directory gets its own reason, distinct from a pointer that
+		// resolves to nothing at all, so an operator does not go looking for
+		// a document that was simply never committed.
+		if len(result.Findings) != 1 || result.Findings[0].ReasonCode != CheckKnowledgeRefDangling+"_points_to_directory" {
+			t.Fatalf("findings = %+v, want exactly one _points_to_directory finding", result.Findings)
+		}
+		if !strings.Contains(result.Findings[0].Message, "directory") {
+			t.Fatalf("finding does not say the pointer names a directory: %q", result.Findings[0].Message)
+		}
+		if !strings.Contains(result.Findings[0].Message, "Services/Nextcloud/Architecture.md") {
+			t.Fatalf("finding does not name the directory pointer: %q", result.Findings[0].Message)
+		}
+	})
+
+	t.Run("a directory and a missing document are reported with their own reasons", func(t *testing.T) {
+		s := seedPointers(t)
+		vault := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(vault, "Services/Nextcloud/Architecture.md"), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		// The runbook pointer is left unresolved too, so both reasons show
+		// up in the same run rather than only ever being exercised alone.
+		result, err := KnowledgeRefDanglingCheck{VaultDir: vault}.Run(context.Background(), Scope{Store: s})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		byReason := map[string]int{}
+		for _, f := range result.Findings {
+			byReason[f.ReasonCode]++
+		}
+		if byReason[CheckKnowledgeRefDangling] != 1 {
+			t.Fatalf("missing-document findings = %d, want 1: %+v", byReason[CheckKnowledgeRefDangling], result.Findings)
+		}
+		if byReason[CheckKnowledgeRefDangling+"_points_to_directory"] != 1 {
+			t.Fatalf("directory findings = %d, want 1: %+v", byReason[CheckKnowledgeRefDangling+"_points_to_directory"], result.Findings)
+		}
 	})
 }
 
