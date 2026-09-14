@@ -7292,6 +7292,7 @@ func TestProjectScopedTablesMatchesTheLiveSchema(t *testing.T) {
 	}
 
 	want := map[string]wantShape{
+		"benchmarks":             {},
 		"cloud_upgrade_state":    {projectPK: true, hasUpdatedAt: true},
 		"evidence":               {},
 		"observations":           {hasUpdatedAt: true},
@@ -7487,9 +7488,9 @@ func TestMergeProjectsMovesEvidenceTasksRunbooksAndTombstones(t *testing.T) {
 }
 
 // TestTablesReferencingProjectCards pins the exact set of tables discovered
-// via PRAGMA foreign_key_list as of this schema — tasks, evidence and
-// runbook_index, each through a foreign key on their own "project" column
-// into project_cards(slug). A future table with the same FK shape needs no
+// via PRAGMA foreign_key_list as of this schema — tasks, evidence,
+// runbook_index and benchmarks, each through a foreign key on their own
+// "project" column into project_cards(slug). A future table with the same FK shape needs no
 // matching addition here; this test is what would need updating to notice
 // that isn't happening automatically.
 func TestTablesReferencingProjectCards(t *testing.T) {
@@ -7508,7 +7509,7 @@ func TestTablesReferencingProjectCards(t *testing.T) {
 	for _, d := range dependents {
 		got[d.name] = true
 	}
-	want := map[string]bool{"tasks": true, "evidence": true, "runbook_index": true}
+	want := map[string]bool{"tasks": true, "evidence": true, "runbook_index": true, "benchmarks": true}
 	if len(got) != len(want) {
 		t.Fatalf("tablesReferencingProjectCards = %v, want %v", got, want)
 	}

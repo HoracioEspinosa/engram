@@ -159,20 +159,36 @@ func dumpProjectsState(t *testing.T, s *Store) string {
 		label string
 		query string
 	}{
+		// The three graph staleness columns are deliberately absent: they
+		// describe the checkout on this machine, so two replicas are expected
+		// to disagree about them and a dump that compared them would fail for
+		// the one reason that is not divergence.
 		{"project_cards", `SELECT slug, sync_id, display_name, ifnull(repo_url,''), default_branch,
 			jira_project, ifnull(jira_component,''), ifnull(knowledge_hub_path,''), graph_path,
 			ifnull(graph_commit,''), ifnull(graph_built_at,''), ifnull(graph_summary,''),
-			ifnull(owner,''), created_at, updated_at, ifnull(deleted_at,'')
+			ifnull(owner,''), created_at, updated_at, ifnull(deleted_at,''),
+			ifnull(parent_slug,''), depth, kind, ifnull(description,''), ifnull(icon,''),
+			ifnull(color,''), ifnull(tags,'')
 			FROM project_cards ORDER BY slug`},
+		{"project_aliases", `SELECT alias, sync_id, slug, source, created_at, updated_at,
+			ifnull(deleted_at,'') FROM project_aliases ORDER BY alias`},
 		{"tasks", `SELECT sync_id, project, ifnull(jira_key,''), ifnull(sdd_change,''), title, kind, state,
 			ifnull(jira_status,''), ifnull(jira_status_category,''), ifnull(state_synced_at,''),
 			ifnull(branch,''), ifnull(pr_url,''), ifnull(knowledge_ref,''), ifnull(assignee,''),
-			created_at, updated_at, ifnull(closed_at,''), ifnull(deleted_at,'')
+			created_at, updated_at, ifnull(closed_at,''), ifnull(deleted_at,''),
+			ifnull(slug,''), ifnull(summary,''), ifnull(pending_note,''), ifnull(vault_path,''),
+			ifnull(parent_task_sync_id,'')
 			FROM tasks ORDER BY sync_id`},
-		{"evidence", `SELECT sync_id, project, task_sync_id, path, sha256, kind, proves,
+		{"evidence", `SELECT sync_id, project, task_sync_id, path, sha256, category, kind, proves,
 			ifnull(config_stamp,''), captured_at, attached_jira, ifnull(attached_confluence_url,''),
-			ifnull(size_bytes,-1), ifnull(manifest_path,''), created_at, ifnull(deleted_at,'')
+			ifnull(size_bytes,-1), ifnull(manifest_path,''), ifnull(location_set_at,''),
+			created_at, ifnull(deleted_at,'')
 			FROM evidence ORDER BY sync_id`},
+		{"benchmarks", `SELECT sync_id, project, task_sync_id, name, metric, unit, direction, value,
+			baseline, ifnull(baseline_set_at,''), ifnull(run_path,''), ifnull(sha256,''),
+			ifnull(config_stamp,''), captured_at, ifnull(notes,''), source, created_at,
+			ifnull(deleted_at,'')
+			FROM benchmarks ORDER BY sync_id`},
 		{"task_observations", `SELECT task_sync_id, observation_sync_id, role, linked_at
 			FROM task_observations ORDER BY task_sync_id, observation_sync_id`},
 		{"task_link_tombstones", `SELECT task_sync_id, observation_sync_id, deleted_at
@@ -335,6 +351,15 @@ func crossReplicaMutations(t *testing.T) []SyncMutation {
 			refPayload(t, "knowledge", "Runbooks/RB-003.md", nil)),
 		mut(SyncEntityObservationRef, observationRefKey(fxObsSyncID, "graph", "Uploader::put"),
 			refPayload(t, "graph", "Uploader::put", &commit)),
+
+		// An alias repointed and then retired, and two measurements of one
+		// metric that each claimed the baseline.
+		mut(SyncEntityProjectAlias, fxAlias, aliasPayload(t, fxProject, "normalizer", "2026-01-03 10:00:00", nil)),
+		mut(SyncEntityProjectAlias, fxAlias, aliasPayload(t, fxProject, "manual", "2026-01-04 10:00:00", nil)),
+		mut(SyncEntityBenchmark, fxBenchA,
+			benchmarkPayload(t, fxBenchA, true, strp("2026-01-03 10:00:00"), "2026-01-03 09:00:00", 400)),
+		mut(SyncEntityBenchmark, fxBenchB,
+			benchmarkPayload(t, fxBenchB, true, strp("2026-01-04 10:00:00"), "2026-01-04 09:00:00", 250)),
 	}
 }
 
@@ -696,11 +721,14 @@ func TestProjectsSync_ChunkReplayIsIdempotent(t *testing.T) {
 
 func pendingProjectsMutations(t *testing.T, s *Store) []string {
 	t.Helper()
+	entities := ProjectsSyncEntities()
+	args := make([]any, 0, len(entities))
+	for _, entity := range entities {
+		args = append(args, entity)
+	}
 	rows, err := s.db.Query(
-		`SELECT entity, entity_key FROM sync_mutations
-		 WHERE entity IN (?,?,?,?,?) ORDER BY seq`,
-		SyncEntityProjectCard, SyncEntityTask, SyncEntityEvidence,
-		SyncEntityTaskLink, SyncEntityObservationRef)
+		`SELECT entity, entity_key FROM sync_mutations WHERE entity IN (`+
+			strings.TrimSuffix(strings.Repeat("?,", len(entities)), ",")+`) ORDER BY seq`, args...)
 	if err != nil {
 		t.Fatalf("list mutations: %v", err)
 	}
@@ -755,6 +783,15 @@ func writeOneOfEachEntity(t *testing.T, s *Store) {
 	}); err != nil {
 		t.Fatalf("AddEvidence: %v", err)
 	}
+	if err := s.UpsertProjectAlias("nextcloud-legacy", fxProject, "manual"); err != nil {
+		t.Fatalf("UpsertProjectAlias: %v", err)
+	}
+	if _, err := s.AddBenchmark(AddBenchmarkParams{
+		Task: result.Task, Name: "login", Metric: "p95", Unit: "ms", Value: 120,
+		Baseline: true, CapturedAt: "2026-01-02 08:00:00",
+	}); err != nil {
+		t.Fatalf("AddBenchmark: %v", err)
+	}
 }
 
 func TestProjectsSync_NothingIsJournalledWhileTheFlagIsOff(t *testing.T) {
@@ -785,10 +822,14 @@ func TestProjectsSync_EveryWriterJournalsItsEntity(t *testing.T) {
 
 	// Every journalled payload must survive the doctor's own validation: an
 	// entity it does not recognize is reported as a blocking finding.
+	entities := ProjectsSyncEntities()
+	entityArgs := make([]any, 0, len(entities))
+	for _, entity := range entities {
+		entityArgs = append(entityArgs, entity)
+	}
 	rows, err := s.db.Query(
-		`SELECT entity, op, payload, entity_key FROM sync_mutations WHERE entity IN (?,?,?,?,?)`,
-		SyncEntityProjectCard, SyncEntityTask, SyncEntityEvidence,
-		SyncEntityTaskLink, SyncEntityObservationRef)
+		`SELECT entity, op, payload, entity_key FROM sync_mutations WHERE entity IN (`+
+			strings.TrimSuffix(strings.Repeat("?,", len(entities)), ",")+`)`, entityArgs...)
 	if err != nil {
 		t.Fatalf("list mutations: %v", err)
 	}

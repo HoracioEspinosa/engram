@@ -40,6 +40,13 @@ const (
 	SourceRequestBody                       = "request_body" // REQ-414: project came from the request body (server-side, no filesystem path)
 	SourceConfig                            = "config"       // derived from .engram/config.json project_name
 	SourceAllProjects                       = "all_projects" // caller asked for cross-project search (no single project resolved)
+	// SourceAlias means the caller named something the store knows as an alias
+	// of a real project, and the write or read followed it to that project.
+	SourceAlias = "alias"
+	// SourceFolded means the caller's name matched a real project once the
+	// separators were folded together (an underscore where the slug has a
+	// hyphen, say). Nothing is stored under the folded spelling.
+	SourceFolded = "folded"
 )
 
 // noiseSet lists directory names that are skipped during child-repo scanning.

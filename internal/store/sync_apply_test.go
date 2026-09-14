@@ -591,10 +591,10 @@ func TestApplyPulledMutationParksUnknownEntity(t *testing.T) {
 	}
 
 	unknown := SyncMutation{
-		Entity:    "benchmark",
-		EntityKey: "bench-0001",
+		Entity:    "telemetry_sample",
+		EntityKey: "tel-0001",
 		Op:        SyncOpUpsert,
-		Payload:   `{"sync_id":"bench-0001","metric":"p95","value":12.5}`,
+		Payload:   `{"sync_id":"tel-0001","metric":"p95","value":12.5}`,
 		Source:    SyncSourceRemote,
 		Seq:       1,
 		TargetKey: DefaultSyncTargetKey,
@@ -613,10 +613,10 @@ func TestApplyPulledMutationParksUnknownEntity(t *testing.T) {
 	if applyStatus != "dead" {
 		t.Errorf("apply_status = %q; want dead", applyStatus)
 	}
-	if entity != "benchmark" {
-		t.Errorf("entity = %q; want benchmark", entity)
+	if entity != "telemetry_sample" {
+		t.Errorf("entity = %q; want telemetry_sample", entity)
 	}
-	if !strings.Contains(lastError, "benchmark") {
+	if !strings.Contains(lastError, "telemetry_sample") {
 		t.Errorf("last_error = %q; want it to name the unknown entity", lastError)
 	}
 

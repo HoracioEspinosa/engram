@@ -269,6 +269,56 @@ func TestSyncGraph_DisambiguatesDuplicateLabelsByDegree(t *testing.T) {
 	}
 }
 
+// TestSyncGraphStampsStalenessFromChangedFiles pins that a sync stores the
+// verdict of the real staleness check instead of a bare commit comparison: a
+// repository that moved on prose alone is reported fresh, with the reason and
+// the check timestamp left on the card for anything that reads it later.
+func TestSyncGraphStampsStalenessFromChangedFiles(t *testing.T) {
+	s := newContextPackTestStore(t)
+	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: "acme"}); err != nil {
+		t.Fatalf("UpsertProjectCard: %v", err)
+	}
+
+	repoDir := t.TempDir()
+	initGit(t, repoDir)
+	writeRepoFile(t, repoDir, "internal/store/store.go", "package store\n")
+	writeRepoFile(t, repoDir, "README.md", "# acme\n")
+	graphCommit := commitAll(t, repoDir, "seed")
+
+	graph, err := os.ReadFile(filepath.Join("testdata", "graph-small.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	writeRepoFile(t, repoDir, "graphify-out/graph.json",
+		strings.Replace(string(graph), "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", graphCommit, 1))
+
+	// Only prose moves after the graph was built.
+	writeRepoFile(t, repoDir, "README.md", "# acme\n\nOne more line.\n")
+	commitAll(t, repoDir, "docs: extend the readme")
+
+	result, err := SyncGraph(s, "acme", repoDir, "")
+	if err != nil {
+		t.Fatalf("SyncGraph: %v", err)
+	}
+	if result.Stale {
+		t.Fatalf("a docs-only commit must not report a stale graph: %+v", result)
+	}
+
+	card, err := s.GetProjectCard("acme")
+	if err != nil {
+		t.Fatalf("GetProjectCard: %v", err)
+	}
+	if card.GraphStaleReason == nil || *card.GraphStaleReason != StaleReasonDocsOnly {
+		t.Fatalf("graph_stale_reason %v, want %q", card.GraphStaleReason, StaleReasonDocsOnly)
+	}
+	if card.GraphChangedFiles == nil || *card.GraphChangedFiles != 0 {
+		t.Fatalf("graph_changed_files %v, want 0", card.GraphChangedFiles)
+	}
+	if card.GraphCheckedAt == nil || *card.GraphCheckedAt == "" {
+		t.Fatal("the sync must record when the staleness check ran")
+	}
+}
+
 // TestGraphSummary_RealGraphDirsStayUnder64KiB is an opt-in smoke test
 // against real graphify-out/ directories on disk, controlled by
 // ENGRAM_TEST_GRAPH_DIRS (a comma-separated list of repo roots, each

@@ -293,7 +293,10 @@ assert_ok 10 "id 10 mem_task_list"
 assert_ok 11 "id 11 mem_context_pack"
 assert_ok 12 "id 12 mem_project_card"
 
-assert_error_code 13 "id 13 mem_project_upsert refuses an explicit project it does not already know" unknown_project
+# The name carries an underscore on purpose: folding the separators is the last
+# thing project resolution tries, and a name that is unknown even after folding
+# is the one this guard has to keep refusing.
+assert_error_code 13 "id 13 mem_project_upsert refuses an explicit project no spelling resolves" unknown_project
 assert_error_code 14 "id 14 mem_evidence_add refuses an absolute evidence path" absolute_path_rejected
 assert_error_code 15 "id 15 mem_task_link refuses a graph_ref without a graph_commit" graph_commit_required
 

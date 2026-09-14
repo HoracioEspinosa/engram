@@ -57,10 +57,12 @@ mkdir -p "$TUI_OUT"
 # created here instead of relying on `docker run -v` to auto-create them.
 GOMOD_VOLUME="$(ensure_volume engram-dev-gomod)"
 GOBUILD_VOLUME="$(ensure_volume engram-dev-gobuild)"
+set_git_mount_args
 
 log "regenerating the golden files inside $GO_IMAGE"
 docker run --rm \
   -v "$ROOT_DIR:/src" \
+  "${GIT_MOUNT_ARGS[@]+"${GIT_MOUNT_ARGS[@]}"}" \
   -v "${GOMOD_VOLUME}:/go/pkg/mod" \
   -v "${GOBUILD_VOLUME}:/root/.cache/go-build" \
   -w /src \

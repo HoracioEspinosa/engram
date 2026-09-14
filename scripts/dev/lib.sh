@@ -247,3 +247,25 @@ require_setup() {
   [ -f "$agent_file" ] || fail "$agent_file is missing — run ./setup.sh first"
   log "setup ok: $found and $agent_file are in place"
 }
+
+# GIT_MOUNT_ARGS carries the extra `docker run -v` flags a checkout needs so the
+# container can read its own git metadata. In an ordinary clone it stays empty:
+# the mount of the working tree already carries .git. In a linked worktree .git
+# is a file naming a directory outside the tree, so without this the container
+# sees a checkout git refuses to read, and every test that resolves a project
+# from the repository fails for a reason that has nothing to do with the code.
+GIT_MOUNT_ARGS=()
+
+set_git_mount_args() {
+  GIT_MOUNT_ARGS=()
+  [ -f "$ROOT_DIR/.git" ] || return 0
+
+  local common
+  common="$(git -C "$ROOT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  [ -n "$common" ] && [ -d "$common" ] || return 0
+
+  # Mounted at its own absolute path, because that is the path the .git file
+  # names: anywhere else and the pointer still dangles.
+  GIT_MOUNT_ARGS=(-v "$common:$common")
+  log "linked worktree: mounting $common so git works inside the container"
+}
