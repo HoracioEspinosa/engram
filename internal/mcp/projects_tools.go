@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	projectpkg "github.com/HoracioEspinosa/engram/internal/project"
 	"github.com/HoracioEspinosa/engram/internal/runbooks"
@@ -33,6 +34,11 @@ var (
 	obsSyncIDPattern      = regexp.MustCompile(`^obs-[0-9a-f]{16,32}$`)
 	sha256ToolPattern     = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	runbookIDToolPattern  = regexp.MustCompile(`^RB-[0-9]{3}$`)
+	// A card's icon and color are tokens a renderer resolves, not literal
+	// glyphs: the palette decides what "accent" looks like, and the icon set
+	// decides what "fish" draws as. Both shapes are pinned by the schema.
+	projectIconPattern  = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	projectColorPattern = regexp.MustCompile(`^(#[0-9a-f]{6}|[a-z][a-z0-9-]*)$`)
 )
 
 var reservedProjectSlugs = map[string]bool{"migrate": true, "current": true}
@@ -54,6 +60,7 @@ var runbookStatusEnum = []string{"draft", "verified", "outdated"}
 var runbookAutomationLevelEnum = []string{"manual", "assisted", "autonomous-with-gate"}
 var runbookSourceEnum = []string{"knowledge-mcp", "vault-fs"}
 var matchModeEnum = []string{"all", "any"}
+var projectKindEnum = []string{"umbrella", "repo", "instance", "service", "dataset", "knowledge"}
 var contextPackSectionEnum = []string{"header", "card", "pointers", "pinned", "observations", "evidence", "runbooks", "refs", "footer"}
 var contextPackFormatEnum = []string{"markdown", "json"}
 
@@ -277,6 +284,7 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("project", mcp.Description("Slug; optional, resolved by precedence when omitted")),
 				mcp.WithBoolean("include_counts", mcp.DefaultBool(true), mcp.Description("Include the counts section")),
 				mcp.WithBoolean("include_graph_summary", mcp.DefaultBool(false), mcp.Description("Include the graph_summary blob on the card, when present")),
+				mcp.WithBoolean("include_graph_status", mcp.DefaultBool(true), mcp.Description("Include data.graph: the stamped commit, the repository HEAD, and whether the graph still describes the working copy")),
 			),
 			handleProjectCard(s, cfg),
 		)
@@ -303,6 +311,13 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("graph_path", mcp.DefaultString("graphify-out/graph.json"), mcp.Description("Repo-relative path")),
 				mcp.WithBoolean("sync_graph", mcp.DefaultBool(false)),
 				mcp.WithString("repo_dir", mcp.Description("Absolute repo root used only when sync_graph=true; defaults to project_path")),
+				mcp.WithString("parent", mcp.Description("Slug of the parent card this project hangs from. Empty string detaches it. A parent that would close a cycle or push the subtree past the depth limit is refused and the card is still returned.")),
+				mcp.WithString("kind", mcp.Enum(projectKindEnum...), mcp.Description("What sort of thing the project is")),
+				mcp.WithString("description", mcp.MaxLength(1000)),
+				mcp.WithString("icon", mcp.Pattern(`^[a-z][a-z0-9-]*$`), mcp.MaxLength(32), mcp.Description("Lowercase icon token the icon set resolves, such as fish or database")),
+				mcp.WithString("color", mcp.Pattern(`^(#[0-9a-f]{6}|[a-z][a-z0-9-]*)$`), mcp.MaxLength(32), mcp.Description("Lowercase palette role token, such as accent, or a lowercase #rrggbb triple")),
+				mcp.WithArray("tags", mcp.WithStringItems(), mcp.Description("Free-form labels for the project")),
+				mcp.WithArray("aliases", mcp.WithStringItems(), mcp.Description("Other names that resolve to this project. An alias that already owns memories of its own is refused by name in data.alias_errors.")),
 			),
 			queuedWriteHandler(writeQueue, handleProjectUpsert(s, cfg)),
 		)
@@ -554,9 +569,135 @@ func handleProjectCard(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result["sync"] = sync
+		result["hierarchy"] = projectHierarchy(s, card)
+		if inherited := inheritedCardFields(s, card); len(inherited) > 0 {
+			result["inherited"] = inherited
+		}
+		if optBoolDefault(req, "include_graph_status", true) {
+			result["graph"] = graphStatus(s, card, detRes.Path)
+		}
 
 		return respondProjectResult(detRes, result), nil
 	}
+}
+
+// projectHierarchy reports where a card sits in the tree: its parent, its
+// depth, and the cards that hang directly from it. The tree is what makes a
+// group of related projects readable as one thing, so a card that does not say
+// where it sits is a card the reader has to go looking for.
+func projectHierarchy(s *store.Store, card store.ProjectCard) map[string]any {
+	hierarchy := map[string]any{"depth": card.Depth, "children": []string{}}
+	if card.ParentSlug != nil {
+		hierarchy["parent"] = *card.ParentSlug
+	}
+	nodes, err := s.ProjectTree(card.Slug, false)
+	if err != nil {
+		return hierarchy
+	}
+	children := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		if node.ParentSlug != nil && *node.ParentSlug == card.Slug {
+			children = append(children, node.Slug)
+		}
+	}
+	hierarchy["children"] = children
+	return hierarchy
+}
+
+// inheritedFields are the card fields a child may take from an ancestor when
+// it carries none of its own. They are the ones that describe the thing the
+// subtree shares — the repository, the Jira project, the documentation hub —
+// rather than the ones that identify one card.
+var inheritedFields = []struct {
+	name  string
+	value func(store.ProjectCard) string
+}{
+	{"repo_url", func(c store.ProjectCard) string { return derefString(c.RepoURL) }},
+	{"jira_component", func(c store.ProjectCard) string { return derefString(c.JiraComponent) }},
+	{"knowledge_hub_path", func(c store.ProjectCard) string { return derefString(c.KnowledgeHubPath) }},
+	{"owner", func(c store.ProjectCard) string { return derefString(c.Owner) }},
+	{"icon", func(c store.ProjectCard) string { return derefString(c.Icon) }},
+	{"color", func(c store.ProjectCard) string { return derefString(c.Color) }},
+}
+
+// inheritedCardFields walks up the tree and reports, per field the card leaves
+// empty, the value an ancestor carries and which ancestor it came from. It is
+// what lets a reader tell "this project has no owner" from "this project takes
+// its owner from the umbrella above it".
+func inheritedCardFields(s *store.Store, card store.ProjectCard) map[string]any {
+	inherited := map[string]any{}
+	current := card
+	// maxProjectDepth is 3, so the walk is bounded by the schema itself; the
+	// counter only guards against a parent chain that a direct write corrupted.
+	for hop := 0; hop < 8 && current.ParentSlug != nil; hop++ {
+		parent, err := s.GetProjectCard(*current.ParentSlug)
+		if err != nil {
+			break
+		}
+		for _, field := range inheritedFields {
+			if _, taken := inherited[field.name]; taken {
+				continue
+			}
+			if field.value(card) != "" {
+				continue
+			}
+			if value := field.value(parent); value != "" {
+				inherited[field.name] = map[string]any{"value": value, "from": parent.Slug}
+			}
+		}
+		current = parent
+	}
+	return inherited
+}
+
+// graphStatus answers whether the stamped graph still describes the working
+// copy. The check needs the repository, so outside one it falls back to the
+// verdict the last check stamped on the card rather than reporting a graph as
+// fresh on no evidence.
+func graphStatus(s *store.Store, card store.ProjectCard, repoDir string) map[string]any {
+	status := map[string]any{
+		"commit":        derefString(card.GraphCommit),
+		"head":          "",
+		"stale":         false,
+		"stale_reason":  derefString(card.GraphStaleReason),
+		"changed_files": 0,
+		"checked_at":    derefString(card.GraphCheckedAt),
+	}
+	if card.GraphChangedFiles != nil {
+		status["changed_files"] = *card.GraphChangedFiles
+	}
+	if reason := derefString(card.GraphStaleReason); reason != "" && reason != "fresh" {
+		status["stale"] = true
+	}
+	commit := derefString(card.GraphCommit)
+	if commit == "" {
+		status["stale"] = true
+		status["stale_reason"] = "no_graph_commit"
+		return status
+	}
+	if strings.TrimSpace(repoDir) == "" {
+		return status
+	}
+	staleness, err := projectpkg.CheckStaleness(repoDir, commit, card.GraphPath, time.Now().UTC())
+	if err != nil {
+		return status
+	}
+	status["head"] = staleness.HeadCommit
+	status["stale"] = staleness.Stale
+	status["stale_reason"] = staleness.Reason
+	status["changed_files"] = staleness.ChangedFiles
+	status["checked_at"] = staleness.CheckedAt
+	// The verdict is about this working copy, so it is stamped locally and
+	// never replicated.
+	_ = s.StampGraphStaleness(card.Slug, staleness.Reason, staleness.ChangedFiles, staleness.CheckedAt)
+	return status
+}
+
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return strings.TrimSpace(*v)
 }
 
 func optBoolDefault(req mcp.CallToolRequest, key string, def bool) bool {
@@ -580,6 +721,18 @@ func handleProjectUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			return projectToolError("invalid_slug", fmt.Sprintf("invalid project slug %q", project), nil), nil
 		}
 
+		if kind := optString(req, "kind"); kind != "" && !enumContains(projectKindEnum, kind) {
+			return projectToolError("invalid_enum", fmt.Sprintf("kind %q is invalid", kind), map[string]any{"allowed": projectKindEnum}), nil
+		}
+		if icon := optString(req, "icon"); icon != "" && !projectIconPattern.MatchString(icon) {
+			return projectToolError("invalid_icon", fmt.Sprintf("icon %q is not an icon token", icon),
+				map[string]any{"hint": "an icon is a lowercase token the icon set resolves, such as fish or database — not an emoji"}), nil
+		}
+		if color := optString(req, "color"); color != "" && !projectColorPattern.MatchString(color) {
+			return projectToolError("invalid_color", fmt.Sprintf("color %q is not a color token", color),
+				map[string]any{"hint": "a color is a lowercase palette role token, such as accent, or a lowercase #rrggbb triple"}), nil
+		}
+
 		params := store.UpsertProjectCardParams{
 			Slug:             project,
 			DisplayName:      optStringPtr(req, "display_name"),
@@ -590,6 +743,20 @@ func handleProjectUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			KnowledgeHubPath: optStringPtr(req, "knowledge_hub_path"),
 			Owner:            optStringPtr(req, "owner"),
 			GraphPath:        optStringPtr(req, "graph_path"),
+			Kind:             optStringPtr(req, "kind"),
+			Description:      optStringPtr(req, "description"),
+			Icon:             optStringPtr(req, "icon"),
+			Color:            optStringPtr(req, "color"),
+		}
+		// tags is stored as a JSON array, so an empty list is still a value:
+		// it is how a caller clears the labels a card used to carry.
+		if hasArg(req, "tags") {
+			encoded, encodeErr := json.Marshal(optStringSlice(req, "tags"))
+			if encodeErr != nil {
+				return projectToolError("invalid_enum", "tags must be an array of strings", nil), nil
+			}
+			tags := string(encoded)
+			params.Tags = &tags
 		}
 		card, created, err := s.UpsertProjectCard(params)
 		if err != nil {
@@ -597,6 +764,53 @@ func handleProjectUpsert(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 		}
 
 		result := map[string]any{"card": card, "created": created}
+
+		// The parent is a second write, and it can be refused after the card
+		// already exists. The card is returned with the typed error rather than
+		// swallowed, so the caller knows what it created before the refusal.
+		if hasArg(req, "parent") {
+			var parent *string
+			if slug := strings.TrimSpace(optString(req, "parent")); slug != "" {
+				normalized, _ := store.NormalizeProject(slug)
+				parent = &normalized
+			}
+			switch err := s.SetProjectParent(project, parent); {
+			case errors.Is(err, store.ErrProjectCycle):
+				return projectToolError("project_cycle", err.Error(), map[string]any{"card": card, "created": created}), nil
+			case errors.Is(err, store.ErrProjectDepthExceeded):
+				return projectToolError("project_depth_exceeded", err.Error(), map[string]any{"card": card, "created": created}), nil
+			case err != nil:
+				return projectToolError("parent_rejected", err.Error(), map[string]any{"card": card, "created": created}), nil
+			}
+			if refreshed, refreshErr := s.GetProjectCard(project); refreshErr == nil {
+				card = refreshed
+				result["card"] = card
+			}
+		}
+
+		// An alias that already owns memories of its own is refused by name:
+		// folding it into this project would move rows nobody asked to move.
+		if aliases := optStringSlice(req, "aliases"); len(aliases) > 0 {
+			added := make([]string, 0, len(aliases))
+			aliasErrors := map[string]any{}
+			for _, alias := range aliases {
+				// 'manual' is the source a person chose this alias, which is what a
+				// tool call is; the machine-derived sources belong to the detector.
+				err := s.UpsertProjectAlias(alias, project, "manual")
+				switch {
+				case err == nil:
+					added = append(added, alias)
+				case errors.Is(err, store.ErrAliasOwnsRows):
+					aliasErrors[alias] = map[string]any{"code": "alias_owns_rows", "message": err.Error()}
+				default:
+					aliasErrors[alias] = map[string]any{"code": "alias_rejected", "message": err.Error()}
+				}
+			}
+			result["aliases_added"] = added
+			if len(aliasErrors) > 0 {
+				result["alias_errors"] = aliasErrors
+			}
+		}
 
 		if optBoolDefault(req, "sync_graph", false) {
 			repoDir := optString(req, "repo_dir")
