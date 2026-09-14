@@ -4312,6 +4312,28 @@ func (s *Store) ApplyPulledMutation(targetKey string, mutation SyncMutation) err
 					return fmt.Errorf("ApplyPulledMutation: write dead row: %w", deferErr)
 				}
 				// Fall through to advance the cursor (ACK the seq).
+			} else if errors.Is(applyErr, ErrApplyDead) {
+				// Any other entity whose mutation can never apply — an entity
+				// only a newer peer knows, above all — is quarantined with the
+				// reason it failed for, so one of them does not stall every
+				// mutation queued behind it. The key carries a payload digest
+				// because several undecodable mutations can share one entity key.
+				deadKey := deferredRowKey(strings.TrimSpace(mutation.EntityKey), mutation.Payload)
+				log.Printf("[store] ApplyPulledMutation: %s cannot apply seq=%d entity_key=%s err=%v — marking dead",
+					mutation.Entity, mutation.Seq, mutation.EntityKey, applyErr)
+				if _, deferErr := s.execHook(tx, `
+					INSERT INTO sync_apply_deferred
+						(sync_id, entity, payload, apply_status, retry_count, first_seen_at, last_error, last_attempted_at)
+					VALUES (?, ?, ?, 'dead', 0, datetime('now'), ?, datetime('now'))
+					ON CONFLICT(sync_id) DO UPDATE SET
+						payload           = excluded.payload,
+						apply_status      = 'dead',
+						last_error        = excluded.last_error,
+						last_attempted_at = datetime('now')
+				`, deadKey, mutation.Entity, mutation.Payload, applyErr.Error()); deferErr != nil {
+					return fmt.Errorf("ApplyPulledMutation: write dead row: %w", deferErr)
+				}
+				// Fall through to advance the cursor (ACK the seq).
 			} else {
 				return applyErr
 			}
@@ -6371,7 +6393,11 @@ func (s *Store) applyPulledMutationTx(tx *sql.Tx, mutation SyncMutation) error {
 		if isProjectsEntity(mutation.Entity) {
 			return s.applyProjectsMutationTx(tx, mutation)
 		}
-		return fmt.Errorf("unknown sync entity %q", mutation.Entity)
+		// An entity this binary does not know comes from a peer running a newer
+		// one, and no amount of retrying will teach it the shape. It is dead
+		// rather than deferred so the pull quarantines it and moves on instead
+		// of stalling every mutation queued behind it.
+		return fmt.Errorf("%w: unknown sync entity %q", ErrApplyDead, mutation.Entity)
 	}
 }
 
