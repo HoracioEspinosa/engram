@@ -171,6 +171,21 @@ func BenchmarkProjectCardCounts(b *testing.B) {
 	}
 }
 
+func BenchmarkProjectCardCountsBatch(b *testing.B) {
+	s := seedBenchStore(b, benchProjects, benchTasksPer, benchObs)
+	slugs := make([]string, benchProjects)
+	for i := range slugs {
+		slugs[i] = fmt.Sprintf("koi-project-%02d", i)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := s.ProjectCardCountsBatch(slugs); err != nil {
+			b.Fatalf("ProjectCardCountsBatch: %v", err)
+		}
+	}
+}
+
 func BenchmarkListProjectCards(b *testing.B) {
 	s := seedBenchStore(b, benchProjects, benchTasksPer, benchObs)
 	b.ReportAllocs()

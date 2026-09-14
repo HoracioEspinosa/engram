@@ -370,51 +370,161 @@ func (s *Store) ensureMinimalProjectCard(slug string) (bool, error) {
 // expression the index was created with.
 const observationsByProjectPredicate = `lower(project) = ? AND deleted_at IS NULL`
 
+// taskActivePredicate is the state test that separates work still open from
+// work that is finished, cancelled or filed away. It is spelled once so the
+// per-card counter and the batch cannot drift apart on what "active" means.
+const taskActivePredicate = `state NOT IN ('done','cancelled','archived')`
+
+// evidenceUnattachedPredicate marks a capture nobody has filed anywhere yet.
+const evidenceUnattachedPredicate = `attached_jira = 0 AND attached_confluence_url IS NULL`
+
+// cardObservationCountsQuery reads the two observation counters in one pass.
+// It is kept apart from the rest because it is the only counter that matches
+// on lower(project): rows written before project names were lowercased are
+// still under their original spelling, and idx_obs_project_lower is built on
+// exactly this expression.
+const cardObservationCountsQuery = `
+SELECT COUNT(*), COALESCE(SUM(pinned), 0)
+FROM observations WHERE ` + observationsByProjectPredicate
+
+// cardScalarCountsQuery reads the remaining six counters as scalar subqueries
+// against a single row. Each subquery is an independent aggregate over its own
+// index, so the database walks the same rows it used to — once per counter
+// rather than once per counter per round trip.
+const cardScalarCountsQuery = `
+SELECT (SELECT COUNT(*) FROM tasks WHERE project = ?1 AND deleted_at IS NULL),
+       (SELECT COUNT(*) FROM tasks WHERE project = ?1 AND deleted_at IS NULL AND ` + taskActivePredicate + `),
+       (SELECT COUNT(*) FROM evidence WHERE project = ?1 AND deleted_at IS NULL),
+       (SELECT COUNT(*) FROM evidence WHERE project = ?1 AND deleted_at IS NULL AND ` + evidenceUnattachedPredicate + `),
+       (SELECT COUNT(*) FROM runbook_index WHERE project = ?1),
+       (SELECT COUNT(*) FROM runbook_index WHERE project = ?1 AND stale = 1)`
+
 // ProjectCardCounts computes the dashboard counters for mem_project_card.
+//
+// Eight aggregates, two round trips: the observation pair on its own because it
+// filters on lower(project), and the other six as scalar subqueries in a single
+// row. A card read is on the path of every project screen, and seven of the
+// eight numbers used to arrive one connection round trip at a time.
 func (s *Store) ProjectCardCounts(slug string) (ProjectCardCounts, error) {
 	var c ProjectCardCounts
 	rdb := s.readDB()
-	if err := rdb.QueryRow(
-		`SELECT COUNT(*) FROM observations WHERE `+observationsByProjectPredicate, slug,
-	).Scan(&c.Observations); err != nil {
-		return c, err
+	if err := s.queryRowHook(rdb, cardObservationCountsQuery, slug).Scan(&c.Observations, &c.Pinned); err != nil {
+		return c, fmt.Errorf("engram-projects: count project observations: %w", err)
 	}
-	if err := rdb.QueryRow(
-		`SELECT COUNT(*) FROM observations WHERE `+observationsByProjectPredicate+` AND pinned = 1`, slug,
-	).Scan(&c.Pinned); err != nil {
-		return c, err
-	}
-	if err := rdb.QueryRow(
-		`SELECT COUNT(*) FROM tasks WHERE project = ? AND deleted_at IS NULL`, slug,
-	).Scan(&c.TasksTotal); err != nil {
-		return c, err
-	}
-	if err := rdb.QueryRow(
-		`SELECT COUNT(*) FROM tasks WHERE project = ? AND deleted_at IS NULL AND state NOT IN ('done','cancelled','archived')`, slug,
-	).Scan(&c.TasksActive); err != nil {
-		return c, err
-	}
-	if err := rdb.QueryRow(
-		`SELECT COUNT(*) FROM evidence WHERE project = ? AND deleted_at IS NULL`, slug,
-	).Scan(&c.Evidence); err != nil {
-		return c, err
-	}
-	if err := rdb.QueryRow(
-		`SELECT COUNT(*) FROM evidence WHERE project = ? AND deleted_at IS NULL AND attached_jira = 0 AND attached_confluence_url IS NULL`, slug,
-	).Scan(&c.EvidenceUnattached); err != nil {
-		return c, err
-	}
-	if err := rdb.QueryRow(
-		`SELECT COUNT(*) FROM runbook_index WHERE project = ?`, slug,
-	).Scan(&c.Runbooks); err != nil {
-		return c, err
-	}
-	if err := rdb.QueryRow(
-		`SELECT COUNT(*) FROM runbook_index WHERE project = ? AND stale = 1`, slug,
-	).Scan(&c.RunbooksStale); err != nil {
-		return c, err
+	if err := s.queryRowHook(rdb, cardScalarCountsQuery, slug).Scan(
+		&c.TasksTotal, &c.TasksActive, &c.Evidence, &c.EvidenceUnattached,
+		&c.Runbooks, &c.RunbooksStale,
+	); err != nil {
+		return c, fmt.Errorf("engram-projects: count project rows: %w", err)
 	}
 	return c, nil
+}
+
+// batchCountQueries are the four grouped aggregates behind
+// ProjectCardCountsBatch: one per source table, each returning the project and
+// the pair of counters that table feeds.
+var batchCountQueries = []struct {
+	// sql takes the slug placeholders as its only argument list.
+	sql func(placeholders string) string
+	// assign writes the row's two counters into the card's counts.
+	assign func(c *ProjectCardCounts, total, subset int)
+}{
+	{
+		sql: func(p string) string {
+			return `SELECT lower(project), COUNT(*), COALESCE(SUM(pinned), 0)
+				FROM observations WHERE lower(project) IN (` + p + `) AND deleted_at IS NULL
+				GROUP BY lower(project)`
+		},
+		assign: func(c *ProjectCardCounts, total, subset int) { c.Observations, c.Pinned = total, subset },
+	},
+	{
+		sql: func(p string) string {
+			return `SELECT project, COUNT(*), SUM(CASE WHEN ` + taskActivePredicate + ` THEN 1 ELSE 0 END)
+				FROM tasks WHERE project IN (` + p + `) AND deleted_at IS NULL
+				GROUP BY project`
+		},
+		assign: func(c *ProjectCardCounts, total, subset int) { c.TasksTotal, c.TasksActive = total, subset },
+	},
+	{
+		sql: func(p string) string {
+			return `SELECT project, COUNT(*), SUM(CASE WHEN ` + evidenceUnattachedPredicate + ` THEN 1 ELSE 0 END)
+				FROM evidence WHERE project IN (` + p + `) AND deleted_at IS NULL
+				GROUP BY project`
+		},
+		assign: func(c *ProjectCardCounts, total, subset int) { c.Evidence, c.EvidenceUnattached = total, subset },
+	},
+	{
+		sql: func(p string) string {
+			return `SELECT project, COUNT(*), SUM(CASE WHEN stale = 1 THEN 1 ELSE 0 END)
+				FROM runbook_index WHERE project IN (` + p + `)
+				GROUP BY project`
+		},
+		assign: func(c *ProjectCardCounts, total, subset int) { c.Runbooks, c.RunbooksStale = total, subset },
+	},
+}
+
+// ProjectCardCountsBatch computes the same counters as ProjectCardCounts for a
+// whole set of slugs at once: four grouped aggregates rather than eight per
+// card. The selector and the project tree both draw every card's counters on
+// every repaint, which is where the per-card version turned a screen into
+// hundreds of round trips.
+//
+// Every requested slug is present in the result, zeroed when nothing under it
+// exists, so a caller never has to decide what a missing key meant.
+func (s *Store) ProjectCardCountsBatch(slugs []string) (map[string]ProjectCardCounts, error) {
+	counts := make(map[string]ProjectCardCounts, len(slugs))
+	args := make([]any, 0, len(slugs))
+	for _, slug := range slugs {
+		if _, seen := counts[slug]; seen {
+			continue
+		}
+		counts[slug] = ProjectCardCounts{}
+		args = append(args, slug)
+	}
+	if len(args) == 0 {
+		return counts, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(args)), ",")
+	rdb := s.readDB()
+	for _, q := range batchCountQueries {
+		if err := s.scanBatchCounts(rdb, q.sql(placeholders), args, counts, q.assign); err != nil {
+			return nil, err
+		}
+	}
+	return counts, nil
+}
+
+// scanBatchCounts runs one grouped aggregate and folds its rows into counts.
+// A project the query reports but the caller did not ask for is ignored rather
+// than added: the batch answers the question it was given.
+func (s *Store) scanBatchCounts(
+	rdb dbQueryer, query string, args []any,
+	counts map[string]ProjectCardCounts,
+	assign func(*ProjectCardCounts, int, int),
+) error {
+	rows, err := s.queryHook(rdb, query, args...)
+	if err != nil {
+		return fmt.Errorf("engram-projects: batch project counts: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var slug string
+		var total, subset int
+		if err := rows.Scan(&slug, &total, &subset); err != nil {
+			return fmt.Errorf("engram-projects: scan batch project counts: %w", err)
+		}
+		c, ok := counts[slug]
+		if !ok {
+			continue
+		}
+		assign(&c, total, subset)
+		counts[slug] = c
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("engram-projects: batch project counts: %w", err)
+	}
+	return nil
 }
 
 // ProjectSyncSummary reports the cloud-sync enrollment and lifecycle for a
@@ -552,20 +662,18 @@ type ProjectCardListItem struct {
 }
 
 // ListProjectCards returns every live project card, most recently updated
-// first. Counters are computed only when includeCounts is set: they cost
-// eight aggregate queries per card, which the TUI selector wants and a plain
-// pointer lookup does not.
+// first. Counters are computed only when includeCounts is set: they cost four
+// grouped aggregates, which the TUI selector wants and a plain pointer lookup
+// does not.
 func (s *Store) ListProjectCards(includeCounts bool) ([]ProjectCardListItem, int, error) {
-	rows, err := s.readDB().Query(`SELECT ` + projectCardSelectColumns + `
+	rows, err := s.queryHook(s.readDB(), `SELECT `+projectCardSelectColumns+`
 		FROM project_cards WHERE deleted_at IS NULL ORDER BY updated_at DESC, slug ASC`)
 	if err != nil {
 		return nil, 0, fmt.Errorf("engram-projects: list project cards: %w", err)
 	}
-	// Reads come from the dedicated pool (readpool.go), which has room for
-	// this cursor and the per-card count queries at the same time. The cursor
-	// is still drained and closed up front rather than nested: the pool is
-	// small, and holding one of its connections open across eight aggregate
-	// queries per card would starve every other reader.
+	// The cursor is drained and closed before the counters are read: they are
+	// four more queries, and a cursor left open across them owns one of the
+	// read pool's connections for no reason.
 	var cards []ProjectCard
 	for rows.Next() {
 		c, err := scanProjectCard(rows)
@@ -581,15 +689,23 @@ func (s *Store) ListProjectCards(includeCounts bool) ([]ProjectCardListItem, int
 	}
 	rows.Close()
 
+	var counts map[string]ProjectCardCounts
+	if includeCounts {
+		slugs := make([]string, 0, len(cards))
+		for _, c := range cards {
+			slugs = append(slugs, c.Slug)
+		}
+		if counts, err = s.ProjectCardCountsBatch(slugs); err != nil {
+			return nil, 0, err
+		}
+	}
+
 	items := make([]ProjectCardListItem, 0, len(cards))
 	for _, c := range cards {
 		item := ProjectCardListItem{ProjectCard: c}
 		if includeCounts {
-			counts, err := s.ProjectCardCounts(c.Slug)
-			if err != nil {
-				return nil, 0, err
-			}
-			item.Counts = &counts
+			cardCounts := counts[c.Slug]
+			item.Counts = &cardCounts
 		}
 		items = append(items, item)
 	}

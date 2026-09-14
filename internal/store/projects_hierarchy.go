@@ -326,8 +326,8 @@ func prefixedProjectCardColumns(alias string) string {
 
 // ProjectTree returns the cards under root in preorder, or the whole forest
 // when root is empty. Counters are computed only when includeCounts is set;
-// they cost one round of aggregates per card, the same price ListProjectCards
-// already pays for the selector.
+// they cost four grouped aggregates for the whole tree, the same price
+// ListProjectCards pays for the selector.
 func (s *Store) ProjectTree(root string, includeCounts bool) ([]ProjectTreeNode, error) {
 	root = strings.TrimSpace(root)
 	anchor := "parent_slug IS NULL"
@@ -341,7 +341,7 @@ func (s *Store) ProjectTree(root string, includeCounts bool) ([]ProjectTreeNode,
 	}
 
 	query := fmt.Sprintf(projectTreeQuery, anchor, prefixedProjectCardColumns("card"))
-	rows, err := s.readDB().Query(query, args...)
+	rows, err := s.queryHook(s.readDB(), query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("engram-projects: walk project tree: %w", err)
 	}
@@ -363,17 +363,22 @@ func (s *Store) ProjectTree(root string, includeCounts bool) ([]ProjectTreeNode,
 		rows.Close()
 		return nil, fmt.Errorf("engram-projects: walk project tree: %w", err)
 	}
-	// The store pool holds a single connection, so the cursor has to be closed
-	// before the counter queries below can get one.
+	// The cursor is closed before the counters are read: they are four more
+	// queries, and holding a read connection across them buys nothing.
 	rows.Close()
 
 	if includeCounts {
+		slugs := make([]string, 0, len(nodes))
 		for i := range nodes {
-			counts, err := s.ProjectCardCounts(nodes[i].Slug)
-			if err != nil {
-				return nil, err
-			}
-			nodes[i].Counts = &counts
+			slugs = append(slugs, nodes[i].Slug)
+		}
+		counts, err := s.ProjectCardCountsBatch(slugs)
+		if err != nil {
+			return nil, err
+		}
+		for i := range nodes {
+			nodeCounts := counts[nodes[i].Slug]
+			nodes[i].Counts = &nodeCounts
 		}
 	}
 	return nodes, nil
