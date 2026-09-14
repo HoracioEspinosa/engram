@@ -39,6 +39,9 @@ func seedSaveTask(t *testing.T, project string) (*store.Store, store.Task) {
 	if err := s.EnrollProject(project); err != nil {
 		t.Fatalf("enroll project: %v", err)
 	}
+	if err := s.CreateSession("s1", project, ""); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
 	key := "PROJ-123"
 	title := "harden the sync route"
 	kind := "incident"

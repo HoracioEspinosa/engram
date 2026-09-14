@@ -322,6 +322,25 @@ func registerTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, allowli
 				mcp.WithNumber("limit",
 					mcp.Description("Max results (default: 10, max: 20)"),
 				),
+				mcp.WithNumber("offset",
+					mcp.Min(0),
+					mcp.Description("Skip this many results. data.total says how many matches the query has in all, so paging stops when offset+limit reaches it."),
+				),
+				mcp.WithString("task",
+					mcp.Description("Keep only observations linked to this task: PROJ-123 | task-<hex> | #42 | change:<sdd_change> | slug."),
+				),
+				mcp.WithString("graph_ref",
+					mcp.Description("Keep only observations carrying this graph reference, as stamped by mem_save or mem_task_link."),
+				),
+				mcp.WithString("since",
+					mcp.Description("Keep only observations created at or after this timestamp (YYYY-MM-DD or RFC3339)."),
+				),
+				mcp.WithString("until",
+					mcp.Description("Keep only observations created at or before this timestamp (YYYY-MM-DD or RFC3339)."),
+				),
+				mcp.WithBoolean("include_children",
+					mcp.Description("Widen the project filter to the project and every project under it in the hierarchy."),
+				),
 			),
 			handleSearch(s, cfg, activity),
 		)
@@ -563,6 +582,10 @@ Examples:
 				mcp.WithIdempotentHintAnnotation(true),
 				mcp.WithOpenWorldHintAnnotation(false),
 				mcp.WithNumber("id", mcp.Required(), mcp.Description("Observation ID to pin")),
+				mcp.WithBoolean("pinned",
+					mcp.DefaultBool(true),
+					mcp.Description("Pin state to set. false unpins, so a caller that tracks the state does not need a second tool."),
+				),
 			),
 			handlePin(s, true),
 		)
@@ -599,7 +622,10 @@ Examples:
 				mcp.WithString("scope",
 					mcp.Description("Filter observations by scope: project (default) or personal"),
 				),
-				// JW7: limit param removed — schema advertised it but handleContext never read it.
+				mcp.WithNumber("limit",
+					mcp.Min(1), mcp.Max(50),
+					mcp.Description("Cap the recent observations rendered, 1 to 50. Omit for the configured maximum."),
+				),
 			),
 			handleContext(s, cfg, activity),
 		)
@@ -1006,12 +1032,26 @@ func handleCurrentProject(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc 
 		// Saying which project the detected name resolves to, and how, is what
 		// lets an agent see that it is about to write under an alias before it
 		// writes anything.
+		resolved := map[string]any{}
 		if resolution, err := s.ResolveProjectSlug(res.Project); err == nil {
 			envelope["resolved_slug"] = resolution.Slug
 			envelope["resolved_via"] = resolution.Via
+			resolved["slug"] = resolution.Slug
+			resolved["via"] = resolution.Via
 			if resolution.AliasSource != "" {
 				envelope["resolved_alias_source"] = resolution.AliasSource
+				resolved["alias_source"] = resolution.AliasSource
 			}
+		}
+		// data is the structured half every tool envelope carries, so a caller
+		// reads the resolution the same way here as anywhere else.
+		envelope["data"] = map[string]any{
+			"project":            res.Project,
+			"project_source":     res.Source,
+			"project_path":       res.Path,
+			"cwd":                cwd,
+			"available_projects": res.AvailableProjects,
+			"resolved":           resolved,
 		}
 		if res.Warning != "" {
 			envelope["warning"] = res.Warning
@@ -1086,20 +1126,49 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 		sessionID := defaultSessionID(project)
 		activity.RecordToolCall(sessionID)
 
-		results, err := s.Search(query, store.SearchOptions{
+		opts := store.SearchOptions{
 			Type:      typ,
 			Project:   searchProject,
 			Scope:     scope,
 			Limit:     limit,
+			Offset:    intArg(req, "offset", 0),
 			MatchMode: matchMode,
-		})
+			GraphRef:  strings.TrimSpace(optString(req, "graph_ref")),
+			Since:     strings.TrimSpace(optString(req, "since")),
+			Until:     strings.TrimSpace(optString(req, "until")),
+		}
+		// A subtree filter only means something once a project is resolved:
+		// a cross-project search is already wider than any subtree.
+		if searchProject != "" && boolArg(req, "include_children", false) {
+			if slugs, subErr := s.SubtreeSlugs(searchProject); subErr == nil && len(slugs) > 0 {
+				opts.Projects = slugs
+			}
+		}
+		if taskRef := strings.TrimSpace(optString(req, "task")); taskRef != "" {
+			if searchProject == "" {
+				return toolError("missing_field", "task narrows a search to one project's task, so it needs a project", nil), nil
+			}
+			task, taskErr := s.ResolveTaskRef(searchProject, taskRef)
+			if taskErr != nil {
+				return toolError("unknown_task", fmt.Sprintf("task %q not found in project %s", taskRef, searchProject), nil), nil
+			}
+			opts.TaskSyncID = task.SyncID
+		}
+
+		page, err := s.SearchPaged(query, opts)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Search error: %s. Try simpler keywords.", err)), nil
 		}
+		results := page.Results
 
 		if len(results) == 0 {
 			// JW4: use respondWithProject even for empty results.
-			return respondWithProject(detRes, fmt.Sprintf("No memories found for: %q", query), nil), nil
+			return respondWithProject(detRes, fmt.Sprintf("No memories found for: %q", query), map[string]any{
+				"results": []map[string]any{},
+				"total":   page.Total,
+				"offset":  page.Offset,
+				"limit":   page.Limit,
+			}), nil
 		}
 
 		// Batch-load relations for all results (REQ-002). Avoids N+1.
@@ -1118,7 +1187,11 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 		}
 
 		var b strings.Builder
-		fmt.Fprintf(&b, "Found %d memories:\n\n", len(results))
+		if page.Total > len(results) {
+			fmt.Fprintf(&b, "Found %d memories (%d-%d of %d):\n\n", len(results), page.Offset+1, page.Offset+len(results), page.Total)
+		} else {
+			fmt.Fprintf(&b, "Found %d memories:\n\n", len(results))
+		}
 		anyTruncated := false
 		structuredResults := make([]map[string]any, 0, len(results))
 		for i, r := range results {
@@ -1212,16 +1285,26 @@ func handleSearch(s *store.Store, cfg MCPConfig, activity *SessionActivity) serv
 		}
 
 		// JW4: use respondWithProject for the success path (REQ-314).
-		return respondWithProject(detRes, b.String(), map[string]any{"results": structuredResults}), nil
+		return respondWithProject(detRes, b.String(), map[string]any{
+			"results": structuredResults,
+			"total":   page.Total,
+			"offset":  page.Offset,
+			"limit":   page.Limit,
+		}), nil
 	}
 }
 
-func handlePin(s *store.Store, pinned bool) server.ToolHandlerFunc {
+// handlePin backs both mem_pin and mem_unpin. defaultPinned is the state the
+// tool it was registered for sets; mem_pin also takes an explicit `pinned`
+// argument so a caller that already tracks the state can set either one
+// without switching tools.
+func handlePin(s *store.Store, defaultPinned bool) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := int64(intArg(req, "id", 0))
 		if id == 0 {
 			return mcp.NewToolResultError("id is required"), nil
 		}
+		pinned := boolArg(req, "pinned", defaultPinned)
 
 		var err error
 		if pinned {
@@ -1808,7 +1891,7 @@ func handleContext(s *store.Store, cfg MCPConfig, activity *SessionActivity) ser
 		sessionID := defaultSessionID(project)
 		activity.RecordToolCall(sessionID)
 
-		contextResult, err := s.FormatContext(contextProject, scope)
+		contextResult, err := s.FormatContextLimited(contextProject, scope, intArg(req, "limit", 0))
 		if err != nil {
 			return mcp.NewToolResultError("Failed to get context: " + err.Error()), nil
 		}

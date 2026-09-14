@@ -6186,8 +6186,11 @@ func TestMCPConfig_CanConstructWithDefaultProject(t *testing.T) {
 	}
 }
 
-// JW7: TestMemContext_SchemaNoLimitParam — mem_context schema must NOT advertise limit.
-func TestMemContext_SchemaNoLimitParam(t *testing.T) {
+// TestMemContext_SchemaAdvertisesAnHonouredLimit pins that mem_context's limit
+// is real. The parameter was once removed from the schema precisely because
+// the handler ignored it; a schema that advertises it again must be backed by
+// a handler that reads it.
+func TestMemContext_SchemaAdvertisesAnHonouredLimit(t *testing.T) {
 	s := newMCPTestStore(t)
 	srv := newServerWithActivity(s, MCPConfig{}, nil, NewSessionActivity(10*time.Minute))
 
@@ -6196,12 +6199,32 @@ func TestMemContext_SchemaNoLimitParam(t *testing.T) {
 	if !ok {
 		t.Fatal("mem_context tool not found")
 	}
-
-	// The schema must NOT have a "limit" input property.
-	props := st.Tool.InputSchema.Properties
-	if _, hasLimit := props["limit"]; hasLimit {
-		t.Error("mem_context schema must not advertise 'limit' param (it is silently ignored)")
+	if _, hasLimit := st.Tool.InputSchema.Properties["limit"]; !hasLimit {
+		t.Fatal("mem_context schema must advertise the limit its handler honours")
 	}
+	if !strings.Contains(mcpSourceOf(t, "handleContext"), `intArg(req, "limit"`) {
+		t.Fatal("handleContext must read the limit its schema advertises")
+	}
+}
+
+// mcpSourceOf returns the source of one function in mcp.go, so a schema test
+// can check the handler actually reads what the schema promises.
+func mcpSourceOf(t *testing.T, funcName string) string {
+	t.Helper()
+	source, err := os.ReadFile("mcp.go")
+	if err != nil {
+		t.Fatalf("read mcp.go: %v", err)
+	}
+	text := string(source)
+	start := strings.Index(text, "func "+funcName+"(")
+	if start < 0 {
+		t.Fatalf("function %s not found in mcp.go", funcName)
+	}
+	end := strings.Index(text[start:], "\n}\n")
+	if end < 0 {
+		return text[start:]
+	}
+	return text[start : start+end]
 }
 
 // JS1: TestAllTools_ReadResponseEnvelope_WithAssertions
