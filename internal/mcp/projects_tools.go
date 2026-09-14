@@ -62,7 +62,7 @@ var runbookAutomationLevelEnum = []string{"manual", "assisted", "autonomous-with
 var runbookSourceEnum = []string{"knowledge-mcp", "vault-fs"}
 var matchModeEnum = []string{"all", "any"}
 var projectKindEnum = []string{"umbrella", "repo", "instance", "service", "dataset", "knowledge"}
-var contextPackSectionEnum = []string{"header", "card", "pointers", "pinned", "observations", "evidence", "runbooks", "refs", "footer"}
+var contextPackSectionEnum = []string{"header", "card", "hierarchy", "pointers", "pinned", "observations", "evidence", "benchmarks", "runbooks", "refs", "footer"}
 var contextPackFormatEnum = []string{"markdown", "json"}
 
 func enumContains(values []string, v string) bool {
@@ -520,7 +520,8 @@ func registerProjectTools(srv *server.MCPServer, s *store.Store, cfg MCPConfig, 
 				mcp.WithString("category", mcp.Enum(runbookCategoryEnum...)),
 				mcp.WithString("pattern", mcp.Enum(runbookPatternEnum...)),
 				mcp.WithBoolean("include_stale", mcp.DefaultBool(true)),
-				mcp.WithString("match_mode", mcp.Enum(matchModeEnum...), mcp.DefaultString("any")),
+				mcp.WithString("match_mode", mcp.Enum(matchModeEnum...), mcp.DefaultString("any"),
+					mcp.Description("How query's tokens combine. Defaults to any, unlike every other search here: a symptom is pasted from a log, and demanding every token of it finds nothing.")),
 				mcp.WithNumber("limit", mcp.Min(1), mcp.Max(20), mcp.DefaultNumber(5)),
 			),
 			handleRunbookFind(s),
