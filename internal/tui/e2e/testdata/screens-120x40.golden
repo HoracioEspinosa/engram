@@ -152,6 +152,77 @@
       no manifest.json next to this file                                                                                
   ├ acme  ✓ ACME-1  o open with system viewer • c copy sha256 • p copy path • m manifest • enter task • r r…  koi-pond  
                                                                                                                         
+═══ benchmarks-table ═══
+                                                                                                                        
+  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence [∿4 Benchmarks] ▤5 Runbooks ⋈6 Graph ⌘7 Settings                               
+                                                                                                                        
+    Benchmarks (2 shown)                                                                                                
+                                                                                                                        
+  ──────────────────────                                                                                                
+                                                                                                                        
+  metric                unit    baseline      latest        Δ                                                           
+  p95                   ms      940           812           ⇓-13.6%                                                     
+  rps                   ops     500           412           ⇓-17.6%                                                     
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+    benchmarks 1-2 of 2                                                                                                 
+  ├ acme  ✓ ACME-1  j/k move • enter metric history • t filter task • m filter metric • b open BASELINE.md    koi-pond  
+                                                                                                                        
+═══ graph-stale ═══
+                                                                                                                        
+  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks [⋈6 Graph] ⌘7 Settings                               
+                                                                                                                        
+    Code graph                                                                                                          
+                                                                                                                        
+  ────────────                                                                                                          
+                                                                                                                        
+    ▲ code_changed  (6 changed files)                                                                                   
+    1284 nodes  3901 edges  17 communities                                                                              
+           commit cccccccccccc                                                                                          
+            built 2026-01-14 08:00:00                                                                                   
+          checked 2026-01-15 09:00:00                                                                                   
+                                                                                                                        
+    god nodes                                                                                                           
+                                                                                                                        
+    ★ Store                            412    internal/store/store.go                                                   
+    ★ Model                            208    internal/tui/app/model.go                                                 
+                                                                                                                        
+    linked observations                                                                                                 
+                                                                                                                        
+    #501     internal/preview/pool.go:Pool    cccccccccccc                                                              
+                                                                                                                        
+    observations 1-1 of 1                                                                                               
+  ├ acme  ✓ ACME-1  s sync graph                                                                              koi-pond  
+                                                                                                                        
 ═══ s8-runbooks-index ═══
                                                                                                                         
   ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks [▤5 Runbooks] ⋈6 Graph ⌘7 Settings                               

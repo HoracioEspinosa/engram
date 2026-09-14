@@ -11,8 +11,10 @@ package app
 import (
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/benchmarks"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/cloud"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/evidence"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/graph"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/home"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/memory"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/runbooks"
@@ -24,7 +26,10 @@ import (
 
 // registered lists the tabs this build implements, in tab-bar order. The IDs
 // tabs declares but that no sub-model implements yet are simply absent.
-var registered = []tabs.ID{tabs.Home, tabs.Memory, tabs.Tasks, tabs.Evidence, tabs.Runbooks, tabs.Cloud}
+var registered = []tabs.ID{
+	tabs.Home, tabs.Memory, tabs.Tasks, tabs.Evidence,
+	tabs.Benchmarks, tabs.Runbooks, tabs.Graph, tabs.Cloud,
+}
 
 // Model is the root workspace model.
 //
@@ -38,14 +43,16 @@ type Model struct {
 	width  int
 	height int
 
-	active   tabs.ID
-	home     home.Model
-	memory   memory.Model
-	tasks    tasks.Model
-	evidence evidence.Model
-	runbooks runbooks.Model
-	cloud    cloud.Model
-	projects data.ProjectReader
+	active     tabs.ID
+	home       home.Model
+	memory     memory.Model
+	tasks      tasks.Model
+	evidence   evidence.Model
+	benchmarks benchmarks.Model
+	runbooks   runbooks.Model
+	graph      graph.Model
+	cloud      cloud.Model
+	projects   data.ProjectReader
 
 	// freshness decides whether switching to a tab reloads it: a tab whose
 	// data is still current is shown as it is.
@@ -99,7 +106,9 @@ func New(mem data.MemorySource, projects data.ProjectReader, task data.TaskSourc
 		memory:      memory.New(mem, version).WithTasks(task).WithProject(initialProject),
 		tasks:       tasks.New(task).WithProject(initialProject),
 		evidence:    evidence.New(evidenceReader).WithProject(initialProject),
+		benchmarks:  benchmarks.New(nil).WithProject(initialProject),
 		runbooks:    runbooks.New(runbookReader, projects).WithProject(initialProject),
+		graph:       graph.New(nil, nil).WithProject(initialProject),
 		cloud:       cloud.New(),
 		tree:        newTreeModel(nil),
 		themePicker: newThemePickerModel(styles),
@@ -132,12 +141,14 @@ func (m Model) WithUpdateChecker(check memory.UpdateChecker) Model {
 // graph has never been read.
 func (m Model) WithGraph(reader data.GraphReader, syncer data.GraphSyncer) Model {
 	m.home = m.home.WithGraph(reader, syncer)
+	m.graph = graph.New(reader, syncer).WithProject(m.project).WithStyles(m.styles)
 	return m
 }
 
 // WithBenchmarks binds Home's benchmarks block to its reader.
 func (m Model) WithBenchmarks(reader data.BenchmarkReader) Model {
 	m.home = m.home.WithBenchmarks(reader)
+	m.benchmarks = benchmarks.New(reader).WithProject(m.project).WithStyles(m.styles)
 	return m
 }
 
@@ -155,7 +166,9 @@ func (m Model) withStyles(s theme.Styles) Model {
 	m.memory = m.memory.WithStyles(s)
 	m.tasks = m.tasks.WithStyles(s)
 	m.evidence = m.evidence.WithStyles(s)
+	m.benchmarks = m.benchmarks.WithStyles(s)
 	m.runbooks = m.runbooks.WithStyles(s)
+	m.graph = m.graph.WithStyles(s)
 	m.cloud = m.cloud.WithStyles(s)
 	m.themePicker = m.themePicker.withStyles(s)
 	m.palette.styles = s
@@ -196,8 +209,12 @@ func (m Model) tab(id tabs.ID) tabs.Tab {
 		return m.tasks
 	case tabs.Evidence:
 		return m.evidence
+	case tabs.Benchmarks:
+		return m.benchmarks
 	case tabs.Runbooks:
 		return m.runbooks
+	case tabs.Graph:
+		return m.graph
 	case tabs.Cloud:
 		return m.cloud
 	}
@@ -225,9 +242,17 @@ func (m Model) withTab(id tabs.ID, t tabs.Tab) Model {
 		if updated, ok := t.(evidence.Model); ok {
 			m.evidence = updated
 		}
+	case tabs.Benchmarks:
+		if updated, ok := t.(benchmarks.Model); ok {
+			m.benchmarks = updated
+		}
 	case tabs.Runbooks:
 		if updated, ok := t.(runbooks.Model); ok {
 			m.runbooks = updated
+		}
+	case tabs.Graph:
+		if updated, ok := t.(graph.Model); ok {
+			m.graph = updated
 		}
 	case tabs.Cloud:
 		if updated, ok := t.(cloud.Model); ok {

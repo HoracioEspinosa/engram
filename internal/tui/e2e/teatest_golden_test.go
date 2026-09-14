@@ -37,6 +37,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HoracioEspinosa/engram/internal/project"
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/app"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
@@ -186,6 +187,24 @@ func teatestScreens() []teatestScreen {
 				// The label itself sits at the start of the line, before any
 				// wrapping, and appears only once the detail loads.
 				{key: teatestEnterKey, waitFor: "sha256"},
+			},
+		},
+		{
+			name:           "benchmarks-table",
+			initialProject: "acme",
+			steps: []teatestStep{
+				// The metric column is the one thing both the wide and the narrow
+				// layouts draw.
+				{key: keyRune("4"), waitFor: "p95"},
+			},
+		},
+		{
+			name:           "graph-stale",
+			initialProject: "acme",
+			steps: []teatestStep{
+				// The staleness reason is the store's own string, and it
+				// appears nowhere else in the workspace.
+				{key: keyRune("6"), waitFor: "code_changed"},
 			},
 		},
 		{
@@ -353,11 +372,21 @@ func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakePro
 	// A graph the store has already judged stale, with the reason it gave:
 	// Home prints that string literally rather than forming a verdict of its
 	// own, and the scene is where that is visible.
-	graph = &data.FakeGraph{StateByProject: map[string]data.GraphState{"acme": {
-		Project: "acme", Commit: strings.Repeat("c", 40), BuiltAt: "2026-01-14 08:00:00",
-		Nodes: 1284, Edges: 3901, Communities: 17,
-		Stale: true, StaleReason: "code_changed", ChangedFiles: 6,
-	}}}
+	graph = &data.FakeGraph{
+		StateByProject: map[string]data.GraphState{"acme": {
+			Project: "acme", Commit: strings.Repeat("c", 40), BuiltAt: "2026-01-14 08:00:00",
+			CheckedAt: "2026-01-15 09:00:00",
+			Nodes:     1284, Edges: 3901, Communities: 17,
+			Stale: true, StaleReason: "code_changed", ChangedFiles: 6,
+			GodNodes: []project.GodNode{
+				{Label: "Store", Edges: 412, File: "internal/store/store.go"},
+				{Label: "Model", Edges: 208, File: "internal/tui/app/model.go"},
+			},
+		}},
+		RefsByProject: map[string][]data.ObservationRef{"acme": {
+			{ObservationID: 501, RefKind: "graph", Ref: "internal/preview/pool.go:Pool", GraphCommit: strings.Repeat("c", 40)},
+		}},
+	}
 
 	bench = &data.FakeBenchmark{ByProject: map[string][]data.Benchmark{"acme": {
 		{BenchmarkDelta: store.BenchmarkDelta{

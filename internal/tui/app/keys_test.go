@@ -33,12 +33,13 @@ func keyMsg(k string) tea.KeyMsg {
 
 // onTab returns a model sitting on a tab with a project already selected, the
 // state every global binding is meant to work from.
-func onTab(active tabs.ID) Model {
+func onTab(t *testing.T, active tabs.ID) Model {
+	t.Helper()
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	next, _ := m.openProject("nextcloud")
+	m = next.(Model)
 	m.tree.open = false
 	m.active = active
-	m.project = "nextcloud"
-	m.home = m.home.WithProject("nextcloud")
 	return m
 }
 
@@ -137,7 +138,7 @@ func TestEveryGlobalKeyIsRoutedThroughTheKeymap(t *testing.T) {
 				t.Fatalf("%s declares no key at all", tc.name)
 			}
 			for _, k := range keys {
-				before := onTab(tabs.Tasks)
+				before := onTab(t, tabs.Tasks)
 				after, cmd := step(t, before, keyMsg(k))
 				tc.assert(t, before, after, cmd)
 			}
@@ -151,7 +152,7 @@ func TestEveryGlobalKeyIsRoutedThroughTheKeymap(t *testing.T) {
 func TestRefreshReachesTheActiveTab(t *testing.T) {
 	for _, id := range []tabs.ID{tabs.Memory, tabs.Tasks, tabs.Evidence, tabs.Runbooks} {
 		t.Run(id.String(), func(t *testing.T) {
-			m := onTab(id)
+			m := onTab(t, id)
 			_, cmd := step(t, m, keyMsg(globalKeys.Refresh.Keys()[0]))
 			if cmd == nil {
 				t.Fatalf("refresh on the %s tab issued no reload", id)
@@ -165,14 +166,13 @@ func TestRefreshReachesTheActiveTab(t *testing.T) {
 func TestRefreshReloadsTheDashboardAndTheProjectTree(t *testing.T) {
 	refresh := keyMsg(globalKeys.Refresh.Keys()[0])
 
-	m := onTab(tabs.Tasks)
+	m := onTab(t, tabs.Tasks)
 	m.tree.open, m.active = false, tabs.Home
-	m.home = m.home.WithProject("nextcloud")
 	if _, cmd := step(t, m, refresh); cmd == nil {
 		t.Fatal("refresh on Home issued no reload")
 	}
 
-	m = onTab(tabs.Tasks)
+	m = onTab(t, tabs.Tasks)
 	m.tree.open = true
 	if _, cmd := step(t, m, refresh); cmd == nil {
 		t.Fatal("refresh on the project tree issued no reload")
@@ -186,7 +186,7 @@ func TestRefreshReloadsTheDashboardAndTheProjectTree(t *testing.T) {
 func TestLowercasePNoLongerOpensTheSelector(t *testing.T) {
 	for _, k := range []string{"p", "P"} {
 		t.Run(k, func(t *testing.T) {
-			m, _ := step(t, onTab(tabs.Tasks), keyMsg(k))
+			m, _ := step(t, onTab(t, tabs.Tasks), keyMsg(k))
 			if m.tree.open {
 				t.Fatalf("%q still opens the project tree", k)
 			}
@@ -197,7 +197,7 @@ func TestLowercasePNoLongerOpensTheSelector(t *testing.T) {
 // TestLowercasePReachesEvidenceDetail is the other half: with the global out
 // of the way, the screen's own "p" works without the swap.
 func TestLowercasePReachesEvidenceDetail(t *testing.T) {
-	m := onTab(tabs.Evidence)
+	m := onTab(t, tabs.Evidence)
 	m.evidence.Screen = evidence.ScreenDetail
 
 	after, _ := step(t, m, keyMsg("p"))
@@ -215,13 +215,13 @@ func TestFooterMatchesHelp(t *testing.T) {
 		name  string
 		build func() Model
 	}{
-		{"project tree", func() Model { m := onTab(tabs.Memory); m.tree.open = true; return m }},
-		{"home", func() Model { m := onTab(tabs.Memory); m.tree.open, m.active = false, tabs.Home; return m }},
-		{"memory", func() Model { return onTab(tabs.Memory) }},
-		{"tasks", func() Model { return onTab(tabs.Tasks) }},
-		{"evidence", func() Model { return onTab(tabs.Evidence) }},
-		{"runbooks", func() Model { return onTab(tabs.Runbooks) }},
-		{"cloud", func() Model { return onTab(tabs.Cloud) }},
+		{"project tree", func() Model { m := onTab(t, tabs.Memory); m.tree.open = true; return m }},
+		{"home", func() Model { m := onTab(t, tabs.Memory); m.tree.open, m.active = false, tabs.Home; return m }},
+		{"memory", func() Model { return onTab(t, tabs.Memory) }},
+		{"tasks", func() Model { return onTab(t, tabs.Tasks) }},
+		{"evidence", func() Model { return onTab(t, tabs.Evidence) }},
+		{"runbooks", func() Model { return onTab(t, tabs.Runbooks) }},
+		{"cloud", func() Model { return onTab(t, tabs.Cloud) }},
 	}
 
 	for _, sc := range screens {
@@ -262,7 +262,7 @@ func TestFooterMatchesHelp(t *testing.T) {
 func TestEveryScreenRendersItsFooter(t *testing.T) {
 	for _, id := range []tabs.ID{tabs.Memory, tabs.Tasks, tabs.Evidence, tabs.Runbooks} {
 		t.Run(id.String(), func(t *testing.T) {
-			m := onTab(id)
+			m := onTab(t, id)
 			m.width = 120
 
 			view := ansi.Strip(m.View())

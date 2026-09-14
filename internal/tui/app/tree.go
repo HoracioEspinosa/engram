@@ -544,7 +544,9 @@ func (m Model) openProject(slug string) (tea.Model, tea.Cmd) {
 	m.home = m.home.WithProject(slug)
 	m.tasks = m.tasks.WithProject(slug)
 	m.evidence = m.evidence.WithProject(slug)
+	m.benchmarks = m.benchmarks.WithProject(slug)
 	m.runbooks = m.runbooks.WithProject(slug)
+	m.graph = m.graph.WithProject(slug)
 	m.memory = m.memory.WithProject(slug)
 	m.ancestors = nil
 	// Nothing any tab is holding belongs to the project now active.

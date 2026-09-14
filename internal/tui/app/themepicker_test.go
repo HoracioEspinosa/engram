@@ -271,12 +271,14 @@ func TestEveryTabRepaintsOnThemeSwap(t *testing.T) {
 	m, _, _ := pickerFixture(t)
 
 	paletteOf := map[tabs.ID]func(Model) string{
-		tabs.Home:     func(m Model) string { return m.home.Styles().Palette.Name },
-		tabs.Memory:   func(m Model) string { return m.memory.Styles().Palette.Name },
-		tabs.Tasks:    func(m Model) string { return m.tasks.Styles().Palette.Name },
-		tabs.Evidence: func(m Model) string { return m.evidence.Styles().Palette.Name },
-		tabs.Runbooks: func(m Model) string { return m.runbooks.Styles().Palette.Name },
-		tabs.Cloud:    func(m Model) string { return m.cloud.Styles().Palette.Name },
+		tabs.Home:       func(m Model) string { return m.home.Styles().Palette.Name },
+		tabs.Memory:     func(m Model) string { return m.memory.Styles().Palette.Name },
+		tabs.Tasks:      func(m Model) string { return m.tasks.Styles().Palette.Name },
+		tabs.Evidence:   func(m Model) string { return m.evidence.Styles().Palette.Name },
+		tabs.Benchmarks: func(m Model) string { return m.benchmarks.Styles().Palette.Name },
+		tabs.Runbooks:   func(m Model) string { return m.runbooks.Styles().Palette.Name },
+		tabs.Graph:      func(m Model) string { return m.graph.Styles().Palette.Name },
+		tabs.Cloud:      func(m Model) string { return m.cloud.Styles().Palette.Name },
 	}
 
 	const swapped = "koi-day"

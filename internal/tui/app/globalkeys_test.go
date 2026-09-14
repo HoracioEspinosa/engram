@@ -23,7 +23,9 @@ func TestDigitKeysSwitchTabsAndRefresh(t *testing.T) {
 		{"1", tabs.Memory},
 		{"2", tabs.Tasks},
 		{"3", tabs.Evidence},
+		{"4", tabs.Benchmarks},
 		{"5", tabs.Runbooks},
+		{"6", tabs.Graph},
 	}
 
 	for _, tc := range cases {
@@ -31,9 +33,7 @@ func TestDigitKeysSwitchTabsAndRefresh(t *testing.T) {
 			m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 			// New opens the project tree without a resolvable project; every
 			// case here assumes it is already on a tab.
-			m.tree.open = false
-			m.project = "nextcloud"
-			m.home = m.home.WithProject("nextcloud")
+			m = scoped(t, m, "nextcloud")
 			// Start on a tab other than the target so the assertion means
 			// something even for a digit that names the tab already active.
 			m.active = tabs.Cloud
@@ -69,7 +69,7 @@ func TestDigitKeysSwitchTabsFromHomeToo(t *testing.T) {
 // contract: a slot owns its digit whether or not this build has a tab behind
 // it, so the digit is swallowed rather than leaking into the tab on screen.
 func TestDigitKeysForAnUnimplementedSlotStayPut(t *testing.T) {
-	for _, digit := range []string{"4", "6", "7"} {
+	for _, digit := range []string{"7"} {
 		t.Run(digit, func(t *testing.T) {
 			m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 			m.tree.open = false
@@ -93,9 +93,7 @@ func TestDigitKeysForAnUnimplementedSlotStayPut(t *testing.T) {
 // either end.
 func TestTabKeyAdvancesToTheNextRegisteredTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.tree.open = false
-	m.project = "nextcloud"
-	m.home = m.home.WithProject("nextcloud")
+	m = scoped(t, m, "nextcloud")
 	m.active = tabs.Cloud // last in registered order
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyTab})

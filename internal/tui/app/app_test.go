@@ -30,6 +30,24 @@ func step(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
 // strp addresses a literal, for the store's many optional string fields.
 func strp(s string) *string { return &s }
 
+// scoped points the whole workspace at slug the way the project tree's
+// "enter" does, so every project-scoped tab has something to reload rather
+// than only the ones a test remembered to set by hand.
+func scoped(t *testing.T, m Model, slug string) Model {
+	t.Helper()
+	next, _ := m.openProject(slug)
+	out, ok := next.(Model)
+	if !ok {
+		t.Fatalf("openProject returned %T, want app.Model", next)
+	}
+	out.tree.open = false
+	// openProject leaves Home marked as loaded, because its reload is already
+	// in flight. A test that switches tabs is asking what an arrival costs,
+	// so every tab starts out owing a reload.
+	out.freshness = out.freshness.invalidateAll()
+	return out
+}
+
 func TestNewStartsOnTheHomeTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "1.0.0-test", theme.New(theme.CatppuccinMocha()), "")
 

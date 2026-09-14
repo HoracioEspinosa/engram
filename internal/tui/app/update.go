@@ -131,6 +131,12 @@ func (m Model) routeNavigate(msg tabs.NavigateMsg) (tea.Model, tea.Cmd) {
 			m.active = tabs.Evidence
 			return m, m.evidence.OpenForTask(msg.TaskID)
 		}
+		if msg.Target == tabs.Benchmarks && msg.BenchmarkID != 0 {
+			// The palette's deep link into one measurement: the tab's own
+			// table is what shows it, filtered to nothing so the row is
+			// where the search said it was.
+			return m.activate(tabs.Benchmarks)
+		}
 		if msg.Target == tabs.Evidence && msg.EvidenceID != 0 {
 			// The palette's own deep link: one file, opened by its id.
 			m.active = tabs.Evidence
