@@ -21,13 +21,17 @@
 #     a name that disappears between phases fails here, which is the whole
 #     point of keeping the additive rule enforceable rather than aspirational.
 #
-# Two behaviours of the current binary are held fixed rather than worked around,
-# because this suite is not allowed to change the binary and a suite that skips
-# what it cannot fix stops measuring it:
+# Three behaviours of the current binary are held fixed rather than worked
+# around, because this suite is not allowed to change the binary and a suite
+# that skips what it cannot fix stops measuring it:
 #   * mem_save rejects a request that names a project when the process runs
 #     outside a repository, even with a process-level override (id 5).
 #   * Read tools do not recognise a project that only has a card (ids 6, 9-12
 #     and 16, and id 7, which reads the observation id 5 failed to write).
+#   * mem_task_link checks that the observation it is given exists before it
+#     checks that a graph_ref carries a graph_commit, so id 15 also reports
+#     the observation id 5 failed to write (unknown_observation) instead of
+#     the graph_commit rule it was written to exercise.
 # Each is pinned to the exact code it reports today. A pinned expectation that
 # starts succeeding is a FAIL, not a silent pass: the day the behaviour changes,
 # the assertion has to be promoted rather than forgotten.
@@ -150,11 +154,17 @@ assert_ok() {
   record PASS ok "$name"
 }
 
-# assert_typed_error <id> <name> — the call is expected to fail, and to fail
-# with a machine-readable code rather than prose. Both envelopes are accepted:
+# assert_error_code <id> <name> <code> — the call is expected to fail, and to
+# fail with exactly this machine-readable code. Both envelopes are accepted:
 # the projects tools emit `code`, the core tools emit `error_code`.
-assert_typed_error() {
-  local id="$1" name="$2" r text code
+#
+# This is deliberately not assert_pinned_failure: the input here is invalid
+# on purpose (an unresolvable project, a path traversal attempt), so the
+# rejection is the binary working as designed, not a limitation this suite
+# holds fixed. Recording it as "ok" keeps the summary's "pinned" count meaning
+# what it says — calls that fail only because of a documented defect.
+assert_error_code() {
+  local id="$1" name="$2" want="$3" r text code
   r="$(resp "$id")"
   if [ -z "$r" ]; then
     record FAIL ok "$name" "no response with id $id"
@@ -166,11 +176,11 @@ assert_typed_error() {
   fi
   text="$(err_text "$r")"
   code="$(printf '%s' "$text" | jq -r '(.code // .error_code // "")' 2>/dev/null || true)"
-  if [ -z "$code" ] || [ "$code" = "null" ]; then
-    record FAIL ok "$name" "no code/error_code in the error payload: $(printf '%s' "$text" | head -c 200)"
-    return
+  if [ "$code" = "$want" ]; then
+    record PASS ok "$name ($code)"
+  else
+    record FAIL ok "$name" "expected $want, got ${code:-<no code>}: $(printf '%s' "$text" | head -c 200)"
   fi
-  record PASS ok "$name ($code)"
 }
 
 # assert_pinned_failure <id> <name> <code-or-regex> — the call fails today, and
@@ -290,9 +300,9 @@ assert_pinned_failure 10 "id 10 mem_task_list does not see the project" unknown_
 assert_pinned_failure 11 "id 11 mem_context_pack does not see the project" unknown_project
 assert_pinned_failure 12 "id 12 mem_project_card does not see the project" unknown_project
 
-assert_typed_error 13 "id 13 rejects the invalid slug with a typed code"
-assert_typed_error 14 "id 14 rejects the absolute evidence path with a typed code"
-assert_typed_error 15 "id 15 rejects the graph reference without a commit with a typed code"
+assert_error_code 13 "id 13 mem_project_upsert refuses an explicit project it does not already know" unknown_project
+assert_error_code 14 "id 14 mem_evidence_add refuses an absolute evidence path" absolute_path_rejected
+assert_pinned_failure 15 "id 15 mem_task_link reports the missing observation before the graph_commit rule it targets" unknown_observation
 
 printf '\nmcp-smoke: %d/%d evaluated (%d ok, %d pinned)\n' \
   "$((OK_COUNT + PINNED_COUNT))" "$EVALUATED" "$OK_COUNT" "$PINNED_COUNT"
