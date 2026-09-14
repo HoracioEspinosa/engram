@@ -97,22 +97,25 @@ var newCloudRuntime = func(cfg cloud.Config) (cloudServerRuntime, error) {
 		_ = cs.Close()
 		return nil, err
 	}
+	options := []cloudserver.Option{
+		cloudserver.WithHost(cfg.BindHost),
+		cloudserver.WithProjectAuthorizer(projectAuth),
+		cloudserver.WithAdminIdentityStore(cs),
+		cloudserver.WithManagedTokenHasher(managedHasher),
+		cloudserver.WithPrincipalStateStore(cs),
+		cloudserver.WithDashboardAdminToken(cfg.AdminToken),
+		cloudserver.WithMaxPushBodyBytes(cfg.MaxPushBodyBytes),
+		cloudserver.WithSyncStatusProvider(cloudDashboardStatusProvider{store: cs, projects: allowedProjects}),
+	}
+	if !insecureNoAuth {
+		// A principal authorizer needs an authenticator to mint principals; in
+		// the insecure mode there is none, so the allowlist alone scopes the
+		// request.
+		options = append(options, cloudserver.WithPrincipalProjectAuthorizer(cloudPrincipalProjectAuthorizer{store: cs}))
+	}
 	return &defaultCloudRuntime{
-		server: cloudserver.New(
-			cs,
-			authenticator,
-			cfg.Port,
-			cloudserver.WithHost(cfg.BindHost),
-			cloudserver.WithProjectAuthorizer(projectAuth),
-			cloudserver.WithPrincipalProjectAuthorizer(cloudPrincipalProjectAuthorizer{store: cs}),
-			cloudserver.WithAdminIdentityStore(cs),
-			cloudserver.WithManagedTokenHasher(managedHasher),
-			cloudserver.WithPrincipalStateStore(cs),
-			cloudserver.WithDashboardAdminToken(cfg.AdminToken),
-			cloudserver.WithMaxPushBodyBytes(cfg.MaxPushBodyBytes),
-			cloudserver.WithSyncStatusProvider(cloudDashboardStatusProvider{store: cs, projects: allowedProjects}),
-		),
-		store: cs,
+		server: cloudserver.New(cs, authenticator, cfg.Port, options...),
+		store:  cs,
 	}, nil
 }
 

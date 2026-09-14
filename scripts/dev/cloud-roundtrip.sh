@@ -19,12 +19,12 @@
 # fact it carries. `sync_id` is the identity that travels, so it is compared.
 #
 # Auth: the dev cloud runs with a legacy sync token rather than under
-# ENGRAM_CLOUD_INSECURE_NO_AUTH=1. The insecure flag starts the server, but
-# cloudserver.authorizeProjectScope asks for a principal whenever a
-# principal-project authorizer is wired and the insecure path never puts one in
-# the request context, so every /sync/* route answers 403 "forbidden: principal
-# is required". The token below is the one docker-compose.dev.yml hands the
-# server; it is local-only and is not a secret.
+# ENGRAM_CLOUD_INSECURE_NO_AUTH=1. The insecure mode serves the sync routes too
+# — with no authenticator to mint principals, newCloudRuntime leaves the
+# principal-project authorizer out and the allowlist alone scopes the request —
+# but a token rehearses the authenticated path the product ships. The token
+# below is the one docker-compose.dev.yml hands the server; it is local-only
+# and is not a secret.
 #
 # Not covered here, and deliberately left to the phase 2 gate: a card with
 # `parent_slug` actually set, `project_aliases` and `benchmarks`. No shipped
