@@ -30,6 +30,10 @@ var (
 	ErrUnknownObservation  = errors.New("unknown observation")
 	ErrCrossProjectLink    = errors.New("link rejected: observation and task belong to different projects")
 	ErrGraphCommitRequired = errors.New("graph_ref requires graph_commit")
+	// ErrGraphCommitNotFullSHA rejects an abbreviated commit before it reaches
+	// the schema's 40-character CHECK, where the failure would otherwise be
+	// indistinguishable from a duplicate reference.
+	ErrGraphCommitNotFullSHA = errors.New("graph_commit must be a full 40-character commit sha")
 )
 
 // TaskKeyConflictError is returned by UpsertTask when the incoming jira_key

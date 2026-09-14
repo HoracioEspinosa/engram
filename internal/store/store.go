@@ -2354,6 +2354,22 @@ func (s *Store) SessionObservations(sessionID string, limit int) ([]Observation,
 // ─── Observations ────────────────────────────────────────────────────────────
 
 func (s *Store) AddObservation(p AddObservationParams) (int64, error) {
+	var observationID int64
+	if err := s.withTx(func(tx *sql.Tx) error {
+		id, err := s.addObservationTx(tx, p)
+		observationID = id
+		return err
+	}); err != nil {
+		return 0, err
+	}
+	return observationID, nil
+}
+
+// addObservationTx is AddObservation's body without its transaction, so a
+// caller that has to write more than the observation — AddObservationLinked
+// writes its task link and its graph reference too — can commit every half
+// together instead of leaving an orphan behind when the second one fails.
+func (s *Store) addObservationTx(tx *sql.Tx, p AddObservationParams) (int64, error) {
 	// Normalize project name (lowercase + trim) before any persistence
 	p.Project, _ = NormalizeProject(p.Project)
 
@@ -2369,7 +2385,7 @@ func (s *Store) AddObservation(p AddObservationParams) (int64, error) {
 	topicKey := normalizeTopicKey(p.TopicKey)
 
 	var observationID int64
-	err := s.withTx(func(tx *sql.Tx) error {
+	err := func(tx *sql.Tx) error {
 		var obs *Observation
 		if topicKey != "" {
 			var existingID int64
@@ -2488,7 +2504,7 @@ func (s *Store) AddObservation(p AddObservationParams) (int64, error) {
 			return err
 		}
 		return s.enqueueSyncMutationTx(tx, SyncEntityObservation, obs.SyncID, SyncOpUpsert, observationPayloadFromObservation(obs))
-	})
+	}(tx)
 	if err != nil {
 		return 0, err
 	}
