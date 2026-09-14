@@ -545,7 +545,7 @@ func TestWriteChunkMaterializesRelationMutationIntoCloudMutations(t *testing.T) 
 			{"sync_id":"obs-b","session_id":"s-1","type":"decision","title":"B","content":"B","scope":"project","created_at":"2026-04-29T10:01:00Z","updated_at":"2026-04-29T10:01:00Z"}
 		],
 		"mutations":[
-			{"entity":"relation","entity_key":"rel-1","op":"upsert","payload":"{\"sync_id\":\"rel-1\",\"source_id\":\"obs-a\",\"target_id\":\"obs-b\",\"relation\":\"related\"}"}
+			{"entity":"relation","entity_key":"rel-1","op":"upsert","payload":"{\"sync_id\":\"rel-1\",\"source_id\":\"obs-a\",\"target_id\":\"obs-b\",\"relation\":\"related\",\"judgment_status\":\"judged\",\"marked_by_actor\":\"agent-a\",\"marked_by_kind\":\"agent\"}"}
 		]
 	}`), project)
 	if err != nil {
