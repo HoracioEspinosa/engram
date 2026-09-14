@@ -396,6 +396,21 @@ Examples:
 				mcp.WithBoolean("capture_prompt",
 					mcp.Description("Automatically capture the current user prompt when available (default: true). Set false for SDD artifacts or automated saves."),
 				),
+				mcp.WithString("task",
+					mcp.Description("Task this observation belongs to, in any reference form: PROJ-123 | task-<hex> | #42 | change:<sdd_change> | slug. The observation and the link are written together."),
+				),
+				mcp.WithString("role",
+					mcp.Enum(taskLinkRoleEnum...),
+					mcp.DefaultString("context"),
+					mcp.Description("Role the observation plays for the task. Applies only together with task."),
+				),
+				mcp.WithString("graph_ref",
+					mcp.Description("Symbol or community label taken from graphify that this observation describes."),
+				),
+				mcp.WithString("graph_commit",
+					mcp.Pattern(`^[0-9a-f]{40}$`),
+					mcp.Description("Commit graph_ref was resolved against. Falls back to the project card's graph_commit when omitted; the save is refused when neither exists."),
+				),
 			),
 			queuedWriteHandler(writeQueue, handleSave(s, cfg, activity)),
 		)
@@ -1236,6 +1251,59 @@ func handlePin(s *store.Store, pinned bool) server.ToolHandlerFunc {
 	}
 }
 
+// saveLink is the resolved task-and-graph half of a mem_save call, together
+// with where the graph commit was taken from.
+type saveLink struct {
+	link store.ObservationLink
+	// graphCommitSource is "arg" when the caller passed graph_commit and
+	// "card" when it came from the project card. It is empty when the call
+	// carried no graph_ref at all.
+	graphCommitSource string
+}
+
+// resolveSaveLink turns mem_save's task, role, graph_ref and graph_commit
+// arguments into the link AddObservationLinked takes.
+//
+// A graph_ref with no commit falls back to the project card's graph_commit: a
+// caller that already stamped the card has named the graph once, and repeating
+// the commit on every save is how the two drift apart. When neither exists the
+// save is refused rather than storing a reference that points nowhere.
+func resolveSaveLink(s *store.Store, project string, req mcp.CallToolRequest) (saveLink, *mcp.CallToolResult) {
+	var out saveLink
+
+	role := strings.TrimSpace(optString(req, "role"))
+	if role != "" && !enumContains(taskLinkRoleEnum, role) {
+		return out, toolError("invalid_enum", fmt.Sprintf("role %q is invalid", role), map[string]any{"allowed": taskLinkRoleEnum})
+	}
+	if taskRef := strings.TrimSpace(optString(req, "task")); taskRef != "" {
+		task, err := s.ResolveTaskRef(project, taskRef)
+		if err != nil {
+			return out, toolError("unknown_task", fmt.Sprintf("task %q not found in project %s", taskRef, project), nil)
+		}
+		out.link.Task = &task
+		out.link.Role = role
+	}
+
+	graphRef := strings.TrimSpace(optString(req, "graph_ref"))
+	if graphRef == "" {
+		return out, nil
+	}
+	out.link.GraphRef = graphRef
+	if commit := strings.TrimSpace(optString(req, "graph_commit")); commit != "" {
+		out.link.GraphCommit = commit
+		out.graphCommitSource = "arg"
+		return out, nil
+	}
+	if card, err := s.GetProjectCard(project); err == nil && card.GraphCommit != nil && strings.TrimSpace(*card.GraphCommit) != "" {
+		out.link.GraphCommit = strings.TrimSpace(*card.GraphCommit)
+		out.graphCommitSource = "card"
+		return out, nil
+	}
+	return out, toolError("graph_commit_required",
+		fmt.Sprintf("graph_ref requires graph_commit, and project %s carries none on its card", project),
+		map[string]any{"hint": "pass graph_commit, or stamp the project card so every save can inherit it"})
+}
+
 func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		title, _ := req.GetArguments()["title"].(string)
@@ -1326,7 +1394,12 @@ func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server
 
 		truncated := len(content) > s.MaxObservationLength()
 
-		savedID, err := s.AddObservation(store.AddObservationParams{
+		link, linkErr := resolveSaveLink(s, project, req)
+		if linkErr != nil {
+			return linkErr, nil
+		}
+
+		saved, err := s.AddObservationLinked(store.AddObservationParams{
 			SessionID: sessionID,
 			Type:      typ,
 			Title:     title,
@@ -1334,10 +1407,17 @@ func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server
 			Project:   project,
 			Scope:     scope,
 			TopicKey:  topicKey,
-		})
+		}, &link.link)
 		if err != nil {
+			switch {
+			case errors.Is(err, store.ErrCrossProjectLink):
+				return toolError("cross_project_link", "observation and task belong to different projects", nil), nil
+			case errors.Is(err, store.ErrGraphCommitRequired), errors.Is(err, store.ErrGraphCommitNotFullSHA):
+				return toolError("graph_commit_required", err.Error(), nil), nil
+			}
 			return mcp.NewToolResultError("Failed to save: " + err.Error()), nil
 		}
+		savedID := saved.ObservationID
 
 		if capturePrompt && activity != nil {
 			if prompt, ok := activity.CurrentPrompt(sessionID, project); ok {
@@ -1372,6 +1452,15 @@ func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server
 		// Post-transaction conflict candidate detection (REQ-001).
 		// Errors are logged and swallowed — detection failure never fails the save.
 		extra := map[string]any{}
+		if saved.LinkedTaskSyncID != "" {
+			extra["linked_task"] = saved.LinkedTaskSyncID
+			extra["role"] = saved.Role
+			msg += fmt.Sprintf("\nLinked to task %s as %s.", saved.LinkedTaskSyncID, saved.Role)
+		}
+		if link.graphCommitSource != "" {
+			extra["refs_added"] = saved.RefsAdded
+			extra["graph_commit_source"] = link.graphCommitSource
+		}
 		// Build CandidateOptions, forwarding any MCPConfig overrides.
 		// nil fields mean "use store defaults"; explicit pointer values override.
 		candOpts := store.CandidateOptions{
