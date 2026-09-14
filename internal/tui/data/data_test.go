@@ -1673,10 +1673,49 @@ func TestSQLiteGraphReaderRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSQLiteGraphReaderObservationRefsReportsNotImplemented(t *testing.T) {
+// TestSQLiteGraphReaderObservationRefsPagesGraphLinks pins what the Graph tab
+// lists: the project's graph-linked observations, newest first, with the real
+// total behind the page.
+func TestSQLiteGraphReaderObservationRefsPagesGraphLinks(t *testing.T) {
 	s := newTestStore(t)
-	if _, err := NewGraphReader(s).ObservationRefs("acme", 10, 0); !errors.Is(err, ErrNotImplemented) {
-		t.Fatalf("ObservationRefs = %v, want ErrNotImplemented", err)
+	const commit = "a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4"
+	if err := s.CreateSession("acme-session", "acme", "/tmp/acme"); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	var ids []int64
+	for _, ref := range []string{"pkg/a.First", "pkg/b.Second"} {
+		res, err := s.AddObservationLinked(store.AddObservationParams{
+			SessionID: "acme-session", Type: "decision", Title: ref, Content: ref, Project: "acme",
+		}, &store.ObservationLink{GraphRef: ref, GraphCommit: commit})
+		if err != nil {
+			t.Fatalf("AddObservationLinked(%s): %v", ref, err)
+		}
+		ids = append(ids, res.ObservationID)
+	}
+
+	page, err := NewGraphReader(s).ObservationRefs("acme", 1, 0)
+	if err != nil {
+		t.Fatalf("ObservationRefs: %v", err)
+	}
+	if page.Total != 2 || len(page.Items) != 1 {
+		t.Fatalf("page = %+v, want one of two", page)
+	}
+	if page.Items[0].ObservationID != ids[1] || page.Items[0].Ref != "pkg/b.Second" {
+		t.Fatalf("first item = %+v, want the newest ref", page.Items[0])
+	}
+	if page.Items[0].RefKind != "graph" || page.Items[0].GraphCommit != commit {
+		t.Fatalf("item = %+v, want a graph ref at the stamped commit", page.Items[0])
+	}
+	if !page.HasNext() {
+		t.Fatal("a page of one out of two has a next page")
+	}
+
+	empty, err := NewGraphReader(s).ObservationRefs("nobody", 10, 0)
+	if err != nil {
+		t.Fatalf("ObservationRefs(unknown project): %v", err)
+	}
+	if empty.Total != 0 || len(empty.Items) != 0 {
+		t.Fatalf("page = %+v, want an empty one", empty)
 	}
 }
 

@@ -1061,19 +1061,31 @@ func (r sqliteGraph) SyncGraph(proj string) (GraphState, error) {
 	return r.GraphState(proj)
 }
 
-// ObservationRefs is not backed by any existing store query: observation_refs
-// rows are keyed by observation_sync_id (store.ObservationRefsFor), not by
-// project, and there is no project-scoped, paginated listing of them. TODO:
-// add a store method — something like
-// ListObservationRefsPage(project, refKind, limit, offset) — once the Graph
-// tab needs to page through a project's graph-linked observations; until
-// then this reports ErrNotImplemented rather than silently returning an
-// empty page that would read as "no linked observations".
+// ObservationRefs pages through the project's graph-linked observations,
+// newest first.
+//
+// Only the "graph" kind is asked for: this is what the Graph tab lists, and a
+// knowledge or Jira reference on the same observation belongs to another
+// screen. store.ListObservationRefs carries the real total, so a caller can
+// render "showing 20 of 340" without counting the page it already has.
 func (r sqliteGraph) ObservationRefs(project string, limit, offset int) (Page[ObservationRef], error) {
 	if r.store == nil {
 		return Page[ObservationRef]{}, ErrStoreUnavailable
 	}
-	return Page[ObservationRef]{}, ErrNotImplemented
+	page, err := r.store.ListObservationRefs(project, "graph", limit, offset)
+	if err != nil {
+		return Page[ObservationRef]{}, err
+	}
+	items := make([]ObservationRef, 0, len(page.Items))
+	for _, row := range page.Items {
+		items = append(items, ObservationRef{
+			ObservationID: row.ObservationID,
+			RefKind:       row.RefKind,
+			Ref:           row.Ref,
+			GraphCommit:   row.GraphCommit,
+		})
+	}
+	return Page[ObservationRef]{Items: items, Total: page.Total, Limit: page.Limit, Offset: page.Offset}, nil
 }
 
 // graphStateFromCard reads GraphState off a project card's Graph* columns,

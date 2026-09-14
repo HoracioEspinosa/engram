@@ -17,13 +17,6 @@ import (
 // happens when the TUI is constructed for a render-only test.
 var ErrStoreUnavailable = errors.New("store is unavailable")
 
-// ErrNotImplemented is returned by a reader method whose backing store query
-// does not exist yet. It is distinct from ErrStoreUnavailable (no store at
-// all) and from a real empty result (a query that ran and found nothing): a
-// caller that gets this back knows the gap is in this package, not in the
-// data.
-var ErrNotImplemented = errors.New("not implemented: no store query backs this method yet")
-
 // ErrProjectUnresolved is returned when a raw name does not resolve to any
 // known project — no card, no observations, no alias and no folded match.
 var ErrProjectUnresolved = errors.New("project name did not resolve to any project")

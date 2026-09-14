@@ -768,7 +768,11 @@ func (f *FakeBenchmark) MetricHistory(project, metric string, limit int) ([]Benc
 // fields you care about, leave the rest zero.
 type FakeGraph struct {
 	StateByProject map[string]GraphState
-	RefsByProject  map[string][]ObservationRef
+	// RefsByProject holds each project's graph-linked observations, newest
+	// first — the order the sqlite reader returns them in, so a test that
+	// asserts on the first row is asserting on the same row the real one
+	// would give it.
+	RefsByProject map[string][]ObservationRef
 	// SyncResult, when a project has an entry, is what SyncGraph returns for
 	// it instead of StateByProject's own entry — the state "after" a sync,
 	// distinct from the state a plain GraphState read would see before one.
