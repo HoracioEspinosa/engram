@@ -1077,10 +1077,13 @@ the same metric in the same transaction.
 | `baseline`                               | boolean | `false`        | Make this the metric's baseline          |
 | `run_path`, `sha256`, `config_stamp`, `captured_at`, `notes` | — | — | Provenance |
 
-`data` carries `benchmark`, `created` and `demoted_baseline`. Errors:
-`duplicate_benchmark` (the same `(task, name, metric, captured_at)` is already
-recorded — the error carries the row it collided with), `invalid_enum`,
-`unknown_task`, `ambiguous_task`.
+`data` carries `benchmark`, `created`, `duplicate` and `demoted_baseline`. A
+second write of the same value under the same `(task, name, metric,
+captured_at)` is a retry: it succeeds with `created:false` and `duplicate:true`,
+and hands back the row already recorded. Errors: `duplicate_benchmark` (that key
+is recorded with a *different* value, which is never overwritten — the error
+carries the row it collided with), `invalid_enum`, `unknown_task`,
+`ambiguous_task`.
 
 ### mem_benchmark_list
 

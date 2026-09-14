@@ -763,9 +763,25 @@ func cmdProjectBenchAdd(cfg store.Config, slug string, args []string) {
 		return
 	}
 
+	// The store is idempotent by (task, name, metric, captured-at): repeating
+	// the same number is a retry and answers like the write it repeats. A
+	// different number under the same key is never written, so it is named
+	// rather than reported as recorded.
+	if !result.Created && result.Benchmark.Value != *value {
+		projFail(*jsonOut, "duplicate_benchmark",
+			fmt.Sprintf("%s/%s at %s is already recorded for this task with a different value",
+				*name, *metric, result.Benchmark.CapturedAt),
+			map[string]any{
+				"benchmark": result.Benchmark,
+				"hint":      "capture the new measurement under its own --captured-at, or read the recorded one with bench list",
+			})
+		return
+	}
+
 	envelope := map[string]any{
 		"benchmark":        result.Benchmark,
 		"created":          result.Created,
+		"duplicate":        !result.Created,
 		"demoted_baseline": result.DemotedBaseline,
 	}
 	projPrintResult(*jsonOut, projScope{Slug: task.Project}, envelope, func() {

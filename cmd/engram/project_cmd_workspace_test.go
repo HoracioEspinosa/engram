@@ -213,6 +213,50 @@ func TestBenchAddListShowsDelta(t *testing.T) {
 	}
 }
 
+// TestBenchAddRetryIsIdempotentUntilTheValueDiffers pins the two answers a
+// second write under the same (task, name, metric, captured-at) can get: the
+// same number is a retry and exits zero with `created:false`, a different one
+// is never written and is named as duplicate_benchmark with a non-zero exit.
+func TestBenchAddRetryIsIdempotentUntilTheValueDiffers(t *testing.T) {
+	cfg := testConfig(t)
+	exited := stubExit(t)
+	stubDetection(t, "koi-garden", t.TempDir())
+	seedCard(t, cfg, "koi-garden")
+	seedTask(t, cfg, "koi-garden", "KOI-1099", "Timeout de lookup", "incident")
+
+	add := func(value string) (string, string) {
+		return runProject(t, cfg, "bench", "add", "KOI-1099", "--name", "lookup",
+			"--metric", "lookup.p95", "--unit", "ms", "--value", value,
+			"--captured-at", "2026-08-20T10:00:00Z", "--json")
+	}
+
+	stdout, _ := add("1512")
+	if envelopeResult(t, stdout)["created"] != true {
+		t.Fatalf("the first write did not create the measurement:\n%s", stdout)
+	}
+
+	stdout, _ = add("1512")
+	result := envelopeResult(t, stdout)
+	if result["created"] != false || result["duplicate"] != true {
+		t.Fatalf("retry = %v, want created:false and duplicate:true", result)
+	}
+	if *exited {
+		t.Fatal("a retry of the same measurement must exit zero")
+	}
+
+	stdout, _ = add("756")
+	if code := decodeErrorCode(t, stdout); code != "duplicate_benchmark" {
+		t.Fatalf("code = %q, want duplicate_benchmark", code)
+	}
+	if !*exited {
+		t.Fatal("a different value under the same key must exit non-zero")
+	}
+	stored := decodeEnvelope(t, stdout)["benchmark"].(map[string]any)
+	if stored["value"].(float64) != 1512 {
+		t.Fatalf("the error must carry the row it collided with, got %v", stored)
+	}
+}
+
 // TestEvidenceScanDryRunReportsPlan pins that a scan is a plan until asked
 // otherwise: it reports what it found and writes nothing.
 func TestEvidenceScanDryRunReportsPlan(t *testing.T) {

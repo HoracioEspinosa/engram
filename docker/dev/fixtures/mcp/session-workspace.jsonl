@@ -18,3 +18,4 @@
 {"jsonrpc": "2.0", "id": 116, "method": "tools/call", "params": {"name": "mem_benchmark_import", "arguments": {"task": "KOI-1099", "path": "/vault/Runbooks/services.json"}}}
 {"jsonrpc": "2.0", "id": 117, "method": "tools/call", "params": {"name": "mem_vault_sync", "arguments": {"root": "/vault-que-no-existe"}}}
 {"jsonrpc": "2.0", "id": 118, "method": "tools/call", "params": {"name": "mem_workspace_search", "arguments": {"query": "l"}}}
+{"jsonrpc": "2.0", "id": 119, "method": "tools/call", "params": {"name": "mem_benchmark_add", "arguments": {"task": "KOI-1099", "name": "lookup-timeout", "metric": "lookup.p95", "unit": "ms", "value": 756, "captured_at": "2026-08-20 10:00:00"}}}

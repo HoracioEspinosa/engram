@@ -413,6 +413,8 @@ lookup.p95  1512   ms    * self    -               lookup  2026-08-20T10:00:00Z
 The sign of Δ is read against the metric's own direction, so a number that improved reads as an improvement whichever way its unit points. Units are `ms`, `s`, `count`, `bytes`, `kib`, `mib`, `pct`, `ops`, `rps`, `usd`, `score`; `--direction lower|higher` overrides what the unit implies.
 
 `bench add` flags: `--name`, `--metric`, `--unit`, `--value` (all required), `--baseline`, `--direction`, `--run-path`, `--config-stamp`, `--captured-at`, `--notes`, `--json`.
+
+A measurement is keyed by `(task, name, metric, captured-at)`. Writing the same value under that key again is a retry: it exits zero, prints `already recorded` and reports `created:false` with `duplicate:true`, so a script that re-runs is not punished for it. A *different* value under the same key is never overwritten — that one fails with `duplicate_benchmark` and a non-zero exit, carrying the row it collided with, because the alternative is losing a number in silence. Capture it under its own `--captured-at`.
 `bench list` flags: `--metric`, `--include-children`, `--limit`, `--offset`, `--json`. With no `<task>` it lists the project.
 
 `bench import` reads a run file into measurements. A file carrying the `engram.benchmark.v1` marker is read directly; anything else is the harness's own output and needs a JSON Pointer map — passed with `--map`, or found as `benchmark_map.json` beside the run. Without one it fails with `not_engram_benchmark_v1`, because nothing guesses metrics out of a shape it does not recognise. It is a dry run until `--apply`.

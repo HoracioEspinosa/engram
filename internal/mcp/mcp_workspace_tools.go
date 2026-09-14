@@ -363,17 +363,26 @@ func handleBenchmarkAdd(s *store.Store) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		// AddBenchmark is idempotent by (task, name, metric, captured_at) and
-		// hands the existing row back. Reporting that as a success would tell a
-		// caller it recorded a number it did not, so the duplicate is named —
-		// with the row it collided with, which is the only useful next step.
-		if !result.Created {
+		// hands the existing row back. Repeating the same number is a retry, so
+		// it answers like the write it repeats — created:false, duplicate:true,
+		// the shape mem_evidence_add and `engram project bench add` already
+		// use. A different number under the same key is not a retry: it is
+		// never written, and reporting success would tell the caller it
+		// recorded a measurement the store does not hold. That one is named,
+		// with the row it collided with.
+		if !result.Created && result.Benchmark.Value != value {
 			return projectToolError("duplicate_benchmark",
-				fmt.Sprintf("%s/%s at %s is already recorded for this task", name, metric, result.Benchmark.CapturedAt),
-				map[string]any{"benchmark": result.Benchmark}), nil
+				fmt.Sprintf("%s/%s at %s is already recorded for this task with a different value",
+					name, metric, result.Benchmark.CapturedAt),
+				map[string]any{
+					"benchmark": result.Benchmark,
+					"hint":      "capture the new measurement under its own captured_at, or read the recorded one with mem_benchmark_list",
+				}), nil
 		}
 
 		return respondProjectResult(namedProjectResult(task.Project), map[string]any{
 			"benchmark": result.Benchmark, "created": result.Created,
+			"duplicate":        !result.Created,
 			"demoted_baseline": result.DemotedBaseline,
 		}), nil
 	}

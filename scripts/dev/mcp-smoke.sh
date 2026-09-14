@@ -423,6 +423,7 @@ assert_error_code 115 "id 115 mem_benchmark_import refuses a run that is not the
 assert_error_code 116 "id 116 mem_benchmark_import refuses a foreign run with no pointer map" not_engram_benchmark_v1
 assert_error_code 117 "id 117 mem_vault_sync refuses a root that is not a directory" vault_root_unresolved
 assert_error_code 118 "id 118 mem_workspace_search refuses a one-character query" query_too_short
+assert_error_code 119 "id 119 mem_benchmark_add refuses a second value under the key id 106 recorded" duplicate_benchmark
 
 printf '\nmcp-smoke: %d/%d evaluated (%d ok, %d pinned)\n' \
   "$((OK_COUNT + PINNED_COUNT))" "$EVALUATED" "$OK_COUNT" "$PINNED_COUNT"

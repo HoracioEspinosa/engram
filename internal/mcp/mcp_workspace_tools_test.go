@@ -255,13 +255,18 @@ func TestBenchmarkAddRecordsABaseline(t *testing.T) {
 		t.Fatalf("benchmark = %#v, want a lower-is-better baseline", benchmark)
 	}
 
-	// The same measurement twice is one number, and saying so is the point.
+	// The same number under the same key is a retry: it answers like the write
+	// it repeats, with created:false to say nothing new was written.
 	dup, res := callProjectEnvelope(t, h, map[string]any{
 		"task": "KOI-1099", "name": "lookup", "metric": "lookup.p95", "unit": "ms",
 		"value": float64(1512), "captured_at": "2026-08-20 10:00:00",
 	})
-	if !res.IsError || dup["code"] != "duplicate_benchmark" {
-		t.Fatalf("expected a typed duplicate_benchmark error, got %#v", dup)
+	if res.IsError {
+		t.Fatalf("a retry of the same measurement must succeed, got %#v", dup)
+	}
+	dupData := saveData(t, dup)
+	if dupData["created"] != false || dupData["duplicate"] != true {
+		t.Fatalf("retry = %#v, want created:false and duplicate:true", dupData)
 	}
 
 	listed, res := callProjectEnvelope(t, handleBenchmarkList(s, MCPConfig{}), map[string]any{"task": "KOI-1099"})
@@ -271,6 +276,35 @@ func TestBenchmarkAddRecordsABaseline(t *testing.T) {
 	items := saveData(t, listed)["items"].([]any)
 	if len(items) != 1 {
 		t.Fatalf("items = %#v, want the one measurement", items)
+	}
+}
+
+// TestBenchmarkAddRejectsADifferentValueUnderTheSameKey pins the one case the
+// idempotent answer would lie about: a second number under the same
+// (task, name, metric, captured_at) is never written, so reporting success
+// would tell the caller it recorded a measurement the store does not hold.
+func TestBenchmarkAddRejectsADifferentValueUnderTheSameKey(t *testing.T) {
+	s := seedWorkspaceStore(t)
+	h := handleBenchmarkAdd(s)
+
+	args := map[string]any{
+		"task": "KOI-1099", "name": "lookup", "metric": "lookup.p95", "unit": "ms",
+		"value": float64(1512), "captured_at": "2026-08-20 10:00:00",
+	}
+	if envelope, res := callProjectEnvelope(t, h, args); res.IsError {
+		t.Fatalf("mem_benchmark_add failed: %#v", envelope)
+	}
+
+	envelope, res := callProjectEnvelope(t, h, map[string]any{
+		"task": "KOI-1099", "name": "lookup", "metric": "lookup.p95", "unit": "ms",
+		"value": float64(756), "captured_at": "2026-08-20 10:00:00",
+	})
+	if !res.IsError || envelope["code"] != "duplicate_benchmark" {
+		t.Fatalf("expected a typed duplicate_benchmark error, got %#v", envelope)
+	}
+	collided, ok := envelope["benchmark"].(map[string]any)
+	if !ok || collided["value"].(float64) != 1512 {
+		t.Fatalf("the error must carry the row it collided with, got %#v", envelope["benchmark"])
 	}
 }
 
