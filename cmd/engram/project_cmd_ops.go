@@ -1114,6 +1114,10 @@ func cmdProjectRunbooksSync(cfg store.Config, slug string, args []string) {
 	var skipped []store.RunbookSkipped
 	scanned := 0
 	source := "knowledge-mcp"
+	// resolveService stays nil on the --entries-file route, where there is no
+	// vault checkout to scope a map to and runbooks.SyncIndex falls back to
+	// the no-context default. The --vault-dir route sets it below.
+	var resolveService func(string) (string, bool)
 
 	if f.given("vault-dir") {
 		source = "vault-fs"
@@ -1121,6 +1125,11 @@ func cmdProjectRunbooksSync(cfg store.Config, slug string, args []string) {
 		if abs, err := filepath.Abs(dir); err == nil {
 			dir = abs
 		}
+		// The scan resolves each `service:` through the map that belongs to
+		// this checkout, so the store has to re-resolve through the same one:
+		// left to the default, a services.json slug the scan accepted comes
+		// back out of SyncRunbookIndex as unknown_service.
+		resolveService = runbooks.NewServiceMap(runbooks.ServiceMapOptions{VaultDir: dir}).Canonical
 		scan, err := runbooks.ScanVault(dir, time.Now())
 		if errors.Is(err, runbooks.ErrVaultDirNotFound) {
 			projFail(*jsonOut, "vault_dir_not_found", err.Error(),
@@ -1173,10 +1182,11 @@ func cmdProjectRunbooksSync(cfg store.Config, slug string, args []string) {
 	}
 
 	res, err := runbooks.SyncIndex(s, store.RunbookIndexSyncParams{
-		Project:      sc.Slug,
-		Source:       source,
-		PruneMissing: *pruneMissing,
-		Entries:      entries,
+		Project:        sc.Slug,
+		Source:         source,
+		PruneMissing:   *pruneMissing,
+		Entries:        entries,
+		ResolveService: resolveService,
 	})
 	if err != nil {
 		fatal(err)

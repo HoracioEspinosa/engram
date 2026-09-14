@@ -1091,6 +1091,10 @@ func (s *Server) handleRunbookSyncHTTP(w http.ResponseWriter, r *http.Request) {
 	// contain only templates is not: it is a correct, empty result, and the
 	// weekly LaunchAgent must not read it as a failure.
 	structuralOnly := false
+	// resolveService stays nil on the knowledge-mcp path, where there is no
+	// vault checkout to scope a map to and runbooks.SyncIndex falls back to
+	// the no-context default. The vault-fs path sets it below.
+	var resolveService func(string) (string, bool)
 
 	if source == "vault-fs" {
 		vaultDir := strings.TrimSpace(body.VaultDir)
@@ -1104,6 +1108,11 @@ func (s *Server) handleRunbookSyncHTTP(w http.ResponseWriter, r *http.Request) {
 				`entries must be omitted when source is "vault-fs"`, nil)
 			return
 		}
+		// The scan resolves each `service:` through the map that belongs to
+		// this checkout, so the store has to re-resolve through the same one:
+		// left to the default, a services.json slug the scan accepted comes
+		// back out of SyncRunbookIndex as unknown_service.
+		resolveService = runbooks.NewServiceMap(runbooks.ServiceMapOptions{VaultDir: vaultDir}).Canonical
 		result, err := runbooks.ScanVault(vaultDir, time.Now())
 		if errors.Is(err, runbooks.ErrVaultDirNotFound) {
 			projectError(w, http.StatusNotFound, "vault_not_found", err.Error(),
@@ -1140,10 +1149,11 @@ func (s *Server) handleRunbookSyncHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := runbooks.SyncIndex(s.store, store.RunbookIndexSyncParams{
-		Project:      slug,
-		Source:       source,
-		PruneMissing: body.PruneMissing,
-		Entries:      entries,
+		Project:        slug,
+		Source:         source,
+		PruneMissing:   body.PruneMissing,
+		Entries:        entries,
+		ResolveService: resolveService,
 	})
 	if err != nil {
 		storeFailure(w, err)
