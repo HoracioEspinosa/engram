@@ -15,7 +15,7 @@ import (
 func loadedDashboard(t *testing.T, tasks []store.TaskListItem) Model {
 	t.Helper()
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenDashboard
+	m.screen, m.tree.open = screenDashboard, false
 	m.project = "nextcloud"
 	m.dashboard = newDashboardModel(testDashboardReader(), "nextcloud")
 	m.dashboard.loaded = true

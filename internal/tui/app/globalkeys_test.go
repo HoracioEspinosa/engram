@@ -28,9 +28,9 @@ func TestDigitKeysSwitchTabsAndRefresh(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.digit, func(t *testing.T) {
 			m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-			// New now opens the selector without a resolvable project
+			// New now opens the project tree without a resolvable project
 			// (T-10.02); every case here assumes it is already on a tab.
-			m.screen = screenTab
+			m.screen, m.tree.open = screenTab, false
 			// Start on a different tab than the target so the assertion means
 			// something even for "1" (already Memory's own digit).
 			m.active = tabs.Cloud
@@ -62,7 +62,7 @@ func TestDigitKeysSwitchTabsAndRefresh(t *testing.T) {
 func TestDigitKeysSwitchTabsFromTheDashboardToo(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
-	m.screen = screenDashboard
+	m.screen, m.tree.open = screenDashboard, false
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
 	if m.active != tabs.Evidence || m.screen != screenTab {
@@ -80,8 +80,8 @@ func TestDigitKeysSwitchTabsFromTheDashboardToo(t *testing.T) {
 // either end.
 func TestTabKeyAdvancesToTheNextRegisteredTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenTab  // T-10.02: New alone no longer guarantees this
-	m.active = tabs.Cloud // last in registered order
+	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
+	m.active = tabs.Cloud                    // last in registered order
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyTab})
 	if m.active != tabs.Memory {
@@ -94,8 +94,8 @@ func TestTabKeyAdvancesToTheNextRegisteredTab(t *testing.T) {
 
 func TestShiftTabGoesToThePreviousRegisteredTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenTab   // T-10.02: New alone no longer guarantees this
-	m.active = tabs.Memory // first in registered order
+	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
+	m.active = tabs.Memory                   // first in registered order
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyShiftTab})
 	if m.active != tabs.Cloud {
@@ -111,7 +111,7 @@ func TestShiftTabGoesToThePreviousRegisteredTab(t *testing.T) {
 // never switch tabs.
 func TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenTab // T-10.02: New alone no longer guarantees this
+	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Tasks
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
@@ -130,7 +130,7 @@ func TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 // value to type, but it must still not steal focus mid-search.
 func TestTabKeyIsSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenTab // T-10.02: New alone no longer guarantees this
+	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Runbooks
 	m.runbooks.Searching = true
 	m.runbooks.SearchInput.Focus()
@@ -141,20 +141,20 @@ func TestTabKeyIsSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 	}
 }
 
-// TestDigitKeysDoNothingOnTheSelector pins that rfc-tui.md §7.3's navigation
-// diagram draws no edge from S1 through a digit: there is no project yet to
-// number tabs for, so digits are inert there instead of doing something
-// undefined.
-func TestDigitKeysDoNothingOnTheSelector(t *testing.T) {
+// TestDigitKeysDoNothingOnTheProjectTree pins that rfc-tui.md §7.3's
+// navigation diagram draws no edge from S1 through a digit: the overlay has
+// the keyboard while it is open, so digits are inert there instead of
+// switching to a tab nobody can see.
+func TestDigitKeysDoNothingOnTheProjectTree(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenSelector
+	m.tree.open = true
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
-	if m.screen != screenSelector {
-		t.Fatalf("screen = %v, want screenSelector: a digit should not leave the selector", m.screen)
+	if !m.tree.open {
+		t.Fatal("a digit should not close the project tree")
 	}
 	if cmd != nil {
-		t.Fatal("a digit on the selector should not produce a command")
+		t.Fatal("a digit on the project tree should not produce a command")
 	}
 }
 
@@ -167,7 +167,7 @@ func TestDigitKeysDoNothingOnTheSelector(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoMemorysOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenTab // T-10.02: New alone no longer guarantees this
+	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Memory
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
@@ -178,7 +178,7 @@ func TestDigitDoesNotLeakIntoMemorysOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoTasksOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenTab // T-10.02: New alone no longer guarantees this
+	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Tasks
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
@@ -189,7 +189,7 @@ func TestDigitDoesNotLeakIntoTasksOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoEvidencesOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenTab // T-10.02: New alone no longer guarantees this
+	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Evidence
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("5")})
@@ -200,7 +200,7 @@ func TestDigitDoesNotLeakIntoEvidencesOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoRunbooksOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenTab // T-10.02: New alone no longer guarantees this
+	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Runbooks
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
@@ -211,7 +211,7 @@ func TestDigitDoesNotLeakIntoRunbooksOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoCloudsOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenTab // T-10.02: New alone no longer guarantees this
+	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Cloud
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
@@ -232,7 +232,7 @@ func TestDigitDoesNotLeakIntoCloudsOwnHandling(t *testing.T) {
 func TestZeroAndPAreAlsoSuspendedWhileCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
-	m.screen = screenTab // T-10.02: New alone no longer guarantees this
+	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Tasks
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
@@ -246,8 +246,8 @@ func TestZeroAndPAreAlsoSuspendedWhileCapturingText(t *testing.T) {
 	}
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
-	if m.screen == screenSelector {
-		t.Fatal("\"p\" typed into a focused search box must not open the project selector")
+	if m.tree.open {
+		t.Fatal("\"p\" typed into a focused search box must not open the project tree")
 	}
 	if got := m.tasks.SearchInput.Value(); got != "0p" {
 		t.Fatalf("tasks search input = %q, want \"p\" to have reached it too", got)

@@ -1,13 +1,81 @@
-═══ s1-project-selector ═══
-                                                                                
-    Select a project                                                            
-                                                                                
-                                                                                
-                                                                                
-    slug                   display name                 obs    open   stale RB  
-   › acme                   Acme Corp                    42     1      0        
-  j/k move • g/G top/bottom • enter open • / filter • i sort by hea…  koi-pond  
-                                                                                
+═══ project-tree ═══
+                                                                    
+  0  [1]  2  3  4  5                                                
+                                                                    
+  ╭──────────────────────────────────────────────────╮              
+  │         █████ █   █  ████ ████   ███  █   █      │              
+  │       ≈ █     ██  █ █     █   █ █   █ ██ ██      │              
+  │       ◈ ████  █ █ █ █  ██ ████  █████ █ █ █      │              
+  │       ≈ █     █  ██ █   █ █  █  █   █ █   █      │              
+  │         █████ █   █  ████ █   █ █   █ █   █      │              
+  │                                                  │              
+  │ engram 1.20.1-golden — An elephant never forgets │              
+  ╰──────────────────────────────────────────────────╯              
+                                                                    
+  ╭──────────────────────────────────────────────────────────────╮  
+  │ Projects                                                     │  
+  │                                                              │  
+  │                                                              │  
+  │       slug              display name        obs    open   ev │  
+  │ › ⌄ ▲ acme              Acme Corp           42     1      1  │  
+  │     ⊞   acme-api        Acme API            18     1      4  │  
+  │     ◆   acme-web        Acme Web            7      0      2  │  
+  │                                                              │  
+  │   j/k move • g/G top/bottom • space fold • enter open • …    │  
+  ╰──────────────────────────────────────────────────────────────╯  
+                                                                    
+    · engram                                                        
+    · acme                                                          
+                                                                    
+    Actions                                                         
+                                                                    
+   › Search memories                                                
+      Recent observations                                           
+      Browse sessions                                               
+      Setup agent plugin                                            
+      Cloud sync settings                                           
+      Quit                                                          
+                                                                    
+                                                                    
+═══ project-tree-filtered ═══
+                                                                    
+  0  [1]  2  3  4  5                                                
+                                                                    
+  ╭──────────────────────────────────────────────────╮              
+  │         █████ █   █  ████ ████   ███  █   █      │              
+  │       ≈ █     ██  █ █     █   █ █   █ ██ ██      │              
+  │       ◈ ████  █ █ █ █  ██ ████  █████ █ █ █      │              
+  │       ≈ █     █  ██ █   █ █  █  █   █ █   █      │              
+  │         █████ █   █  ████ █   █ █   █ █   █      │              
+  │                                                  │              
+  │ engram 1.20.1-golden — An elephant never forgets │              
+  ╰──────────────────────────────────────────────────╯              
+                                                                    
+  ╭──────────────────────────────────────────────────────────────╮  
+  │ Projects                                                     │  
+  │                                                              │  
+  │ ⌕ > thunder                                                  │  
+  │                                                              │  
+  │       slug              display name        obs    open   ev │  
+  │ › ⌄ ▲ acme              Acme Corp           42     1      1  │  
+  │     ⊞   acme-api        Acme API            18     1      4  │  
+  │                                                              │  
+  │   j/k move • g/G top/bottom • space fold • enter open • …    │  
+  ╰──────────────────────────────────────────────────────────────╯  
+                                                                    
+    · engram                                                        
+    · acme                                                          
+                                                                    
+    Actions                                                         
+                                                                    
+   › Search memories                                                
+      Recent observations                                           
+      Browse sessions                                               
+      Setup agent plugin                                            
+      Cloud sync settings                                           
+      Quit                                                          
+                                                                    
+                                                                    
 ═══ s2-project-dashboard ═══
                                                                                 
   [0]  1  2  3  4  5                                                            

@@ -144,12 +144,16 @@ func (m Model) WithThemePicker(themes data.ThemeReader, settings data.SettingsWr
 
 // CapturingText reports whether an overlay the root owns has the keyboard.
 //
-// The picker filters with a text input, so while it is open a keystroke is a
-// character and not a command. Reporting it here is what lets whatever
-// composes this model — today the program, later an overlay compositor — apply
-// the same rule to the root that the root already applies to its tabs.
+// Both the theme picker and the project tree filter with a text input, so
+// while one of those is focused a keystroke is a character and not a command.
+// Reporting it here is what lets whatever composes this model — today the
+// program, later an overlay compositor — apply the same rule to the root that
+// the root already applies to its tabs.
 func (m Model) CapturingText() bool {
-	return m.themePicker.open && m.themePicker.list.FilterState() == list.Filtering
+	if m.themePicker.open && m.themePicker.list.FilterState() == list.Filtering {
+		return true
+	}
+	return m.tree.open && m.tree.filterInput.Focused()
 }
 
 // withStyles repaints the overlay itself. The picker draws in the palette

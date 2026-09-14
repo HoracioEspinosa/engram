@@ -408,7 +408,7 @@ func TestPickerReloadsFromTheStore(t *testing.T) {
 // keystroke meant for a search box.
 func TestCtrlTIsSuspendedWhileATabCapturesText(t *testing.T) {
 	m, _, _ := pickerFixture(t)
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 	m.active = tabs.Tasks
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
@@ -428,7 +428,7 @@ func TestCtrlTIsSuspendedWhileATabCapturesText(t *testing.T) {
 // would name keys that answer to nothing while it is open.
 func TestThemePickerTakesTheScreenAndCarriesItsOwnFooter(t *testing.T) {
 	m, _, _ := pickerFixture(t)
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 	m.active = tabs.Memory
 
 	beneath := ansi.Strip(m.View())

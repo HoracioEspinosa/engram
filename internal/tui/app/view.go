@@ -10,8 +10,7 @@ import (
 
 // View draws the application frame around the active screen's body. The
 // persistent tab bar (rfc-tui.md §5, §7) sits above the Dashboard and every
-// tab; the Selector keeps its own distinct header instead (§5's S1
-// wireframe), since there is no project yet to number tabs for.
+// tab.
 //
 // The footer belongs to the frame, not to the screen: it is rendered here
 // from whatever the active screen declares in Help(), so a screen names its
@@ -19,25 +18,23 @@ import (
 func (m Model) View() string {
 	var body string
 
-	switch m.screen {
-	case screenDashboard:
+	if m.screen == screenDashboard {
 		body = m.viewTabBar() + "\n" + m.viewDashboard()
-	case screenSelector:
-		body = m.viewSelector()
-	default:
-		tab := m.tab(m.active)
-		if tab == nil {
-			body = m.viewTabBar() + "\n" + "Unknown tab"
-		} else {
-			body = m.viewTabBar() + "\n" + tab.View()
-		}
+	} else if tab := m.tab(m.active); tab == nil {
+		body = m.viewTabBar() + "\n" + "Unknown tab"
+	} else {
+		body = m.viewTabBar() + "\n" + tab.View()
 	}
 
-	// Both overlays carry their own footer: the screen underneath is not
-	// answering keys while one is open, so its hints would name keys that do
+	// Every overlay carries its own hints: the screen underneath is not
+	// answering keys while one is open, so its own would name keys that do
 	// nothing.
 	if m.themePicker.open {
 		return m.styles.App.Render(m.compose(body, m.viewThemePicker()))
+	}
+
+	if m.tree.open {
+		return m.styles.App.Render(m.compose(body, m.viewProjectTree()))
 	}
 
 	if m.showHelp {

@@ -40,7 +40,7 @@ func statusBarModel(t *testing.T) Model {
 
 	m := New(nil, nil, tasks, nil, nil, "", theme.New(theme.KoiPond()), "previews").WithProjectTree(tree)
 	m.width, m.height = 120, 40
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 	m.active = tabs.Tasks
 
 	msg := loadAncestors(tree, "previews")()
@@ -109,7 +109,7 @@ func TestStatusBarFallsBackToTheProjectWithoutATree(t *testing.T) {
 	if seg.Text != "previews" {
 		t.Fatalf("breadcrumb = %q, want the project on its own", seg.Text)
 	}
-	if cmd := loadAncestors(m.tree, "previews"); cmd != nil {
+	if cmd := loadAncestors(m.treeReader, "previews"); cmd != nil {
 		t.Fatal("a workspace with no tree reader still issued an ancestors query")
 	}
 }

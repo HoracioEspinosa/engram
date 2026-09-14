@@ -25,13 +25,13 @@ import (
 // tabs declares but that no sub-model implements yet are simply absent.
 var registered = []tabs.ID{tabs.Memory, tabs.Tasks, tabs.Evidence, tabs.Runbooks, tabs.Cloud}
 
-// screen is the active screen: either a tab from the bar, the project selector,
-// or the dashboard for the active project.
+// screen is the active screen: either a tab from the bar or the dashboard for
+// the active project. The project tree is not one of these: it is an overlay
+// composited over whatever is showing, not a screen that replaces it.
 type screen int
 
 const (
 	screenTab screen = iota
-	screenSelector
 	screenDashboard
 )
 
@@ -60,13 +60,17 @@ type Model struct {
 	// data is still current is shown as it is.
 	freshness tabFreshness
 
-	// tree feeds the status bar's breadcrumb. It is optional: a workspace
-	// built without one simply shows the project on its own.
-	tree      data.ProjectTreeReader
-	ancestors []data.ProjectNode
+	// treeReader feeds the status bar's breadcrumb and the ctrl+p overlay. It
+	// is optional: a workspace built without one shows the project on its own
+	// and says so when the overlay is opened.
+	treeReader data.ProjectTreeReader
+	ancestors  []data.ProjectNode
 
-	project   string
-	selector  selectorModel
+	project string
+	// tree is the ctrl+p project tree. Like showHelp and themePicker it is
+	// root state: it rescopes every tab at once, which is something only the
+	// root can do.
+	tree      treeModel
 	dashboard dashboardModel
 
 	// showHelp toggles the "?" overlay (rfc-tui.md §7.1). It is root state,
@@ -104,28 +108,23 @@ func New(mem data.MemorySource, projects data.ProjectReader, task data.TaskSourc
 		evidence:    evidence.New(evidenceReader).WithProject(initialProject),
 		runbooks:    runbooks.New(runbookReader, projects).WithProject(initialProject),
 		cloud:       cloud.New(),
-		selector:    newSelectorModel(projects),
+		tree:        newTreeModel(nil),
 		dashboard:   newDashboardModel(projects, initialProject),
 		themePicker: newThemePickerModel(styles),
 	}
 	m = m.withStyles(styles)
 
-	// If an initial project was provided, start on the dashboard;
-	// otherwise start on the selector (rfc-tui.md §9.1: "sin proyecto
-	// resoluble se abre S1").
+	// With a project resolved the workspace opens on its dashboard; without
+	// one it opens on the project tree (rfc-tui.md §9.1: "sin proyecto
+	// resoluble se abre S1"), composited over the tab underneath so closing it
+	// lands somewhere real.
 	if initialProject != "" {
 		m.screen = screenDashboard
 	} else {
-		m.screen = screenSelector
+		m.screen = screenTab
+		m.tree.open = true
 	}
 
-	return m
-}
-
-// WithProjectTree returns a copy of the root able to place the active
-// project in the forest, which is what the status bar's breadcrumb reads.
-func (m Model) WithProjectTree(r data.ProjectTreeReader) Model {
-	m.tree = r
 	return m
 }
 
@@ -171,14 +170,14 @@ func (m Model) Init() tea.Cmd {
 	if m.screen == screenDashboard && m.project != "" {
 		cmds = append(cmds, loadDashboard(m.projects, m.project))
 	}
-	if cmd := loadAncestors(m.tree, m.project); cmd != nil {
+	if cmd := loadAncestors(m.treeReader, m.project); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	// If starting on the selector — no project was resolvable — load its
-	// card list too, so S1 shows real projects instead of an empty list
-	// until the user presses "r".
-	if m.screen == screenSelector {
-		cmds = append(cmds, loadSelector(m.projects))
+	// If starting on the tree — no project was resolvable — load the forest
+	// too, so it shows real projects instead of an empty list until the user
+	// presses "r".
+	if m.tree.open {
+		cmds = append(cmds, loadTree(m.tree.reader))
 	}
 	cmds = append(cmds, tea.EnterAltScreen)
 	return tea.Batch(cmds...)

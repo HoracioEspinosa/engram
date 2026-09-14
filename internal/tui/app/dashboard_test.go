@@ -49,10 +49,10 @@ func intp(v int) *int { return &v }
 
 func TestZeroKeyIsANoOpWithoutAnActiveProject(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the selector without a resolvable project (T-10.02);
+	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is "0" pressed from a tab, so that is set
 	// explicitly rather than relied on as New's default.
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 
 	m, cmd := step(t, m, tea.KeyMsg{Runes: []rune("0"), Type: tea.KeyRunes})
 	if m.screen != screenTab {
@@ -82,10 +82,10 @@ func TestZeroKeyShowsTheDashboardAndReloadsIt(t *testing.T) {
 	reader := testDashboardReader()
 	m.project = "nextcloud"
 	m.active = tabs.Cloud
-	// New now opens the selector without a resolvable project (T-10.02);
+	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is "0" pressed from the Cloud tab, so that is set
 	// explicitly rather than relied on as New's default.
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 	m.projects = reader
 	// applyLoaded only accepts a response whose slug matches m.dashboard's
 	// own, so a project set outside newDashboardModel — as New(initialProject)
@@ -123,7 +123,7 @@ func TestZeroKeyShowsTheDashboardAndReloadsIt(t *testing.T) {
 // still pins for Evidence/Runbooks.
 func TestDashboardEnterOnRecentTasksNavigatesToTasks(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenDashboard
+	m.screen, m.tree.open = screenDashboard, false
 	m.project = "nextcloud"
 	m.dashboard.cursor = dashBlockTasks
 
@@ -142,7 +142,7 @@ func TestDashboardEnterOnRecentTasksNavigatesToTasks(t *testing.T) {
 // declared, and activate() only ever needed a real sub-model behind it.
 func TestDashboardEnterOnEvidenceBlockNavigatesToEvidence(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenDashboard
+	m.screen, m.tree.open = screenDashboard, false
 	m.project = "nextcloud"
 	m.dashboard.cursor = dashBlockEvidence
 
@@ -157,7 +157,7 @@ func TestDashboardEnterOnEvidenceBlockNavigatesToEvidence(t *testing.T) {
 
 func TestDashboardCursorMovesAcrossAllThreeBlocks(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenDashboard
+	m.screen, m.tree.open = screenDashboard, false
 
 	for _, key := range []string{"j", "j"} {
 		m, _ = step(t, m, tea.KeyMsg{Runes: []rune(key), Type: tea.KeyRunes})
@@ -174,7 +174,7 @@ func TestDashboardCursorMovesAcrossAllThreeBlocks(t *testing.T) {
 
 func TestDashboardQQuits(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenDashboard
+	m.screen, m.tree.open = screenDashboard, false
 
 	_, cmd := step(t, m, tea.KeyMsg{Runes: []rune("q"), Type: tea.KeyRunes})
 	if cmd == nil {
@@ -215,6 +215,9 @@ func TestGoHomeGoesToTheDashboardOnceAProjectIsActive(t *testing.T) {
 // Dashboard now, not on Memory.
 func TestCloudEscRoundTripsThroughTheRootWithAProjectActive(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// No project was resolved, so New opens the project tree over the
+	// workspace; this case is about the screen underneath it.
+	m.tree.open = false
 	m.project = "nextcloud"
 	m.dashboard = newDashboardModel(testDashboardReader(), "nextcloud")
 
@@ -386,7 +389,7 @@ func TestLoadDashboardShortCircuitsOnACardError(t *testing.T) {
 
 func TestViewDashboardRendersEveryBlock(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenDashboard
+	m.screen, m.tree.open = screenDashboard, false
 	m.project = "nextcloud"
 	m.dashboard = newDashboardModel(testDashboardReader(), "nextcloud")
 
@@ -406,7 +409,7 @@ func TestViewDashboardRendersEveryBlock(t *testing.T) {
 
 func TestViewDashboardRendersEmptyBlocksGracefully(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenDashboard
+	m.screen, m.tree.open = screenDashboard, false
 	m.project = "portal"
 	m.dashboard = newDashboardModel(nil, "portal")
 	m.dashboard = m.dashboard.applyLoaded(dashboardLoadedMsg{slug: "portal", card: store.ProjectCard{Slug: "portal"}})
@@ -429,7 +432,7 @@ func TestViewDashboardShowsLoadingBeforeTheFirstResponse(t *testing.T) {
 
 func TestViewDashboardShowsTheLoadError(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenDashboard
+	m.screen, m.tree.open = screenDashboard, false
 	m.project = "nextcloud"
 	m.dashboard = newDashboardModel(nil, "nextcloud").applyLoaded(dashboardLoadedMsg{
 		slug: "nextcloud", err: errors.New("no project card"),

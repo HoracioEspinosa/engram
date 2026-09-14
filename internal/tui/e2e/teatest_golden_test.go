@@ -115,12 +115,26 @@ var teatestEnterKey = tea.KeyMsg{Type: tea.KeyEnter}
 func teatestScreens() []teatestScreen {
 	return []teatestScreen{
 		{
-			name: "s1-project-selector",
-			// No project: app.New now opens straight on the selector
+			name: "project-tree",
+			// No project: app.New opens straight on the project tree
 			// (rfc-tui.md §9.1: "sin proyecto resoluble se abre S1"), and
-			// Init loads its card list without any key needed — no "p"
-			// step to reach it, unlike every other screen here.
+			// Init loads the forest without any key needed — no ctrl+p step
+			// to reach it, unlike every other screen here.
 			initialWaitFor: "Acme Corp",
+		},
+		{
+			name:           "project-tree-filtered",
+			initialWaitFor: "Acme Corp",
+			steps: []teatestStep{
+				{key: keyRune("/"), waitFor: "Filter by slug"},
+				// "thunder" is one of acme-api's aliases and appears nowhere
+				// else on screen: it proves the filter reaches past the two
+				// visible labels, and it is the one string that can only be
+				// there once the term has been typed — so the wait can never
+				// be satisfied by the unfiltered frame before it. The hit is a
+				// child, so its parent is dragged along de-emphasised.
+				{key: keyRune("thunder"), waitFor: "thunder"},
+			},
 		},
 		{
 			name:           "s2-project-dashboard",
@@ -210,7 +224,7 @@ func teatestScreens() []teatestScreen {
 // reader the workspace consumes — the same data.Fake* seam every tabs/*
 // Update test already uses, just wired through the real root instead of a
 // leaf tab.
-func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook) {
+func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook, tree *data.FakeProjectTree) {
 	t.Helper()
 	seedVaultFixture(t)
 	// Evidence's detail screen (S7) renders an absolute filesystem path
@@ -284,7 +298,30 @@ func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakePro
 
 	rb = &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": {runbookRow}}}
 
-	return mem, projects, task, ev, rb
+	// One umbrella with two children: enough for the tree to show nesting, a
+	// fold marker and — once filtered to a child — a parent kept on screen
+	// only because of what is under it.
+	acmeAPI := data.ProjectNode{
+		Slug: "acme-api", ParentSlug: "acme", DisplayName: "Acme API", Kind: "service",
+		Aliases: []string{"thunderbird"}, Depth: 1,
+		Counts: store.ProjectCardCounts{Observations: 18, TasksActive: 1, Evidence: 4},
+	}
+	acmeWeb := data.ProjectNode{
+		Slug: "acme-web", ParentSlug: "acme", DisplayName: "Acme Web", Kind: "repo", Depth: 1,
+		Counts: store.ProjectCardCounts{Observations: 7, TasksActive: 0, Evidence: 2},
+	}
+	acmeRoot := data.ProjectNode{
+		Slug: "acme", DisplayName: "Acme Corp", Kind: "umbrella",
+		Tags: []string{"platform"}, Children: []data.ProjectNode{acmeAPI, acmeWeb},
+		Counts: store.ProjectCardCounts{Observations: 42, TasksActive: 1, Evidence: 1},
+	}
+	tree = &data.FakeProjectTree{
+		Tree:            []data.ProjectNode{acmeRoot},
+		NodeBySlug:      map[string]data.ProjectNode{"acme": acmeRoot, "acme-api": acmeAPI, "acme-web": acmeWeb},
+		AncestorsBySlug: map[string][]data.ProjectNode{"acme-api": {acmeRoot}, "acme-web": {acmeRoot}},
+	}
+
+	return mem, projects, task, ev, rb, tree
 }
 
 // seedVaultFixture points ENGRAM_VAULT_ROOT at a temp directory holding
@@ -363,9 +400,10 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 	t.Helper()
 	t.Setenv("ENGRAM_TIMEZONE", "UTC")
 
-	mem, projects, task, ev, rb := teatestFixtures(t)
+	mem, projects, task, ev, rb, tree := teatestFixtures(t)
 	m := app.New(mem, projects, task, ev, rb, e2eVersion, theme.Default(), screen.initialProject).
-		WithUpdateChecker(quietUpdateCheck)
+		WithUpdateChecker(quietUpdateCheck).
+		WithProjectTree(tree)
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(size.width, size.height))
 	var buf strings.Builder

@@ -102,9 +102,9 @@ func TestWindowSizeReachesEveryTab(t *testing.T) {
 
 func TestKeysReachOnlyTheActiveTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the selector without a resolvable project (T-10.02);
+	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is being on the Cloud tab already.
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 	m.active = tabs.Cloud
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyDown})
@@ -122,16 +122,17 @@ func TestKeysReachOnlyTheActiveTab(t *testing.T) {
 // the screen on every screen, with no per-screen exception to remember.
 func TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the selector without a resolvable project (T-10.02);
-	// this case's premise is being on Evidence's detail screen already.
-	m.screen = screenTab
+	// New opens the project tree without a resolvable project; this case's
+	// premise is being on Evidence's detail screen already.
+	m.tree.open = false
+	m.screen, m.tree.open = screenTab, false
 	m.active = tabs.Evidence
 	item := store.EvidenceListItem{Evidence: store.Evidence{ID: 1, Path: "ACME-1/a.png", SHA256: "abc"}}
 	m.evidence.Screen = evidence.ScreenDetail
 	m.evidence.Selected = &item
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
-	if m.screen == screenSelector {
+	if m.tree.open {
 		t.Fatal("S7's own \"p\" (copy path) must not be swallowed by the global project selector")
 	}
 	if cmd == nil {
@@ -287,9 +288,9 @@ func TestNavigateToAnUnimplementedTabIsANoOp(t *testing.T) {
 
 func TestCloudRoundTripFromTheDashboard(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the selector without a resolvable project (T-10.02);
+	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is starting on Memory's own dashboard.
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 
 	// Walk the dashboard menu down to "Cloud sync settings".
 	for i := 0; i < 4; i++ {
@@ -332,9 +333,9 @@ func TestCloudRoundTripFromTheDashboard(t *testing.T) {
 
 func TestViewWrapsTheActiveTabInTheApplicationFrame(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the selector without a resolvable project (T-10.02);
+	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is a tab's own body being on screen.
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 
 	framed := m.View()
 	body := m.memory.View()
@@ -373,9 +374,9 @@ func assertFramedBody(t *testing.T, framed, body string) {
 
 func TestViewSurvivesAnUnregisteredActiveTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the selector without a resolvable project (T-10.02);
+	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is an unregistered tab being the one on screen.
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 	m.active = tabs.ID(99)
 
 	if !strings.Contains(m.View(), "Unknown tab") {
@@ -385,11 +386,11 @@ func TestViewSurvivesAnUnregisteredActiveTab(t *testing.T) {
 
 func TestUpdateWithAnUnregisteredActiveTabIsANoOp(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the selector without a resolvable project (T-10.02);
+	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is an unregistered tab being active on screen, so
 	// the key actually reaches updateActive's tab branch instead of
 	// trivially no-opping on the selector.
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 	m.active = tabs.ID(99)
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyDown})

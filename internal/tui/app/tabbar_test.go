@@ -16,7 +16,7 @@ import (
 func TestTabBarShowsFullLabelsAtOrAboveTheBreakpoint(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Tasks
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 	m, _ = step(t, m, tea.WindowSizeMsg{Width: 100, Height: 40})
 
 	out := m.View()
@@ -37,7 +37,7 @@ func TestTabBarShowsFullLabelsAtOrAboveTheBreakpoint(t *testing.T) {
 func TestTabBarCollapsesBelowTheBreakpoint(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Tasks
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 	m, _ = step(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	out := m.View()
@@ -54,9 +54,9 @@ func TestTabBarCollapsesBelowTheBreakpoint(t *testing.T) {
 // bar renders full rather than guessing narrow.
 func TestTabBarDefaultsToFullFormWhenWidthIsUnknown(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the selector without a resolvable project (T-10.02);
+	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is the tab bar showing over a tab screen.
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 
 	if !strings.Contains(m.View(), "1 Memory") {
 		t.Fatalf("expected the full form when width is unknown, got:\n%s", m.View())
@@ -69,7 +69,7 @@ func TestTabBarDefaultsToFullFormWhenWidthIsUnknown(t *testing.T) {
 func TestTabBarMarksTheDashboardAsTheActiveEntry(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
-	m.screen = screenDashboard
+	m.screen, m.tree.open = screenDashboard, false
 	m, _ = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	if !strings.Contains(m.View(), "[0 Dashboard]") {
@@ -77,16 +77,16 @@ func TestTabBarMarksTheDashboardAsTheActiveEntry(t *testing.T) {
 	}
 }
 
-// TestTabBarIsHiddenOnTheSelector pins that S1 keeps its own distinct
-// header (rfc-tui.md §5's S1 wireframe) instead of the tab bar: there is no
-// project yet, so there is nothing to number.
-func TestTabBarIsHiddenOnTheSelector(t *testing.T) {
+// TestTabBarSurvivesTheProjectTreeOverlay pins that the tree is composited
+// over the workspace rather than replacing it: the bar is chrome, and an
+// overlay centred inside the body leaves its edges showing.
+func TestTabBarSurvivesTheProjectTreeOverlay(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenSelector
+	m.tree.open = true
 	m, _ = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	if strings.Contains(m.View(), "1 Memory") || strings.Contains(m.View(), "0 Dashboard") {
-		t.Fatalf("the selector should not show the persistent tab bar, got:\n%s", m.View())
+	if !strings.Contains(m.View(), "0 Dashboard") {
+		t.Fatalf("the project tree replaced the workspace instead of being composited over it, got:\n%s", m.View())
 	}
 }
 
@@ -113,7 +113,7 @@ func TestTabBarLabelsComeFromTitleNotTheEntryTable(t *testing.T) {
 
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Tasks
-	m.screen = screenTab
+	m.screen, m.tree.open = screenTab, false
 	m, _ = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	out := m.View()

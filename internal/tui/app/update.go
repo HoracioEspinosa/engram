@@ -24,6 +24,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if handled, next, cmd := m.updateThemePicker(msg); handled {
 			return next, cmd
 		}
+		if handled, next, cmd := m.updateProjectTree(msg); handled {
+			return next, cmd
+		}
 		if m.showHelp {
 			// While the "?" overlay (rfc-tui.md §7.1) is open, every key but
 			// the three that close it is swallowed here, before it ever
@@ -95,8 +98,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ancestors = msg.nodes
 		return m, nil
 
-	case selectorLoadedMsg:
-		m.selector = m.selector.applyLoaded(msg)
+	case treeLoadedMsg:
+		m.tree = m.tree.applyLoaded(msg)
 		return m, nil
 
 	case themesLoadedMsg, themePreviewMsg, themeAppliedMsg:
@@ -153,8 +156,6 @@ func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.screen {
 		case screenDashboard:
 			return m.updateDashboard(keyMsg)
-		case screenSelector:
-			return m.updateSelector(keyMsg)
 		default:
 			// Every global key below is suspended while the active tab is
 			// capturing text (rfc-tui.md §7.1: "cuando un textinput tiene el
@@ -189,10 +190,6 @@ func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 // left to decide what it means.
 func (m Model) matchGlobal(msg tea.KeyMsg) (handled bool, model tea.Model, cmd tea.Cmd) {
 	switch {
-	case key.Matches(msg, globalKeys.ProjectSelector):
-		m.screen = screenSelector
-		return true, m, loadSelector(m.projects)
-
 	case key.Matches(msg, globalKeys.Dashboard):
 		if m.project == "" {
 			// Nothing to show a dashboard for. Swallow it anyway: the
@@ -236,11 +233,8 @@ func (m Model) matchGlobal(msg tea.KeyMsg) (handled bool, model tea.Model, cmd t
 // runs, so "r" means the same thing everywhere instead of being reimplemented
 // once per screen.
 func (m Model) refreshActiveScreen() tea.Cmd {
-	switch m.screen {
-	case screenDashboard:
+	if m.screen == screenDashboard {
 		return loadDashboard(m.projects, m.project)
-	case screenSelector:
-		return loadSelector(m.projects)
 	}
 	if tab := m.tab(m.active); tab != nil {
 		return tab.Refresh()
@@ -304,98 +298,6 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q":
 		return m, tea.Quit
 	}
-	return m, nil
-}
-
-// updateSelector handles key presses while the selector is active.
-func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// If the filter input is focused, only handle enter, esc, and pass everything else to the input
-	if m.selector.filterInput.Focused() {
-		switch msg.Type {
-		case tea.KeyEnter:
-			m.selector.filterInput.Blur()
-			return m, nil
-		case tea.KeyEsc:
-			m.selector.filterInput.Blur()
-			m.selector.filterInput.SetValue("")
-			m.selector = m.selector.applyFilter()
-			return m, nil
-		default:
-			// Pass all other keys to the filter input
-			updated, cmd := m.selector.filterInput.Update(msg)
-			m.selector.filterInput = updated
-			m.selector = m.selector.applyFilter()
-			return m, cmd
-		}
-	}
-
-	// The Selector answers two of the root's bindings and no more: there is
-	// no project yet to number tabs for. Both go through the keymap so the
-	// footer and the "?" overlay keep naming the keys that actually work.
-	switch {
-	case key.Matches(msg, globalKeys.Refresh):
-		return m, loadSelector(m.projects)
-	case key.Matches(msg, globalKeys.Help):
-		m.showHelp = true
-		return m, nil
-	}
-
-	switch msg.String() {
-	case "j":
-		m.selector = m.selector.moveCursor(1)
-		return m, nil
-	case "k":
-		m.selector = m.selector.moveCursor(-1)
-		return m, nil
-	case "g":
-		m.selector = m.selector.moveCursorToStart()
-		return m, nil
-	case "G":
-		m.selector = m.selector.moveCursorToEnd()
-		return m, nil
-	case "i":
-		m.selector = m.selector.toggleHealthSort()
-		return m, nil
-	case "enter":
-		selected := m.selector.selected()
-		if selected != nil {
-			m.project = selected.Slug
-			m.screen = screenDashboard
-			m.dashboard = newDashboardModel(m.projects, selected.Slug)
-			// Every project-scoped tab is rebuilt here, the same way the
-			// dashboard is: neither Tasks', Evidence's nor Runbooks'
-			// Refresh() takes a project parameter of its own (tabs.Tab is a
-			// project-agnostic contract), so each has to already know the
-			// new slug before it is ever activated.
-			m.tasks = m.tasks.WithProject(selected.Slug)
-			m.evidence = m.evidence.WithProject(selected.Slug)
-			m.runbooks = m.runbooks.WithProject(selected.Slug)
-			m.memory = m.memory.WithProject(selected.Slug)
-			m.ancestors = nil
-			// Nothing any tab is holding belongs to the project now active.
-			m.freshness = m.freshness.invalidateAll()
-			return m, tea.Batch(loadDashboard(m.projects, selected.Slug), loadAncestors(m.tree, selected.Slug))
-		}
-		return m, nil
-	case "/":
-		m.selector.filterInput.Focus()
-		// Don't return here; fall through to pass "/" to the input
-	case "esc":
-		if m.selector.filterInput.Focused() {
-			m.selector.filterInput.Blur()
-			m.selector.filterInput.SetValue("")
-			m.selector = m.selector.applyFilter()
-			return m, nil
-		}
-		if m.project != "" {
-			m.screen = screenDashboard
-			return m, nil
-		}
-		return m, nil
-	case "q":
-		return m, tea.Quit
-	}
-
 	return m, nil
 }
 
