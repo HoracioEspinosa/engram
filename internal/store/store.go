@@ -713,6 +713,10 @@ func (s *Store) Close() error {
 // ─── Migrations ──────────────────────────────────────────────────────────────
 
 func (s *Store) migrate() error {
+	if err := s.ensureMigrationLedger(); err != nil {
+		return err
+	}
+
 	schema := `
 			CREATE TABLE IF NOT EXISTS sessions (
 				id         TEXT PRIMARY KEY,
@@ -966,74 +970,85 @@ func (s *Store) migrate() error {
 	`); err != nil {
 		return err
 	}
-	// Backfill: extract project from JSON payload for existing rows with empty project.
-	if _, err := s.execHook(s.db, `
-		UPDATE sync_mutations
-		SET project = COALESCE(json_extract(payload, '$.project'), '')
-		WHERE project = '' AND payload != ''
-	`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `
-		UPDATE sync_mutations
-		SET project = COALESCE((
-			SELECT sessions.project
-			FROM sessions
-			WHERE sessions.id = json_extract(sync_mutations.payload, '$.session_id')
-		), '')
-		WHERE project = ''
-		  AND payload != ''
-		  AND ifnull(json_extract(payload, '$.session_id'), '') != ''
-	`); err != nil {
-		return err
-	}
-
-	if _, err := s.execHook(s.db, `UPDATE observations SET scope = 'project' WHERE scope IS NULL OR scope = ''`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE observations SET topic_key = NULL WHERE topic_key = ''`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE observations SET revision_count = 1 WHERE revision_count IS NULL OR revision_count < 1`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE observations SET duplicate_count = 1 WHERE duplicate_count IS NULL OR duplicate_count < 1`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE observations SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE observations SET sync_id = 'obs-' || lower(hex(randomblob(16))) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
-		return err
-	}
-
-	if _, err := s.execHook(s.db, `UPDATE user_prompts SET project = '' WHERE project IS NULL`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE prompt_tombstones SET project = '' WHERE project IS NULL`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE user_prompts SET sync_id = 'prompt-' || lower(hex(randomblob(16))) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
-		return err
-	}
-
-	// sessions and user_prompts previously had no per-row modification clock:
-	// started_at and created_at mark a row's birth, not its last write, so
-	// applySessionPayloadTx and applyPromptUpsertTx had nothing to compare a
-	// pull against and overwrote unconditionally. This mirrors the column
-	// observations already got (see the observationColumns loop above) and
-	// backfills it from the closest available birth timestamp so existing
-	// rows are never left with an empty clock.
+	// sessions and user_prompts carry no per-row modification clock of their
+	// own: started_at and created_at mark a row's birth, not its last write, so
+	// applySessionPayloadTx and applyPromptUpsertTx have nothing to compare a
+	// pull against and would overwrite unconditionally. This mirrors the column
+	// observations gets in the observationColumns loop above; the backfill below
+	// fills it from the closest available birth timestamp so no existing row is
+	// left with an empty clock.
 	if err := s.addColumnIfNotExists("sessions", "updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfNotExists("user_prompts", "updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
-	if _, err := s.execHook(s.db, `UPDATE sessions SET updated_at = started_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
-		return err
-	}
-	if _, err := s.execHook(s.db, `UPDATE user_prompts SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+
+	// Every row rewrite the schema above assumes, behind one ledger entry. They
+	// only have work to do on rows an older binary wrote, and the writers all
+	// fill these columns, so a database that has been through them once cannot
+	// grow a row that needs them again.
+	if err := s.once(migrationBackfillID, func() error {
+		// Give a mutation written before the column existed the project its own
+		// payload names, then the project of the session it belongs to.
+		if _, err := s.execHook(s.db, `
+			UPDATE sync_mutations
+			SET project = COALESCE(json_extract(payload, '$.project'), '')
+			WHERE project = '' AND payload != ''
+		`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `
+			UPDATE sync_mutations
+			SET project = COALESCE((
+				SELECT sessions.project
+				FROM sessions
+				WHERE sessions.id = json_extract(sync_mutations.payload, '$.session_id')
+			), '')
+			WHERE project = ''
+			  AND payload != ''
+			  AND ifnull(json_extract(payload, '$.session_id'), '') != ''
+		`); err != nil {
+			return err
+		}
+
+		if _, err := s.execHook(s.db, `UPDATE observations SET scope = 'project' WHERE scope IS NULL OR scope = ''`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE observations SET topic_key = NULL WHERE topic_key = ''`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE observations SET revision_count = 1 WHERE revision_count IS NULL OR revision_count < 1`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE observations SET duplicate_count = 1 WHERE duplicate_count IS NULL OR duplicate_count < 1`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE observations SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE observations SET sync_id = 'obs-' || lower(hex(randomblob(16))) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
+			return err
+		}
+
+		if _, err := s.execHook(s.db, `UPDATE user_prompts SET project = '' WHERE project IS NULL`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE prompt_tombstones SET project = '' WHERE project IS NULL`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE user_prompts SET sync_id = 'prompt-' || lower(hex(randomblob(16))) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
+			return err
+		}
+
+		if _, err := s.execHook(s.db, `UPDATE sessions SET updated_at = started_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+			return err
+		}
+		if _, err := s.execHook(s.db, `UPDATE user_prompts SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 

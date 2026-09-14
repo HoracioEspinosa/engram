@@ -3822,7 +3822,9 @@ func TestMigrationInternalErrorAndNoopBranches(t *testing.T) {
 	})
 
 	t.Run("migrate returns deterministic exec hook errors", func(t *testing.T) {
-		s := newTestStore(t)
+		// The backfill runs once per database, so the failure has to be forced
+		// on a database that has not been migrated yet.
+		s := openMigrationTestStore(t, t.TempDir(), defaultStoreHooks())
 
 		origExec := s.hooks.exec
 		s.hooks.exec = func(db execer, query string, args ...any) (sql.Result, error) {
@@ -4258,6 +4260,12 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 		for _, needle := range failCases {
 			t.Run(needle, func(t *testing.T) {
 				s := newTestStore(t)
+				if strings.HasPrefix(needle, "UPDATE ") {
+					// The row rewrites are behind the migration ledger, so an
+					// already-migrated store never reaches them again. Only a
+					// database that has not been migrated yet can fail on one.
+					s = openMigrationTestStore(t, t.TempDir(), defaultStoreHooks())
+				}
 				if strings.Contains(needle, "CREATE TRIGGER prompt_fts_insert") {
 					if _, err := s.db.Exec(`
 						DROP TRIGGER IF EXISTS prompt_fts_insert;
