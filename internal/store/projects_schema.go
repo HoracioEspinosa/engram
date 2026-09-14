@@ -44,6 +44,12 @@ const (
 	// project by its name or description instead of only reaching what is
 	// filed under it.
 	projCardsFTSID = "proj-0006-cards-fts"
+	// projThemesID holds the palettes the interface is drawn with, so a theme
+	// can be edited and kept rather than recompiled.
+	projThemesID = "proj-0007-themes"
+	// projSettingsID holds what the interface remembers between runs. It is
+	// the source of truth for those, above config.json.
+	projSettingsID = "proj-0008-settings"
 )
 
 // projectsHierarchyDDL is the proj-0001-cards-hierarchy step. It is written as
@@ -391,6 +397,8 @@ func (s *Store) migrateProjectsToV3() error {
 		{id: projEvidenceRebuildID, ddl: evidenceRebuildDDL, rebuild: true},
 		{id: projBenchmarksID, ddl: benchmarksDDL},
 		{id: projCardsFTSID, ddl: projectCardsFTSDDL},
+		{id: projThemesID, ddl: themesDDL},
+		{id: projSettingsID, ddl: settingsDDL},
 	}
 	for _, step := range steps {
 		ddl := step.ddl
@@ -687,6 +695,37 @@ END;
 INSERT INTO project_cards_fts(project_cards_fts) VALUES('rebuild');
 `
 
+// themesDDL is the proj-0007-themes step. A palette used to be a compiled
+// constant, which meant changing a colour meant a build. Here it is a row, and
+// the source column is what keeps a change: a builtin edited by hand becomes
+// 'sql' and the next seed skips it, so an upgrade stops overwriting the colour
+// somebody chose. It is local-only — nothing here syncs, because what the
+// screen looks like on this machine is not a fact about the work.
+const themesDDL = `
+CREATE TABLE IF NOT EXISTS themes (
+    name       TEXT    PRIMARY KEY
+               CHECK (name = lower(trim(name)) AND length(name) BETWEEN 1 AND 32),
+    variant    TEXT    NOT NULL DEFAULT 'dark' CHECK (variant IN ('dark','light')),
+    palette    TEXT    NOT NULL CHECK (json_valid(palette)),
+    builtin    INTEGER NOT NULL DEFAULT 0 CHECK (builtin IN (0,1)),
+    source     TEXT    NOT NULL DEFAULT 'builtin' CHECK (source IN ('builtin','json','sql')),
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+`
+
+// settingsDDL is the proj-0008-settings step. The interface had nowhere to
+// remember which project was open, which theme was chosen or how wide the last
+// window was, so it forgot on every start. These win over config.json: the
+// database is the source of truth, and the file stays a read-only legacy tier.
+const settingsDDL = `
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT    PRIMARY KEY
+               CHECK (key = lower(trim(key)) AND length(key) BETWEEN 1 AND 64),
+    value      TEXT    NOT NULL,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+`
+
 // projectsSchemaDropDDL removes every engram-projects object in dependency
 // order: FTS5 sync triggers first, then the FTS5 virtual tables, then the
 // contract and auxiliary tables (children before parents so foreign keys
@@ -718,6 +757,8 @@ DROP TABLE IF EXISTS evidence;
 DROP TABLE IF EXISTS runbook_index;
 DROP TABLE IF EXISTS tasks;
 DROP TABLE IF EXISTS project_cards;
+DROP TABLE IF EXISTS themes;
+DROP TABLE IF EXISTS settings;
 `
 
 // DropProjectsSchema is the explicit rollback path for the engram-projects
@@ -759,6 +800,8 @@ type ProjectsSchemaStatus struct {
 	TaskObservations int  `json:"task_observations"`
 	ProjectAliases   int  `json:"project_aliases"`
 	Benchmarks       int  `json:"benchmarks"`
+	Themes           int  `json:"themes"`
+	Settings         int  `json:"settings"`
 }
 
 // ProjectsSchemaStatus reads the current state of the engram-projects
@@ -797,6 +840,8 @@ func (s *Store) ProjectsSchemaStatus() (ProjectsSchemaStatus, error) {
 		{"task_observations", &status.TaskObservations},
 		{"project_aliases", &status.ProjectAliases},
 		{"benchmarks", &status.Benchmarks},
+		{"themes", &status.Themes},
+		{"settings", &status.Settings},
 	}
 	for _, c := range counts {
 		if err := s.db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", c.table)).Scan(c.dest); err != nil {
