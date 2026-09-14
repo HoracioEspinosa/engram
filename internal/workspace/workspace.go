@@ -316,7 +316,40 @@ func TaskDir(root string, t store.Task, o vault.Options) (string, error) {
 			return full, nil
 		}
 	}
+	// Last resort: a folder whose name merely leads with the ticket. Most task
+	// folders are named "<TICKET>-<what it was about>", and the store only
+	// records the ticket, so without this a task nobody has imported yet would
+	// never find its own knowledge.
+	if jira != "" {
+		for _, parent := range []string{filepath.Join(root, t.Project), root} {
+			if match := dirStartingWith(parent, jira+"-"); match != "" {
+				restricted, err := vault.IsRestricted(match, restrictedRoots(o))
+				if err != nil {
+					return "", err
+				}
+				if restricted {
+					return "", fmt.Errorf("%w: %s", ErrRestrictedPath, match)
+				}
+				return match, nil
+			}
+		}
+	}
 	return "", fmt.Errorf("%w: no folder for task %s under %s", ErrEvidenceRootUnresolved, taskLabel(t), root)
+}
+
+// dirStartingWith returns the first subdirectory of parent whose name begins
+// with prefix, in name order so two runs agree, or "" when there is none.
+func dirStartingWith(parent, prefix string) string {
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) {
+			return filepath.Join(parent, entry.Name())
+		}
+	}
+	return ""
 }
 
 // taskFolderNames lists the folder names a task may be filed under, most

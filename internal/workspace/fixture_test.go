@@ -139,10 +139,15 @@ func seedTask(t *testing.T, s *store.Store, project, jiraKey, slug, vaultPath st
 	t.Helper()
 	params := store.UpsertTaskParams{Project: project}
 	title := slug
+	if title == "" {
+		title = jiraKey
+	}
 	kind := "bugfix"
 	params.Title = &title
 	params.Kind = &kind
-	params.Slug = &slug
+	if slug != "" {
+		params.Slug = &slug
+	}
 	if vaultPath != "" {
 		params.VaultPath = &vaultPath
 	}

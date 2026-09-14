@@ -194,6 +194,26 @@ func TestTaskDirFallsBackToTheProjectFolder(t *testing.T) {
 	}
 }
 
+// TestTaskDirFindsAFolderLedByTheTicket pins the fallback that makes the scan
+// usable before anything has been imported: the store records only the ticket,
+// and the folder is named "<TICKET>-<what it was about>".
+func TestTaskDirFindsAFolderLedByTheTicket(t *testing.T) {
+	s := newStore(t)
+	root := newVault(t)
+	task := seedTask(t, s, "koi-garden", "KOI-1099", "", "")
+	task.Slug = nil
+	task.VaultPath = nil
+
+	dir, err := TaskDir(root, task, vault.Options{})
+	if err != nil {
+		t.Fatalf("TaskDir: %v", err)
+	}
+	want := filepath.Join(root, "koi-garden", "KOI-1099-lookup-timeout")
+	if dir != want {
+		t.Fatalf("TaskDir = %s, want %s", dir, want)
+	}
+}
+
 // TestTaskDirRefusesAPathOutsideTheVault pins that a vault path climbing out
 // of the root is refused rather than followed. The tasks table's own CHECK
 // already rejects such a path on the way in; this is the second line, for a
