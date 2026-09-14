@@ -50,6 +50,80 @@ type ProjectTreeSuggestion struct {
 	ParentExists bool     `json:"parent_exists"`
 }
 
+// ResolvedProjectCard is a card read through its ancestors: every pointer the
+// card left at its default is filled from the nearest ancestor that set one,
+// and Inherited names, per column, which ancestor it came from.
+type ResolvedProjectCard struct {
+	ProjectCard
+	Inherited map[string]string `json:"inherited,omitempty"`
+}
+
+// ResolveProjectCard returns the card for slug with the pointers an ancestor
+// already answered. Inheriting on read rather than copying on write is what
+// keeps one edit of an umbrella true for everything under it; a copy would
+// leave every instance holding a stale answer nobody remembers to refresh.
+//
+// The code-graph group is deliberately excluded. graph_commit, graph_built_at
+// and graph_summary describe one checkout on one machine, so borrowing the
+// umbrella's graph would tell an instance it has a graph it never built.
+func (s *Store) ResolveProjectCard(slug string) (ResolvedProjectCard, error) {
+	card, err := s.GetProjectCard(slug)
+	if err != nil {
+		return ResolvedProjectCard{}, err
+	}
+	resolved := ResolvedProjectCard{ProjectCard: card, Inherited: map[string]string{}}
+
+	defaultJira := DefaultJiraProject()
+	// A field is open while the card still holds the value the schema would
+	// have given it on its own; take returns false once it has been answered.
+	open := map[string]func(ProjectCard) bool{
+		"repo_url":           func(c ProjectCard) bool { return trimPtr(c.RepoURL) == nil },
+		"default_branch":     func(c ProjectCard) bool { return c.DefaultBranch == "" || c.DefaultBranch == "master" },
+		"jira_project":       func(c ProjectCard) bool { return c.JiraProject == "" || c.JiraProject == defaultJira || c.JiraProject == "PROJ" },
+		"jira_component":     func(c ProjectCard) bool { return trimPtr(c.JiraComponent) == nil },
+		"knowledge_hub_path": func(c ProjectCard) bool { return trimPtr(c.KnowledgeHubPath) == nil },
+		"graph_path":         func(c ProjectCard) bool { return c.GraphPath == "" || c.GraphPath == "graphify-out/graph.json" },
+		"owner":              func(c ProjectCard) bool { return trimPtr(c.Owner) == nil },
+	}
+	adopt := map[string]func(*ResolvedProjectCard, ProjectCard){
+		"repo_url":           func(r *ResolvedProjectCard, a ProjectCard) { r.RepoURL = a.RepoURL },
+		"default_branch":     func(r *ResolvedProjectCard, a ProjectCard) { r.DefaultBranch = a.DefaultBranch },
+		"jira_project":       func(r *ResolvedProjectCard, a ProjectCard) { r.JiraProject = a.JiraProject },
+		"jira_component":     func(r *ResolvedProjectCard, a ProjectCard) { r.JiraComponent = a.JiraComponent },
+		"knowledge_hub_path": func(r *ResolvedProjectCard, a ProjectCard) { r.KnowledgeHubPath = a.KnowledgeHubPath },
+		"graph_path":         func(r *ResolvedProjectCard, a ProjectCard) { r.GraphPath = a.GraphPath },
+		"owner":              func(r *ResolvedProjectCard, a ProjectCard) { r.Owner = a.Owner },
+	}
+
+	ancestor := card
+	for hop := 0; hop < maxProjectDepth; hop++ {
+		parentSlug := trimPtr(ancestor.ParentSlug)
+		if parentSlug == nil {
+			break
+		}
+		parent, err := s.GetProjectCard(*parentSlug)
+		if errors.Is(err, ErrNoProjectCard) {
+			break
+		}
+		if err != nil {
+			return ResolvedProjectCard{}, err
+		}
+		for field, isOpen := range open {
+			if !isOpen(resolved.ProjectCard) || isOpen(parent) {
+				continue
+			}
+			adopt[field](&resolved, parent)
+			resolved.Inherited[field] = parent.Slug
+		}
+		ancestor = parent
+	}
+
+	if len(resolved.Inherited) == 0 {
+		resolved.Inherited = nil
+	}
+	return resolved, nil
+}
+
 // SetProjectParent moves a card under parent, or to the top of the tree when
 // parent is nil, and rewrites the depth of everything below it.
 //
