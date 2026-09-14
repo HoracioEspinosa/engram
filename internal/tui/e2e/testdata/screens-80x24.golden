@@ -187,47 +187,45 @@
     j/k scroll • g/G top/bottom • e open in $EDITOR • t executions in Memory • …  
                                                                                   
 ═══ s10-memory ═══
-                                                                        
-  0  [1]  2  3  4  5                                                    
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-  ┌───────────────────────────┐                                         
-  │                           │                                         
-  │        12   sessions      │                                         
-  │       348   observations  │                                         
-  │        57   prompts       │                                         
-  │         2   projects      │                                         
-  │                           │                                         
-  └───────────────────────────┘                                         
-                                                                        
-    Projects                                                            
-                                                                        
-    • engram                                                            
-    • acme                                                              
-                                                                        
-    Actions                                                             
-                                                                        
-   ▸ Search memories                                                    
-      Recent observations                                               
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-                                                                        
+                                                        
+  0  [1]  2  3  4  5                                    
+                                                        
+  ╭──────────────────────────────────────────────────╮  
+  │         █████ █   █  ████ ████   ███  █   █      │  
+  │       ≈ █     ██  █ █     █   █ █   █ ██ ██      │  
+  │       ◈ ████  █ █ █ █  ██ ████  █████ █ █ █      │  
+  │       ≈ █     █  ██ █   █ █  █  █   █ █   █      │  
+  │         █████ █   █  ████ █   █ █   █ █   █      │  
+  │                                                  │  
+  │ engram 1.20.1-golden — An elephant never forgets │  
+  ╰──────────────────────────────────────────────────╯  
+                                                        
+                                                        
+  ┌───────────────────────────┐                         
+  │                           │                         
+  │        12   sessions      │                         
+  │       348   observations  │                         
+  │        57   prompts       │                         
+  │         2   projects      │                         
+  │                           │                         
+  └───────────────────────────┘                         
+                                                        
+    Projects                                            
+                                                        
+    • engram                                            
+    • acme                                              
+                                                        
+    Actions                                             
+                                                        
+   ▸ Search memories                                    
+      Recent observations                               
+      Browse sessions                                   
+      Setup agent plugin                                
+      Cloud sync settings                               
+      Quit                                              
+                                                        
+    j/k navigate • enter select • s search • q quit     
+                                                        
 ═══ s11-cloud ═══
                                               
   0  1  2  3  4  [5]                          

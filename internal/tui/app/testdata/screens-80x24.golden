@@ -1,227 +1,217 @@
 ═══ dashboard-loading ═══
-                                                                        
-  0  [1]  2  3  4  5                                                    
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-  ┌────────────────────┐                                                
-  │                    │                                                
-  │  Loading stats...  │                                                
-  │                    │                                                
-  └────────────────────┘                                                
-                                                                        
-    Actions                                                             
-                                                                        
-   ▸ Search memories                                                    
-      Recent observations                                               
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-                                                                        
+                                                        
+  0  [1]  2  3  4  5                                    
+                                                        
+  ╭──────────────────────────────────────────────────╮  
+  │         █████ █   █  ████ ████   ███  █   █      │  
+  │       ≈ █     ██  █ █     █   █ █   █ ██ ██      │  
+  │       ◈ ████  █ █ █ █  ██ ████  █████ █ █ █      │  
+  │       ≈ █     █  ██ █   █ █  █  █   █ █   █      │  
+  │         █████ █   █  ████ █   █ █   █ █   █      │  
+  │                                                  │  
+  │ engram 1.20.1-golden — An elephant never forgets │  
+  ╰──────────────────────────────────────────────────╯  
+                                                        
+                                                        
+  ┌────────────────────┐                                
+  │                    │                                
+  │  Loading stats...  │                                
+  │                    │                                
+  └────────────────────┘                                
+                                                        
+    Actions                                             
+                                                        
+   ▸ Search memories                                    
+      Recent observations                               
+      Browse sessions                                   
+      Setup agent plugin                                
+      Cloud sync settings                               
+      Quit                                              
+                                                        
+    j/k navigate • enter select • s search • q quit     
+                                                        
 ═══ dashboard ═══
-                                                                        
-  0  [1]  2  3  4  5                                                    
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-  ┌───────────────────────────┐                                         
-  │                           │                                         
-  │        12   sessions      │                                         
-  │       348   observations  │                                         
-  │        57   prompts       │                                         
-  │         6   projects      │                                         
-  │                           │                                         
-  └───────────────────────────┘                                         
-                                                                        
-    Projects                                                            
-                                                                        
-    • engram                                                            
-    • clarodrive                                                        
-    • middleware                                                        
-    • portal                                                            
-    • lookup                                                            
-      ...and 1 more projects                                            
-                                                                        
-    Actions                                                             
-                                                                        
-      Search memories                                                   
-   ▸ Recent observations                                                
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-                                                                        
+                                                        
+  0  [1]  2  3  4  5                                    
+                                                        
+  ╭──────────────────────────────────────────────────╮  
+  │         █████ █   █  ████ ████   ███  █   █      │  
+  │       ≈ █     ██  █ █     █   █ █   █ ██ ██      │  
+  │       ◈ ████  █ █ █ █  ██ ████  █████ █ █ █      │  
+  │       ≈ █     █  ██ █   █ █  █  █   █ █   █      │  
+  │         █████ █   █  ████ █   █ █   █ █   █      │  
+  │                                                  │  
+  │ engram 1.20.1-golden — An elephant never forgets │  
+  ╰──────────────────────────────────────────────────╯  
+                                                        
+                                                        
+  ┌───────────────────────────┐                         
+  │                           │                         
+  │        12   sessions      │                         
+  │       348   observations  │                         
+  │        57   prompts       │                         
+  │         6   projects      │                         
+  │                           │                         
+  └───────────────────────────┘                         
+                                                        
+    Projects                                            
+                                                        
+    • engram                                            
+    • clarodrive                                        
+    • middleware                                        
+    • portal                                            
+    • lookup                                            
+      ...and 1 more projects                            
+                                                        
+    Actions                                             
+                                                        
+      Search memories                                   
+   ▸ Recent observations                                
+      Browse sessions                                   
+      Setup agent plugin                                
+      Cloud sync settings                               
+      Quit                                              
+                                                        
+    j/k navigate • enter select • s search • q quit     
+                                                        
 ═══ dashboard-update-available ═══
-                                                                        
-  0  [1]  2  3  4  5                                                    
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-   Update available: 1.20.1 -> 1.21.0                                   
-                                                                        
-  ┌───────────────────────────┐                                         
-  │                           │                                         
-  │        12   sessions      │                                         
-  │       348   observations  │                                         
-  │        57   prompts       │                                         
-  │         6   projects      │                                         
-  │                           │                                         
-  └───────────────────────────┘                                         
-                                                                        
-    Projects                                                            
-                                                                        
-    • engram                                                            
-    • clarodrive                                                        
-    • middleware                                                        
-    • portal                                                            
-    • lookup                                                            
-      ...and 1 more projects                                            
-                                                                        
-    Actions                                                             
-                                                                        
-   ▸ Search memories                                                    
-      Recent observations                                               
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-                                                                        
+                                                        
+  0  [1]  2  3  4  5                                    
+                                                        
+  ╭──────────────────────────────────────────────────╮  
+  │         █████ █   █  ████ ████   ███  █   █      │  
+  │       ≈ █     ██  █ █     █   █ █   █ ██ ██      │  
+  │       ◈ ████  █ █ █ █  ██ ████  █████ █ █ █      │  
+  │       ≈ █     █  ██ █   █ █  █  █   █ █   █      │  
+  │         █████ █   █  ████ █   █ █   █ █   █      │  
+  │                                                  │  
+  │ engram 1.20.1-golden — An elephant never forgets │  
+  ╰──────────────────────────────────────────────────╯  
+                                                        
+                                                        
+   Update available: 1.20.1 -> 1.21.0                   
+                                                        
+  ┌───────────────────────────┐                         
+  │                           │                         
+  │        12   sessions      │                         
+  │       348   observations  │                         
+  │        57   prompts       │                         
+  │         6   projects      │                         
+  │                           │                         
+  └───────────────────────────┘                         
+                                                        
+    Projects                                            
+                                                        
+    • engram                                            
+    • clarodrive                                        
+    • middleware                                        
+    • portal                                            
+    • lookup                                            
+      ...and 1 more projects                            
+                                                        
+    Actions                                             
+                                                        
+   ▸ Search memories                                    
+      Recent observations                               
+      Browse sessions                                   
+      Setup agent plugin                                
+      Cloud sync settings                               
+      Quit                                              
+                                                        
+    j/k navigate • enter select • s search • q quit     
+                                                        
 ═══ dashboard-update-failed ═══
-                                                                        
-  0  [1]  2  3  4  5                                                    
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-   Could not check for updates: GitHub took too long to respond.        
-                                                                        
-  ┌───────────────────────────┐                                         
-  │                           │                                         
-  │        12   sessions      │                                         
-  │       348   observations  │                                         
-  │        57   prompts       │                                         
-  │         6   projects      │                                         
-  │                           │                                         
-  └───────────────────────────┘                                         
-                                                                        
-    Projects                                                            
-                                                                        
-    • engram                                                            
-    • clarodrive                                                        
-    • middleware                                                        
-    • portal                                                            
-    • lookup                                                            
-      ...and 1 more projects                                            
-                                                                        
-    Actions                                                             
-                                                                        
-   ▸ Search memories                                                    
-      Recent observations                                               
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-                                                                        
+                                                                   
+  0  [1]  2  3  4  5                                               
+                                                                   
+  ╭──────────────────────────────────────────────────╮             
+  │         █████ █   █  ████ ████   ███  █   █      │             
+  │       ≈ █     ██  █ █     █   █ █   █ ██ ██      │             
+  │       ◈ ████  █ █ █ █  ██ ████  █████ █ █ █      │             
+  │       ≈ █     █  ██ █   █ █  █  █   █ █   █      │             
+  │         █████ █   █  ████ █   █ █   █ █   █      │             
+  │                                                  │             
+  │ engram 1.20.1-golden — An elephant never forgets │             
+  ╰──────────────────────────────────────────────────╯             
+                                                                   
+                                                                   
+   Could not check for updates: GitHub took too long to respond.   
+                                                                   
+  ┌───────────────────────────┐                                    
+  │                           │                                    
+  │        12   sessions      │                                    
+  │       348   observations  │                                    
+  │        57   prompts       │                                    
+  │         6   projects      │                                    
+  │                           │                                    
+  └───────────────────────────┘                                    
+                                                                   
+    Projects                                                       
+                                                                   
+    • engram                                                       
+    • clarodrive                                                   
+    • middleware                                                   
+    • portal                                                       
+    • lookup                                                       
+      ...and 1 more projects                                       
+                                                                   
+    Actions                                                        
+                                                                   
+   ▸ Search memories                                               
+      Recent observations                                          
+      Browse sessions                                              
+      Setup agent plugin                                           
+      Cloud sync settings                                          
+      Quit                                                         
+                                                                   
+    j/k navigate • enter select • s search • q quit                
+                                                                   
 ═══ dashboard-with-error ═══
-                                                                        
-  0  [1]  2  3  4  5                                                    
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-  ┌───────────────────────────┐                                         
-  │                           │                                         
-  │        12   sessions      │                                         
-  │       348   observations  │                                         
-  │        57   prompts       │                                         
-  │         6   projects      │                                         
-  │                           │                                         
-  └───────────────────────────┘                                         
-                                                                        
-    Projects                                                            
-                                                                        
-    • engram                                                            
-    • clarodrive                                                        
-    • middleware                                                        
-    • portal                                                            
-    • lookup                                                            
-      ...and 1 more projects                                            
-                                                                        
-    Actions                                                             
-                                                                        
-   ▸ Search memories                                                    
-      Recent observations                                               
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-   Error: database is locked                                            
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-                                                                        
+                                                        
+  0  [1]  2  3  4  5                                    
+                                                        
+  ╭──────────────────────────────────────────────────╮  
+  │         █████ █   █  ████ ████   ███  █   █      │  
+  │       ≈ █     ██  █ █     █   █ █   █ ██ ██      │  
+  │       ◈ ████  █ █ █ █  ██ ████  █████ █ █ █      │  
+  │       ≈ █     █  ██ █   █ █  █  █   █ █   █      │  
+  │         █████ █   █  ████ █   █ █   █ █   █      │  
+  │                                                  │  
+  │ engram 1.20.1-golden — An elephant never forgets │  
+  ╰──────────────────────────────────────────────────╯  
+                                                        
+                                                        
+  ┌───────────────────────────┐                         
+  │                           │                         
+  │        12   sessions      │                         
+  │       348   observations  │                         
+  │        57   prompts       │                         
+  │         6   projects      │                         
+  │                           │                         
+  └───────────────────────────┘                         
+                                                        
+    Projects                                            
+                                                        
+    • engram                                            
+    • clarodrive                                        
+    • middleware                                        
+    • portal                                            
+    • lookup                                            
+      ...and 1 more projects                            
+                                                        
+    Actions                                             
+                                                        
+   ▸ Search memories                                    
+      Recent observations                               
+      Browse sessions                                   
+      Setup agent plugin                                
+      Cloud sync settings                               
+      Quit                                              
+                                                        
+   Error: database is locked                            
+                                                        
+    j/k navigate • enter select • s search • q quit     
+                                                        
 ═══ search-empty-input ═══
                                                                     
   0  [1]  2  3  4  5                                                
