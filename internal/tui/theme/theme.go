@@ -6,11 +6,7 @@
 // workspace without touching a single view.
 package theme
 
-import (
-	"strings"
-
-	"github.com/charmbracelet/lipgloss"
-)
+import "github.com/charmbracelet/lipgloss"
 
 // logoRows is the number of gradient stops the wordmark needs, one per row of
 // the ASCII logo.
@@ -204,48 +200,6 @@ var registry = map[string]func() Palette{
 // DefaultThemeName is the palette the workspace opens on when nothing else
 // has an opinion.
 const DefaultThemeName = "koi-pond"
-
-// pickName returns the first non-blank candidate among flag, env and config,
-// in that precedence order, or "" if all three are blank. Resolve and
-// UnknownName both build on it so the two never disagree on which tier won.
-func pickName(flag, env, config string) string {
-	for _, candidate := range []string{flag, env, config} {
-		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}
-
-// Resolve picks a palette by name from flag, env or config, in that order of
-// precedence — the first non-blank one wins outright, with no fallthrough to
-// a lower tier if it turns out invalid. A blank or unrecognised name at the
-// winning tier resolves to DefaultThemeName, never to a lower tier's value,
-// so a typo in --theme cannot silently fall back to whatever
-// ENGRAM_TUI_THEME happens to hold.
-func Resolve(flag, env, config string) Palette {
-	ctor, ok := registry[pickName(flag, env, config)]
-	if !ok {
-		ctor = registry[DefaultThemeName]
-	}
-	return ctor()
-}
-
-// UnknownName reports the winning candidate among flag, env and config when
-// it is non-blank and not a registered palette, so a caller can warn before
-// Resolve silently falls back to DefaultThemeName. It returns "" when the
-// winning candidate is blank, or already valid, in which case no warning is
-// warranted.
-func UnknownName(flag, env, config string) string {
-	name := pickName(flag, env, config)
-	if name == "" {
-		return ""
-	}
-	if _, ok := registry[name]; ok {
-		return ""
-	}
-	return name
-}
 
 // Styles is every style the TUI renders with, built once from a Palette and
 // then copied by value into each tab.

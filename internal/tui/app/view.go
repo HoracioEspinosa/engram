@@ -21,6 +21,10 @@ func (m Model) View() string {
 		}
 	}
 
+	if m.themePicker.open {
+		body = m.viewThemePicker()
+	}
+
 	if m.showHelp {
 		// The "?" overlay (rfc-tui.md §7.1) replaces the body outright
 		// rather than compositing over it: bubbles has no layering

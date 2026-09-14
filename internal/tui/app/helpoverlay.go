@@ -76,7 +76,11 @@ func (m Model) viewHelpOverlay() string {
 	h.Styles.FullDesc = m.styles.DetailValue
 	h.Styles.FullSeparator = m.styles.Help
 
-	km := rootHelpKeyMap{global: globalHelpBindings(), screen: m.activeScreenHelp()}
+	// The theme picker's binding is appended here rather than kept in the
+	// global key map, because it is the overlay's own key and the overlay
+	// owns it — this is the one place the chrome has to admit it exists.
+	global := append(globalHelpBindings(), themePickerKeys.Open)
+	km := rootHelpKeyMap{global: global, screen: m.activeScreenHelp()}
 
 	return m.styles.Title.Render("Help") + "\n" +
 		h.View(km) + "\n" +
