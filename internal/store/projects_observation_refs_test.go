@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // seedLinkedObservation writes one observation carrying a graph reference and
 // returns its numeric id.
@@ -115,5 +118,52 @@ func TestListObservationRefsOfAProjectWithNoneIsAnEmptyPage(t *testing.T) {
 	}
 	if page.Total != 0 || len(page.Items) != 0 {
 		t.Fatalf("page = %+v, want an empty one", page)
+	}
+}
+
+// TestLinkTaskObservationRejectsAShortGraphCommit pins the refusal that used to
+// be a silent drop: observation_refs.graph_commit is CHECKed at exactly 40
+// characters, and INSERT OR IGNORE skipped the offending row without a word, so
+// the caller was told the link succeeded while the reference it asked for was
+// never written.
+func TestLinkTaskObservationRejectsAShortGraphCommit(t *testing.T) {
+	s := newTestStore(t)
+	id := seedLinkedObservation(t, s, "koi-garden", "the pond lookup", "", "")
+	task := seedTask(t, s, "koi-garden", UpsertTaskParams{JiraKey: strPtr("KOI-1099"), Title: strPtr("Lookup")})
+
+	short := "1111111"
+	_, err := s.LinkTaskObservation(LinkTaskObservationParams{
+		Task: task, ObservationID: id, GraphRef: strPtr("pkg/pond.Lookup"), GraphCommit: &short,
+	})
+	if !errors.Is(err, ErrGraphCommitNotFullSHA) {
+		t.Fatalf("LinkTaskObservation(short sha) = %v, want ErrGraphCommitNotFullSHA", err)
+	}
+
+	// Nothing was written: not the ref, and not the link either.
+	refs, err := s.ListObservationRefs("koi-garden", "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListObservationRefs: %v", err)
+	}
+	if refs.Total != 0 {
+		t.Fatalf("refs = %+v, want none after a rejected link", refs.Items)
+	}
+	counts, err := s.TaskCounts(task.ID)
+	if err != nil {
+		t.Fatalf("TaskCounts: %v", err)
+	}
+	if counts.Observations != 0 {
+		t.Fatalf("task holds %d observations, want none after a rejected link", counts.Observations)
+	}
+
+	// The full form is accepted, and writes both rows.
+	full := "1111111111111111111111111111111111111111"
+	res, err := s.LinkTaskObservation(LinkTaskObservationParams{
+		Task: task, ObservationID: id, GraphRef: strPtr("pkg/pond.Lookup"), GraphCommit: &full,
+	})
+	if err != nil {
+		t.Fatalf("LinkTaskObservation(full sha): %v", err)
+	}
+	if !res.Linked || res.RefsAdded != 1 {
+		t.Fatalf("result = %+v, want one link and one ref", res)
 	}
 }

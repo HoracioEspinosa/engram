@@ -194,6 +194,44 @@ func TestTaskLink_UnknownTask(t *testing.T) {
 	}
 }
 
+// TestTaskLink_ShortGraphCommitIsTyped pins the report for an abbreviated SHA.
+// The column takes exactly 40 characters, and the tool used to answer "linked"
+// while the reference the caller asked for was silently dropped.
+func TestTaskLink_ShortGraphCommitIsTyped(t *testing.T) {
+	s := newMCPTestStore(t)
+	cfg := MCPConfig{DefaultProject: "nextcloud"}
+	callProjectTool(t, handleTaskUpsert(s, cfg), map[string]any{"jira_key": "PROJ-1", "title": "t", "kind": "bugfix"})
+
+	if err := s.CreateSession("s1", "nextcloud", ""); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	obsID, err := s.AddObservation(store.AddObservationParams{
+		SessionID: "s1", Type: "manual", Title: "t", Content: "c", Project: "nextcloud"})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	res := callProjectTool(t, handleTaskLink(s, cfg), map[string]any{
+		"task": "PROJ-1", "observation_id": float64(obsID),
+		"graph_ref": "pkg/lookup.Resolve", "graph_commit": "1111111",
+	})
+	if !res.IsError || callResultJSON(t, res)["code"] != "graph_commit_invalid" {
+		t.Fatalf("expected graph_commit_invalid, got %v", callResultJSON(t, res))
+	}
+
+	ok := callProjectTool(t, handleTaskLink(s, cfg), map[string]any{
+		"task": "PROJ-1", "observation_id": float64(obsID),
+		"graph_ref": "pkg/lookup.Resolve", "graph_commit": "1111111111111111111111111111111111111111",
+	})
+	if ok.IsError {
+		t.Fatalf("a full sha must be accepted: %v", callResultJSON(t, ok))
+	}
+	result := callResultJSON(t, ok)["result"].(map[string]any)
+	if int(result["refs_added"].(float64)) != 1 {
+		t.Fatalf("refs_added = %v, want the graph reference written", result)
+	}
+}
+
 // ─── mem_evidence_add / mem_evidence_list ────────────────────────────────────
 
 // TestEvidenceAdd_RejectsDirBasenameGuess ties the ADR-057 write-decider rule

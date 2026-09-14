@@ -741,6 +741,13 @@ func (s *Store) LinkTaskObservation(p LinkTaskObservationParams) (LinkTaskObserv
 		if p.GraphCommit == nil || strings.TrimSpace(*p.GraphCommit) == "" {
 			return LinkTaskObservationResult{}, ErrGraphCommitRequired
 		}
+		// The column is CHECKed at exactly 40 characters and the insert below
+		// ignores conflicts, so an abbreviated SHA used to be dropped without a
+		// word: the caller was told the link succeeded while the reference it
+		// asked for was never written.
+		if !isFullGitSHA(strings.TrimSpace(*p.GraphCommit)) {
+			return LinkTaskObservationResult{}, ErrGraphCommitNotFullSHA
+		}
 		candidates = append(candidates, refCandidate{"graph", *p.GraphRef, p.GraphCommit})
 	}
 	if p.RunbookID != nil && strings.TrimSpace(*p.RunbookID) != "" {

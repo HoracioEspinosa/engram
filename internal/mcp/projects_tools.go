@@ -1087,6 +1087,9 @@ func handleTaskLink(s *store.Store, cfg MCPConfig) server.ToolHandlerFunc {
 			return projectToolError("cross_project_link", "observation and task belong to different projects", nil), nil
 		case errors.Is(err, store.ErrGraphCommitRequired):
 			return projectToolError("graph_commit_required", "graph_ref requires graph_commit", nil), nil
+		case errors.Is(err, store.ErrGraphCommitNotFullSHA):
+			return projectToolError("graph_commit_invalid", err.Error(),
+				map[string]any{"hint": "pass the full 40-character commit sha, as git rev-parse HEAD prints it"}), nil
 		case err != nil:
 			if refErr := knowledgeRefToolError(err); refErr != nil {
 				return refErr, nil
