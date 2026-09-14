@@ -34,6 +34,9 @@ const (
 	// summary, a note for what is left, the folder it lives in, a parent task,
 	// and the three states the vault README already uses.
 	projTasksRebuildID = "proj-0003-tasks-rebuild"
+	// projEvidenceRebuildID gives evidence the category the vault files it
+	// under and widens kind to the file types people actually capture.
+	projEvidenceRebuildID = "proj-0004-evidence-rebuild"
 )
 
 // projectsHierarchyDDL is the proj-0001-cards-hierarchy step. It is written as
@@ -97,6 +100,7 @@ END;
 var projectsSchemaTriggers = []string{
 	"tasks_fts_insert", "tasks_fts_delete", "tasks_fts_update",
 	"runbook_fts_insert", "runbook_fts_delete", "runbook_fts_update",
+	"evidence_fts_insert", "evidence_fts_delete", "evidence_fts_update",
 }
 
 // projectsSchemaDDL creates the engram-projects extension schema: the five
@@ -384,9 +388,21 @@ func (s *Store) migrateProjectsToV3() error {
 	// The rebuilds go through s.rebuild, which copies the whole file first:
 	// the old table is gone by the time anything downstream can fail, so there
 	// is nothing left to roll back to without one.
-	return s.rebuild(projTasksRebuildID, func() error {
-		return s.rebuildTable(tasksRebuildDDL)
-	})
+	rebuilds := []struct {
+		id  string
+		ddl string
+	}{
+		{projTasksRebuildID, tasksRebuildDDL},
+		{projEvidenceRebuildID, evidenceRebuildDDL},
+	}
+	for _, step := range rebuilds {
+		if err := s.rebuild(step.id, func() error {
+			return s.rebuildTable(step.ddl)
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // tasksRebuildDDL replaces tasks with its version-3 shape. A rebuild rather
@@ -480,6 +496,88 @@ END;
 INSERT INTO tasks_fts(tasks_fts) VALUES('rebuild');
 `
 
+// evidenceRebuildDDL replaces evidence with its version-3 shape.
+//
+// Two closed lists change at once. category did not exist, and the vault has
+// been filing captures under eleven of them all along — without the column, a
+// scan can register what it found but not where it belongs. And kind accepted
+// six file types, which is fewer than a capture session produces in an
+// afternoon: a .webp screenshot or a .har trace had to be logged as something
+// it is not, or not logged at all. `other` is the escape hatch, so an unusual
+// extension degrades to a truthful label instead of a wrong one.
+//
+// Existing rows take the default category. `evidences` is the right default
+// rather than a guess: it is the category the capture flow has always written
+// into, and inferring anything else from a path would be inventing history.
+const evidenceRebuildDDL = `
+CREATE TABLE evidence_rebuild (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    sync_id                 TEXT    NOT NULL UNIQUE,
+    project                 TEXT    NOT NULL REFERENCES project_cards(slug)
+                                    ON DELETE RESTRICT ON UPDATE CASCADE,
+    task_id                 INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    task_sync_id            TEXT    NOT NULL REFERENCES tasks(sync_id) ON DELETE CASCADE,
+    path                    TEXT    NOT NULL
+                            CHECK (length(trim(path)) > 0 AND path NOT LIKE '/%' AND path NOT LIKE '~%'),
+    sha256                  TEXT    NOT NULL
+                            CHECK (length(sha256) = 64 AND sha256 = lower(sha256)),
+    category                TEXT    NOT NULL DEFAULT 'evidences'
+                            CHECK (category IN ('analysis','plans','runbooks','reports','patches',
+                                                'evidences','evidences-qa','benchmarks','scripts',
+                                                'assets','exports')),
+    kind                    TEXT    NOT NULL
+                            CHECK (kind IN ('png','jpg','gif','webp','svg','mp4','webm','json','csv',
+                                            'log','txt','md','patch','diff','pdf','html','zip','har','other')),
+    proves                  TEXT    NOT NULL CHECK (length(trim(proves)) > 0),
+    config_stamp            TEXT,
+    captured_at             TEXT    NOT NULL,
+    attached_jira           INTEGER NOT NULL DEFAULT 0 CHECK (attached_jira IN (0, 1)),
+    attached_confluence_url TEXT,
+    size_bytes              INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0),
+    manifest_path           TEXT,
+    created_at              TEXT    NOT NULL DEFAULT (datetime('now')),
+    deleted_at              TEXT,
+    UNIQUE (task_sync_id, sha256)
+);
+
+INSERT INTO evidence_rebuild
+    (id, sync_id, project, task_id, task_sync_id, path, sha256, category, kind, proves,
+     config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes,
+     manifest_path, created_at, deleted_at)
+SELECT id, sync_id, project, task_id, task_sync_id, path, sha256, 'evidences', kind, proves,
+       config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes,
+       manifest_path, created_at, deleted_at
+FROM evidence;
+
+DROP TABLE evidence;
+ALTER TABLE evidence_rebuild RENAME TO evidence;
+
+CREATE INDEX IF NOT EXISTS idx_evidence_task     ON evidence(task_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_evidence_project  ON evidence(project, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_evidence_category ON evidence(project, category, captured_at DESC);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS evidence_fts USING fts5(
+    path, proves, category, kind, project,
+    content='evidence', content_rowid='id'
+);
+CREATE TRIGGER IF NOT EXISTS evidence_fts_insert AFTER INSERT ON evidence BEGIN
+    INSERT INTO evidence_fts(rowid, path, proves, category, kind, project)
+    VALUES (new.id, new.path, new.proves, new.category, new.kind, new.project);
+END;
+CREATE TRIGGER IF NOT EXISTS evidence_fts_delete AFTER DELETE ON evidence BEGIN
+    INSERT INTO evidence_fts(evidence_fts, rowid, path, proves, category, kind, project)
+    VALUES ('delete', old.id, old.path, old.proves, old.category, old.kind, old.project);
+END;
+CREATE TRIGGER IF NOT EXISTS evidence_fts_update AFTER UPDATE ON evidence BEGIN
+    INSERT INTO evidence_fts(evidence_fts, rowid, path, proves, category, kind, project)
+    VALUES ('delete', old.id, old.path, old.proves, old.category, old.kind, old.project);
+    INSERT INTO evidence_fts(rowid, path, proves, category, kind, project)
+    VALUES (new.id, new.path, new.proves, new.category, new.kind, new.project);
+END;
+
+INSERT INTO evidence_fts(evidence_fts) VALUES('rebuild');
+`
+
 // projectAliasesDDL is the proj-0002-project-aliases step. An alias is a name
 // that resolves to a project, never a rename: nothing historical moves, so a
 // tool configured years ago against the old spelling keeps working while the
@@ -507,6 +605,10 @@ CREATE INDEX IF NOT EXISTS idx_project_aliases_slug ON project_aliases(slug);
 // never block the drop). No upstream table is touched.
 const projectsSchemaDropDDL = `
 DROP TRIGGER IF EXISTS project_cards_depth_ck;
+DROP TRIGGER IF EXISTS evidence_fts_update;
+DROP TRIGGER IF EXISTS evidence_fts_delete;
+DROP TRIGGER IF EXISTS evidence_fts_insert;
+DROP TABLE IF EXISTS evidence_fts;
 DROP TRIGGER IF EXISTS runbook_fts_update;
 DROP TRIGGER IF EXISTS runbook_fts_delete;
 DROP TRIGGER IF EXISTS runbook_fts_insert;
