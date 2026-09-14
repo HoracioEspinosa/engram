@@ -13,6 +13,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/cloud"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/evidence"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/home"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/memory"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/runbooks"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/tasks"
@@ -23,17 +24,7 @@ import (
 
 // registered lists the tabs this build implements, in tab-bar order. The IDs
 // tabs declares but that no sub-model implements yet are simply absent.
-var registered = []tabs.ID{tabs.Memory, tabs.Tasks, tabs.Evidence, tabs.Runbooks, tabs.Cloud}
-
-// screen is the active screen: either a tab from the bar or the dashboard for
-// the active project. The project tree is not one of these: it is an overlay
-// composited over whatever is showing, not a screen that replaces it.
-type screen int
-
-const (
-	screenTab screen = iota
-	screenDashboard
-)
+var registered = []tabs.ID{tabs.Home, tabs.Memory, tabs.Tasks, tabs.Evidence, tabs.Runbooks, tabs.Cloud}
 
 // Model is the root workspace model.
 //
@@ -48,7 +39,7 @@ type Model struct {
 	height int
 
 	active   tabs.ID
-	screen   screen
+	home     home.Model
 	memory   memory.Model
 	tasks    tasks.Model
 	evidence evidence.Model
@@ -70,8 +61,7 @@ type Model struct {
 	// tree is the ctrl+p project tree. Like showHelp and themePicker it is
 	// root state: it rescopes every tab at once, which is something only the
 	// root can do.
-	tree      treeModel
-	dashboard dashboardModel
+	tree treeModel
 
 	// showHelp toggles the "?" overlay (rfc-tui.md §7.1). It is root state,
 	// not per-tab: closing it always returns to whatever screen was showing
@@ -84,15 +74,12 @@ type Model struct {
 	themePicker themePickerModel
 }
 
-// New builds the root workspace around the readers its screens consume: mem
-// feeds the Memory tab, projects feeds the selector and the dashboard (and
-// the Runbooks tab's "o" hub lookup), task feeds the Tasks tab,
-// evidenceReader feeds the Evidence tab, runbookReader feeds the Runbooks
-// tab. initialProject, when set, opens the workspace on that project's
-// dashboard and scopes the Tasks, Evidence and Runbooks tabs to it — see
-// tasks.Model's WithProject, which the selector's "enter" key calls again on
-// every later project switch, and evidence.Model's and runbooks.Model's own
-// WithProject alongside it.
+// New builds the root workspace around the readers its tabs consume: mem feeds
+// the Memory tab, projects feeds Home (and the Runbooks tab's "o" hub
+// lookup), task feeds the Tasks tab, evidenceReader feeds the Evidence tab,
+// runbookReader feeds the Runbooks tab. initialProject, when set, scopes Home,
+// Tasks, Evidence, Runbooks and Memory to it; without one the workspace opens
+// on the project tree so there is something to pick.
 //
 // The root never opens or wraps a store itself; whoever builds it decides
 // which store backs each reader, so a tab can never end up bound to a
@@ -100,28 +87,24 @@ type Model struct {
 func New(mem data.MemorySource, projects data.ProjectReader, task data.TaskSource, evidenceReader data.EvidenceSource, runbookReader data.RunbookSource, version string, styles theme.Styles, initialProject string) Model {
 	m := Model{
 		version:     version,
-		active:      tabs.Memory,
+		active:      tabs.Home,
 		projects:    projects,
 		project:     initialProject,
+		home:        home.New(projects).WithProject(initialProject),
 		memory:      memory.New(mem, version).WithTasks(task).WithProject(initialProject),
 		tasks:       tasks.New(task).WithProject(initialProject),
 		evidence:    evidence.New(evidenceReader).WithProject(initialProject),
 		runbooks:    runbooks.New(runbookReader, projects).WithProject(initialProject),
 		cloud:       cloud.New(),
 		tree:        newTreeModel(nil),
-		dashboard:   newDashboardModel(projects, initialProject),
 		themePicker: newThemePickerModel(styles),
 	}
 	m = m.withStyles(styles)
 
-	// With a project resolved the workspace opens on its dashboard; without
-	// one it opens on the project tree (rfc-tui.md §9.1: "sin proyecto
-	// resoluble se abre S1"), composited over the tab underneath so closing it
-	// lands somewhere real.
-	if initialProject != "" {
-		m.screen = screenDashboard
-	} else {
-		m.screen = screenTab
+	// Without a resolvable project the workspace opens on the project tree
+	// (rfc-tui.md §9.1: "sin proyecto resoluble se abre S1"), composited over
+	// Home so closing it lands somewhere real.
+	if initialProject == "" {
 		m.tree.open = true
 	}
 
@@ -138,6 +121,20 @@ func (m Model) WithUpdateChecker(check memory.UpdateChecker) Model {
 	return m
 }
 
+// WithGraph binds Home's graph block to its reader and to the syncer "s"
+// runs. A workspace built without them still opens; the block then says the
+// graph has never been read.
+func (m Model) WithGraph(reader data.GraphReader, syncer data.GraphSyncer) Model {
+	m.home = m.home.WithGraph(reader, syncer)
+	return m
+}
+
+// WithBenchmarks binds Home's benchmarks block to its reader.
+func (m Model) WithBenchmarks(reader data.BenchmarkReader) Model {
+	m.home = m.home.WithBenchmarks(reader)
+	return m
+}
+
 // withStyles returns a copy of the root repainted in a style set, with every
 // tab repainted alongside it.
 //
@@ -148,6 +145,7 @@ func (m Model) WithUpdateChecker(check memory.UpdateChecker) Model {
 // any test of that tab alone.
 func (m Model) withStyles(s theme.Styles) Model {
 	m.styles = s
+	m.home = m.home.WithStyles(s)
 	m.memory = m.memory.WithStyles(s)
 	m.tasks = m.tasks.WithStyles(s)
 	m.evidence = m.evidence.WithStyles(s)
@@ -160,15 +158,11 @@ func (m Model) withStyles(s theme.Styles) Model {
 // Init loads every tab's first screen and switches the terminal to the
 // alternate screen buffer.
 func (m Model) Init() tea.Cmd {
-	cmds := make([]tea.Cmd, 0, len(registered)+2)
+	cmds := make([]tea.Cmd, 0, len(registered)+3)
 	for _, id := range registered {
 		if tab := m.tab(id); tab != nil {
 			cmds = append(cmds, tab.Init())
 		}
-	}
-	// If starting on the dashboard, load it.
-	if m.screen == screenDashboard && m.project != "" {
-		cmds = append(cmds, loadDashboard(m.projects, m.project))
 	}
 	if cmd := loadAncestors(m.treeReader, m.project); cmd != nil {
 		cmds = append(cmds, cmd)
@@ -187,6 +181,8 @@ func (m Model) Init() tea.Cmd {
 // implements no tab for it.
 func (m Model) tab(id tabs.ID) tabs.Tab {
 	switch id {
+	case tabs.Home:
+		return m.home
 	case tabs.Memory:
 		return m.memory
 	case tabs.Tasks:
@@ -206,6 +202,10 @@ func (m Model) tab(id tabs.ID) tabs.Tab {
 // mis-registered tab from corrupting the root.
 func (m Model) withTab(id tabs.ID, t tabs.Tab) Model {
 	switch id {
+	case tabs.Home:
+		if updated, ok := t.(home.Model); ok {
+			m.home = updated
+		}
 	case tabs.Memory:
 		if updated, ok := t.(memory.Model); ok {
 			m.memory = updated

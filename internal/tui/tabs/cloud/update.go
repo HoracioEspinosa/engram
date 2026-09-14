@@ -41,5 +41,5 @@ func (m Model) leave() (tabs.Tab, tea.Cmd) {
 	m.Cursor = 0
 	// Home, not Memory: the root decides where home is. With a project active
 	// that is its dashboard, and only without one does it fall back to Memory.
-	return m, tabs.Home()
+	return m, tabs.Navigate(tabs.Home)
 }

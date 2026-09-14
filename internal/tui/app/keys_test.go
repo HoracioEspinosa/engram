@@ -35,9 +35,10 @@ func keyMsg(k string) tea.KeyMsg {
 // state every global binding is meant to work from.
 func onTab(active tabs.ID) Model {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen, m.tree.open = screenTab, false
+	m.tree.open = false
 	m.active = active
 	m.project = "nextcloud"
+	m.home = m.home.WithProject("nextcloud")
 	return m
 }
 
@@ -73,15 +74,22 @@ func TestEveryGlobalKeyIsRoutedThroughTheKeymap(t *testing.T) {
 			},
 		},
 		{
-			name:    "dashboard",
-			binding: globalKeys.Dashboard,
-			assert: func(t *testing.T, _, after Model, cmd tea.Cmd) {
-				if after.screen != screenDashboard {
-					t.Fatalf("screen = %v, want screenDashboard", after.screen)
+			name:    "switch tab",
+			binding: globalKeys.SwitchTab,
+			assert: func(t *testing.T, before, after Model, _ tea.Cmd) {
+				// Every digit is one slot of the bar. It either activates the
+				// tab behind that slot or, for a slot this build implements
+				// no tab for, is swallowed; what it must never do is reach
+				// the tab on screen.
+				if after.active == before.active {
+					return
 				}
-				if cmd == nil {
-					t.Fatal("opening the dashboard should load it")
+				for _, id := range digitTabs {
+					if after.active == id {
+						return
+					}
 				}
+				t.Fatalf("a digit moved the workspace to %v, which no bar slot names", after.active)
 			},
 		},
 		{
@@ -158,9 +166,10 @@ func TestRefreshReloadsTheDashboardAndTheProjectTree(t *testing.T) {
 	refresh := keyMsg(globalKeys.Refresh.Keys()[0])
 
 	m := onTab(tabs.Tasks)
-	m.screen, m.tree.open = screenDashboard, false
+	m.tree.open, m.active = false, tabs.Home
+	m.home = m.home.WithProject("nextcloud")
 	if _, cmd := step(t, m, refresh); cmd == nil {
-		t.Fatal("refresh on the dashboard issued no reload")
+		t.Fatal("refresh on Home issued no reload")
 	}
 
 	m = onTab(tabs.Tasks)
@@ -197,23 +206,6 @@ func TestLowercasePReachesEvidenceDetail(t *testing.T) {
 	}
 }
 
-// TestDashboardHAndLNoLongerMoveTheCursor pins the reservation: the blocks
-// are stacked, so h/l are free for horizontal focus and mean nothing here.
-func TestDashboardHAndLNoLongerMoveTheCursor(t *testing.T) {
-	for _, k := range []string{"h", "l"} {
-		t.Run(k, func(t *testing.T) {
-			m := onTab(tabs.Tasks)
-			m.screen, m.tree.open = screenDashboard, false
-			m.dashboard.cursor = dashBlockRunbooks
-
-			after, _ := step(t, m, keyMsg(k))
-			if after.dashboard.cursor != dashBlockRunbooks {
-				t.Fatalf("cursor moved to %v, want it left on %v", after.dashboard.cursor, dashBlockRunbooks)
-			}
-		})
-	}
-}
-
 // TestFooterMatchesHelp walks every screen the root can draw and checks that
 // the footer says nothing the screen has not declared in Help(). The eight
 // hand-written footers this replaces had already drifted: they named keys the
@@ -224,7 +216,7 @@ func TestFooterMatchesHelp(t *testing.T) {
 		build func() Model
 	}{
 		{"project tree", func() Model { m := onTab(tabs.Memory); m.tree.open = true; return m }},
-		{"dashboard", func() Model { m := onTab(tabs.Memory); m.screen, m.tree.open = screenDashboard, false; return m }},
+		{"home", func() Model { m := onTab(tabs.Memory); m.tree.open, m.active = false, tabs.Home; return m }},
 		{"memory", func() Model { return onTab(tabs.Memory) }},
 		{"tasks", func() Model { return onTab(tabs.Tasks) }},
 		{"evidence", func() Model { return onTab(tabs.Evidence) }},

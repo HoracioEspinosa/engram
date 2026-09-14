@@ -6,6 +6,8 @@
 package tui
 
 import (
+	"os"
+
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/app"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
@@ -43,5 +45,25 @@ func New(s *store.Store, version string, project string, palette theme.Palette) 
 		data.NewSettingsWriter(s),
 	).WithProjectTree(
 		data.NewProjectTreeReader(s),
+	).WithGraph(
+		data.NewGraphReader(s),
+		// The graph is read and rebuilt against a git checkout, and the TUI
+		// detects none of its own: whoever launched it is standing in the
+		// repository they mean, the same assumption `engram project graph
+		// sync` makes when no --repo-dir is given. A working directory that
+		// cannot be read leaves the syncer pointed at "", which reports a
+		// missing checkout rather than syncing the wrong one.
+		data.NewGraphSyncer(s, workingDir()),
+	).WithBenchmarks(
+		data.NewBenchmarkReader(s),
 	)
+}
+
+// workingDir is the checkout the graph syncer resolves graph.json and git HEAD
+// against. os.Getwd already answers "" when it cannot say, which is exactly
+// the "no checkout" the syncer reports on, so the error needs no second
+// translation here.
+func workingDir() string {
+	dir, _ := os.Getwd()
+	return dir
 }

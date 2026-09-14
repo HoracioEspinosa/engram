@@ -13,10 +13,9 @@ type globalKeyMap struct {
 	// the copy-path action on Evidence's detail, and a global that moved
 	// between screens to make room was a rule nobody could remember.
 	ProjectSelector key.Binding
-	// Dashboard opens S2, the active project's Project Dashboard.
-	Dashboard key.Binding
-	// SwitchTab activates Memory, Tasks, Evidence, Runbooks or Cloud
-	// directly by digit.
+	// SwitchTab activates any tab directly by its digit. Home is "0": it
+	// is a tab like the rest now, not a screen the root draws itself, so it
+	// needs no binding of its own.
 	SwitchTab key.Binding
 	// NextTab and PrevTab cycle registered, wrapping at either end.
 	NextTab key.Binding
@@ -41,13 +40,9 @@ var globalKeys = globalKeyMap{
 		key.WithKeys("ctrl+p"),
 		key.WithHelp("ctrl+p", "project"),
 	),
-	Dashboard: key.NewBinding(
-		key.WithKeys("0"),
-		key.WithHelp("0", "dashboard"),
-	),
 	SwitchTab: key.NewBinding(
-		key.WithKeys("1", "2", "3", "4", "5"),
-		key.WithHelp("1-5", "tabs"),
+		key.WithKeys("0", "1", "2", "3", "4", "5", "6", "7"),
+		key.WithHelp("0-7", "tabs"),
 	),
 	NextTab: key.NewBinding(
 		key.WithKeys("tab"),
@@ -78,7 +73,6 @@ func globalHelpBindings() []key.Binding {
 	return []key.Binding{
 		globalKeys.SwitchTab,
 		globalKeys.NextTab,
-		globalKeys.Dashboard,
 		globalKeys.ProjectSelector,
 		globalKeys.Refresh,
 		globalKeys.ThemePicker,

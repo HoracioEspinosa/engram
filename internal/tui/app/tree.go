@@ -8,6 +8,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -449,7 +450,7 @@ func (m Model) updateProjectTree(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
 		}
 		// A focused text input owns the keyboard, the same rule the tabs play
 		// by (rfc-tui.md §7.1).
-		if tab := m.tab(m.active); tab != nil && tab.CapturingText() && m.screen == screenTab {
+		if tab := m.tab(m.active); tab != nil && tab.CapturingText() {
 			return false, m, nil
 		}
 		return true, m.openProjectTree(), loadTree(m.tree.reader)
@@ -539,8 +540,8 @@ func (m Model) openProjectTree() Model {
 func (m Model) openProject(slug string) (tea.Model, tea.Cmd) {
 	m.project = slug
 	m.tree.open = false
-	m.screen = screenDashboard
-	m.dashboard = newDashboardModel(m.projects, slug)
+	m.active = tabs.Home
+	m.home = m.home.WithProject(slug)
 	m.tasks = m.tasks.WithProject(slug)
 	m.evidence = m.evidence.WithProject(slug)
 	m.runbooks = m.runbooks.WithProject(slug)
@@ -548,7 +549,8 @@ func (m Model) openProject(slug string) (tea.Model, tea.Cmd) {
 	m.ancestors = nil
 	// Nothing any tab is holding belongs to the project now active.
 	m.freshness = m.freshness.invalidateAll()
-	return m, tea.Batch(loadDashboard(m.projects, slug), loadAncestors(m.treeReader, slug))
+	m.freshness = m.freshness.loaded(tabs.Home)
+	return m, tea.Batch(m.home.Refresh(), loadAncestors(m.treeReader, slug))
 }
 
 // ─── View ────────────────────────────────────────────────────────────────────

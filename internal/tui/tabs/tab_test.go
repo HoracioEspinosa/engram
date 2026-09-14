@@ -3,7 +3,9 @@ package tabs
 import "testing"
 
 func TestIDsAreDistinctAndOrdered(t *testing.T) {
-	ids := []ID{Memory, Tasks, Evidence, Runbooks, Cloud}
+	// The order is the bar's order, and Cloud trails it: that tab owns no
+	// slot, because its settings belong under Settings.
+	ids := []ID{Home, Memory, Tasks, Evidence, Benchmarks, Runbooks, Graph, Settings, Cloud}
 
 	seen := map[ID]bool{}
 	for _, id := range ids {
@@ -13,8 +15,8 @@ func TestIDsAreDistinctAndOrdered(t *testing.T) {
 		seen[id] = true
 	}
 
-	if Memory != 0 {
-		t.Fatalf("Memory = %d, want 0: it is the tab the workspace opens on", Memory)
+	if Home != 0 {
+		t.Fatalf("Home = %d, want 0: it is the tab the workspace opens on", Home)
 	}
 	for i := 1; i < len(ids); i++ {
 		if ids[i] <= ids[i-1] {
@@ -25,12 +27,16 @@ func TestIDsAreDistinctAndOrdered(t *testing.T) {
 
 func TestIDString(t *testing.T) {
 	cases := map[ID]string{
-		Memory:   "memory",
-		Tasks:    "tasks",
-		Evidence: "evidence",
-		Runbooks: "runbooks",
-		Cloud:    "cloud",
-		ID(99):   "unknown",
+		Home:       "home",
+		Memory:     "memory",
+		Tasks:      "tasks",
+		Evidence:   "evidence",
+		Benchmarks: "benchmarks",
+		Runbooks:   "runbooks",
+		Graph:      "graph",
+		Settings:   "settings",
+		Cloud:      "cloud",
+		ID(99):     "unknown",
 	}
 	for id, want := range cases {
 		if got := id.String(); got != want {
@@ -141,15 +147,19 @@ func TestNavigateToObservationEmitsAMemoryTargetWithTheObservationID(t *testing.
 	}
 }
 
-// TestHomeEmitsHomeMsg pins the "go home" command the root's HomeMsg branch
-// answers to (the Dashboard when a project is active, Memory otherwise):
-// same gap as NavigateToObservation, a real command nothing called directly.
-func TestHomeEmitsHomeMsg(t *testing.T) {
-	cmd := Home()
+// TestGoingHomeIsAPlainNavigation pins that "go home" needs no message of its
+// own any more: Home is a tab, so the tabs that offer a way back name it the
+// same way every other cross-tab jump does.
+func TestGoingHomeIsAPlainNavigation(t *testing.T) {
+	cmd := Navigate(Home)
 	if cmd == nil {
-		t.Fatal("Home should return a non-nil command")
+		t.Fatal("Navigate should return a non-nil command")
 	}
-	if _, ok := cmd().(HomeMsg); !ok {
-		t.Fatalf("command returned %T, want HomeMsg", cmd())
+	msg, ok := cmd().(NavigateMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want NavigateMsg", cmd())
+	}
+	if msg.Target != Home {
+		t.Fatalf("Target = %v, want Home", msg.Target)
 	}
 }

@@ -218,7 +218,7 @@ func (m Model) handleIndexKeys(key string) (tabs.Tab, tea.Cmd) {
 			return m, tabs.NavigateToMemorySearch("runbook/" + m.Items[m.Cursor].ID)
 		}
 	case "esc", "q":
-		return m, tabs.Home()
+		return m, tabs.Navigate(tabs.Home)
 	}
 	return m, nil
 }

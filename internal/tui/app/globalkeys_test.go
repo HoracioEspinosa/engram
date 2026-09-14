@@ -10,82 +10,97 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// TestDigitKeysSwitchTabsAndRefresh pins rfc-tui.md §7.1: "1"…"5" activate
-// Memory, Tasks, Evidence, Runbooks and Cloud respectively and trigger the
-// target's Refresh(), from any other tab.
+// TestDigitKeysSwitchTabsAndRefresh pins §6.9's bar: each digit activates the
+// tab that owns that slot and triggers its Refresh(), from any other tab. The
+// slots this build implements no tab for ("4", "6", "7") are covered by
+// TestDigitKeysForAnUnimplementedSlotStayPut.
 func TestDigitKeysSwitchTabsAndRefresh(t *testing.T) {
 	cases := []struct {
 		digit string
 		want  tabs.ID
 	}{
+		{"0", tabs.Home},
 		{"1", tabs.Memory},
 		{"2", tabs.Tasks},
 		{"3", tabs.Evidence},
-		{"4", tabs.Runbooks},
-		{"5", tabs.Cloud},
+		{"5", tabs.Runbooks},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.digit, func(t *testing.T) {
 			m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-			// New now opens the project tree without a resolvable project
-			// (T-10.02); every case here assumes it is already on a tab.
-			m.screen, m.tree.open = screenTab, false
-			// Start on a different tab than the target so the assertion means
-			// something even for "1" (already Memory's own digit).
+			// New opens the project tree without a resolvable project; every
+			// case here assumes it is already on a tab.
+			m.tree.open = false
+			m.project = "nextcloud"
+			m.home = m.home.WithProject("nextcloud")
+			// Start on a tab other than the target so the assertion means
+			// something even for a digit that names the tab already active.
 			m.active = tabs.Cloud
-			if tc.want == tabs.Cloud {
-				m.active = tabs.Memory
-			}
 
 			m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(tc.digit)})
 			if m.active != tc.want {
 				t.Fatalf("active = %v, want %v", m.active, tc.want)
 			}
-			if m.screen != screenTab {
-				t.Fatalf("screen = %v, want screenTab", m.screen)
-			}
-			// Cloud's Refresh() has nothing to reload (its own menu is
-			// static — TestNavigateSwitchesTabsAndRefreshesTheTarget pins
-			// the same nil for NavigateMsg), so only the other four tabs
-			// are expected to issue a load.
-			if cmd == nil && tc.want != tabs.Cloud {
+			if cmd == nil {
 				t.Fatal("switching tabs should reload the target")
 			}
 		})
 	}
 }
 
-// TestDigitKeysSwitchTabsFromTheDashboardToo pins the Dashboard's own footer
-// (rfc-tui.md §5's S2 wireframe: "1-5 tabs"): the digits work from the
-// Project Dashboard exactly like they do from any tab.
-func TestDigitKeysSwitchTabsFromTheDashboardToo(t *testing.T) {
+// TestDigitKeysSwitchTabsFromHomeToo pins that Home is not special: the
+// digits work from it exactly like they do from any other tab.
+func TestDigitKeysSwitchTabsFromHomeToo(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
-	m.screen, m.tree.open = screenDashboard, false
+	m.tree.open, m.active = false, tabs.Home
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
-	if m.active != tabs.Evidence || m.screen != screenTab {
-		t.Fatalf("active = %v screen = %v, want Evidence/screenTab", m.active, m.screen)
+	if m.active != tabs.Evidence {
+		t.Fatalf("active = %v, want Evidence", m.active)
 	}
 	if cmd == nil {
-		t.Fatal("switching tabs from the dashboard should reload the target")
+		t.Fatal("switching tabs from Home should reload the target")
+	}
+}
+
+// TestDigitKeysForAnUnimplementedSlotStayPut pins the other half of the bar's
+// contract: a slot owns its digit whether or not this build has a tab behind
+// it, so the digit is swallowed rather than leaking into the tab on screen.
+func TestDigitKeysForAnUnimplementedSlotStayPut(t *testing.T) {
+	for _, digit := range []string{"4", "6", "7"} {
+		t.Run(digit, func(t *testing.T) {
+			m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+			m.tree.open = false
+			m.active = tabs.Tasks
+
+			m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(digit)})
+			if m.active != tabs.Tasks {
+				t.Fatalf("active = %v, want Tasks: %q names a tab this build does not implement", m.active, digit)
+			}
+			if cmd != nil {
+				t.Fatalf("%q should produce no command", digit)
+			}
+		})
 	}
 }
 
 // TestTabKeyAdvancesToTheNextRegisteredTab and
 // TestShiftTabGoesToThePreviousRegisteredTab pin rfc-tui.md §7.1's
 // "Tab / Shift+Tab | Pestaña siguiente / anterior", cycling through
-// registered (Memory, Tasks, Evidence, Runbooks, Cloud) and wrapping at
+// registered (Home, Memory, Tasks, Evidence, Runbooks, Cloud) and wrapping at
 // either end.
 func TestTabKeyAdvancesToTheNextRegisteredTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
-	m.active = tabs.Cloud                    // last in registered order
+	m.tree.open = false
+	m.project = "nextcloud"
+	m.home = m.home.WithProject("nextcloud")
+	m.active = tabs.Cloud // last in registered order
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	if m.active != tabs.Memory {
-		t.Fatalf("active = %v, want Memory (wrapping past Cloud)", m.active)
+	if m.active != tabs.Home {
+		t.Fatalf("active = %v, want Home (wrapping past Cloud)", m.active)
 	}
 	if cmd == nil {
 		t.Fatal("advancing tabs should reload the target")
@@ -94,15 +109,15 @@ func TestTabKeyAdvancesToTheNextRegisteredTab(t *testing.T) {
 
 func TestShiftTabGoesToThePreviousRegisteredTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
-	m.active = tabs.Memory                   // first in registered order
+	m.tree.open = false
+	m.active = tabs.Home // first in registered order
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyShiftTab})
 	if m.active != tabs.Cloud {
-		t.Fatalf("active = %v, want Cloud (wrapping before Memory)", m.active)
+		t.Fatalf("active = %v, want Cloud (wrapping before Home)", m.active)
 	}
-	// Cloud's Refresh() has nothing to reload (see
-	// TestDigitKeysSwitchTabsAndRefresh's "5" case), so no cmd assertion here.
+	// Cloud's Refresh() has nothing to reload — its menu is static — so there
+	// is no command to assert on here.
 }
 
 // TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText pins rfc-tui.md
@@ -111,7 +126,7 @@ func TestShiftTabGoesToThePreviousRegisteredTab(t *testing.T) {
 // never switch tabs.
 func TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Tasks
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
@@ -130,7 +145,7 @@ func TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 // value to type, but it must still not steal focus mid-search.
 func TestTabKeyIsSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Runbooks
 	m.runbooks.Searching = true
 	m.runbooks.SearchInput.Focus()
@@ -167,7 +182,7 @@ func TestDigitKeysDoNothingOnTheProjectTree(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoMemorysOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Memory
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
@@ -178,29 +193,29 @@ func TestDigitDoesNotLeakIntoMemorysOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoTasksOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Tasks
 
-	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("5")})
 	if m.active != tabs.Runbooks {
-		t.Fatalf("active = %v, want Runbooks: Tasks has no local use for \"4\"", m.active)
+		t.Fatalf("active = %v, want Runbooks: Tasks has no local use for \"5\"", m.active)
 	}
 }
 
 func TestDigitDoesNotLeakIntoEvidencesOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Evidence
 
-	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("5")})
-	if m.active != tabs.Cloud {
-		t.Fatalf("active = %v, want Cloud: Evidence has no local use for \"5\"", m.active)
+	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	if m.active != tabs.Tasks {
+		t.Fatalf("active = %v, want Tasks: Evidence has no local use for \"2\"", m.active)
 	}
 }
 
 func TestDigitDoesNotLeakIntoRunbooksOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Runbooks
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
@@ -211,7 +226,7 @@ func TestDigitDoesNotLeakIntoRunbooksOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoCloudsOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Cloud
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
@@ -232,14 +247,14 @@ func TestDigitDoesNotLeakIntoCloudsOwnHandling(t *testing.T) {
 func TestZeroAndPAreAlsoSuspendedWhileCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
-	m.screen, m.tree.open = screenTab, false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // T-10.02: New alone no longer guarantees this
 	m.active = tabs.Tasks
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("0")})
-	if m.screen == screenDashboard {
-		t.Fatal("\"0\" typed into a focused search box must not switch to the dashboard")
+	if m.active == tabs.Home {
+		t.Fatal("\"0\" typed into a focused search box must not switch to Home")
 	}
 	if got := m.tasks.SearchInput.Value(); got != "0" {
 		t.Fatalf("tasks search input = %q, want the digit to have reached it", got)

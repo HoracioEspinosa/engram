@@ -336,7 +336,7 @@ func renderScene(t *testing.T, scene goldenScene, size goldenSize) string {
 	// New now opens the project tree without a resolvable project (T-10.02);
 	// every scene here is a tab screen (Memory's own sub-screens, or Cloud),
 	// so that is set explicitly rather than relied on as New's default.
-	m.screen, m.tree.open = screenTab, false
+	m.tree.open = false
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: size.width, Height: size.height})
 	m = sized.(Model)
 	m = scene.build(m)

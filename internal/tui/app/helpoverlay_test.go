@@ -40,7 +40,7 @@ func TestHelpOverlayContentTracksTheActiveScreen(t *testing.T) {
 	m.active = tabs.Tasks
 	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is being on a tab already.
-	m.screen, m.tree.open = screenTab, false
+	m.tree.open = false
 	m, _ = step(t, m, questionMark())
 	tasksHelp := m.View()
 	if !strings.Contains(tasksHelp, "state filter") {
@@ -161,7 +161,7 @@ func TestHelpIsSuspendedWhileCapturingText(t *testing.T) {
 	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is being on the Tasks tab already, so that is set
 	// explicitly rather than relied on as New's default.
-	m.screen, m.tree.open = screenTab, false
+	m.tree.open = false
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
 
@@ -179,7 +179,7 @@ func TestHelpIsSuspendedWhileCapturingText(t *testing.T) {
 func TestHelpOverlayOpensFromTheDashboard(t *testing.T) {
 	dash := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	dash.project = "nextcloud"
-	dash.screen, dash.tree.open = screenDashboard, false
+	dash.tree.open, dash.active = false, tabs.Home
 	dash, _ = step(t, dash, questionMark())
 	if !dash.showHelp {
 		t.Fatal("\"?\" should open help from the Dashboard")
@@ -205,7 +205,7 @@ func TestAnOpenOverlayKeepsTheQuestionMark(t *testing.T) {
 func TestHelpOverlayKeepsTheBodyVisible(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.KoiPond()), "")
 	m.active = tabs.Tasks
-	m.screen, m.tree.open = screenTab, false
+	m.tree.open = false
 	m.width, m.height = 120, 40
 
 	beneath := ansi.Strip(m.View())
@@ -215,7 +215,7 @@ func TestHelpOverlayKeepsTheBodyVisible(t *testing.T) {
 	// on every tab screen and has nothing to do with the help panel itself.
 	// Both ends of it are checked, so the panel is shown to be sitting in
 	// the middle of a row the body still owns rather than on top of the lot.
-	for _, mark := range []string{"0 Dashboard", "5 Cloud"} {
+	for _, mark := range []string{"0 Home", "6 Graph"} {
 		if !strings.Contains(beneath, mark) {
 			t.Fatalf("the screen under the overlay has no %q to begin with:\n%s", mark, beneath)
 		}

@@ -42,7 +42,7 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 			// (T-10.02); this case's premise is being on tc.active's root
 			// screen already, so that is set explicitly rather than relied
 			// on as New's default.
-			m.screen, m.tree.open = screenTab, false
+			m.tree.open = false
 
 			var msg tea.KeyMsg
 			if tc.key == "esc" {
@@ -56,25 +56,17 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 				t.Fatalf("%v's root screen should emit tabs.Home() on %q", tc.active, tc.key)
 			}
 			m, _ = step(t, m, cmd())
-			if m.screen != screenDashboard {
-				t.Fatalf("screen = %v, want screenDashboard: a project is active, so home is the Project Dashboard", m.screen)
+			if m.active != tabs.Home {
+				t.Fatalf("active = %v, want Home: a project is active, so home is its own tab", m.active)
 			}
 		})
 	}
 }
 
-// TestQQuitsFromTheDashboard pins rfc-tui.md §7.1's other half:
-// "en el Dashboard sale" — and S1's own footer, "q quit", the same one
-// place a project workspace has nowhere further "back" to go. Regression,
-// not new: both already returned tea.Quit before this task.
-func TestQQuitsFromTheDashboard(t *testing.T) {
-	dash := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	dash.project = "nextcloud"
-	dash.screen, dash.tree.open = screenDashboard, false
-	if _, cmd := step(t, dash, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd == nil {
-		t.Fatal("q on the dashboard should quit")
-	}
-
+// TestQDoesNotQuitFromAnOverlay pins that "q" belongs to the screen, not to
+// the chrome. Home answers neither "q" nor "esc": it is where the other
+// tabs send the reader back to, so there is nothing further back to go.
+func TestQDoesNotQuitFromAnOverlay(t *testing.T) {
 	// The project tree overlay does not answer "q": with it open the letter is
 	// a filter candidate, and quitting from the one screen that can give the
 	// workspace a project would strand the reader.
@@ -100,7 +92,7 @@ func TestMemorysOwnDashboardQuitsDirectlyNotHome(t *testing.T) {
 	// premise is being on Memory's own dashboard already, so that is set
 	// explicitly rather than relied on as New's default.
 	m.tree.open = false
-	m.screen, m.tree.open = screenTab, false
+	m.tree.open = false
 
 	if _, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd == nil {
 		t.Fatal("q on Memory's own dashboard should still quit directly, unchanged by this task")

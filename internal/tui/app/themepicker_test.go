@@ -271,6 +271,7 @@ func TestEveryTabRepaintsOnThemeSwap(t *testing.T) {
 	m, _, _ := pickerFixture(t)
 
 	paletteOf := map[tabs.ID]func(Model) string{
+		tabs.Home:     func(m Model) string { return m.home.Styles().Palette.Name },
 		tabs.Memory:   func(m Model) string { return m.memory.Styles().Palette.Name },
 		tabs.Tasks:    func(m Model) string { return m.tasks.Styles().Palette.Name },
 		tabs.Evidence: func(m Model) string { return m.evidence.Styles().Palette.Name },
@@ -408,7 +409,7 @@ func TestPickerReloadsFromTheStore(t *testing.T) {
 // keystroke meant for a search box.
 func TestCtrlTIsSuspendedWhileATabCapturesText(t *testing.T) {
 	m, _, _ := pickerFixture(t)
-	m.screen, m.tree.open = screenTab, false
+	m.tree.open = false
 	m.active = tabs.Tasks
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
@@ -428,7 +429,7 @@ func TestCtrlTIsSuspendedWhileATabCapturesText(t *testing.T) {
 // would name keys that answer to nothing while it is open.
 func TestThemePickerTakesTheScreenAndCarriesItsOwnFooter(t *testing.T) {
 	m, _, _ := pickerFixture(t)
-	m.screen, m.tree.open = screenTab, false
+	m.tree.open = false
 	m.active = tabs.Memory
 
 	beneath := ansi.Strip(m.View())

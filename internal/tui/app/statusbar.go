@@ -168,10 +168,10 @@ func (m Model) hintsSegment() (shared.Segment, bool) {
 // syncSegment reports the active project's sync lifecycle, in the store's own
 // vocabulary — the TUI renders what the store says and never recomputes it.
 func (m Model) syncSegment() (shared.Segment, bool) {
-	if m.dashboard.slug == "" && m.project == "" {
+	if m.project == "" {
 		return shared.Segment{}, false
 	}
-	sync := m.dashboard.health.Sync
+	sync := m.home.Health().Sync
 	if !sync.Enrolled {
 		return shared.Segment{}, false
 	}

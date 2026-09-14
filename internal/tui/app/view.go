@@ -8,22 +8,18 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// View draws the application frame around the active screen's body. The
-// persistent tab bar (rfc-tui.md §5, §7) sits above the Dashboard and every
-// tab.
+// View draws the application frame around the active tab's body. The
+// persistent tab bar (rfc-tui.md §5, §7) sits above every one of them.
 //
-// The footer belongs to the frame, not to the screen: it is rendered here
-// from whatever the active screen declares in Help(), so a screen names its
+// The status bar belongs to the frame, not to the tab: its hints are rendered
+// here from whatever the active tab declares in Help(), so a tab names its
 // keys once and never prints them.
 func (m Model) View() string {
-	var body string
-
-	if m.screen == screenDashboard {
-		body = m.viewTabBar() + "\n" + m.viewDashboard()
-	} else if tab := m.tab(m.active); tab == nil {
-		body = m.viewTabBar() + "\n" + "Unknown tab"
+	body := m.viewTabBar() + "\n"
+	if tab := m.tab(m.active); tab == nil {
+		body += "Unknown tab"
 	} else {
-		body = m.viewTabBar() + "\n" + tab.View()
+		body += tab.View()
 	}
 
 	// Every overlay carries its own hints: the screen underneath is not

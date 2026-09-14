@@ -66,8 +66,8 @@ func TestBackItemLeavesTheTab(t *testing.T) {
 		t.Fatal("enter on Back should ask the root to go home")
 	}
 	// Back goes home, the same as esc: the root picks the destination.
-	if _, ok := cmd().(tabs.HomeMsg); !ok {
-		t.Fatalf("enter on Back should emit HomeMsg, got %#v", cmd())
+	if _, ok := cmd().(tabs.NavigateMsg); !ok {
+		t.Fatalf("enter on Back should emit a NavigateMsg to Home, got %#v", cmd())
 	}
 	if updated.Cursor != 0 {
 		t.Fatalf("cursor should rewind to 0 on leaving, got %d", updated.Cursor)
@@ -101,8 +101,8 @@ func TestEscAndQLeaveTheTab(t *testing.T) {
 			}
 			// Home rather than a fixed tab: the root sends the user to the
 			// active project's dashboard, and only to Memory when none is.
-			if _, ok := cmd().(tabs.HomeMsg); !ok {
-				t.Fatalf("%q should emit HomeMsg, got %#v", key, cmd())
+			if _, ok := cmd().(tabs.NavigateMsg); !ok {
+				t.Fatalf("%q should emit a NavigateMsg to Home, got %#v", key, cmd())
 			}
 			if updated.Cursor != 0 {
 				t.Fatalf("cursor should rewind to 0 on leaving, got %d", updated.Cursor)

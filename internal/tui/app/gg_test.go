@@ -59,24 +59,3 @@ func TestGAndCapitalGAreSuspendedByTheProjectTreesFilterInput(t *testing.T) {
 		t.Fatalf("filter input = %q, want the letter to have reached it", got)
 	}
 }
-
-// TestGAndCapitalGJumpToTheEndsOfTheDashboardBlocks pins the same rule
-// applied to the Project Dashboard's three-block cursor (rfc-tui.md §5's
-// S2: recent tasks, stale runbooks, latest evidence).
-func TestGAndCapitalGJumpToTheEndsOfTheDashboardBlocks(t *testing.T) {
-	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.project = "nextcloud"
-	m.screen, m.tree.open = screenDashboard, false
-	m.dashboard = newDashboardModel(nil, "nextcloud")
-	m.dashboard.cursor = dashBlockRunbooks
-
-	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	if m.dashboard.cursor != dashBlockEvidence {
-		t.Fatalf("cursor = %v, want the last block (evidence)", m.dashboard.cursor)
-	}
-
-	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
-	if m.dashboard.cursor != dashBlockTasks {
-		t.Fatalf("cursor = %v, want the first block (tasks)", m.dashboard.cursor)
-	}
-}

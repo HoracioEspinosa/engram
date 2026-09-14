@@ -249,15 +249,22 @@ func TestEnterScopesTheWholeWorkspaceToTheProjectUnderTheCursor(t *testing.T) {
 	if m.tree.open {
 		t.Error("choosing a project should close the overlay")
 	}
-	if m.screen != screenDashboard {
-		t.Errorf("screen = %v, want the project's dashboard", m.screen)
+	if m.active != tabs.Home {
+		t.Errorf("active = %v, want the project's own Home tab", m.active)
+	}
+	if m.home.Project() != "clarodrive-api" {
+		t.Errorf("Home is still scoped to %q", m.home.Project())
 	}
 	if cmd == nil {
-		t.Error("choosing a project should load its dashboard")
+		t.Error("choosing a project should load Home")
 	}
 	// Nothing any tab is holding belongs to the project now active, so every
-	// one of them has to reload before it is shown again.
+	// one of them has to reload before it is shown again. Home is the
+	// exception: it is the tab being opened, and its reload is in flight.
 	for _, id := range registered {
+		if id == tabs.Home {
+			continue
+		}
 		if !m.freshness.stale(id, time.Now()) {
 			t.Errorf("the %s tab was left holding the previous project's data", id)
 		}

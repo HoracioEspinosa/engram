@@ -202,7 +202,7 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 		m.Filter.Limit = limit
 		return m, loadTasks(m.reader, m.project, m.Filter)
 	case "esc", "q":
-		return m, tabs.Home()
+		return m, tabs.Navigate(tabs.Home)
 	}
 	return m, nil
 }

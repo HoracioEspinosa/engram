@@ -137,7 +137,7 @@ func teatestScreens() []teatestScreen {
 			},
 		},
 		{
-			name:           "s2-project-dashboard",
+			name:           "home",
 			initialProject: "acme",
 			initialWaitFor: "Fix the preview timeout",
 		},
@@ -192,14 +192,14 @@ func teatestScreens() []teatestScreen {
 			name:           "s8-runbooks-index",
 			initialProject: "acme",
 			steps: []teatestStep{
-				{key: keyRune("4"), waitFor: "RB-900"},
+				{key: keyRune("5"), waitFor: "RB-900"},
 			},
 		},
 		{
 			name:           "s9-runbooks-markdown",
 			initialProject: "acme",
 			steps: []teatestStep{
-				{key: keyRune("4"), waitFor: "RB-900"},
+				{key: keyRune("5"), waitFor: "RB-900"},
 				{key: teatestEnterKey, waitFor: "Restart the preview worker pool"},
 			},
 		},
@@ -214,7 +214,9 @@ func teatestScreens() []teatestScreen {
 			name:           "s11-cloud",
 			initialProject: "acme",
 			steps: []teatestStep{
-				{key: keyRune("5"), waitFor: "Configure server"},
+				// Cloud owns no digit: it is last in the cycle, so shift+tab
+				// from Home (first) wraps straight onto it.
+				{key: tea.KeyMsg{Type: tea.KeyShiftTab}, waitFor: "Configure server"},
 			},
 		},
 	}
@@ -224,7 +226,7 @@ func teatestScreens() []teatestScreen {
 // reader the workspace consumes — the same data.Fake* seam every tabs/*
 // Update test already uses, just wired through the real root instead of a
 // leaf tab.
-func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook, tree *data.FakeProjectTree) {
+func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook, tree *data.FakeProjectTree, graph *data.FakeGraph, bench *data.FakeBenchmark) {
 	t.Helper()
 	seedVaultFixture(t)
 	// Evidence's detail screen (S7) renders an absolute filesystem path
@@ -321,8 +323,30 @@ func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakePro
 		AncestorsBySlug: map[string][]data.ProjectNode{"acme-api": {acmeRoot}, "acme-web": {acmeRoot}},
 	}
 
-	return mem, projects, task, ev, rb, tree
+	// A graph the store has already judged stale, with the reason it gave:
+	// Home prints that string literally rather than forming a verdict of its
+	// own, and the scene is where that is visible.
+	graph = &data.FakeGraph{StateByProject: map[string]data.GraphState{"acme": {
+		Project: "acme", Commit: strings.Repeat("c", 40), BuiltAt: "2026-01-14 08:00:00",
+		Nodes: 1284, Edges: 3901, Communities: 17,
+		Stale: true, StaleReason: "code_changed", ChangedFiles: 6,
+	}}}
+
+	bench = &data.FakeBenchmark{ByProject: map[string][]data.Benchmark{"acme": {
+		{BenchmarkDelta: store.BenchmarkDelta{
+			Benchmark:     store.Benchmark{Name: "cold start", Metric: "p95", Unit: "ms", Value: 812, Direction: store.BenchmarkDirectionLower},
+			BaselineValue: float64Ptr(940), DeltaPct: float64Ptr(-13.6),
+		}},
+		{BenchmarkDelta: store.BenchmarkDelta{
+			Benchmark:     store.Benchmark{Name: "throughput", Metric: "rps", Unit: "ops", Value: 412, Direction: store.BenchmarkDirectionHigher},
+			BaselineValue: float64Ptr(500), DeltaPct: float64Ptr(-17.6),
+		}},
+	}}}
+
+	return mem, projects, task, ev, rb, tree, graph, bench
 }
+
+func float64Ptr(v float64) *float64 { return &v }
 
 // seedVaultFixture points ENGRAM_VAULT_ROOT at a temp directory holding
 // RB-900's body, the same fixture pattern
@@ -400,10 +424,12 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 	t.Helper()
 	t.Setenv("ENGRAM_TIMEZONE", "UTC")
 
-	mem, projects, task, ev, rb, tree := teatestFixtures(t)
+	mem, projects, task, ev, rb, tree, graph, bench := teatestFixtures(t)
 	m := app.New(mem, projects, task, ev, rb, e2eVersion, theme.Default(), screen.initialProject).
 		WithUpdateChecker(quietUpdateCheck).
-		WithProjectTree(tree)
+		WithProjectTree(tree).
+		WithGraph(graph, graph).
+		WithBenchmarks(bench)
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(size.width, size.height))
 	var buf strings.Builder
