@@ -216,9 +216,11 @@ func (s *Store) ListEvidence(project string, f EvidenceListFilter) ([]EvidenceLi
 	}
 	whereSQL := strings.Join(where, " AND ")
 
+	rdb := s.readDB()
+
 	var total int
 	var totalBytes sql.NullInt64
-	if err := s.db.QueryRow(`SELECT COUNT(*), SUM(e.size_bytes) FROM evidence e WHERE `+whereSQL, args...).
+	if err := rdb.QueryRow(`SELECT COUNT(*), SUM(e.size_bytes) FROM evidence e WHERE `+whereSQL, args...).
 		Scan(&total, &totalBytes); err != nil {
 		return nil, 0, 0, fmt.Errorf("engram-projects: count evidence: %w", err)
 	}
@@ -228,7 +230,7 @@ func (s *Store) ListEvidence(project string, f EvidenceListFilter) ([]EvidenceLi
 		limit = 50
 	}
 	listArgs := append(append([]any{}, args...), limit, f.Offset)
-	rows, err := s.db.Query(`
+	rows, err := rdb.Query(`
 		SELECT e.id, e.sync_id, e.project, e.task_id, e.task_sync_id, e.path, e.sha256, e.kind, e.proves, e.config_stamp,
 		       e.captured_at, e.attached_jira, e.attached_confluence_url, e.size_bytes, e.manifest_path,
 		       t.jira_key, t.title
