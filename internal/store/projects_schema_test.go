@@ -317,7 +317,7 @@ func TestDropProjectsSchema_RemovesEverythingAndResetsVersion(t *testing.T) {
 
 	dropped := []string{
 		"project_cards", "tasks", "evidence", "runbook_index", "task_observations",
-		"observation_refs", "tasks_fts", "runbook_index_fts",
+		"observation_refs", "tasks_fts", "runbook_index_fts", "evidence_fts", "project_cards_fts",
 	}
 	for _, name := range dropped {
 		if tableExists(t, s.db, name) {

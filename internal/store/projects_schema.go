@@ -40,6 +40,10 @@ const (
 	// projBenchmarksID adds the measurements a task was justified by, so a
 	// number that argued for a change is kept next to the change.
 	projBenchmarksID = "proj-0005-benchmarks"
+	// projCardsFTSID indexes the cards themselves, so one search can reach a
+	// project by its name or description instead of only reaching what is
+	// filed under it.
+	projCardsFTSID = "proj-0006-cards-fts"
 )
 
 // projectsHierarchyDDL is the proj-0001-cards-hierarchy step. It is written as
@@ -104,6 +108,7 @@ var projectsSchemaTriggers = []string{
 	"tasks_fts_insert", "tasks_fts_delete", "tasks_fts_update",
 	"runbook_fts_insert", "runbook_fts_delete", "runbook_fts_update",
 	"evidence_fts_insert", "evidence_fts_delete", "evidence_fts_update",
+	"project_cards_fts_insert", "project_cards_fts_delete", "project_cards_fts_update",
 }
 
 // projectsSchemaDDL creates the engram-projects extension schema: the five
@@ -385,6 +390,7 @@ func (s *Store) migrateProjectsToV3() error {
 		{id: projTasksRebuildID, ddl: tasksRebuildDDL, rebuild: true},
 		{id: projEvidenceRebuildID, ddl: evidenceRebuildDDL, rebuild: true},
 		{id: projBenchmarksID, ddl: benchmarksDDL},
+		{id: projCardsFTSID, ddl: projectCardsFTSDDL},
 	}
 	for _, step := range steps {
 		ddl := step.ddl
@@ -648,12 +654,49 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_benchmarks_one_baseline
     ON benchmarks(task_sync_id, metric) WHERE baseline = 1 AND deleted_at IS NULL;
 `
 
+// projectCardsFTSDDL is the proj-0006-cards-fts step. Every other thing a
+// workspace holds was already searchable and the project itself was not, so a
+// search for a product's name found the notes about it and not the project it
+// names.
+//
+// The index is external-content over project_cards keyed by its implicit rowid:
+// the table's primary key is a text slug and it is not WITHOUT ROWID, so the
+// rowid is stable and is what FTS5 needs. A card is retired with deleted_at
+// rather than deleted, so its row stays in the index and the search filters it
+// out — the same rule every other read of project_cards follows.
+const projectCardsFTSDDL = `
+CREATE VIRTUAL TABLE IF NOT EXISTS project_cards_fts USING fts5(
+    slug, display_name, description, tags,
+    content='project_cards', content_rowid='rowid'
+);
+CREATE TRIGGER IF NOT EXISTS project_cards_fts_insert AFTER INSERT ON project_cards BEGIN
+    INSERT INTO project_cards_fts(rowid, slug, display_name, description, tags)
+    VALUES (new.rowid, new.slug, new.display_name, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS project_cards_fts_delete AFTER DELETE ON project_cards BEGIN
+    INSERT INTO project_cards_fts(project_cards_fts, rowid, slug, display_name, description, tags)
+    VALUES ('delete', old.rowid, old.slug, old.display_name, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS project_cards_fts_update AFTER UPDATE ON project_cards BEGIN
+    INSERT INTO project_cards_fts(project_cards_fts, rowid, slug, display_name, description, tags)
+    VALUES ('delete', old.rowid, old.slug, old.display_name, old.description, old.tags);
+    INSERT INTO project_cards_fts(rowid, slug, display_name, description, tags)
+    VALUES (new.rowid, new.slug, new.display_name, new.description, new.tags);
+END;
+
+INSERT INTO project_cards_fts(project_cards_fts) VALUES('rebuild');
+`
+
 // projectsSchemaDropDDL removes every engram-projects object in dependency
 // order: FTS5 sync triggers first, then the FTS5 virtual tables, then the
 // contract and auxiliary tables (children before parents so foreign keys
 // never block the drop). No upstream table is touched.
 const projectsSchemaDropDDL = `
 DROP TRIGGER IF EXISTS project_cards_depth_ck;
+DROP TRIGGER IF EXISTS project_cards_fts_update;
+DROP TRIGGER IF EXISTS project_cards_fts_delete;
+DROP TRIGGER IF EXISTS project_cards_fts_insert;
+DROP TABLE IF EXISTS project_cards_fts;
 DROP TRIGGER IF EXISTS evidence_fts_update;
 DROP TRIGGER IF EXISTS evidence_fts_delete;
 DROP TRIGGER IF EXISTS evidence_fts_insert;

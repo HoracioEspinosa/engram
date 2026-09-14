@@ -209,6 +209,45 @@ func BenchmarkFindRunbooks(b *testing.B) {
 	}
 }
 
+// BenchmarkSearchWorkspace measures the one question the global search palette
+// asks: six kinds at once. The benchmark rows are seeded here rather than in
+// seedBenchStore so the arm has something to scan without changing what every
+// other benchmark in this file measures.
+func BenchmarkSearchWorkspace(b *testing.B) {
+	s := seedBenchStore(b, benchProjects, benchTasksPer, benchObs)
+	for i := 0; i < benchProjects; i++ {
+		slug := fmt.Sprintf("koi-project-%02d", i)
+		task, err := s.ResolveTaskRef(slug, fmt.Sprintf("KOI-%d000", i))
+		if err != nil {
+			b.Fatalf("ResolveTaskRef: %v", err)
+		}
+		for m := 0; m < 3; m++ {
+			if _, err := s.AddBenchmark(AddBenchmarkParams{
+				Task:       task,
+				Name:       fmt.Sprintf("%s %s throughput", benchWords[m%len(benchWords)], slug),
+				Metric:     fmt.Sprintf("p%d", 50+m*45),
+				Unit:       "ms",
+				Value:      float64(10 + m),
+				CapturedAt: fmt.Sprintf("2026-09-%02dT10:00:00Z", m+1),
+			}); err != nil {
+				b.Fatalf("AddBenchmark: %v", err)
+			}
+		}
+	}
+
+	params := SearchWorkspaceParams{Query: "pond filt", PerKind: 5}
+	if _, err := s.SearchWorkspace(params); err != nil {
+		b.Fatalf("SearchWorkspace: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := s.SearchWorkspace(params); err != nil {
+			b.Fatalf("SearchWorkspace: %v", err)
+		}
+	}
+}
+
 func BenchmarkStats(b *testing.B) {
 	s := seedBenchStore(b, benchProjects, benchTasksPer, benchObs)
 	b.ReportAllocs()

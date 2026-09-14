@@ -35,7 +35,7 @@ assert_no_live_db
 BENCH_OUT="$OUT_DIR/bench"
 mkdir -p "$BENCH_OUT"
 
-BENCH_PATTERN='Search|ListTasks|ProjectCardCounts|ListProjectCards|FindRunbooks|Stats|DetectProjectFull'
+BENCH_PATTERN='Search|ListTasks|ProjectCardCounts|ListProjectCards|FindRunbooks|Stats|DetectProject'
 BENCH_PACKAGES='./internal/store/... ./internal/project/...'
 BASELINE="$BENCH_OUT/baseline.txt"
 BENCHSTAT_VERSION='golang.org/x/perf/cmd/benchstat@v0.0.0-20260908200009-22c9c6c9d4da'
