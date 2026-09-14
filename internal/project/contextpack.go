@@ -13,8 +13,7 @@ import (
 
 // jiraBaseURL is the Jira Cloud browse base used to build task links. It is
 // read from the environment so a deployment is not tied to one Jira tenant:
-// set ENGRAM_JIRA_BASE_URL to your own instance. See RFC
-// rfc-engram-projects.md §5.10.
+// set ENGRAM_JIRA_BASE_URL to your own instance.
 var jiraBaseURL = jiraBaseURLFromEnv()
 
 func jiraBaseURLFromEnv() string {
@@ -31,8 +30,8 @@ func jiraBaseURLFromEnv() string {
 // JiraBaseURL returns the configured Jira Cloud browse base URL, trailing
 // slash included. It is exported so every caller that needs to build a
 // task's Jira link — the context pack above and the TUI Tasks tab's "open
-// Jira" action (rfc-tui.md §3.1 S3/S4) — reads ENGRAM_JIRA_BASE_URL the same
-// way instead of each parsing the environment variable on its own.
+// Jira" action — reads ENGRAM_JIRA_BASE_URL the same way instead of each
+// parsing the environment variable on its own.
 func JiraBaseURL() string {
 	return jiraBaseURL
 }
@@ -517,9 +516,8 @@ func taskKey(t store.Task) string {
 
 // TaskKey is taskKey exported: the same jira_key -> sdd_change -> sync_id
 // precedence used to label a task everywhere else — the context pack's own
-// header above, and the TUI's Task detail and context-pack-to-file paths
-// (rfc-tui.md §3.1 S4/S5) — so the two never drift into naming a task
-// differently.
+// header above, and the TUI's Task detail and context-pack-to-file paths —
+// so the two never drift into naming a task differently.
 func TaskKey(t store.Task) string {
 	return taskKey(t)
 }

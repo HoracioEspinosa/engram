@@ -1615,9 +1615,9 @@ func TestResolveToolsAgentProfile(t *testing.T) {
 		"mem_session_start", "mem_session_end", "mem_get_observation",
 		"mem_suggest_topic_key", "mem_capture_passive", "mem_save_prompt",
 		"mem_update",          // skills explicitly say "use mem_update when you have an exact ID to correct"
-		"mem_current_project", // added REQ-313: discovery tool recommended first call
-		"mem_judge",           // REQ-003: conflict verdict tool (Phase D)
-		"mem_compare",         // REQ-011: persist agent-judged semantic verdict (Phase G)
+		"mem_current_project", // discovery tool recommended first call
+		"mem_judge",           // conflict verdict tool
+		"mem_compare",         // persist agent-judged semantic verdict
 		"mem_doctor",          // read-only operational diagnostics
 		"mem_review",          // lifecycle review list/maintenance
 		"mem_pin",             // local context priority
@@ -1754,7 +1754,6 @@ func TestResolveToolsEmptyTokenBetweenCommas(t *testing.T) {
 // ─── Phase D — MCP layer enrichment tests ───────────────────────────────────
 
 // D.1 — mem_save returns enriched envelope with candidates when similar obs exists.
-// REQ-001 | Design §4
 func TestHandleSave_CandidatesReturned(t *testing.T) {
 	s := newMCPTestStore(t)
 	h := handleSave(s, MCPConfig{}, NewSessionActivity(10*time.Minute))
@@ -1789,7 +1788,7 @@ func TestHandleSave_CandidatesReturned(t *testing.T) {
 
 	text := callResultText(t, res2)
 
-	// REQ-001: judgment_required=true must be in envelope.
+	// judgment_required=true must be in envelope.
 	var envelope map[string]any
 	if err := json.Unmarshal([]byte(text), &envelope); err != nil {
 		t.Fatalf("response is not valid JSON: %v — got %q", err, text)
@@ -1816,7 +1815,7 @@ func TestHandleSave_CandidatesReturned(t *testing.T) {
 		}
 	}
 
-	// REQ-001: result must contain "CONFLICT REVIEW PENDING".
+	// result must contain "CONFLICT REVIEW PENDING".
 	result, _ := envelope["result"].(string)
 	if !strings.Contains(result, "CONFLICT REVIEW PENDING") {
 		t.Fatalf("expected CONFLICT REVIEW PENDING in result, got %q", result)
@@ -1824,7 +1823,6 @@ func TestHandleSave_CandidatesReturned(t *testing.T) {
 }
 
 // D.2 — mem_save with no similar obs returns unchanged result string, no candidates.
-// REQ-007 | Design §4
 func TestHandleSave_NoCandidates_ResultUnchanged(t *testing.T) {
 	s := newMCPTestStore(t)
 	h := handleSave(s, MCPConfig{}, NewSessionActivity(10*time.Minute))
@@ -1866,7 +1864,7 @@ func TestHandleSave_NoCandidates_ResultUnchanged(t *testing.T) {
 		t.Fatalf("expected no judgment_id when no candidates")
 	}
 
-	// REQ-007: result string must start with expected prefix (regression guard).
+	// result string must start with expected prefix (regression guard).
 	result, _ := envelope["result"].(string)
 	if !strings.HasPrefix(result, `Memory saved: "`) {
 		t.Fatalf("result string must start with Memory saved: \" — got %q", result)
@@ -1879,7 +1877,6 @@ func TestHandleSave_NoCandidates_ResultUnchanged(t *testing.T) {
 }
 
 // D.3 — topic_key revision also triggers candidate detection.
-// REQ-001 edge case | Design §4
 func TestHandleSave_TopicKeyRevision_ReturnsCandidates(t *testing.T) {
 	s := newMCPTestStore(t)
 	h := handleSave(s, MCPConfig{}, NewSessionActivity(10*time.Minute))
@@ -1950,7 +1947,6 @@ func TestHandleSave_TopicKeyRevision_ReturnsCandidates(t *testing.T) {
 }
 
 // D.4 — mem_search result annotations for relations.
-// REQ-002 | Design §5
 func TestHandleSearch_SupersededAnnotation(t *testing.T) {
 	s := newMCPTestStore(t)
 	if err := s.CreateSession("s-search-annot", "engram", "/tmp"); err != nil {
@@ -2144,7 +2140,6 @@ func TestHandleSearch_NoRelationsUnchanged(t *testing.T) {
 }
 
 // D.4b — mem_judge registered in ProfileAgent (tool registration test).
-// REQ-003 | Design §6.5
 func TestHandleJudge_RegisteredInAgentProfile(t *testing.T) {
 	if !ProfileAgent["mem_judge"] {
 		t.Fatalf("mem_judge must be registered in ProfileAgent")
@@ -2593,7 +2588,7 @@ func TestHandleSavePromptCreatesProjectScopedSession(t *testing.T) {
 }
 
 func TestHandleSessionSummaryCreatesProjectScopedSession(t *testing.T) {
-	// Set up a git repo so auto-detect returns a known project (REQ-308: project
+	// Set up a git repo so auto-detect returns a known project (project
 	// field removed from schema; auto-detect is the only source).
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -2708,7 +2703,7 @@ func TestDestructiveToolAnnotation(t *testing.T) {
 
 func TestNewServerWithConfig(t *testing.T) {
 	s := newMCPTestStore(t)
-	// JW6: DefaultProject removed from MCPConfig (dead code).
+	// DefaultProject removed from MCPConfig (dead code).
 	cfg := MCPConfig{}
 	srv := NewServerWithConfig(s, cfg, nil)
 	if srv == nil {
@@ -3134,7 +3129,7 @@ func TestSearchResponseIncludesNudgeAfterInactivity(t *testing.T) {
 }
 
 func TestSessionSummaryResponseIncludesActivityScore(t *testing.T) {
-	// Set up a git repo so auto-detect returns a known project (REQ-308).
+	// Set up a git repo so auto-detect returns a known project.
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
 	cmd := exec.Command("git", "-C", dir, "remote", "add", "origin",
@@ -3165,7 +3160,7 @@ func TestSessionSummaryResponseIncludesActivityScore(t *testing.T) {
 	summary := handleSessionSummary(s, MCPConfig{}, activity)
 	res, err := summary(context.Background(), mcppkg.CallToolRequest{
 		Params: mcppkg.CallToolParams{Arguments: map[string]any{
-			// project intentionally omitted — auto-detect only (REQ-308)
+			// project intentionally omitted — auto-detect only
 			"content": "## Goal\nTest session",
 		}},
 	})
@@ -3615,7 +3610,7 @@ func TestWriteSchema_ProjectFieldOnlyForAmbiguousRecovery(t *testing.T) {
 	}
 }
 
-// TestMemSave_AutoDetectsProject asserts write lands under detected project (REQ-308).
+// TestMemSave_AutoDetectsProject asserts write lands under detected project.
 func TestMemSave_AutoDetectsProject(t *testing.T) {
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -4004,7 +3999,7 @@ func TestMemSave_RepoConfigBeatsGitRemoteFallback(t *testing.T) {
 	}
 }
 
-// TestMemSave_AmbiguousEnvelope asserts error_code=="ambiguous_project", no write (REQ-309).
+// TestMemSave_AmbiguousEnvelope asserts error_code=="ambiguous_project", no write.
 func TestMemSave_AmbiguousEnvelope(t *testing.T) {
 	parent := t.TempDir()
 	for _, name := range []string{"repo-x", "repo-y"} {
@@ -4898,7 +4893,7 @@ func TestMemSavePrompt_AmbiguousWithInventedProjectRejected(t *testing.T) {
 	}
 }
 
-// TestMemSave_SuccessEnvelope asserts project, project_source, project_path in response (REQ-309).
+// TestMemSave_SuccessEnvelope asserts project, project_source, project_path in response.
 func TestMemSave_SuccessEnvelope(t *testing.T) {
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -4930,7 +4925,7 @@ func TestMemSave_SuccessEnvelope(t *testing.T) {
 
 // ─── Batch 5: Read handler project resolution ─────────────────────────────────
 
-// TestMemSearch_NoProjectAutoDetects: no project arg falls back to auto-detect (REQ-310)
+// TestMemSearch_NoProjectAutoDetects: no project arg falls back to auto-detect.
 func TestMemSearch_NoProjectAutoDetects(t *testing.T) {
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -4971,7 +4966,7 @@ func TestMemSearch_NoProjectAutoDetects(t *testing.T) {
 	}
 }
 
-// TestMemSearch_ExplicitKnownProject: valid override uses ProjectExists path (REQ-311)
+// TestMemSearch_ExplicitKnownProject: valid override uses ProjectExists path.
 func TestMemSearch_ExplicitKnownProject(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -5006,7 +5001,7 @@ func TestMemSearch_ExplicitKnownProject(t *testing.T) {
 	}
 }
 
-// TestMemSearch_UnknownProjectError: unknown override returns structured error (REQ-311)
+// TestMemSearch_UnknownProjectError: unknown override returns structured error.
 func TestMemSearch_UnknownProjectError(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -5030,7 +5025,7 @@ func TestMemSearch_UnknownProjectError(t *testing.T) {
 	}
 }
 
-// TestAllTools_ReadResponseEnvelope: project envelope in every successful read response (REQ-314)
+// TestAllTools_ReadResponseEnvelope: project envelope in every successful read response.
 func TestAllTools_ReadResponseEnvelope(t *testing.T) {
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -5079,7 +5074,7 @@ func TestAllTools_ReadResponseEnvelope(t *testing.T) {
 
 // ─── Batch 6: mem_current_project tool ───────────────────────────────────────
 
-// TestMemCurrentProject_NormalResult: full metadata in response (REQ-313)
+// TestMemCurrentProject_NormalResult: full metadata in response.
 func TestMemCurrentProject_NormalResult(t *testing.T) {
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -5113,7 +5108,7 @@ func TestMemCurrentProject_NormalResult(t *testing.T) {
 	}
 }
 
-// TestMemCurrentProject_AmbiguousNoError: IsError==false, project=="", available_projects non-empty (REQ-313)
+// TestMemCurrentProject_AmbiguousNoError: IsError==false, project=="", available_projects non-empty.
 func TestMemCurrentProject_AmbiguousNoError(t *testing.T) {
 	parent := t.TempDir()
 	for _, name := range []string{"repo-p", "repo-q"} {
@@ -5132,7 +5127,7 @@ func TestMemCurrentProject_AmbiguousNoError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handler error: %v", err)
 	}
-	// REQ-313: mem_current_project MUST NOT return an error on ambiguous cwd.
+	// mem_current_project MUST NOT return an error on ambiguous cwd.
 	if res.IsError {
 		t.Fatalf("mem_current_project must not return error on ambiguous cwd; got: %s",
 			callResultText(t, res))
@@ -5141,13 +5136,13 @@ func TestMemCurrentProject_AmbiguousNoError(t *testing.T) {
 	if !strings.Contains(text, "available_projects") {
 		t.Errorf("expected available_projects in response, got: %q", text)
 	}
-	// JW3: ambiguous source must be "ambiguous", not "dir_basename".
+	// Ambiguous source must be "ambiguous", not "dir_basename".
 	if !strings.Contains(text, `"ambiguous"`) {
 		t.Errorf("expected project_source=ambiguous in response, got: %q", text)
 	}
 }
 
-// TestMemCurrentProject_WarningCase3: warning!="" and project_source=="git_child" (REQ-313)
+// TestMemCurrentProject_WarningCase3: warning!="" and project_source=="git_child".
 func TestMemCurrentProject_WarningCase3(t *testing.T) {
 	parent := t.TempDir()
 	child := filepath.Join(parent, "only-child-repo")
@@ -5367,7 +5362,7 @@ func TestResolveWriteProject_AmbiguousError(t *testing.T) {
 	}
 }
 
-// TestResolveWriteProject_RejectsDirBasenameGuess ties the ADR-057 defect to
+// TestResolveWriteProject_RejectsDirBasenameGuess ties this defect to
 // a test: a write decider must not accept a project it only guessed from the
 // directory name as if it were a fact. A plain temp directory (no git repo,
 // no .engram/config.json) forces DetectProjectFull down to Source ==
@@ -5390,7 +5385,7 @@ func TestResolveWriteProject_RejectsDirBasenameGuess(t *testing.T) {
 
 // TestHandleSave_RejectsDirBasenameGuess is the write-path version of the
 // same defect: mem_save must not silently save a memory under a project name
-// guessed from the current directory's basename. Before the ADR-057 fix,
+// guessed from the current directory's basename. Before this fix,
 // resolveWriteProject() (and therefore handleSave) accepted
 // project.SourceDirBasename as if it were certain, which is how a disabled
 // repo-scope config turned into memories landing under the wrong project
@@ -5507,7 +5502,7 @@ func TestErrorWithMeta_WrapsResponse(t *testing.T) {
 // ─── F1: handleGetObservation, handleStats, handleTimeline envelope tests ──────
 
 // TestHandleGetObservation_ResponseEnvelopeIncludesProject: successful get obs
-// response must contain project, project_source, project_path envelope fields (REQ-314).
+// response must contain project, project_source, project_path envelope fields.
 func TestHandleGetObservation_ResponseEnvelopeIncludesProject(t *testing.T) {
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -5550,7 +5545,7 @@ func TestHandleGetObservation_ResponseEnvelopeIncludesProject(t *testing.T) {
 	}
 }
 
-// TestHandleStats_AutoDetectsProject: stats response must include project envelope (REQ-314).
+// TestHandleStats_AutoDetectsProject: stats response must include project envelope.
 func TestHandleStats_AutoDetectsProject(t *testing.T) {
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -5578,7 +5573,7 @@ func TestHandleStats_AutoDetectsProject(t *testing.T) {
 }
 
 // TestHandleStats_ExplicitUnknownProjectError: stats with unknown project override returns
-// structured error (REQ-311 applied to stats).
+// structured error.
 func TestHandleStats_ExplicitUnknownProjectError(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -5602,7 +5597,7 @@ func TestHandleStats_ExplicitUnknownProjectError(t *testing.T) {
 	}
 }
 
-// TestHandleTimeline_AutoDetectsProject: timeline response must include project envelope (REQ-314).
+// TestHandleTimeline_AutoDetectsProject: timeline response must include project envelope.
 func TestHandleTimeline_AutoDetectsProject(t *testing.T) {
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -5648,7 +5643,7 @@ func TestHandleTimeline_AutoDetectsProject(t *testing.T) {
 }
 
 // TestHandleTimeline_ExplicitUnknownProjectError: timeline with unknown project override
-// returns structured error (REQ-311).
+// returns structured error.
 func TestHandleTimeline_ExplicitUnknownProjectError(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -5833,7 +5828,7 @@ func TestMemSessionSummary_AutoDetectsProject(t *testing.T) {
 	}
 }
 
-// TestMemSessionSummary_AmbiguousReturnsError: ambiguous cwd returns error (REQ-309).
+// TestMemSessionSummary_AmbiguousReturnsError: ambiguous cwd returns error.
 func TestMemSessionSummary_AmbiguousReturnsError(t *testing.T) {
 	parent := t.TempDir()
 	for _, name := range []string{"repo-summary-1", "repo-summary-2"} {
@@ -5867,7 +5862,7 @@ func TestMemSessionSummary_AmbiguousReturnsError(t *testing.T) {
 
 // ─── Judgment Round 1 Hotfix tests ───────────────────────────────────────────
 
-// JW1: TestWriteTool_AmbiguousErrorUsesCwdRepos_NotAllProjects
+// TestWriteTool_AmbiguousErrorUsesCwdRepos_NotAllProjects:
 // When cwd is ambiguous, error must list the repos in cwd — NOT all store projects.
 func TestWriteTool_AmbiguousErrorUsesCwdRepos_NotAllProjects(t *testing.T) {
 	// Set up an ambiguous parent dir with 2 git repos.
@@ -5914,7 +5909,7 @@ func TestWriteTool_AmbiguousErrorUsesCwdRepos_NotAllProjects(t *testing.T) {
 	}
 }
 
-// JW2: TestResolveReadProject_NormalizesOverride
+// TestResolveReadProject_NormalizesOverride:
 // resolveReadProject must normalize (lowercase+trim) the override before ProjectExists.
 func TestResolveReadProject_NormalizesOverride(t *testing.T) {
 	s := newMCPTestStore(t)
@@ -5936,8 +5931,8 @@ func TestResolveReadProject_NormalizesOverride(t *testing.T) {
 	}
 }
 
-// JW3: TestDetectProjectFull_AmbiguousSource — Case 4 must use "ambiguous" source, not "dir_basename"
-// This test lives in mcp_test.go for co-location with other JW tests; detect.go tests
+// TestDetectProjectFull_AmbiguousHasAmbiguousSource — Case 4 must use "ambiguous" source, not "dir_basename".
+// This test lives in mcp_test.go for co-location with related tests; detect.go tests
 // are in detect_test.go but the constant is exported and testable here.
 func TestDetectProjectFull_AmbiguousHasAmbiguousSource(t *testing.T) {
 	parent := t.TempDir()
@@ -5958,7 +5953,7 @@ func TestDetectProjectFull_AmbiguousHasAmbiguousSource(t *testing.T) {
 	}
 }
 
-// JW4: TestHandleSearch_SuccessUsesEnvelope — both empty and non-empty results must use respondWithProject
+// TestHandleSearch_SuccessUsesEnvelope — both empty and non-empty results must use respondWithProject.
 func TestHandleSearch_SuccessUsesEnvelope(t *testing.T) {
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -6017,7 +6012,7 @@ func TestHandleSearch_SuccessUsesEnvelope(t *testing.T) {
 	}
 }
 
-// JR2-1 RED: TestHandleSearch_EnvelopeProjectMatchesQueryProject
+// TestHandleSearch_EnvelopeProjectMatchesQueryProject:
 // When the git repo name contains double hyphens (e.g. "my--app"), NormalizeProject
 // collapses it to "my-app". The envelope project field must match the normalized form
 // so LLMs reading the envelope see the same project name used in the query.
@@ -6054,7 +6049,7 @@ func TestHandleSearch_EnvelopeProjectMatchesQueryProject(t *testing.T) {
 	}
 }
 
-// JR2-1 RED: TestHandleContext_EnvelopeProjectMatchesQueryProject — same check for handleContext.
+// TestHandleContext_EnvelopeProjectMatchesQueryProject — same check for handleContext.
 func TestHandleContext_EnvelopeProjectMatchesQueryProject(t *testing.T) {
 	dir := t.TempDir()
 	initTestGitRepo(t, dir)
@@ -6084,7 +6079,7 @@ func TestHandleContext_EnvelopeProjectMatchesQueryProject(t *testing.T) {
 	}
 }
 
-// JR2-3 RED: TestHandleGetObservation_DegradedPathNoEnvelope
+// TestHandleGetObservation_DegradedPathNoEnvelope:
 // When the cwd is ambiguous (multiple git repos), resolveReadProject returns an error.
 // The handler must degrade gracefully: IsError=false, result contains observation content,
 // and the response is NOT JSON (no project_source envelope field).
@@ -6140,7 +6135,7 @@ func TestHandleGetObservation_DegradedPathNoEnvelope(t *testing.T) {
 	}
 }
 
-// JW5: TestHandleGetObservation_UsesReadResolver — verify semantics; currently uses resolveWriteProject.
+// TestHandleGetObservation_EnvelopePresent — verifies semantics; currently uses resolveWriteProject.
 // This test confirms that after the fix it uses resolveReadProject (observable: same behavior + envelope).
 // The fix is rename-only (semantics identical), so we just assert the envelope is present.
 func TestHandleGetObservation_EnvelopePresent(t *testing.T) {
@@ -6344,8 +6339,8 @@ func TestServerInstructions_ConflictSurfacingBlock(t *testing.T) {
 // ─── Fix 1 RED — TestHandleSave_MCPConfig_OverridesDefaults ──────────────────
 
 // TestHandleSave_MCPConfig_OverridesDefaults verifies that MCPConfig.BM25Floor
-// and MCPConfig.Limit are forwarded to FindCandidates. REQ-001 requires
-// configurability via Config; the existing MCPConfig struct was empty.
+// and MCPConfig.Limit are forwarded to FindCandidates. Conflict detection
+// requires configurability via Config; the existing MCPConfig struct was empty.
 //
 // Strategy: set BM25Floor to a very strict value (0.0) via MCPConfig. Even with
 // two similar observations in the store, no candidate should score >= 0 (BM25
@@ -6406,10 +6401,9 @@ func TestHandleSave_MCPConfig_OverridesDefaults(t *testing.T) {
 	}
 }
 
-// ─── Phase F — mem_search annotation upgrade (REQ-004, REQ-005, REQ-012) ──────
+// ─── mem_search annotation upgrade ─────────────────────────────────────────
 
 // F.1a — MemSearch_AnnotatesConflictsWith_Judged
-// REQ-004 | Design §7
 // Judged conflicts_with relation must surface as "conflicts: #<id> (<title>)".
 func TestMemSearch_AnnotatesConflictsWith_Judged(t *testing.T) {
 	s := newMCPTestStore(t)
@@ -6486,8 +6480,7 @@ func TestMemSearch_AnnotatesConflictsWith_Judged(t *testing.T) {
 }
 
 // F.1b — MemSearch_PendingConflict_KeepsPhase1Annotation
-// REQ-004 (negative) | Design §7
-// Pending conflicts_with relation must NOT produce a conflicts: annotation.
+// Negative case: pending conflicts_with relation must NOT produce a conflicts: annotation.
 // The existing "conflict: contested by #<sync_id> (pending)" annotation must stay byte-for-byte.
 func TestMemSearch_PendingConflict_KeepsPhase1Annotation(t *testing.T) {
 	s := newMCPTestStore(t)
@@ -6564,7 +6557,6 @@ func TestMemSearch_PendingConflict_KeepsPhase1Annotation(t *testing.T) {
 }
 
 // F.1c — MemSearch_TitleEnrichment_SupersedesAndSupersededBy
-// REQ-005 | Design §7
 // judged supersedes/superseded_by annotations must include (#<id> <title>).
 func TestMemSearch_TitleEnrichment_SupersedesAndSupersededBy(t *testing.T) {
 	s := newMCPTestStore(t)
@@ -6647,8 +6639,7 @@ func TestMemSearch_TitleEnrichment_SupersedesAndSupersededBy(t *testing.T) {
 }
 
 // F.1d — MemSearch_TitleEnrichment_FallsBackToDeleted
-// REQ-005 (edge case) | Design §7, §8
-// When the related observation has been deleted, annotation must read "(deleted)".
+// Edge case: when the related observation has been deleted, annotation must read "(deleted)".
 func TestMemSearch_TitleEnrichment_FallsBackToDeleted(t *testing.T) {
 	s := newMCPTestStore(t)
 	if err := s.CreateSession("s-f1d", "engram", "/tmp"); err != nil {
@@ -6731,7 +6722,6 @@ func TestMemSearch_TitleEnrichment_FallsBackToDeleted(t *testing.T) {
 }
 
 // F.1e — MemSearch_AllThreeTypes_FormatExact
-// REQ-012 | Design §7
 // All 3 annotation types present on one obs → format matches contract byte-for-byte.
 func TestMemSearch_AllThreeTypes_FormatExact(t *testing.T) {
 	s := newMCPTestStore(t)

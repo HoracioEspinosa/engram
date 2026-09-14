@@ -843,7 +843,7 @@ func TaskStateStale(stateSyncedAt *string, staleAfterHours int) bool {
 	return isTaskStateStale(stateSyncedAt, staleAfterHours)
 }
 
-// ─── TUI Tasks tab (rfc-tui.md §4.3, §9.2) ─────────────────────────────────
+// ─── TUI Tasks tab ──────────────────────────────────────────────────────────
 
 // GetTask returns one task by its numeric id, regardless of project. The id
 // is the tasks table's own primary key, so unlike ResolveTaskRef this needs
@@ -855,8 +855,8 @@ func (s *Store) GetTask(id int64) (Task, error) {
 
 // ErrInvalidTaskState is returned by UpdateTaskStateMirror when state is not
 // one of the values the tasks.state CHECK constraint accepts. It is distinct
-// from the rfc-engram-projects.md §5.0 sentinel errors above: this one guards
-// a write rfc-tui.md §9.2 adds for the TUI, not an engram-projects tool.
+// from the sentinel errors above: this one guards a write the TUI adds, not
+// an engram-projects tool.
 var ErrInvalidTaskState = errors.New("invalid task state")
 
 // mirrorableTaskStates lists every value the tasks.state CHECK constraint
@@ -870,9 +870,9 @@ var mirrorableTaskStates = func() map[string]bool {
 	return states
 }()
 
-// UpdateTaskStateMirror sets a task's local state mirror from the TUI
-// (rfc-tui.md §9.2, ADR-028: "el cambio de state es espejo"). Jira remains
-// the source of truth (D-02): this never talks to Jira and never touches
+// UpdateTaskStateMirror sets a task's local state mirror from the TUI. It is
+// only ever a mirror: Jira remains the source of truth (D-02), so this never
+// talks to Jira and never touches
 // jira_status, jira_status_category or state_synced_at — the columns the
 // sync pipeline reads to detect drift between the mirror and the real Jira
 // status. closed_at is cleared when the mirror moves a task out of a closed

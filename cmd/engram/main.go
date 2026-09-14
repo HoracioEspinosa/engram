@@ -801,13 +801,13 @@ func resolveServeSyncStatusProject() string {
 }
 
 // tryStartAutosync starts the autosync Manager if ENGRAM_CLOUD_AUTOSYNC=1 and
-// both ENGRAM_CLOUD_TOKEN and ENGRAM_CLOUD_SERVER are present.
-// REQ-210: only exact "1" is accepted. REQ-211: missing token/server → log+skip.
-// Never fatal — autosync is optional.
+// both ENGRAM_CLOUD_TOKEN and ENGRAM_CLOUD_SERVER are present. Opt-in requires
+// exactly "1"; a missing token or server logs and skips. Never fatal —
+// autosync is optional.
 // BW7: Returns (status provider, stop func) so the caller can invoke stop
 // before os.Exit to ensure the Manager releases its sync lease.
 func tryStartAutosync(ctx context.Context, s *store.Store, cfg store.Config) (autosyncStatusProvider, func()) {
-	// REQ-210: opt-in requires exact "1".
+	// Opt-in requires exactly "1".
 	if strings.TrimSpace(os.Getenv("ENGRAM_CLOUD_AUTOSYNC")) != "1" {
 		return nil, nil
 	}
@@ -821,7 +821,7 @@ func tryStartAutosync(ctx context.Context, s *store.Store, cfg store.Config) (au
 	token := strings.TrimSpace(cc.Token)
 	serverURL := strings.TrimSpace(cc.ServerURL)
 
-	// REQ-211: token required. The token is resolved from cloud.json first and
+	// A token is required. It is resolved from cloud.json first and
 	// overridden by ENGRAM_CLOUD_TOKEN when set, so both sources are tried.
 	// On Windows (Task Scheduler), the env var is often absent — the file path
 	// is the expected source (issue #421).
@@ -829,7 +829,7 @@ func tryStartAutosync(ctx context.Context, s *store.Store, cfg store.Config) (au
 		log.Printf("[autosync] ERROR: cloud token is not configured (set ENGRAM_CLOUD_TOKEN or store token in cloud.json via `engram cloud config`); autosync disabled")
 		return nil, nil
 	}
-	// REQ-211: server URL required. Resolved from cloud.json or ENGRAM_CLOUD_SERVER.
+	// A server URL is required too. Resolved from cloud.json or ENGRAM_CLOUD_SERVER.
 	if serverURL == "" {
 		log.Printf("[autosync] ERROR: cloud server URL is not configured (set ENGRAM_CLOUD_SERVER or run `engram cloud config --server <url>`); autosync disabled")
 		return nil, nil
@@ -930,18 +930,18 @@ func cmdTUI(cfg store.Config) {
 	}
 }
 
-// resolveTUIProject resolves the project `engram tui` opens on, following
-// the precedence rfc-tui.md §9.1 fixes for --project: an explicit --project
-// (or --project=) flag first, then ENGRAM_PROJECT, then cwd detection. An
-// empty result means no project was resoluble, so the workspace opens on its
-// no-project home instead of a Dashboard.
+// resolveTUIProject resolves the project `engram tui` opens on, following a
+// fixed precedence for --project: an explicit --project (or --project=)
+// flag first, then ENGRAM_PROJECT, then cwd detection. An empty result means
+// no project was resoluble, so the workspace opens on its no-project home
+// instead of a Dashboard.
 //
 // cwd detection only counts as resoluble when project.DetectProjectFull backs
 // it with a fact (a git-derived source or repo config) — a directory-name
 // guess (project.SourceDirBasename) is deliberately treated the same as no
-// detection at all, per ADR-057 §3: without this, DetectProject's bare
-// string never came back empty, so a non-git directory always looked
-// resoluble and rfc-tui.md §9.1's Selector fallback could never be reached.
+// detection at all: without this, DetectProject's bare string never came
+// back empty, so a non-git directory always looked resoluble and the TUI's
+// project selector fallback could never be reached.
 func resolveTUIProject() string {
 	resolved := ""
 	for i := 2; i < len(os.Args); i++ {
@@ -974,8 +974,8 @@ func resolveTUIProject() string {
 }
 
 // isGuessedProjectSource reports whether a detectProjectFull source is a
-// directory-name guess rather than a fact the detector actually knows
-// (ADR-057 §3). It exists as a plain function, not a direct
+// directory-name guess rather than a fact the detector actually knows.
+// It exists as a plain function, not a direct
 // project.IsGuessedSource call, because several call sites below name a
 // local "project" variable that would otherwise shadow the project package
 // import.
@@ -983,7 +983,7 @@ func isGuessedProjectSource(source string) bool {
 	return project.IsGuessedSource(source)
 }
 
-// resolveTUITheme extracts the three raw candidates rfc-tui.md §8.2's
+// resolveTUITheme extracts the three raw candidates the TUI theme's
 // precedence chain resolves between, following the same shape as
 // resolveTUIProject: an explicit --theme (or --theme=) flag, then
 // ENGRAM_TUI_THEME, then the tui.theme key in <data-dir>/config.json.
@@ -1008,7 +1008,7 @@ func resolveTUITheme(cfg store.Config) (flag, env, config string) {
 }
 
 // tuiConfigFile is the shape of <data-dir>/config.json's "tui" section.
-// rfc-tui.md §8.2 names this file "~/.engram/config.json"; cfg.DataDir is
+// The TUI calls this file "~/.engram/config.json"; cfg.DataDir is
 // engram's home directory (ENGRAM_DATA_DIR-overridable, cfg.DataDir is
 // ~/.engram by default per store.DefaultConfig), so reading
 // filepath.Join(cfg.DataDir, "config.json") is the same file under that
@@ -1587,7 +1587,7 @@ func cmdSync(cfg store.Config) {
 	// own (below), and a plain --status/--import must not be refused over a
 	// project value it was never going to use. Only the export path checks
 	// projectResolutionErr before it would silently scope to a
-	// directory-name guess (ADR-057 §3).
+	// directory-name guess.
 	var projectResolutionErr error
 	if !doAll && project == "" {
 		if cwd, err := os.Getwd(); err == nil {
@@ -2170,7 +2170,7 @@ func cmdProjectsConsolidate(cfg store.Config) {
 		// Consolidation decides where a whole set of existing memories lands
 		// (everything similar to "canonical" is merged into it), so cwd
 		// detection must be backed by a fact — a directory-name guess is
-		// refused instead of silently naming the merge target (ADR-057 §3).
+		// refused instead of silently naming the merge target.
 		cwd, err := os.Getwd()
 		if err != nil {
 			fatal(err)

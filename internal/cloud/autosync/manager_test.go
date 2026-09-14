@@ -312,7 +312,7 @@ func TestManagerPushDoesNotAckWhenTransportFails(t *testing.T) {
 	}
 }
 
-// ─── Phase + lifecycle tests (REQ-204) ───────────────────────────────────────
+// ─── Phase + lifecycle tests ─────────────────────────────────────────────────
 
 func TestManagerPhaseTransitions(t *testing.T) {
 	ls := newFakeLocalStore()
@@ -442,7 +442,7 @@ func TestManagerStopForUpgradeDisabled(t *testing.T) {
 	}
 }
 
-// ─── Backoff tests (REQ-205) ─────────────────────────────────────────────────
+// ─── Backoff tests ────────────────────────────────────────────────────────────
 
 func TestManagerBackoffExponentialGrowth(t *testing.T) {
 	cfg := DefaultConfig()
@@ -555,7 +555,7 @@ func TestManagerBackoffResetOnSuccess(t *testing.T) {
 		mgr.Status().Phase, mgr.Status().ConsecutiveFailures)
 }
 
-// ─── NotifyDirty tests (REQ-206) ─────────────────────────────────────────────
+// ─── NotifyDirty tests ────────────────────────────────────────────────────────
 
 func TestManagerNotifyDirtyOneCycle(t *testing.T) {
 	ls := newFakeLocalStore()
@@ -667,7 +667,7 @@ func TestManagerNotifyDirtyAfterStop(t *testing.T) {
 	}
 }
 
-// ─── Run lifecycle tests (REQ-207) ───────────────────────────────────────────
+// ─── Run lifecycle tests ──────────────────────────────────────────────────────
 
 func TestManagerRunContextCancel(t *testing.T) {
 	ls := newFakeLocalStore()
@@ -769,7 +769,7 @@ func TestManagerRunPanicRecovery(t *testing.T) {
 		mgr.Status().Phase, mgr.Status().ReasonCode)
 }
 
-// ─── StopForUpgrade / ResumeAfterUpgrade (REQ-208) ───────────────────────────
+// ─── StopForUpgrade / ResumeAfterUpgrade ─────────────────────────────────────
 
 func TestManagerStopForUpgradeHaltsCycle(t *testing.T) {
 	ls := newFakeLocalStore()
@@ -867,7 +867,7 @@ func TestManagerResumeWithoutStop(t *testing.T) {
 	}
 }
 
-// ─── Goroutine lifecycle (REQ-213) ───────────────────────────────────────────
+// ─── Goroutine lifecycle ──────────────────────────────────────────────────────
 
 func TestManagerStopBeforeRun(t *testing.T) {
 	ls := newFakeLocalStore()
@@ -1130,7 +1130,7 @@ func (t *errTransport) PullMutations(_ int64, _ int) (*PullMutationsResponse, er
 	return &PullMutationsResponse{Mutations: []PulledMutation{}}, nil
 }
 
-// ─── Phase E: Autosync resilience tests (REQ-007, REQ-008) ──────────────────
+// ─── Autosync resilience tests ───────────────────────────────────────────────
 
 // E.1a — ReplayDeferred_RetriesAndApplies:
 // A deferred row exists; when the missing observation arrives and
@@ -1265,7 +1265,7 @@ func TestReplayDeferred_DeadRowNotRetried(t *testing.T) {
 	t.Fatal("ReplayDeferred was not called during pull cycle")
 }
 
-// E.1d — Pull_LegacyEntityNonFKError_StillHalts (REQ-008):
+// E.1d — Pull_LegacyEntityNonFKError_StillHalts:
 // A legacy entity (observation) apply error must halt the pull loop;
 // cursor must not advance.
 func TestPull_LegacyEntityNonFKError_StillHalts(t *testing.T) {

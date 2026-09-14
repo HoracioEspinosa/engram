@@ -140,7 +140,15 @@ Full details on session lifecycle, topic keys, and memory hygiene → [docs/ARCH
 
 With `any`, a memory can match one or more query tokens instead of requiring all of them. This is useful when you remember related keywords but not the exact wording stored in Engram.
 
-## MCP Tools (20)
+## MCP Tools
+
+Engram registers 39 tools across four composable profiles: `agent` (18 — what the memory
+protocols call during a coding session), `admin` (4 — manual curation for the TUI and
+dashboards), `projects` (10 — project cards, tasks, evidence, runbooks, the context pack)
+and `workspace` (7 new tools — project tree, vault scanners, benchmarks, global search —
+plus 3 re-exported from `projects`). Profiles compose: `--tools=agent,projects` loads 28,
+and the recommended `--tools=agent,projects,workspace` loads 35 (the overlap counted once).
+Omitting `--tools` registers all 39.
 
 | Category               | Tools                                                                                                            |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -149,9 +157,15 @@ With `any`, a memory can match one or more query tokens instead of requiring all
 | **Session Lifecycle**  | `mem_session_start`, `mem_session_end`, `mem_session_summary`                                                    |
 | **Conflict Surfacing** | `mem_judge`, `mem_compare`                                                                                       |
 | **Lifecycle Review**   | `mem_review`                                                                                                      |
+| **Pinning**            | `mem_pin`, `mem_unpin`                                                                                           |
 | **Utilities**          | `mem_save_prompt`, `mem_stats`, `mem_capture_passive`, `mem_merge_projects`, `mem_current_project`, `mem_doctor` |
 
-Full tool reference with parameters → [DOCS.md#mcp-tools-20-tools](DOCS.md#mcp-tools-20-tools)
+The `projects` and `workspace` tools — project cards, tasks, evidence, the runbook index,
+benchmarks, the project tree and global workspace search — are documented in
+[DOCS.md — Tool profiles](DOCS.md#tool-profiles) and
+[DOCS.md — Workspace Tools](DOCS.md#workspace-tools-profile-workspace).
+
+Full tool reference with parameters → [DOCS.md#mcp-tools](DOCS.md#mcp-tools)
 
 ## Terminal UI
 
@@ -420,6 +434,7 @@ Full environment variable reference → [DOCS.md#environment-variables](DOCS.md#
 | [Agent Setup](docs/AGENT-SETUP.md)            | Per-agent configuration + Memory Protocol                              |
 | [Codebase Guide](docs/CODEBASE-GUIDE.md)      | Guide to the repository structure, flows, and implementation landmarks |
 | [Architecture](docs/ARCHITECTURE.md)          | How it works + MCP tools + project structure                           |
+| [Dev Environment](docs/DEV-ENVIRONMENT.md)    | The isolated Docker stack, `make` targets, and the `scripts/dev/` scripts |
 | [engram-projects CLI](docs/ENGRAM-PROJECTS-CLI.md) | `engram project …`: cards, tasks, evidence, runbooks, code graph, context packs |
 | [Plugins](docs/PLUGINS.md)                    | OpenCode & Claude Code plugin details                                  |
 | [Comparison](docs/COMPARISON.md)              | Why Engram vs claude-mem                                               |

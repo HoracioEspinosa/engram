@@ -1,4 +1,4 @@
-// Package store: engram-projects (RFC rfc-engram-projects.md) data access.
+// Package store: engram-projects data access.
 //
 // This file implements the CRUD and query methods backing the 10 MCP tools
 // registered under the `projects` profile (internal/mcp/projects_tools.go):

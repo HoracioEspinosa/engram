@@ -232,7 +232,7 @@ conflicts: #20 (Some title)
 
 Both lines are valid. Match by prefix and process all entries — do not deduplicate based on target ID alone.
 
-### Annotation format contract (REQ-012)
+### Annotation format contract
 
 The annotation format is a stable, versioned contract. Agent parsers use prefix-based matching — these prefixes will not change in Phase 3:
 

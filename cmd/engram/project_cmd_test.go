@@ -41,7 +41,7 @@ func stubDetection(t *testing.T, name, path string) {
 	t.Cleanup(func() { detectProjectFull = old })
 }
 
-// TestProjResolveScopeRejectsDirBasenameGuess ties the ADR-057 write-decider
+// TestProjResolveScopeRejectsDirBasenameGuess ties the write-decider
 // rule to the CLI's `engram project` family: without an explicit slug,
 // ENGRAM_PROJECT, or a git-backed cwd, it must not resolve to a
 // directory-name guess. Every subcommand under `engram project <slug> ...`

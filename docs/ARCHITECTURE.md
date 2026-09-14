@@ -211,7 +211,7 @@ engram/
 ├── internal/
 │   ├── store/store.go              # Core: SQLite + FTS5 + all data ops
 │   ├── server/server.go            # HTTP REST API (port 7437)
-│   ├── mcp/mcp.go                  # MCP stdio server (20 tools)
+│   ├── mcp/mcp.go                  # MCP stdio server (39 tools across 4 profiles)
 │   ├── setup/setup.go              # Agent plugin installer (go:embed)
 │   ├── cloud/                       # Optional cloud runtime (Postgres + dashboard)
 │   │   ├── cloudserver/             # /sync API + dashboard mount + auth/session bridge
@@ -426,3 +426,4 @@ Both require `Authorization: Bearer <token>`. Push enforces the project-level sy
 - [Agent Setup](AGENT-SETUP.md) — connect your agent to Engram
 - [Plugins](PLUGINS.md) — what the OpenCode and Claude Code plugins add
 - [Obsidian Brain](beta/obsidian-brain.md) — visualize memories as a knowledge graph (beta)
+- [Dev Environment](DEV-ENVIRONMENT.md) — the isolated Docker stack, `make` targets, and the `scripts/dev/` scripts

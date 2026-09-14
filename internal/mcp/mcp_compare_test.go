@@ -1,7 +1,6 @@
 package mcp
 
-// Phase G.1 — mem_compare handler tests.
-// REQ-011 | Design §9
+// mem_compare handler tests.
 //
 // mem_compare lets an agent that has already judged two observations externally
 // (via its own LLM) persist the verdict into Engram via JudgeBySemantic.
@@ -51,7 +50,6 @@ func seedCompareFixture(t *testing.T, s *store.Store) (idA, idB int64) {
 }
 
 // TestHandleCompare_HappyPath — valid params persists a relation row and returns sync_id.
-// REQ-011 happy path | Design §9
 func TestHandleCompare_HappyPath(t *testing.T) {
 	s := newMCPTestStore(t)
 	idA, idB := seedCompareFixture(t, s)
@@ -87,7 +85,7 @@ func TestHandleCompare_HappyPath(t *testing.T) {
 }
 
 // TestHandleCompare_NotConflict_NoRow — not_conflict returns success without inserting a row.
-// REQ-011 | Design §9 (not_conflict is still persisted but JudgeBySemantic handles it as no-op)
+// (not_conflict is still persisted but JudgeBySemantic handles it as no-op)
 func TestHandleCompare_NotConflict_NoRow(t *testing.T) {
 	s := newMCPTestStore(t)
 	idA, idB := seedCompareFixture(t, s)
@@ -123,7 +121,6 @@ func TestHandleCompare_NotConflict_NoRow(t *testing.T) {
 }
 
 // TestHandleCompare_MissingMemoryIDB — missing memory_id_b returns IsError=true.
-// REQ-011 validation | Design §9
 func TestHandleCompare_MissingMemoryIDB(t *testing.T) {
 	s := newMCPTestStore(t)
 	idA, _ := seedCompareFixture(t, s)
@@ -147,7 +144,6 @@ func TestHandleCompare_MissingMemoryIDB(t *testing.T) {
 }
 
 // TestHandleCompare_InvalidRelation — invalid relation enum returns IsError=true.
-// REQ-011 validation | Design §9
 func TestHandleCompare_InvalidRelation(t *testing.T) {
 	s := newMCPTestStore(t)
 	idA, idB := seedCompareFixture(t, s)
@@ -171,7 +167,6 @@ func TestHandleCompare_InvalidRelation(t *testing.T) {
 }
 
 // TestHandleCompare_NonExistentObservation — non-existent memory_id_a returns descriptive error.
-// REQ-011 negative | Design §9
 func TestHandleCompare_NonExistentObservation(t *testing.T) {
 	s := newMCPTestStore(t)
 	_, idB := seedCompareFixture(t, s)
@@ -198,7 +193,7 @@ func TestHandleCompare_NonExistentObservation(t *testing.T) {
 }
 
 // TestHandleCompare_Idempotency — re-calling same pair updates existing row.
-// REQ-011 | Design §9 (JudgeBySemantic uses UPSERT)
+// (JudgeBySemantic uses UPSERT)
 func TestHandleCompare_Idempotency(t *testing.T) {
 	s := newMCPTestStore(t)
 	idA, idB := seedCompareFixture(t, s)
@@ -252,7 +247,6 @@ func TestHandleCompare_ProfileAgent(t *testing.T) {
 }
 
 // TestHandleCompare_ModelOptional — omitting 'model' field succeeds (model is optional).
-// REQ-011 | Design §9 schema
 func TestHandleCompare_ModelOptional(t *testing.T) {
 	s := newMCPTestStore(t)
 	idA, idB := seedCompareFixture(t, s)

@@ -234,8 +234,8 @@ func TestTaskLink_ShortGraphCommitIsTyped(t *testing.T) {
 
 // ─── mem_evidence_add / mem_evidence_list ────────────────────────────────────
 
-// TestEvidenceAdd_RejectsDirBasenameGuess ties the ADR-057 write-decider rule
-// to the evidence-capture tool named in that decision: mem_evidence_add must
+// TestEvidenceAdd_RejectsDirBasenameGuess ties the write-decider rule
+// to the evidence-capture tool: mem_evidence_add must
 // not attach evidence to a project name guessed from the current directory's
 // basename. It has no project argument at all (project field intentionally
 // not read — auto-detect only), so a plain non-git temp directory with no

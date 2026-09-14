@@ -24,7 +24,7 @@ type fakeMutationStore struct {
 	syncEnabledMap map[string]bool // project → sync enabled
 	errInsert      error
 	errList        error
-	// Audit capture (for REQ-404, REQ-406, REQ-412 tests).
+	// Audit capture (for audit-emission tests).
 	auditCalls     []cloudstore.AuditEntry
 	errAuditInsert error
 }
@@ -258,7 +258,7 @@ func (a multiProjectAuth) EnrolledProjects() []string {
 // ─── Push endpoint tests ─────────────────────────────────────────────────────
 
 func TestMutationPushEndpointAccepted(t *testing.T) {
-	// REQ-200 happy path: 5 entries → HTTP 200, accepted_seqs has 5 items
+	// Happy path: 5 entries → HTTP 200, accepted_seqs has 5 items
 	ms := newFakeMutationStore()
 	srv := newMutationTestServer(ms, "secret", []string{"proj-a"})
 
@@ -286,7 +286,7 @@ func TestMutationPushEndpointAccepted(t *testing.T) {
 }
 
 func TestMutationPushEndpointUnauth(t *testing.T) {
-	// REQ-200 missing token → 401
+	// Missing token → 401
 	ms := newFakeMutationStore()
 	srv := newMutationTestServer(ms, "secret", []string{"proj-a"})
 
@@ -305,7 +305,7 @@ func TestMutationPushEndpointUnauth(t *testing.T) {
 }
 
 func TestMutationPushEndpointBatchTooLarge(t *testing.T) {
-	// REQ-200: 101 entries → 400
+	// 101 entries → 400
 	ms := newFakeMutationStore()
 	srv := newMutationTestServer(ms, "secret", []string{"proj-a"})
 
@@ -324,7 +324,7 @@ func TestMutationPushEndpointBatchTooLarge(t *testing.T) {
 }
 
 func TestMutationPushEndpointEmptyBatch(t *testing.T) {
-	// JC1: empty batch → 400 empty_batch (changed from prior 200 behavior).
+	// Empty batch → 400 empty_batch (changed from prior 200 behavior).
 	// Empty batches carry no project info; they cannot be pause-gated or audited.
 	ms := newFakeMutationStore()
 	srv := newMutationTestServer(ms, "secret", []string{"proj-a"})
@@ -343,7 +343,7 @@ func TestMutationPushEndpointEmptyBatch(t *testing.T) {
 	}
 }
 
-// TestMutationPushEmptyBatchRejectedWith400 verifies JC1: empty batch must return
+// TestMutationPushEmptyBatchRejectedWith400 verifies that an empty batch must return
 // HTTP 400 with error_code=empty_batch. Empty batches carry no project info so they
 // cannot be pause-gated; forcing 400 gives deterministic client feedback.
 func TestMutationPushEmptyBatchRejectedWith400(t *testing.T) {
@@ -375,7 +375,7 @@ func TestMutationPushEmptyBatchRejectedWith400(t *testing.T) {
 // ─── Pull endpoint tests ──────────────────────────────────────────────────────
 
 func TestMutationPullEndpointSinceSeq(t *testing.T) {
-	// REQ-201: since_seq=5, 10 stored mutations → returns 5 (seqs 6–10)
+	// since_seq=5, 10 stored mutations → returns 5 (seqs 6–10)
 	ms := newFakeMutationStore()
 	// Pre-load 10 mutations
 	for i := 0; i < 10; i++ {
@@ -414,7 +414,7 @@ func TestMutationPullEndpointSinceSeq(t *testing.T) {
 }
 
 func TestMutationPullEndpointHasMore(t *testing.T) {
-	// REQ-201: 150 mutations, limit=100 → has_more=true, 100 mutations returned
+	// 150 mutations, limit=100 → has_more=true, 100 mutations returned
 	ms := newFakeMutationStore()
 	for i := 0; i < 150; i++ {
 		_, _ = ms.InsertMutationBatch(context.Background(), []MutationEntry{
@@ -449,7 +449,7 @@ func TestMutationPullEndpointHasMore(t *testing.T) {
 }
 
 func TestMutationPullEndpointUnauth(t *testing.T) {
-	// REQ-201 missing token → 401
+	// Missing token → 401
 	ms := newFakeMutationStore()
 	srv := newMutationTestServer(ms, "secret", []string{"proj-a"})
 
@@ -464,7 +464,7 @@ func TestMutationPullEndpointUnauth(t *testing.T) {
 }
 
 func TestMutationPullEndpointBeyondLatest(t *testing.T) {
-	// REQ-201: since_seq beyond latest → empty
+	// since_seq beyond latest → empty
 	ms := newFakeMutationStore()
 	for i := 0; i < 5; i++ {
 		_, _ = ms.InsertMutationBatch(context.Background(), []MutationEntry{
@@ -500,7 +500,7 @@ func TestMutationPullEndpointBeyondLatest(t *testing.T) {
 // ─── Enrollment filter tests ──────────────────────────────────────────────────
 
 func TestMutationPullEnrollmentFilter(t *testing.T) {
-	// REQ-202: caller enrolled in "proj-a" only; both proj-a and proj-b exist
+	// Caller enrolled in "proj-a" only; both proj-a and proj-b exist
 	ms := newFakeMutationStore()
 	// Insert proj-a and proj-b mutations
 	for i := 0; i < 3; i++ {
@@ -535,7 +535,7 @@ func TestMutationPullEnrollmentFilter(t *testing.T) {
 }
 
 func TestMutationPullCrossTenantLeak(t *testing.T) {
-	// REQ-202: two callers, no cross-tenant leak
+	// Two callers, no cross-tenant leak
 	ms := newFakeMutationStore()
 	for i := 0; i < 3; i++ {
 		_, _ = ms.InsertMutationBatch(context.Background(), []MutationEntry{
@@ -586,7 +586,7 @@ func TestMutationPullCrossTenantLeak(t *testing.T) {
 }
 
 func TestMutationPullNoEnrollments(t *testing.T) {
-	// REQ-202: no enrolled projects → empty 200
+	// No enrolled projects → empty 200
 	ms := newFakeMutationStore()
 	_, _ = ms.InsertMutationBatch(context.Background(), []MutationEntry{
 		{Project: "proj-a", Entity: "obs", EntityKey: "k1", Op: "upsert", Payload: json.RawMessage(`{}`)},
@@ -617,10 +617,10 @@ func TestMutationPullNoEnrollments(t *testing.T) {
 	}
 }
 
-// ─── Sync-pause tests (REQ-203) ───────────────────────────────────────────────
+// ─── Sync-pause tests ──────────────────────────────────────────────────────────
 
 func TestMutationPushSyncPaused409(t *testing.T) {
-	// REQ-203: sync_enabled=false → 409
+	// sync_enabled=false → 409
 	ms := newFakeMutationStore()
 	ms.syncEnabledMap["proj-a"] = false // paused
 
@@ -644,7 +644,7 @@ func TestMutationPushSyncPaused409(t *testing.T) {
 }
 
 func TestMutationPushNonPausedAccepted(t *testing.T) {
-	// REQ-203: non-paused → 200
+	// Non-paused → 200
 	ms := newFakeMutationStore()
 	ms.syncEnabledMap["proj-a"] = true
 
@@ -665,7 +665,7 @@ func TestMutationPushNonPausedAccepted(t *testing.T) {
 }
 
 func TestMutationPushPausePerProject(t *testing.T) {
-	// REQ-203: alpha paused, beta active
+	// Alpha paused, beta active
 	ms := newFakeMutationStore()
 	ms.syncEnabledMap["proj-a"] = false
 	ms.syncEnabledMap["proj-b"] = true
@@ -697,7 +697,7 @@ func TestMutationPushPausePerProject(t *testing.T) {
 }
 
 func TestMutationPushPauseAdminStillBlocked(t *testing.T) {
-	// REQ-203: admin token still gets 409 when project is paused
+	// Admin token still gets 409 when project is paused
 	ms := newFakeMutationStore()
 	ms.syncEnabledMap["proj-a"] = false
 
@@ -1013,9 +1013,9 @@ func (a *simpleProjectAuth) AuthorizeProject(_ string) error {
 	return nil // allow all projects for this auth
 }
 
-// ─── REQ-006, REQ-008: Relation payload validation tests (Phase D) ───────────
+// ─── Relation payload validation tests ──────────────────────────────────────
 
-// TestHandleMutationPush_ValidRelation_Returns200 (D.1a) verifies REQ-006 happy
+// TestHandleMutationPush_ValidRelation_Returns200 (D.1a) verifies the happy
 // path: a complete relation payload with all required fields returns HTTP 200.
 func TestHandleMutationPush_ValidRelation_Returns200(t *testing.T) {
 	ms := newFakeMutationStore()
@@ -1052,7 +1052,7 @@ func TestHandleMutationPush_ValidRelation_Returns200(t *testing.T) {
 }
 
 // TestHandleMutationPush_RelationMissingEachRequiredField (D.1b) verifies
-// REQ-006 negative: each required field individually absent returns HTTP 400
+// the negative case: each required field individually absent returns HTTP 400
 // with the correct field name in the response body.
 func TestHandleMutationPush_RelationMissingEachRequiredField(t *testing.T) {
 	requiredFields := []struct {
@@ -1183,7 +1183,7 @@ func TestHandleMutationPush_RelationMissingEachRequiredField(t *testing.T) {
 	}
 }
 
-// TestHandleMutationPush_PartialBatch_Atomic (D.1c) verifies REQ-006 edge case:
+// TestHandleMutationPush_PartialBatch_Atomic (D.1c) verifies this edge case:
 // a 2-entry batch with one valid and one invalid relation → 400, neither stored.
 func TestHandleMutationPush_PartialBatch_Atomic(t *testing.T) {
 	ms := newFakeMutationStore()
@@ -1243,8 +1243,8 @@ func TestHandleMutationPush_PartialBatch_Atomic(t *testing.T) {
 	}
 }
 
-// TestHandleMutationPush_LegacyObsMissingOptional_Returns200 (D.1d) verifies
-// REQ-008: legacy observation entity with only sync_id in payload → HTTP 200.
+// TestHandleMutationPush_LegacyObsMissingOptional_Returns200 (D.1d) verifies:
+// legacy observation entity with only sync_id in payload → HTTP 200.
 // No new required fields for legacy entities — backwards compatibility preserved.
 func TestHandleMutationPush_LegacyObsMissingOptional_Returns200(t *testing.T) {
 	ms := newFakeMutationStore()
@@ -1310,11 +1310,10 @@ func marshalPushRequestWithCreatedBy(t *testing.T, entries []MutationEntry, crea
 	return bytes.NewBuffer(body)
 }
 
-// ─── REQ-404, REQ-406, REQ-412: Audit emission tests ─────────────────────────
+// ─── Audit emission tests ────────────────────────────────────────────────────
 
 // TestMutationPushPaused409EmitsAudit verifies that a paused-project 409 emits
 // exactly one audit call with Action=mutation_push, Outcome=rejected_project_paused.
-// REQ-404 scenario 1, 2.1.1.
 func TestMutationPushPaused409EmitsAudit(t *testing.T) {
 	ms := newFakeMutationStore()
 	ms.syncEnabledMap["proj-a"] = false // paused
@@ -1345,7 +1344,7 @@ func TestMutationPushPaused409EmitsAudit(t *testing.T) {
 }
 
 // TestMutationPushNonPaused200EmitsNoAudit verifies that a successful push
-// emits zero audit calls. REQ-404 scenario 2, 2.1.2.
+// emits zero audit calls.
 func TestMutationPushNonPaused200EmitsNoAudit(t *testing.T) {
 	ms := newFakeMutationStore()
 	ms.syncEnabledMap["proj-a"] = true // enabled
@@ -1369,7 +1368,7 @@ func TestMutationPushNonPaused200EmitsNoAudit(t *testing.T) {
 }
 
 // TestMutationPushPausedWithCreatedBy verifies that created_by field populates
-// the audit contributor. REQ-406 scenario 1, 2.1.3.
+// the audit contributor.
 func TestMutationPushPausedWithCreatedBy(t *testing.T) {
 	ms := newFakeMutationStore()
 	ms.syncEnabledMap["proj-a"] = false
@@ -1416,7 +1415,7 @@ func TestMutationPushRejectsOversizedPayload(t *testing.T) {
 }
 
 // TestMutationPushPausedWithoutCreatedByDefaultsUnknown verifies that missing
-// created_by defaults contributor to "unknown". REQ-406 scenario 2, 2.1.4.
+// created_by defaults contributor to "unknown".
 func TestMutationPushPausedWithoutCreatedByDefaultsUnknown(t *testing.T) {
 	ms := newFakeMutationStore()
 	ms.syncEnabledMap["proj-a"] = false
@@ -1443,7 +1442,7 @@ func TestMutationPushPausedWithoutCreatedByDefaultsUnknown(t *testing.T) {
 }
 
 // TestMutationPushAuditInsertFailureStill409 verifies that even when InsertAuditEntry
-// returns an error, the handler still returns 409 (no 5xx). REQ-404 scenario 3, 2.1.5.
+// returns an error, the handler still returns 409 (no 5xx).
 func TestMutationPushAuditInsertFailureStill409(t *testing.T) {
 	ms := newFakeMutationStore()
 	ms.syncEnabledMap["proj-a"] = false
@@ -1464,9 +1463,9 @@ func TestMutationPushAuditInsertFailureStill409(t *testing.T) {
 	}
 }
 
-// ─── REQ-414: Response envelope project fields ────────────────────────────────
+// ─── Response envelope project fields ───────────────────────────────────────
 
-// mutationPushResponseEnvelope is a superset decode target used in REQ-414 tests.
+// mutationPushResponseEnvelope is a superset decode target used in the tests below.
 type mutationPushResponseEnvelope struct {
 	AcceptedSeqs  []int64 `json:"accepted_seqs"`
 	Project       string  `json:"project"`
@@ -1474,7 +1473,7 @@ type mutationPushResponseEnvelope struct {
 	ProjectPath   string  `json:"project_path"`
 }
 
-// mutationPullResponseEnvelope is a superset decode target used in REQ-414 tests.
+// mutationPullResponseEnvelope is a superset decode target used in the tests below.
 type mutationPullResponseEnvelope struct {
 	Mutations     []json.RawMessage `json:"mutations"`
 	HasMore       bool              `json:"has_more"`
@@ -1484,7 +1483,7 @@ type mutationPullResponseEnvelope struct {
 	ProjectPath   string            `json:"project_path"`
 }
 
-// TestMutationPushResponseEnvelopeHasProjectFields verifies REQ-414 success path:
+// TestMutationPushResponseEnvelopeHasProjectFields verifies the success path:
 // a 200 OK response from handleMutationPush must include project, project_source,
 // and project_path in the JSON body.
 func TestMutationPushResponseEnvelopeHasProjectFields(t *testing.T) {
@@ -1525,7 +1524,7 @@ func TestMutationPushResponseEnvelopeHasProjectFields(t *testing.T) {
 	}
 }
 
-// TestMutationPushPausedResponseEnvelopeHasProjectFields verifies REQ-414 409 path:
+// TestMutationPushPausedResponseEnvelopeHasProjectFields verifies the 409 path:
 // a 409 conflict response from handleMutationPush must include project, project_source,
 // and project_path fields in the JSON body (in addition to error fields).
 func TestMutationPushPausedResponseEnvelopeHasProjectFields(t *testing.T) {
@@ -1566,7 +1565,7 @@ func TestMutationPushPausedResponseEnvelopeHasProjectFields(t *testing.T) {
 	}
 }
 
-// TestMutationPullResponseEnvelopeHasProjectFields verifies REQ-414 for the pull path:
+// TestMutationPullResponseEnvelopeHasProjectFields verifies the envelope for the pull path:
 // the 200 pull response must include project, project_source, and project_path.
 // For pull, the project reflects the primary enrolled project of the caller.
 func TestMutationPullResponseEnvelopeHasProjectFields(t *testing.T) {
@@ -1604,7 +1603,7 @@ func TestMutationPullResponseEnvelopeHasProjectFields(t *testing.T) {
 
 // ─── Phase G — Integration tests (G.4, G.5): server validation + backwards compat ──
 
-// TestRelationSync_ServerValidation_MissingField (G.4) verifies REQ-006:
+// TestRelationSync_ServerValidation_MissingField (G.4) verifies:
 // Push a relation payload missing `judgment_status` → 400 with `missing` listing
 // the field. Push a valid relation immediately after → 200.
 func TestRelationSync_ServerValidation_MissingField(t *testing.T) {
@@ -1686,7 +1685,7 @@ func TestRelationSync_ServerValidation_MissingField(t *testing.T) {
 	}
 }
 
-// TestRelationSync_BackwardsCompat_LegacyClient (G.5) verifies REQ-008:
+// TestRelationSync_BackwardsCompat_LegacyClient (G.5) verifies:
 // An older client that pushes only session + observation mutations (no entity='relation')
 // succeeds with HTTP 200. No behavior change for legacy entities.
 func TestRelationSync_BackwardsCompat_LegacyClient(t *testing.T) {

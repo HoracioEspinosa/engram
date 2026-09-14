@@ -3536,9 +3536,9 @@ func (s *Store) Stats() (*Stats, error) {
 
 // ProjectExists returns true if the named project has at least one record in
 // any of observations, sessions, prompts, or enrollment tables.
-// Uses a single UNION ALL LIMIT 1 query for efficiency (REQ-315).
+// Uses a single UNION ALL LIMIT 1 query for efficiency.
 // The sync_enrolled_projects branch ensures a project enrolled via EnrollProject()
-// without any other data is still recognized (JC1).
+// without any other data is still recognized.
 func (s *Store) ProjectExists(name string) (bool, error) {
 	// Use LOWER(project) = ? so legacy data stored with mixed-case names
 	// (created before project normalization was enforced on writes) is found
@@ -7902,7 +7902,7 @@ func Now() string {
 	return time.Now().UTC().Format("2006-01-02 15:04:05")
 }
 
-// ─── Test-accessor helpers (REQ-009 / Phase G integration tests) ──────────────
+// ─── Test-accessor helpers for relation sync integration tests ─────────────
 
 // CountRelationSyncMutations returns the number of sync_mutations rows whose
 // entity is NOT 'session', 'observation', or 'prompt'. Used by integration
@@ -8168,7 +8168,7 @@ func scanDeferredRow(row scannable) (DeferredRow, error) {
 // ListObservationSyncPayloads returns the decoded payloads of all sync_mutations
 // rows whose entity = 'observation'. Used by integration tests to assert that
 // new observation columns (review_after, expires_at, embedding*) are NOT present
-// in the sync wire format in Phase 1 (REQ-009).
+// in the sync wire format.
 func (s *Store) ListObservationSyncPayloads() ([]any, error) {
 	rows, err := s.db.Query(`
 		SELECT payload

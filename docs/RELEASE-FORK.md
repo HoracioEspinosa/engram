@@ -348,8 +348,8 @@ pg_restore --clean --if-exists --no-owner \
   **listado** de releases (`api.github.com/repos/HoracioEspinosa/engram/releases`),
   no el endpoint del «último release»: ese endpoint excluye prelanzamientos
   por diseño de la API de GitHub, y las cuatro etiquetas publicadas del fork
-  están marcadas prerelease, así que ese endpoint respondería 404 siempre
-  (ADR-045 §2). Del listado descarta los borradores —la API los incluye en peticiones con
+  están marcadas prerelease, así que ese endpoint respondería 404 siempre.
+  Del listado descarta los borradores —la API los incluye en peticiones con
   acceso de escritura, y un borrador no es un release real— y elige la
   entrada más nueva por comparación en vez de confiar en el orden del array:
   GitHub no documenta ningún orden para ese listado, y en la práctica

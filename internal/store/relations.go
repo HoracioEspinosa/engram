@@ -26,13 +26,13 @@ var ErrSemanticPromptBuilderRequired = errors.New("semantic scan requires a non-
 // Valid relation type values. Type compatibility is NOT enforced in Phase 1;
 // the agent does that judgment.
 const (
-	RelationPending      = "pending"
-	RelationRelated      = "related"
-	RelationCompatible   = "compatible"
-	RelationScoped       = "scoped"
+	RelationPending       = "pending"
+	RelationRelated       = "related"
+	RelationCompatible    = "compatible"
+	RelationScoped        = "scoped"
 	RelationConflictsWith = "conflicts_with"
-	RelationSupersedes   = "supersedes"
-	RelationNotConflict  = "not_conflict"
+	RelationSupersedes    = "supersedes"
+	RelationNotConflict   = "not_conflict"
 )
 
 // Valid judgment_status values.
@@ -118,11 +118,11 @@ type RelationListItem struct {
 
 // RelationStats holds aggregate counts of relations for a project.
 type RelationStats struct {
-	Project         string         `json:"project"`
-	ByRelation      map[string]int `json:"by_relation"`
+	Project          string         `json:"project"`
+	ByRelation       map[string]int `json:"by_relation"`
 	ByJudgmentStatus map[string]int `json:"by_judgment_status"`
-	DeferredCount   int            `json:"deferred"`
-	DeadCount       int            `json:"dead"`
+	DeferredCount    int            `json:"deferred"`
+	DeadCount        int            `json:"dead"`
 }
 
 // DeferredRow represents a row in sync_apply_deferred with the payload decoded.
@@ -141,13 +141,13 @@ type DeferredRow struct {
 
 // ScanResult holds the output of a ScanProject call.
 type ScanResult struct {
-	Project            string `json:"project"`
-	Inspected          int    `json:"inspected"`
-	CandidatesFound    int    `json:"candidates_found"`
-	AlreadyRelated     int    `json:"already_related"`
-	RelationsInserted  int    `json:"inserted"`
-	Capped             bool   `json:"capped"`
-	DryRun             bool   `json:"dry_run"`
+	Project           string `json:"project"`
+	Inspected         int    `json:"inspected"`
+	CandidatesFound   int    `json:"candidates_found"`
+	AlreadyRelated    int    `json:"already_related"`
+	RelationsInserted int    `json:"inserted"`
+	Capped            bool   `json:"capped"`
+	DryRun            bool   `json:"dry_run"`
 
 	// Semantic counters — populated only when ScanOptions.Semantic is true.
 	// Zero-value is safe for existing JSON consumers.
@@ -244,31 +244,30 @@ type Candidate struct {
 
 // Relation represents a row in memory_relations.
 type Relation struct {
-	ID                    int64    `json:"id"`
-	SyncID                string   `json:"sync_id"`
-	SourceID              string   `json:"source_id"`
-	TargetID              string   `json:"target_id"`
-	Relation              string   `json:"relation"`
-	Reason                *string  `json:"reason,omitempty"`
-	Evidence              *string  `json:"evidence,omitempty"`
-	Confidence            *float64 `json:"confidence,omitempty"`
-	JudgmentStatus        string   `json:"judgment_status"`
-	MarkedByActor         *string  `json:"marked_by_actor,omitempty"`
-	MarkedByKind          *string  `json:"marked_by_kind,omitempty"`
-	MarkedByModel         *string  `json:"marked_by_model,omitempty"`
-	SessionID             *string  `json:"session_id,omitempty"`
-	CreatedAt             string   `json:"created_at"`
-	UpdatedAt             string   `json:"updated_at"`
+	ID             int64    `json:"id"`
+	SyncID         string   `json:"sync_id"`
+	SourceID       string   `json:"source_id"`
+	TargetID       string   `json:"target_id"`
+	Relation       string   `json:"relation"`
+	Reason         *string  `json:"reason,omitempty"`
+	Evidence       *string  `json:"evidence,omitempty"`
+	Confidence     *float64 `json:"confidence,omitempty"`
+	JudgmentStatus string   `json:"judgment_status"`
+	MarkedByActor  *string  `json:"marked_by_actor,omitempty"`
+	MarkedByKind   *string  `json:"marked_by_kind,omitempty"`
+	MarkedByModel  *string  `json:"marked_by_model,omitempty"`
+	SessionID      *string  `json:"session_id,omitempty"`
+	CreatedAt      string   `json:"created_at"`
+	UpdatedAt      string   `json:"updated_at"`
 
 	// Annotation fields — populated by GetRelationsForObservations via LEFT JOIN.
 	// Excluded from JSON output (used only for in-process annotation building).
-	// REQ-005, REQ-012 | Design §7, §8.
-	SourceIntID     int64  `json:"-"` // integer primary key of source observation
-	SourceTitle     string `json:"-"` // title of source observation; empty if missing/deleted
-	SourceMissing   bool   `json:"-"` // true if source is soft-deleted or not found
-	TargetIntID     int64  `json:"-"` // integer primary key of target observation
-	TargetTitle     string `json:"-"` // title of target observation; empty if missing/deleted
-	TargetMissing   bool   `json:"-"` // true if target is soft-deleted or not found
+	SourceIntID   int64  `json:"-"` // integer primary key of source observation
+	SourceTitle   string `json:"-"` // title of source observation; empty if missing/deleted
+	SourceMissing bool   `json:"-"` // true if source is soft-deleted or not found
+	TargetIntID   int64  `json:"-"` // integer primary key of target observation
+	TargetTitle   string `json:"-"` // title of target observation; empty if missing/deleted
+	TargetMissing bool   `json:"-"` // true if target is soft-deleted or not found
 }
 
 // ObservationRelations groups relations for a single observation, split by role.
@@ -282,7 +281,7 @@ type ObservationRelations struct {
 // SaveRelationParams holds the inputs for SaveRelation.
 type SaveRelationParams struct {
 	// SyncID is the unique identifier for this relation row (format: rel-<16hex>).
-	SyncID   string
+	SyncID string
 	// SourceID is the TEXT sync_id of the source observation.
 	SourceID string
 	// TargetID is the TEXT sync_id of the target observation.
@@ -292,23 +291,23 @@ type SaveRelationParams struct {
 // JudgeRelationParams holds the inputs for JudgeRelation.
 type JudgeRelationParams struct {
 	// JudgmentID is the sync_id of the relation row to update (required).
-	JudgmentID    string
+	JudgmentID string
 	// Relation is the verdict verb (required); must be one of validRelationVerbs.
-	Relation      string
+	Relation string
 	// Reason is an optional free-text explanation.
-	Reason        *string
+	Reason *string
 	// Evidence is optional free-form JSON or text evidence.
-	Evidence      *string
+	Evidence *string
 	// Confidence is optional 0..1 confidence score.
-	Confidence    *float64
+	Confidence *float64
 	// MarkedByActor is the actor identifier (e.g. "agent:claude-sonnet-4-6" or "user").
 	MarkedByActor string
 	// MarkedByKind is the actor kind ("agent", "human", "system").
-	MarkedByKind  string
+	MarkedByKind string
 	// MarkedByModel is the model ID (may be empty for human actors).
 	MarkedByModel string
 	// SessionID is the session in which the judgment was made (optional).
-	SessionID     string
+	SessionID string
 }
 
 // ─── FindCandidates ───────────────────────────────────────────────────────────
@@ -589,12 +588,12 @@ func (s *Store) JudgeRelation(p JudgeRelationParams) (*Relation, error) {
 	}
 
 	if err := s.withTx(func(tx *sql.Tx) error {
-		// ── Cross-project guard (Phase 2, REQ-003) ─────────────────────────
+		// ── Cross-project guard ──────────────────────────────────────────────
 		// Derive source and target project for enrollment checks and the guard.
 		// Use the same session-fallback form as JudgeBySemantic so that enrolled
 		// projects whose observations have a blank project column (but whose session
 		// carries the project) are resolved correctly. Missing observation → empty
-		// string (REQ-011 edge) because the LEFT JOIN returns no row.
+		// string because the LEFT JOIN returns no row.
 		var srcProject, tgtProject string
 		_ = tx.QueryRow(
 			`SELECT coalesce(nullif(o.project,''), s.project, '')
@@ -642,9 +641,9 @@ func (s *Store) JudgeRelation(p JudgeRelationParams) (*Relation, error) {
 			return fmt.Errorf("JudgeRelation: update: %w", err)
 		}
 
-		// ── Enqueue sync mutation when project is enrolled (REQ-001) ───────
+		// ── Enqueue sync mutation when project is enrolled ──────────────────
 		// Derive project from source observation; empty string if source missing.
-		// (REQ-011: loud failure is the server's job; we enqueue project='' and log.)
+		// (Loud failure is the server's job; we enqueue project='' and log.)
 		//
 		// Enrollment check: prefer srcProject; fall back to tgtProject when source
 		// is missing locally (race condition). This ensures enqueue happens with
@@ -663,7 +662,7 @@ func (s *Store) JudgeRelation(p JudgeRelationParams) (*Relation, error) {
 			return nil // not enrolled — no mutation enqueued
 		}
 
-		// REQ-011: log at WARNING level when source observation is missing locally
+		// Log at WARNING level when source observation is missing locally
 		// (project='' race condition). The server will reject with 400; this log
 		// is the local breadcrumb so the gap is not silently swallowed.
 		if srcProject == "" {
@@ -705,7 +704,7 @@ func (s *Store) JudgeRelation(p JudgeRelationParams) (*Relation, error) {
 
 // validateCrossProjectGuard checks whether sourceID and targetID belong to the
 // same project. It returns ErrCrossProjectRelation when they are in different
-// projects. Both empty is allowed (observation may be missing locally — REQ-011).
+// projects. Both empty is allowed (observation may be missing locally).
 // This function is shared by JudgeRelation and JudgeBySemantic.
 func validateCrossProjectGuard(tx *sql.Tx, sourceID, targetID string) error {
 	var srcProject, tgtProject string
@@ -865,7 +864,7 @@ func (s *Store) JudgeBySemantic(p JudgeBySemanticParams) (string, error) {
 			return nil // not enrolled — backfill will cover it on enrollment
 		}
 
-		// REQ-011: log at WARNING level when source observation is missing locally
+		// Log at WARNING level when source observation is missing locally
 		// (project='' race condition). The server will reject with 400; this log
 		// is the local breadcrumb so the gap is not silently swallowed.
 		if srcProject == "" {
@@ -941,7 +940,7 @@ func (s *Store) getRelationTx(tx *sql.Tx, syncID string) (*Relation, error) {
 //
 // A single SQL query with IN/OR and LEFT JOINs avoids N+1 queries.
 // The returned Relation values are enriched with source/target integer IDs and
-// titles via LEFT JOIN, used by the MCP annotation builder (REQ-005, REQ-012).
+// titles via LEFT JOIN, used by the MCP annotation builder.
 // Missing or soft-deleted observations set the corresponding *Missing flag to true.
 func (s *Store) GetRelationsForObservations(syncIDs []string) (map[string]ObservationRelations, error) {
 	if len(syncIDs) == 0 {
@@ -960,7 +959,7 @@ func (s *Store) GetRelationsForObservations(syncIDs []string) (map[string]Observ
 	}
 
 	inClause := joinStrings(placeholders, ",")
-	// LEFT JOIN to observations for title enrichment (REQ-005, Design §8).
+	// LEFT JOIN to observations for title enrichment.
 	// source_missing / target_missing: observation is absent (not found) or soft-deleted.
 	query := fmt.Sprintf(`
 		SELECT r.id, r.sync_id,

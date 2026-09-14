@@ -1208,7 +1208,7 @@ func (s *fakeStoreWithAudit) InsertAuditEntry(_ context.Context, entry cloudstor
 }
 
 // TestPushPathPauseEnforcement asserts that POST /sync/push returns 409 with
-// error_code=sync-paused when the project's sync is disabled. Satisfies REQ-109.
+// error_code=sync-paused when the project's sync is disabled.
 func TestPushPathPauseEnforcement(t *testing.T) {
 	pausedStore := &fakeStoreWithPauseControl{
 		fakeStore:   fakeStore{},
@@ -1229,7 +1229,7 @@ func TestPushPathPauseEnforcement(t *testing.T) {
 	}
 }
 
-// ─── REQ-405, REQ-407: Chunk push audit emission tests ────────────────────────
+// ─── Chunk push audit emission tests ─────────────────────────────────────────
 
 // makeValidChunkBody creates a minimal valid chunk push request body for testing.
 func makeValidChunkBody(t *testing.T, project string) *bytes.Buffer {
@@ -1247,7 +1247,7 @@ func makeValidChunkBody(t *testing.T, project string) *bytes.Buffer {
 }
 
 // TestChunkPushPaused409EmitsAuditWithChunkAction verifies that a paused-project
-// chunk push 409 emits exactly one audit call with Action=chunk_push. REQ-405 scenario 1, 2.2.1.
+// chunk push 409 emits exactly one audit call with Action=chunk_push.
 func TestChunkPushPaused409EmitsAuditWithChunkAction(t *testing.T) {
 	st := &fakeStoreWithAudit{syncEnabled: false}
 	srv := New(st, fakeAuth{}, 0)
@@ -1271,7 +1271,7 @@ func TestChunkPushPaused409EmitsAuditWithChunkAction(t *testing.T) {
 }
 
 // TestChunkPushEnabled200EmitsNoAudit verifies that a successful chunk push
-// emits zero audit calls. REQ-405 scenario 2, 2.2.2.
+// emits zero audit calls.
 func TestChunkPushEnabled200EmitsNoAudit(t *testing.T) {
 	st := &fakeStoreWithAudit{
 		fakeStore:   fakeStore{chunks: make(map[string][]byte)},
@@ -1292,7 +1292,6 @@ func TestChunkPushEnabled200EmitsNoAudit(t *testing.T) {
 
 // TestChunkPushStoreWithoutInsertAuditEntryDoesNotPanic verifies that when the
 // store doesn't implement InsertAuditEntry, the handler returns 409 without panicking.
-// REQ-405 scenario 3, REQ-412 scenario 2, 2.2.3.
 func TestChunkPushStoreWithoutInsertAuditEntryDoesNotPanic(t *testing.T) {
 	// fakeStoreWithPauseControl does NOT implement InsertAuditEntry.
 	st := &fakeStoreWithPauseControl{syncEnabled: false}
@@ -1312,9 +1311,9 @@ func TestChunkPushStoreWithoutInsertAuditEntryDoesNotPanic(t *testing.T) {
 	}
 }
 
-// TestChunkPushPausedResponseEnvelopeHasProjectFields verifies JW4: chunk push 409
+// TestChunkPushPausedResponseEnvelopeHasProjectFields verifies that a chunk push 409
 // response body must include project, project_source, and project_path fields,
-// consistent with the mutation push 409 envelope. REQ-414 parity for chunk path.
+// consistent with the mutation push 409 envelope (parity for the chunk path).
 func TestChunkPushPausedResponseEnvelopeHasProjectFields(t *testing.T) {
 	st := &fakeStoreWithAudit{syncEnabled: false}
 	srv := New(st, fakeAuth{}, 0)
@@ -1341,10 +1340,10 @@ func TestChunkPushPausedResponseEnvelopeHasProjectFields(t *testing.T) {
 	}
 }
 
-// ─── REQ-407: Pull path negative test ────────────────────────────────────────
+// ─── Pull path negative test ────────────────────────────────────────────────
 
 // TestMutationPullEmitsNoAuditOnPausedProject verifies that pull from a paused
-// project still succeeds and emits zero audit calls. REQ-407 scenario 1, 2.3.1.
+// project still succeeds and emits zero audit calls.
 func TestMutationPullEmitsNoAuditOnPausedProject(t *testing.T) {
 	// fakeMutationStoreWithAudit adds IsProjectSyncEnabled + InsertAuditEntry to mutation store.
 	type auditCaptureMutStore struct {
@@ -1372,7 +1371,7 @@ func TestMutationPullEmitsNoAuditOnPausedProject(t *testing.T) {
 	}
 }
 
-// ─── REQ-404 + REQ-409 combined: E2E integration test ────────────────────────
+// ─── E2E integration test ────────────────────────────────────────────────────
 
 // fakeAuditableStoreForE2E combines all required capabilities for the E2E integration test.
 // It acts as a ChunkStore + MutationStore + InsertAuditEntry provider + DashboardStore.
@@ -1435,7 +1434,6 @@ func (s *fakeAuditableStoreForE2E) ListAuditEntriesPaginated(_ context.Context, 
 // TestAuditLogE2E_MutationPushPausedThenListRendered verifies the full flow:
 // POST /sync/mutations/push (paused project) → 409 → store captures audit row →
 // GET /dashboard/admin/audit-log/list → HTML contains the audit row contributor.
-// REQ-404 + REQ-409 combined, 2.7.1.
 func TestAuditLogE2E_MutationPushPausedThenListRendered(t *testing.T) {
 	// This is a cloudserver package test — we instantiate a CloudServer and a
 	// dashboard store that share the same underlying fake store.
@@ -1597,7 +1595,7 @@ func TestIsDashboardAdminComparisonGuard(t *testing.T) {
 }
 
 // TestInsecureModeLoginRedirects asserts that GET /dashboard/login with auth==nil
-// returns 303 to /dashboard/ (login is a no-op in insecure mode). Satisfies REQ-110.
+// returns 303 to /dashboard/ (login is a no-op in insecure mode).
 func TestInsecureModeLoginRedirects(t *testing.T) {
 	// Create server with nil auth (insecure no-auth mode).
 	srv := &CloudServer{

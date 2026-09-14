@@ -342,7 +342,7 @@ func (mt *MutationTransport) setAuthorization(req *http.Request) {
 }
 
 // PushMutations POSTs a batch of mutations to the cloud server.
-// REQ-200: 404 → reason_code=server_unsupported; 401 → IsAuthFailure.
+// 404 → reason_code=server_unsupported; 401 → IsAuthFailure.
 func (mt *MutationTransport) PushMutations(entries []MutationEntry) ([]int64, error) {
 	body, err := json.Marshal(map[string]any{"entries": entries})
 	if err != nil {
@@ -379,7 +379,7 @@ func (mt *MutationTransport) PushMutations(entries []MutationEntry) ([]int64, er
 }
 
 // PullMutations fetches mutations from the cloud server since the given sequence.
-// REQ-201: 404 → reason_code=server_unsupported; 401 → IsAuthFailure.
+// 404 → reason_code=server_unsupported; 401 → IsAuthFailure.
 func (mt *MutationTransport) PullMutations(sinceSeq int64, limit int) (*PullMutationsResponse, error) {
 	reqURL := fmt.Sprintf("%s/sync/mutations/pull?since_seq=%d&limit=%d", mt.baseURL, sinceSeq, limit)
 	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
@@ -408,7 +408,7 @@ func (mt *MutationTransport) PullMutations(sinceSeq int64, limit int) (*PullMuta
 }
 
 // newMutationHTTPStatusError creates an HTTPStatusError for mutation transport operations.
-// REQ-214: 404 → ErrorCode="server_unsupported".
+// 404 → ErrorCode="server_unsupported".
 func newMutationHTTPStatusError(operation string, statusCode int, body []byte) error {
 	// Try to parse standard error envelope first.
 	var payload struct {
@@ -423,7 +423,7 @@ func newMutationHTTPStatusError(operation string, statusCode int, body []byte) e
 		}
 	}
 
-	// REQ-214 + BC3: 404 maps to server_unsupported and emits an operator warning.
+	// BC3: 404 maps to server_unsupported and emits an operator warning.
 	errorCode := strings.TrimSpace(payload.ErrorCode)
 	if statusCode == http.StatusNotFound {
 		errorCode = "server_unsupported"

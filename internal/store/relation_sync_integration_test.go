@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// ─── Phase G — Integration tests (REQ-001–REQ-009 cross-cutting) ──────────────
+// ─── Cross-machine relation sync integration tests ─────────────────────────
 //
 // These tests exercise the full push→pull→apply loop end-to-end using two
 // independent *Store instances (Machine A and Machine B) without a real cloud
@@ -69,7 +69,7 @@ func transferMutations(t *testing.T, src, dst *Store) int {
 
 // ─── G.1 — Full cross-machine push → pull ─────────────────────────────────────
 
-// TestRelationSync_PushPull_CrossMachine (G.1) verifies REQ-001 + REQ-002:
+// TestRelationSync_PushPull_CrossMachine (G.1) verifies that:
 // Machine A judges a relation → mutation enqueued → transferred to Machine B →
 // Machine B has the same relation row with matching sync_id and provenance.
 func TestRelationSync_PushPull_CrossMachine(t *testing.T) {
@@ -144,7 +144,7 @@ func TestRelationSync_PushPull_CrossMachine(t *testing.T) {
 
 // ─── G.2 — FK miss → defer → retry success ────────────────────────────────────
 
-// TestRelationSync_FKMissDeferRetrySuccess (G.2) verifies REQ-002 + REQ-007:
+// TestRelationSync_FKMissDeferRetrySuccess (G.2) verifies that:
 // Machine B pulls a relation that references observations not yet local →
 // deferred. Then observations arrive. replayDeferred() succeeds.
 func TestRelationSync_FKMissDeferRetrySuccess(t *testing.T) {
@@ -244,7 +244,7 @@ func TestRelationSync_FKMissDeferRetrySuccess(t *testing.T) {
 
 // ─── G.3 — Retry cap → dead ────────────────────────────────────────────────────
 
-// TestRelationSync_RetryCapDead (G.3) verifies REQ-007 edge case:
+// TestRelationSync_RetryCapDead (G.3) verifies this edge case:
 // A relation persistently FK-fails (target observation never arrives).
 // After 5 retries, apply_status='dead' and the row is no longer attempted.
 func TestRelationSync_RetryCapDead(t *testing.T) {
@@ -305,7 +305,7 @@ func TestRelationSync_RetryCapDead(t *testing.T) {
 
 // ─── G.6 — Multi-actor: two distinct rows for same (source, target) pair ──────
 
-// TestRelationSync_MultiActor_TwoDistinctRows (G.6) verifies REQ-009 edge case:
+// TestRelationSync_MultiActor_TwoDistinctRows (G.6) verifies this edge case:
 // Two agents each judge the same (source, target) pair with different relation
 // types. Both relations sync via the cloud "channel". A third machine (consumer)
 // receives both and has 2 distinct local rows for the same source/target pair.

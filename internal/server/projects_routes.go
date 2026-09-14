@@ -1,9 +1,9 @@
-// engram-projects HTTP API (RFC rfc-engram-projects.md §6): the 16 routes
+// engram-projects HTTP API: the 16 routes
 // under /projects that expose the same domain the `projects` MCP tool profile
 // exposes, for clients that speak HTTP instead of MCP (the TUI if it is ever
 // decoupled from the store, hooks, and cd-knowledge-mcp v1.1).
 //
-// Conventions, all from RFC §6.1:
+// Conventions:
 //   - Reads are open, mutations are wrapped in requireAuth, exactly as
 //     DELETE, /export, /import and /projects/migrate already are. The server
 //     only listens on loopback, which is what makes open reads acceptable.
@@ -14,9 +14,9 @@
 //     header. limit is clamped to [1, 200] with a default of 20.
 //   - Every successful write calls notifyWrite so autosync wakes up.
 //
-// Two deliberate divergences from the RFC's route table, both because an HTTP
-// server cannot see the caller's working directory the way an in-process MCP
-// tool can:
+// Two deliberate divergences from the MCP tool route table, both because an
+// HTTP server cannot see the caller's working directory the way an
+// in-process MCP tool can:
 //   - POST /projects/{slug}/graph/sync requires repo_dir. The tool defaults it
 //     to the project path detected from the *client's* cwd; over HTTP that
 //     path is unknowable, and defaulting to the server process's own cwd would

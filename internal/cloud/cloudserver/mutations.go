@@ -58,7 +58,7 @@ const defaultPullLimit = 100
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
 // handleMutationPush handles POST /sync/mutations/push.
-// REQ-200: bearer auth, configurable body limit defaulting to 8 MiB, batch size cap 100, pause gate (409 on sync_enabled=false).
+// Bearer auth, configurable body limit defaulting to 8 MiB, batch size cap 100, pause gate (409 on sync_enabled=false).
 // BC2: project authorization is enforced for every distinct project in the batch.
 // BW9: 409 pause response uses writeActionableError for structured error envelope.
 func (s *CloudServer) handleMutationPush(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +81,7 @@ func (s *CloudServer) handleMutationPush(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// JC1: Empty batch is rejected early — empty batches carry no project info and
+	// Empty batch is rejected early — empty batches carry no project info and
 	// cannot be pause-gated or audited. Clients must send at least one entry.
 	if len(req.Entries) == 0 {
 		writeActionableError(w, http.StatusBadRequest, constants.UpgradeErrorClassRepairable, "empty_batch",
@@ -126,13 +126,13 @@ func (s *CloudServer) handleMutationPush(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// REQ-414: Resolve primary project from request body (first entry).
+	// Resolve primary project from request body (first entry).
 	// Server-side has no filesystem cwd semantics; source is always "request_body".
-	// N3: The `if len(req.Entries) > 0` guard is removed — JC1 (above) guarantees
-	// at least one entry exists at this point.
+	// N3: The `if len(req.Entries) > 0` guard is removed — the empty-batch check
+	// above guarantees at least one entry exists at this point.
 	primaryProject := strings.TrimSpace(req.Entries[0].Project)
 
-	// Check sync pause per project (REQ-203 + BW9: use writeActionableError for 409).
+	// Check sync pause per project (BW9: use writeActionableError for 409).
 	for _, entry := range req.Entries {
 		proj := strings.TrimSpace(entry.Project)
 		enabled, err := ms.IsProjectSyncEnabled(proj)
@@ -141,7 +141,7 @@ func (s *CloudServer) handleMutationPush(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if !enabled {
-			// REQ-404: emit audit entry for pause-rejection before writing 409 response.
+			// Emit audit entry for pause-rejection before writing 409 response.
 			// Uses structural type assertion — MutationStore is NOT extended.
 			contributor := strings.TrimSpace(req.CreatedBy)
 			if contributor == "" {
@@ -163,7 +163,7 @@ func (s *CloudServer) handleMutationPush(w http.ResponseWriter, r *http.Request)
 			} else {
 				log.Printf("cloudserver: store (%T) does not implement InsertAuditEntry; audit skipped", s.store)
 			}
-			// REQ-414: include project envelope in 409 response alongside error fields.
+			// Include project envelope in 409 response alongside error fields.
 			jsonResponse(w, http.StatusConflict, map[string]any{
 				"error_class":    strings.TrimSpace(constants.UpgradeErrorClassPolicy),
 				"error_code":     "sync-paused",
@@ -176,7 +176,7 @@ func (s *CloudServer) handleMutationPush(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// REQ-006 / REQ-008: Validate each entry's payload before storage.
+	// Validate each entry's payload before storage.
 	// Relation entries are strictly validated (all required fields).
 	// Legacy entities (session, observation, prompt) use the lenient floor only.
 	// Any failure rejects the ENTIRE batch (atomic — no partial inserts).
@@ -205,7 +205,7 @@ func (s *CloudServer) handleMutationPush(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// REQ-414: include project envelope in 200 response.
+	// Include project envelope in 200 response.
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"accepted_seqs":  acceptedSeqs,
 		"project":        primaryProject,
@@ -215,7 +215,7 @@ func (s *CloudServer) handleMutationPush(w http.ResponseWriter, r *http.Request)
 }
 
 // handleMutationPull handles GET /sync/mutations/pull.
-// REQ-201: bearer auth, since_seq/limit params, server-side enrollment filter.
+// Bearer auth, since_seq/limit params, server-side enrollment filter.
 func (s *CloudServer) handleMutationPull(w http.ResponseWriter, r *http.Request) {
 	sinceSeqStr := strings.TrimSpace(r.URL.Query().Get("since_seq"))
 	limitStr := strings.TrimSpace(r.URL.Query().Get("limit"))
@@ -237,7 +237,7 @@ func (s *CloudServer) handleMutationPull(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// Resolve allowed projects from the caller's enrollment (REQ-202).
+	// Resolve allowed projects from the caller's enrollment.
 	// BW2: Fail closed — when projectAuth is set but does not implement
 	// EnrolledProjectsProvider, default to an empty allowedProjects slice
 	// (returns nothing) rather than nil (which returns everything).
@@ -273,7 +273,7 @@ func (s *CloudServer) handleMutationPull(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// REQ-414: For pull, primary project = first enrolled project (or empty if none).
+	// For pull, primary project = first enrolled project (or empty if none).
 	// Server-side has no filesystem cwd; source is always "request_body".
 	pullPrimaryProject := ""
 	if len(allowedProjects) > 0 {
@@ -303,7 +303,7 @@ func (s *CloudServer) handleMutationPull(w http.ResponseWriter, r *http.Request)
 		mutations = []StoredMutation{}
 	}
 
-	// REQ-414: include project envelope in 200 pull response.
+	// Include project envelope in 200 pull response.
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"mutations":      mutations,
 		"has_more":       hasMore,
@@ -314,12 +314,12 @@ func (s *CloudServer) handleMutationPull(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// ─── REQ-006 / REQ-008: Per-entity payload validation ────────────────────────
+// ─── Per-entity payload validation ──────────────────────────────────────────
 
 // relationRequiredFields lists the fields that MUST be present and non-empty
-// in every relation mutation payload (REQ-006). This list is the stable
-// validation contract — Phase 3 MUST NOT remove or rename these fields without
-// a wire-format version bump.
+// in every relation mutation payload. This list is the stable
+// validation contract — later changes MUST NOT remove or rename these fields
+// without a wire-format version bump.
 var relationRequiredFields = []string{
 	"sync_id",
 	"source_id",
@@ -354,9 +354,10 @@ func validateRelationPayload(payload json.RawMessage) (string, bool) {
 }
 
 // validateLegacyPayload is a no-op for legacy entities (session, observation,
-// prompt). REQ-008: these entities have no new required payload fields — their
-// push/pull behavior is UNCHANGED from before Phase 2. Any tightening of legacy
-// payload validation is a breaking change and must not be done here.
+// prompt): these entities have no new required payload fields — their
+// push/pull behavior is UNCHANGED from before the engram-projects rollout. Any
+// tightening of legacy payload validation is a breaking change and must not
+// be done here.
 func validateLegacyPayload(_ string, _ json.RawMessage) (string, bool) {
 	return "", true
 }

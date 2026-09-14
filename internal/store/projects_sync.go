@@ -1,5 +1,4 @@
-// Package store: engram-projects cloud replication (RFC rfc-engram-projects.md
-// section 10).
+// Package store: engram-projects cloud replication.
 //
 // This file owns both halves of the project-scoped mutation journal for the
 // five engram-projects entities:
@@ -46,8 +45,8 @@ import (
 // classification rule.
 var ErrProjectsFKMissing = fmt.Errorf("%w: engram-projects referenced row missing", ErrRelationFKMissing)
 
-// projectsSyncEnvVar gates the enqueue half only. ADR-025 fixes the rollout
-// order as cloud image first, then binaries, then this flag: a mutation for an
+// projectsSyncEnvVar gates the enqueue half only. The rollout order is fixed
+// as cloud image first, then binaries, then this flag: a mutation for an
 // entity the other replicas do not understand yet would halt their pull, so
 // nothing is enqueued until the operator says every binary is current.
 //
@@ -56,7 +55,7 @@ var ErrProjectsFKMissing = fmt.Errorf("%w: engram-projects referenced row missin
 const projectsSyncEnvVar = "ENGRAM_PROJECTS_SYNC"
 
 // ProjectsSyncEnabled reports whether engram-projects rows are replicated.
-// Default is off (ADR-025).
+// Default is off.
 func ProjectsSyncEnabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(projectsSyncEnvVar))) {
 	case "1", "true", "yes", "on":
@@ -812,8 +811,8 @@ func (s *Store) clearDeferredTx(tx *sql.Tx, entityKey, payload string) error {
 // group (graph_commit, graph_built_at, graph_summary) only ever moves forward
 // on graph_built_at. Keeping them apart is what stops a stale descriptive
 // update from dragging a newer graph stamp backwards — the card would then
-// claim facts about a commit it no longer points at, which is exactly what
-// ADR-026 forbids.
+// claim facts about a commit it no longer points at, which must never
+// happen.
 func (s *Store) applyProjectCardMutationTx(tx *sql.Tx, mutation SyncMutation, payload []byte) error {
 	var incoming syncProjectCardPayload
 	if err := decodeSyncPayload(payload, &incoming); err != nil {
