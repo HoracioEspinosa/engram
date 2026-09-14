@@ -397,6 +397,10 @@ type TaskListFilter struct {
 	// otherwise leave them out. Archived work is kept, not shown by default:
 	// it is history, and history is not a to-do list.
 	IncludeArchived bool
+	// MatchMode is how Query's tokens combine: "all" (default) needs every
+	// token, "any" needs one of them. A title search over a handful of tasks
+	// is often better served by the broader one.
+	MatchMode       string
 	Limit           int
 	Offset          int
 	StaleAfterHours int
@@ -473,7 +477,11 @@ func (s *Store) ListTasks(project string, f TaskListFilter) ([]TaskListItem, int
 	}
 	if strings.TrimSpace(f.Query) != "" {
 		where = append(where, "t.id IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)")
-		args = append(args, sanitizeFTS(f.Query))
+		if f.MatchMode == "any" {
+			args = append(args, sanitizeFTSCandidates(f.Query))
+		} else {
+			args = append(args, sanitizeFTS(f.Query))
+		}
 	}
 	whereSQL := strings.Join(where, " AND ")
 
