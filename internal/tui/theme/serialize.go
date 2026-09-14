@@ -110,10 +110,19 @@ type BuiltinTheme struct {
 }
 
 // builtinVariants records which variant each registered palette was built for.
-// A palette that is not listed is dark: every palette the binary ships today
-// is, and a light one that forgot to say so would open a light terminal on a
-// dark theme, which is the failure worth defaulting away from.
-var builtinVariants = map[string]string{}
+// A palette that is not listed is dark: all but one of the palettes the binary
+// ships are, and a light one that forgot to say so would open a light terminal
+// on a dark theme, which is the failure worth defaulting away from.
+var builtinVariants = map[string]string{
+	"koi-day": ThemeVariantLight,
+}
+
+// The two variants a theme document may declare. They are the same two strings
+// the themes table's CHECK constraint admits.
+const (
+	ThemeVariantDark  = "dark"
+	ThemeVariantLight = "light"
+)
 
 // Builtins returns every registered palette, by name, so a caller can seed all
 // of them without knowing which ones exist.
@@ -128,7 +137,7 @@ func Builtins() []BuiltinTheme {
 	for _, name := range names {
 		variant := builtinVariants[name]
 		if variant == "" {
-			variant = "dark"
+			variant = ThemeVariantDark
 		}
 		out = append(out, BuiltinTheme{Name: name, Variant: variant, Palette: registry[name]()})
 	}
@@ -137,13 +146,17 @@ func Builtins() []BuiltinTheme {
 
 // Builtin returns one registered palette by name.
 func Builtin(name string) (BuiltinTheme, bool) {
-	ctor, ok := registry[strings.ToLower(strings.TrimSpace(name))]
+	// The name is folded once and then used for both lookups. Looking the
+	// registry up folded and the variant up raw is how a palette answers to
+	// "KOI-DAY" and comes back claiming to be dark.
+	name = strings.ToLower(strings.TrimSpace(name))
+	ctor, ok := registry[name]
 	if !ok {
 		return BuiltinTheme{}, false
 	}
 	variant := builtinVariants[name]
 	if variant == "" {
-		variant = "dark"
+		variant = ThemeVariantDark
 	}
 	return BuiltinTheme{Name: name, Variant: variant, Palette: ctor()}, true
 }
@@ -164,9 +177,9 @@ func MarshalTheme(name, variant string, p Palette) ([]byte, error) {
 	}
 	variant = strings.ToLower(strings.TrimSpace(variant))
 	if variant == "" {
-		variant = "dark"
+		variant = ThemeVariantDark
 	}
-	if variant != "dark" && variant != "light" {
+	if variant != ThemeVariantDark && variant != ThemeVariantLight {
 		return nil, fmt.Errorf("theme: variant %q is neither dark nor light", variant)
 	}
 
@@ -210,9 +223,9 @@ func UnmarshalTheme(data []byte) (string, string, Palette, error) {
 	}
 	variant := strings.ToLower(strings.TrimSpace(doc.Variant))
 	if variant == "" {
-		variant = "dark"
+		variant = ThemeVariantDark
 	}
-	if variant != "dark" && variant != "light" {
+	if variant != ThemeVariantDark && variant != ThemeVariantLight {
 		return "", "", Palette{}, fmt.Errorf("theme: variant %q is neither dark nor light", variant)
 	}
 	if len(doc.LogoGradient) != logoRows {

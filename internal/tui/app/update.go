@@ -19,6 +19,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, globalKeys.Quit) {
 			return m, tea.Quit
 		}
+		if handled, next, cmd := m.updateThemePicker(msg); handled {
+			return next, cmd
+		}
 		if m.showHelp {
 			// While the "?" overlay (rfc-tui.md §7.1) is open, every key but
 			// the three that close it is swallowed here, before it ever
@@ -83,6 +86,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case selectorLoadedMsg:
 		m.selector = m.selector.applyLoaded(msg)
 		return m, nil
+
+	case themesLoadedMsg, themePreviewMsg, themeAppliedMsg:
+		return m.updateThemeMessage(msg)
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

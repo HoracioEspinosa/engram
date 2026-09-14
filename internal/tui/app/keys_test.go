@@ -25,6 +25,8 @@ func keyMsg(k string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyCtrlC}
 	case "ctrl+p":
 		return tea.KeyMsg{Type: tea.KeyCtrlP}
+	case "ctrl+t":
+		return tea.KeyMsg{Type: tea.KeyCtrlT}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 }
@@ -97,6 +99,15 @@ func TestEveryGlobalKeyIsRoutedThroughTheKeymap(t *testing.T) {
 			assert: func(t *testing.T, before, after Model, _ tea.Cmd) {
 				if after.active == before.active {
 					t.Fatalf("active tab did not move from %v", before.active)
+				}
+			},
+		},
+		{
+			name:    "theme picker",
+			binding: globalKeys.ThemePicker,
+			assert: func(t *testing.T, _, after Model, _ tea.Cmd) {
+				if !after.themePicker.open {
+					t.Fatal("the theme overlay should be open")
 				}
 			},
 		},

@@ -23,6 +23,10 @@ type globalKeyMap struct {
 	PrevTab key.Binding
 	// Refresh reloads the active screen.
 	Refresh key.Binding
+	// ThemePicker opens the theme overlay. It belongs here, alongside the
+	// rest of the chrome's keys, because it works on every screen: the
+	// overlay owns what happens once it is open, not the key that opens it.
+	ThemePicker key.Binding
 	// Help toggles the "?" overlay (rfc-tui.md §7.1), built from
 	// globalHelpBindings plus the active screen's own Help().
 	Help key.Binding
@@ -57,6 +61,10 @@ var globalKeys = globalKeyMap{
 		key.WithKeys("r"),
 		key.WithHelp("r", "refresh"),
 	),
+	ThemePicker: key.NewBinding(
+		key.WithKeys("ctrl+t"),
+		key.WithHelp("ctrl+t", "theme"),
+	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
 		key.WithHelp("?", "help"),
@@ -73,6 +81,7 @@ func globalHelpBindings() []key.Binding {
 		globalKeys.Dashboard,
 		globalKeys.ProjectSelector,
 		globalKeys.Refresh,
+		globalKeys.ThemePicker,
 		globalKeys.Help,
 		globalKeys.Quit,
 	}

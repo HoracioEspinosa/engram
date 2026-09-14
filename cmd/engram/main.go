@@ -918,11 +918,20 @@ func cmdTUI(cfg store.Config) {
 	}
 	defer s.Close()
 
-	themeFlag, themeEnv, themeConfig := resolveTUITheme(cfg)
-	if unknown := theme.UnknownName(themeFlag, themeEnv, themeConfig); unknown != "" {
+	// The binary's own palettes are seeded on every start, not at install
+	// time, so a palette a later version ships appears without anybody
+	// re-running a setup step. Seeding leaves an edited row alone, and a
+	// failure here is not worth refusing to open the workspace over: the
+	// compiled registry answers on its own.
+	if err := themeSeed(s); err != nil {
+		fmt.Fprintf(os.Stderr, "engram: could not seed the built-in themes: %v\n", err)
+	}
+
+	selection := resolveTUITheme(s, cfg)
+	if unknown := selection.UnknownName(); unknown != "" {
 		fmt.Fprintf(os.Stderr, "engram: unknown theme %q, falling back to %s\n", unknown, theme.DefaultThemeName)
 	}
-	palette := theme.Resolve(themeFlag, themeEnv, themeConfig)
+	palette := selection.Resolve()
 	model := newTUIModel(s, resolveTUIProject(), palette)
 	p := newTeaProgram(model)
 	if _, err := runTeaProgram(p); err != nil {
@@ -983,28 +992,58 @@ func isGuessedProjectSource(source string) bool {
 	return project.IsGuessedSource(source)
 }
 
-// resolveTUITheme extracts the three raw candidates rfc-tui.md §8.2's
-// precedence chain resolves between, following the same shape as
-// resolveTUIProject: an explicit --theme (or --theme=) flag, then
-// ENGRAM_TUI_THEME, then the tui.theme key in <data-dir>/config.json.
-// Picking the winner and falling back to the default is theme.Resolve's
-// job, not this function's — resolveTUIProject inlines that choice because
-// it has no registry to validate against, but theme.Resolve is exactly
-// that registry-aware chooser, so this stays a plain three-value extractor
-// and calls straight into it: theme.Resolve(resolveTUITheme(cfg)).
-func resolveTUITheme(cfg store.Config) (flag, env, config string) {
+// resolveTUITheme gathers everything that has an opinion about which palette
+// the TUI opens on: an explicit --theme (or --theme=) flag, ENGRAM_TUI_THEME,
+// the tui.theme setting, the tui.theme key in <data-dir>/config.json, and the
+// palettes the themes table holds.
+//
+// Picking the winner and falling back to the default is theme.Selection's job,
+// not this function's — resolveTUIProject inlines that choice because it has
+// no registry to validate against, but Selection is exactly that
+// registry-aware chooser, so this stays a plain gatherer.
+//
+// Neither the setting nor the stored palettes are worth failing over. A store
+// that will not answer means the compiled registry answers alone, which is the
+// same state a fresh installation is in.
+func resolveTUITheme(s *store.Store, cfg store.Config) theme.Selection {
+	selection := theme.Selection{
+		Env:    strings.TrimSpace(os.Getenv("ENGRAM_TUI_THEME")),
+		Config: readTUIThemeConfig(cfg),
+	}
 	for i := 2; i < len(os.Args); i++ {
 		switch {
 		case os.Args[i] == "--theme" && i+1 < len(os.Args):
-			flag = os.Args[i+1]
+			selection.Flag = os.Args[i+1]
 			i++
 		case strings.HasPrefix(os.Args[i], "--theme="):
-			flag = strings.TrimPrefix(os.Args[i], "--theme=")
+			selection.Flag = strings.TrimPrefix(os.Args[i], "--theme=")
 		}
 	}
-	env = strings.TrimSpace(os.Getenv("ENGRAM_TUI_THEME"))
-	config = readTUIThemeConfig(cfg)
-	return flag, env, config
+	if s == nil {
+		return selection
+	}
+
+	if value, ok, err := s.Setting(themeSettingKey); err != nil {
+		log.Printf("[engram] ignoring the remembered theme: %v", err)
+	} else if ok {
+		selection.Setting = strings.TrimSpace(value)
+	}
+
+	records, err := s.ListThemes()
+	if err != nil {
+		log.Printf("[engram] ignoring the stored themes: %v", err)
+		return selection
+	}
+	documents := make(map[string][]byte, len(records))
+	for _, record := range records {
+		documents[record.Name] = record.Palette
+	}
+	stored, unreadable := theme.PalettesFromDocuments(documents)
+	for _, name := range unreadable {
+		fmt.Fprintf(os.Stderr, "engram: theme %q is not a readable theme document, ignoring it\n", name)
+	}
+	selection.Stored = stored
+	return selection
 }
 
 // tuiConfigFile is the shape of <data-dir>/config.json's "tui" section.
@@ -2834,7 +2873,9 @@ Commands:
                      Launch interactive terminal UI
                        --project NAME  Open directly on a project's Dashboard, else the Selector.
                                        Also accepted as ENGRAM_PROJECT=NAME env var.
-                       --theme NAME    Palette: catppuccin-mocha (default) | kanagawa | elephant.
+                       --theme NAME    Palette: koi-pond (default) | koi-day | showa | ogon |
+                                       catppuccin-mocha | kanagawa | elephant. Run
+                                       "engram theme list" for what this build ships.
                                        Also accepted as ENGRAM_TUI_THEME=NAME env var, or the
                                        tui.theme key in <data-dir>/config.json.
   search <query>     Search memories [--type TYPE] [--project PROJECT] [--scope SCOPE] [--limit N]
@@ -2927,7 +2968,8 @@ Environment:
   ENGRAM_PROJECT     Process-level default project override.
                      For "engram serve": fallback for GET /sync/status with no project param.
                      For "engram mcp": sets DefaultProject, overriding cwd detection for all tools.
-  ENGRAM_TUI_THEME   Palette for "engram tui": catppuccin-mocha (default) | kanagawa | elephant.
+  ENGRAM_TUI_THEME   Palette for "engram tui": koi-pond (default) | koi-day | showa | ogon |
+                     catppuccin-mocha | kanagawa | elephant.
                      Precedence: --theme flag, then this var, then tui.theme in
                      <data-dir>/config.json, then the default.
   ENGRAM_HTTP_TOKEN  Optional Bearer auth for local HTTP server (engram serve).

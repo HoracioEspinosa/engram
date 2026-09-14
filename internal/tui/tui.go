@@ -20,10 +20,10 @@ type Model = app.Model
 // Memory tab; pass "" when none was resolved (rfc-tui.md §9.1's
 // "Semántica de --project": explicit flag, then ENGRAM_PROJECT, then cwd
 // detection — that precedence is cmd/engram's job, not this facade's).
-// palette is the resolved theme (rfc-tui.md §8.2: --theme, then
-// ENGRAM_TUI_THEME, then tui.theme, then catppuccin-mocha) — resolving it is
-// likewise cmd/engram's job (theme.Resolve), not this facade's; pass
-// theme.Default() when nothing else applies (as tests that do not care
+// palette is the resolved theme — --theme, then ENGRAM_TUI_THEME, then
+// settings['tui.theme'], then config.json, then the default — and resolving it
+// is likewise cmd/engram's job (theme.Selection.Resolve), not this facade's;
+// pass theme.Default() when nothing else applies (as tests that do not care
 // about theming do).
 //
 // Every reader the workspace consumes is derived from s here, in one place, so
@@ -38,5 +38,8 @@ func New(s *store.Store, version string, project string, palette theme.Palette) 
 		version,
 		theme.New(palette),
 		project,
+	).WithThemePicker(
+		data.NewThemeReader(s),
+		data.NewSettingsWriter(s),
 	)
 }

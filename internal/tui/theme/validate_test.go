@@ -15,6 +15,28 @@ func TestValidateAcceptsALegiblePalette(t *testing.T) {
 	}
 }
 
+// TestValidateAcceptsEveryKoiPalette turns the validator on the palettes this
+// workspace designed. They are the ones held to the whole rule set — thirteen
+// lowercase hex roles, five gradient stops, every text role legible against
+// both planes, a separator visible against the ground, and no two roles
+// rendering alike — so a problem reported here is a palette to fix rather than
+// a rule to loosen.
+//
+// The three inherited palettes are deliberately not in this list: they carry
+// declared contrast debt (knownContrastDebt) and would fail a check that has
+// no notion of debt.
+func TestValidateAcceptsEveryKoiPalette(t *testing.T) {
+	for _, name := range koiPaletteNames {
+		t.Run(name, func(t *testing.T) {
+			if problems := registry[name]().Validate(); len(problems) != 0 {
+				for _, problem := range problems {
+					t.Error(problem)
+				}
+			}
+		})
+	}
+}
+
 // TestValidateReportsOneProblemPerRule walks the rules one at a time. Each
 // case bends exactly one thing about a palette that otherwise passes, so the
 // problem it reports can only have come from the bend.

@@ -39,6 +39,37 @@ func ContrastRatio(fg, bg lipgloss.Color) (float64, error) {
 	return (lighter + 0.05) / (darker + 0.05), nil
 }
 
+// Composite mixes a background colour with whatever is behind the window and
+// returns the plane a reader actually sees.
+//
+// A terminal at less than full opacity does not show the theme's background:
+// it shows that background blended with the desktop. alpha is the background's
+// own opacity — 0.90 for a pane at ninety percent — so 1 is the opaque colour
+// back unchanged and 0 is the desktop alone.
+//
+// The blend is linear over the eight-bit sRGB channels rather than over
+// linearised light, because that is what a terminal emulator does: it hands
+// the compositor two gamma-encoded colours and an alpha. Doing the
+// physically-correct thing here would produce a plane no reader ever sees, and
+// the point of this function is to measure the one they do.
+func Composite(bg, desktop lipgloss.Color, alpha float64) (lipgloss.Color, error) {
+	br, bgg, bb, err := hexToRGB(string(bg))
+	if err != nil {
+		return "", fmt.Errorf("background: %w", err)
+	}
+	dr, dg, db, err := hexToRGB(string(desktop))
+	if err != nil {
+		return "", fmt.Errorf("desktop: %w", err)
+	}
+	alpha = math.Min(1, math.Max(0, alpha))
+
+	mix := func(fg, behind float64) int {
+		return int(math.Round((fg*alpha + behind*(1-alpha)) * 255))
+	}
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x",
+		mix(br, dr), mix(bgg, dg), mix(bb, db))), nil
+}
+
 // relativeLuminance implements WCAG 2.1's formula for sRGB relative
 // luminance: https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html
 func relativeLuminance(c lipgloss.Color) (float64, error) {

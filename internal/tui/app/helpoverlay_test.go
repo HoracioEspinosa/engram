@@ -64,11 +64,13 @@ func TestHelpOverlayIncludesTheGlobalBindings(t *testing.T) {
 	m, _ = step(t, m, questionMark())
 
 	out := m.View()
-	if !strings.Contains(out, "next tab") {
-		t.Fatalf("expected the global Tab binding in the overlay, got:\n%s", out)
-	}
-	if !strings.Contains(out, "dashboard") {
-		t.Fatalf("expected the global \"0\" binding in the overlay, got:\n%s", out)
+	// Every global is checked, not a chosen two: a binding added to the
+	// keymap and forgotten here is a key the overlay never tells anyone about.
+	for _, b := range globalHelpBindings() {
+		h := b.Help()
+		if !strings.Contains(out, h.Key) || !strings.Contains(out, h.Desc) {
+			t.Fatalf("expected the global %q binding in the overlay, got:\n%s", h.Key+" "+h.Desc, out)
+		}
 	}
 }
 

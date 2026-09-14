@@ -31,6 +31,13 @@ func (m Model) View() string {
 		}
 	}
 
+	if m.themePicker.open {
+		// The theme overlay takes the screen the same way the "?" overlay
+		// below does, and carries its own footer: the screen underneath is
+		// not answering keys, so its hints would name keys that do nothing.
+		return m.styles.App.Render(m.viewThemePicker())
+	}
+
 	if m.showHelp {
 		// The "?" overlay (rfc-tui.md §7.1) replaces the body outright
 		// rather than compositing over it: bubbles has no layering

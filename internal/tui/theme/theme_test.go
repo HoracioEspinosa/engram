@@ -172,14 +172,47 @@ func TestStylesAreValuesNotSharedState(t *testing.T) {
 	}
 }
 
-// TestDefaultIsTheCatppuccinMochaPalette pins ADR-028 §5 and rfc-tui.md
-// §8.2's decision: catppuccin-mocha is the out-of-the-box theme, not
-// elephant (the palette that shipped before theming existed).
-func TestDefaultIsTheCatppuccinMochaPalette(t *testing.T) {
-	if got := Default().Palette.Name; got != CatppuccinMocha().Name {
-		t.Fatalf("Default palette = %q, want %q", got, CatppuccinMocha().Name)
+// TestDefaultIsTheKoiPondPalette pins which palette the workspace opens on:
+// koi-pond, the dark koi palette the interface was designed against — not one
+// of the three inherited ones that stay selectable behind it.
+func TestDefaultIsTheKoiPondPalette(t *testing.T) {
+	if got := Default().Palette.Name; got != KoiPond().Name {
+		t.Fatalf("Default palette = %q, want %q", got, KoiPond().Name)
 	}
 	if got := Default().Palette.Name; got != DefaultThemeName {
 		t.Fatalf("Default palette = %q, want DefaultThemeName %q", got, DefaultThemeName)
+	}
+}
+
+// TestEveryKoiPaletteDerivesItsGradientFromItsRoles keeps the wordmark in the
+// same family as the screen around it: the five stops are the palette's own
+// Text, Accent, Primary, Danger and Highlight, so re-tinting a palette
+// re-tints its logo and cannot leave a gradient stranded on the hues of
+// another theme.
+func TestEveryKoiPaletteDerivesItsGradientFromItsRoles(t *testing.T) {
+	for _, p := range []Palette{KoiPond(), KoiDay(), Showa(), Ogon()} {
+		t.Run(p.Name, func(t *testing.T) {
+			want := [logoRows]lipgloss.Color{p.Text, p.Accent, p.Primary, p.Danger, p.Highlight}
+			if p.LogoGradient != want {
+				t.Errorf("LogoGradient = %v, want the palette's own %v", p.LogoGradient, want)
+			}
+		})
+	}
+}
+
+// TestNewBindsTheDefaultIconVocabulary pins what a style set carries when
+// nobody has resolved an icon mode yet: the unicode fallback, which any UTF-8
+// terminal draws. Defaulting to nerd here would put replacement characters on
+// every screen built without going through the resolver.
+func TestNewBindsTheDefaultIconVocabulary(t *testing.T) {
+	if got := New(KoiPond()).Icons.Mode(); got != IconModeUnicode {
+		t.Fatalf("New bound the %s vocabulary, want %s", got, IconModeUnicode)
+	}
+	bound := New(KoiPond()).WithIcons(IconModeNerd)
+	if got := bound.Icons.Mode(); got != IconModeNerd {
+		t.Fatalf("WithIcons bound %s, want %s", got, IconModeNerd)
+	}
+	if got := New(KoiPond()).Icons.Mode(); got != IconModeUnicode {
+		t.Fatalf("WithIcons mutated the set it was called on: %s", got)
 	}
 }

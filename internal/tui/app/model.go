@@ -64,6 +64,11 @@ type Model struct {
 	// not per-tab: closing it always returns to whatever screen was showing
 	// underneath, untouched.
 	showHelp bool
+
+	// themePicker is the ctrl+t overlay. Like showHelp it is root state:
+	// picking a theme repaints every tab, which is something only the root
+	// can do.
+	themePicker themePickerModel
 }
 
 // New builds the root workspace around the readers its screens consume: mem
@@ -81,19 +86,20 @@ type Model struct {
 // different (or missing) store than its siblings.
 func New(mem data.MemoryReader, projects data.ProjectReader, task data.TaskReader, evidenceReader data.EvidenceReader, runbookReader data.RunbookReader, version string, styles theme.Styles, initialProject string) Model {
 	m := Model{
-		styles:    styles,
-		version:   version,
-		active:    tabs.Memory,
-		projects:  projects,
-		project:   initialProject,
-		memory:    memory.New(mem, version).WithTasks(task).WithProject(initialProject).WithStyles(styles),
-		tasks:     tasks.New(task).WithProject(initialProject).WithStyles(styles),
-		evidence:  evidence.New(evidenceReader).WithProject(initialProject).WithStyles(styles),
-		runbooks:  runbooks.New(runbookReader, projects).WithProject(initialProject).WithStyles(styles),
-		cloud:     cloud.New().WithStyles(styles),
-		selector:  newSelectorModel(projects),
-		dashboard: newDashboardModel(projects, initialProject),
+		version:     version,
+		active:      tabs.Memory,
+		projects:    projects,
+		project:     initialProject,
+		memory:      memory.New(mem, version).WithTasks(task).WithProject(initialProject),
+		tasks:       tasks.New(task).WithProject(initialProject),
+		evidence:    evidence.New(evidenceReader).WithProject(initialProject),
+		runbooks:    runbooks.New(runbookReader, projects).WithProject(initialProject),
+		cloud:       cloud.New(),
+		selector:    newSelectorModel(projects),
+		dashboard:   newDashboardModel(projects, initialProject),
+		themePicker: newThemePickerModel(styles),
 	}
+	m = m.withStyles(styles)
 
 	// If an initial project was provided, start on the dashboard;
 	// otherwise start on the selector (rfc-tui.md §9.1: "sin proyecto
@@ -104,6 +110,25 @@ func New(mem data.MemoryReader, projects data.ProjectReader, task data.TaskReade
 		m.screen = screenSelector
 	}
 
+	return m
+}
+
+// withStyles returns a copy of the root repainted in a style set, with every
+// tab repainted alongside it.
+//
+// It is the one place styles fan out. A theme is chosen in one spot — the
+// picker, or the resolution that runs before the workspace opens — and a tab
+// that missed the fan-out would keep rendering in the palette it was built
+// with, which is a bug that looks like a rendering glitch and is invisible to
+// any test of that tab alone.
+func (m Model) withStyles(s theme.Styles) Model {
+	m.styles = s
+	m.memory = m.memory.WithStyles(s)
+	m.tasks = m.tasks.WithStyles(s)
+	m.evidence = m.evidence.WithStyles(s)
+	m.runbooks = m.runbooks.WithStyles(s)
+	m.cloud = m.cloud.WithStyles(s)
+	m.themePicker = m.themePicker.withStyles(s)
 	return m
 }
 
