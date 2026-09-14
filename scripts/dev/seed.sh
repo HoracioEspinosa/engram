@@ -105,10 +105,13 @@ evidence() {
     --json >"$SEED_OUT/evidence-$project-$task.json"
 }
 
-card koi-garden "Koi Garden" "$REPO_URL" master KOI koi-garden
-card koi-garden-pond-01 "Koi Garden · Pond 01" "$REPO_URL" pond-01 KOI koi-garden
-card koi-garden-pond-02 "Koi Garden · Pond 02" "$REPO_URL" pond-02 KOI koi-garden
-card tsukimi-bridge "Tsukimi Bridge" "https://example.invalid/koi/tsukimi-bridge.git" master TSU tsukimi-bridge
+# knowledge_hub_path names the hub document, not the project folder; the doctor
+# treats a directory as dangling. The three koi-garden cards share one hub, the
+# way a set of sibling deployments shares the page that documents all of them.
+card koi-garden "Koi Garden" "$REPO_URL" master KOI koi-garden/README.md
+card koi-garden-pond-01 "Koi Garden · Pond 01" "$REPO_URL" pond-01 KOI koi-garden/README.md
+card koi-garden-pond-02 "Koi Garden · Pond 02" "$REPO_URL" pond-02 KOI koi-garden/README.md
+card tsukimi-bridge "Tsukimi Bridge" "https://example.invalid/koi/tsukimi-bridge.git" master TSU tsukimi-bridge/README.md
 
 task koi-garden --jira KOI-1042 "hardening autologin" feature "done"
 task koi-garden --jira KOI-1099 "lookup timeout en el estanque" bugfix "in_progress"
