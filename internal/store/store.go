@@ -1156,6 +1156,10 @@ func (s *Store) migrate() error {
 	// tasks, evidence, runbook_index and task_observations. Single contact
 	// point with the upstream migrate() so a future rebase only has to
 	// preserve this one line.
+	if err := s.ensureFunctionIndexes(); err != nil {
+		return err
+	}
+
 	if err := s.migrateProjects(); err != nil {
 		return err
 	}
@@ -2477,7 +2481,7 @@ func (s *Store) RecentObservations(project, scope string, limit int) ([]Observat
 	args := []any{}
 
 	if project != "" {
-		query += " AND LOWER(o.project) = ?"
+		query += " AND lower(o.project) = ?"
 		args = append(args, project)
 	}
 	if scope != "" {
@@ -2502,7 +2506,7 @@ func (s *Store) PinnedObservations(project, scope string) ([]Observation, error)
 	args := []any{}
 
 	if project != "" {
-		query += " AND LOWER(o.project) = ?"
+		query += " AND lower(o.project) = ?"
 		args = append(args, project)
 	}
 	if scope != "" {
@@ -2554,7 +2558,7 @@ func (s *Store) recentUnpinnedObservations(project, scope string, limit int) ([]
 	`
 	args := []any{}
 	if project != "" {
-		query += " AND LOWER(o.project) = ?"
+		query += " AND lower(o.project) = ?"
 		args = append(args, project)
 	}
 	if scope != "" {
@@ -2582,7 +2586,7 @@ func (s *Store) ObservationsNeedingReview(project string, limit int) ([]Observat
 	`
 	args := []any{}
 	if project != "" {
-		query += " AND LOWER(o.project) = ?"
+		query += " AND lower(o.project) = ?"
 		args = append(args, project)
 	}
 	query += " ORDER BY datetime(o.review_after) ASC, o.id ASC LIMIT ?"
@@ -3206,7 +3210,7 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 			tkArgs = append(tkArgs, opts.Type)
 		}
 		if opts.Project != "" {
-			tkSQL += " AND LOWER(project) = ?"
+			tkSQL += " AND lower(project) = ?"
 			tkArgs = append(tkArgs, opts.Project)
 		}
 		if opts.Scope != "" {
@@ -3259,7 +3263,7 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 	}
 
 	if opts.Project != "" {
-		sqlQ += " AND LOWER(o.project) = ?"
+		sqlQ += " AND lower(o.project) = ?"
 		args = append(args, opts.Project)
 	}
 
@@ -3347,7 +3351,7 @@ func (s *Store) ProjectExists(name string) (bool, error) {
 	// is expected to pass an already-normalized name (NormalizeProject result).
 	const query = `
 SELECT 1 FROM (
-  SELECT project FROM observations WHERE LOWER(project) = ? AND deleted_at IS NULL
+  SELECT project FROM observations WHERE lower(project) = ? AND deleted_at IS NULL
   UNION ALL
   SELECT project FROM sessions WHERE LOWER(project) = ?
   UNION ALL

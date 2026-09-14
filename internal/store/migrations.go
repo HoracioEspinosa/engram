@@ -23,7 +23,28 @@ const (
 	migrationLedgerID = "core-0001-schema-migrations"
 	// migrationBackfillID covers the row rewrites that used to run on every open.
 	migrationBackfillID = "core-0002-backfill-once"
+	// migrationFunctionIndexesID adds the functional indexes that let a read
+	// scoped to one project find its rows instead of scanning every observation.
+	migrationFunctionIndexesID = "core-0003-fn-indexes"
 )
+
+// ensureFunctionIndexes builds the indexes behind observationsByProjectPredicate.
+// Project names are stored lowercased, but rows written before that rule existed
+// are not, so every project filter compares lower(project) — which an index on
+// the bare column cannot serve. SQLite matches an index expression against the
+// query expression, so a filter that stops spelling the call the same way stops
+// using these; TestObservationProjectFilterUsesIndex is what catches that.
+func (s *Store) ensureFunctionIndexes() error {
+	return s.once(migrationFunctionIndexesID, func() error {
+		_, err := s.execHook(s.db, `
+			CREATE INDEX IF NOT EXISTS idx_obs_project_lower
+				ON observations(lower(project), deleted_at);
+			CREATE INDEX IF NOT EXISTS idx_obs_project_lower_created
+				ON observations(lower(project), created_at DESC);
+		`)
+		return err
+	})
+}
 
 // ensureMigrationLedger creates schema_migrations and records its own id. It is
 // the one migration that cannot be guarded by the ledger, so it is written to be

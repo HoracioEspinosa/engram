@@ -296,16 +296,22 @@ func (s *Store) ensureMinimalProjectCard(slug string) (bool, error) {
 	return true, nil
 }
 
+// observationsByProjectPredicate narrows observations to one project. It is
+// spelled once because idx_obs_project_lower is built on exactly this
+// expression: SQLite only uses a functional index when the query repeats the
+// expression the index was created with.
+const observationsByProjectPredicate = `lower(project) = ? AND deleted_at IS NULL`
+
 // ProjectCardCounts computes the dashboard counters for mem_project_card.
 func (s *Store) ProjectCardCounts(slug string) (ProjectCardCounts, error) {
 	var c ProjectCardCounts
 	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM observations WHERE LOWER(project) = ? AND deleted_at IS NULL`, slug,
+		`SELECT COUNT(*) FROM observations WHERE `+observationsByProjectPredicate, slug,
 	).Scan(&c.Observations); err != nil {
 		return c, err
 	}
 	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM observations WHERE LOWER(project) = ? AND deleted_at IS NULL AND pinned = 1`, slug,
+		`SELECT COUNT(*) FROM observations WHERE `+observationsByProjectPredicate+` AND pinned = 1`, slug,
 	).Scan(&c.Pinned); err != nil {
 		return c, err
 	}
