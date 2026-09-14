@@ -38,6 +38,7 @@ mkdir -p "$BENCH_OUT"
 BENCH_PATTERN='Search|ListTasks|ProjectCardCounts|ListProjectCards|FindRunbooks|Stats|DetectProjectFull'
 BENCH_PACKAGES='./internal/store/... ./internal/project/...'
 BASELINE="$BENCH_OUT/baseline.txt"
+BENCHSTAT_VERSION='golang.org/x/perf/cmd/benchstat@v0.0.0-20260908200009-22c9c6c9d4da'
 
 # A comparison needs something to compare against. A baseline file that holds no
 # sample is not a measurement of zero regression, it is the absence of a
@@ -79,14 +80,20 @@ log "comparing against the baseline with benchstat"
 # benchstat is not in the toolchain image, so it is installed into the
 # throwaway container's own GOPATH. The module cache volume makes that a
 # download once rather than once per run.
+#
+# It is pinned: @latest would change the comparison tool between two runs whose
+# whole point is to be comparable. The pinned version declares a newer go
+# directive than the image, so GOTOOLCHAIN=auto is set for the install alone —
+# the samples above are already measured, and they were measured by $GO_IMAGE.
 docker run --rm \
   -v "$ROOT_DIR:/src" \
   -v "${GOMOD_VOLUME}:/go/pkg/mod" \
   -v "${GOBUILD_VOLUME}:/root/.cache/go-build" \
   -v "${BENCH_OUT}:/bench" \
   -w /src \
+  -e GOTOOLCHAIN=auto \
   "$GO_IMAGE" \
-  bash -c "set -e; go install golang.org/x/perf/cmd/benchstat@latest; /go/bin/benchstat /bench/baseline.txt '/bench/${LABEL}.txt'" \
+  bash -c "set -e; go install '$BENCHSTAT_VERSION'; /go/bin/benchstat /bench/baseline.txt '/bench/${LABEL}.txt'" \
   >"$COMPARISON"
 
 printf '%s\n%s\n' "$TARGET" "$COMPARISON"
