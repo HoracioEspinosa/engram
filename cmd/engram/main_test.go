@@ -78,12 +78,27 @@ func captureOutput(t *testing.T, fn func()) (stdout string, stderr string) {
 	os.Stdout = outW
 	os.Stderr = errW
 
+	// fn may panic (an exitFunc stub panics to simulate os.Exit): every step
+	// below must still run, or a panicking test leaves os.Stdout/os.Stderr
+	// pointed at a dead pipe for the rest of the run -- including go test's
+	// own -cover summary line, which writes to os.Stdout right after the
+	// last test returns and fails the whole run over a pipe no caller of
+	// this helper ever sees.
+	defer func() {
+		os.Stdout = oldOut
+		os.Stderr = oldErr
+		_ = outW.Close()
+		_ = errW.Close()
+		_ = outR.Close()
+		_ = errR.Close()
+	}()
+
 	fn()
 
+	// Close the write ends now (the deferred close above will no-op on the
+	// already-closed file) so ReadAll sees EOF instead of blocking.
 	_ = outW.Close()
 	_ = errW.Close()
-	os.Stdout = oldOut
-	os.Stderr = oldErr
 
 	outBytes, err := io.ReadAll(outR)
 	if err != nil {
@@ -1279,6 +1294,8 @@ func TestObsidianExportMissingVault(t *testing.T) {
 
 	errBytes, _ := io.ReadAll(errR)
 	_, _ = io.ReadAll(outR)
+	_ = outR.Close()
+	_ = errR.Close()
 	stderr := string(errBytes)
 
 	if exitCode != 1 {
@@ -1405,6 +1422,8 @@ func captureExitPanic(t *testing.T, fn func()) (stdout, stderr string, exitCode 
 
 	outBytes, _ := io.ReadAll(outR)
 	errBytes, _ := io.ReadAll(errR)
+	_ = outR.Close()
+	_ = errR.Close()
 	return string(outBytes), string(errBytes), exitCode
 }
 

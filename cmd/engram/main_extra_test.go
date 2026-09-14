@@ -120,6 +120,8 @@ func captureOutputAndRecover(t *testing.T, fn func()) (stdout string, stderr str
 	if err != nil {
 		t.Fatalf("read stderr: %v", err)
 	}
+	_ = outR.Close()
+	_ = errR.Close()
 
 	return string(outBytes), string(errBytes), recovered
 }
