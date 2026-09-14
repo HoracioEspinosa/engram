@@ -190,6 +190,20 @@ func (m Model) WithProject(project string) Model {
 	return m
 }
 
+// SelectedKey is the display key of whatever the tab is sitting on: the task
+// open in the detail screen, or the row under the list cursor. It is what the
+// status bar shows, so the key of the task being worked on stays on screen
+// while the user is reading its evidence or its memory somewhere else.
+func (m Model) SelectedKey() string {
+	if m.Detail != nil {
+		return m.Detail.Task.Key()
+	}
+	if m.Cursor >= 0 && m.Cursor < len(m.Items) {
+		return m.Items[m.Cursor].Key()
+	}
+	return ""
+}
+
 // HasPrevPage reports whether a page of tasks sits before the one on screen.
 func (m Model) HasPrevPage() bool { return m.Filter.Offset > 0 }
 

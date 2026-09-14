@@ -14,9 +14,10 @@ const (
 	minVisibleItems = 3
 
 	// listChrome and detailChrome are what each screen spends on its
-	// header, help footer and any banner above the list/body.
-	listChrome   = 4
-	detailChrome = 14
+	// header, any banner above the list/body, and the frame's own rows: the
+	// tab bar above and the one-line status bar below.
+	listChrome   = 3
+	detailChrome = 13
 
 	// pageSize is how many rows the page keys move by. store.ListEvidence
 	// defaults to 50 when Limit is unset, so paging by the same number keeps

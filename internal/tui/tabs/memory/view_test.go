@@ -262,7 +262,10 @@ func TestViewObservationDetailTimelineSessionsAndSessionDetail(t *testing.T) {
 	}
 
 	summary := "session summary"
-	m.Height = 14
+	// One row short of fitting all seven: the frame gives a row back now
+	// that the footer is a single status bar line, so the window that used
+	// to overflow at 14 rows needs 13.
+	m.Height = 13
 	m.Sessions = []store.SessionSummary{
 		{ID: "s1", Project: "engram", StartedAt: "2026-01-01", Summary: &summary, ObservationCount: 2},
 		{ID: "s2", Project: "engram", StartedAt: "2026-01-02", ObservationCount: 1},

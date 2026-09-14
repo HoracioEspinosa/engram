@@ -17,15 +17,16 @@ const (
 	minVisibleItems    = 3
 	minVisibleSessions = 5
 
-	// chrome is the number of lines each screen spends on its header, help
-	// footer and range indicator.
-	searchResultsChrome = 10
-	recentChrome        = 8
-	sessionsChrome      = 8
-	sessionDetailChrome = 12
+	// chrome is the number of lines each screen spends on its header, its
+	// range indicator, and the frame's own rows: the tab bar above and the
+	// one-line status bar below.
+	searchResultsChrome = 9
+	recentChrome        = 7
+	sessionsChrome      = 7
+	sessionDetailChrome = 11
 	// detailChrome is what the observation detail spends on its metadata rows
 	// before the content pane starts.
-	detailChrome = 16
+	detailChrome = 15
 	// minDetailLines is the floor for the content pane.
 	minDetailLines = 5
 	// detailWrapMargin is the horizontal padding reserved around wrapped

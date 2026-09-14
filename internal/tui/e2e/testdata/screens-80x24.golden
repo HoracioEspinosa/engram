@@ -6,60 +6,57 @@
                                                                                         
       slug                   display name                      obs     open   stale RB  
    ▸ acme                   Acme Corp                          42        1          0   
-                                                                                        
-    j/k move • g/G top/bottom • enter open • / filter • i sort by health • …            
+  j/k move • g/G top/bottom • enter open • / filter • i sort by hea…  koi-pond          
                                                                                         
 ═══ s2-project-dashboard ═══
-                                                                             
-  [0]  1  2  3  4  5                                                         
-                                                                             
-  ┌─────────────────────────────┐                                            
-  │                             │                                            
-  │        42   observations    │                                            
-  │         1   open tasks      │                                            
-  │         1   evidence files  │                                            
-  │         1   runbooks        │                                            
-  │                             │                                            
-  └─────────────────────────────┘                                            
-                                                                             
-  ┌──────────────────────────────────┐                                       
-  │                                  │                                       
-  │        project acme — Acme Corp  │                                       
-  │         branch main              │                                       
-  │           jira ACME              │                                       
-  │          graph none              │                                       
-  │                                  │                                       
-  └──────────────────────────────────┘                                       
-                                                                             
-                                                                             
-  ▸ recent tasks                                                             
-                                                                             
-    ACME-1       bugfix     review           Fix the preview timeout         
-                                                                             
-    stale runbooks                                                           
-                                                                             
-    RB-900 Preview endpoint returns 503 under load                           
-                                                                             
-    latest evidence                                                          
-                                                                             
-    ACME-1/cold-start.png attached ✓                                         
-                                                                             
-    j/k move block • g/G top/bottom • enter open block • r refresh • q quit  
-                                                                             
+                                                                                
+  [0]  1  2  3  4  5                                                            
+                                                                                
+  ┌─────────────────────────────┐                                               
+  │                             │                                               
+  │        42   observations    │                                               
+  │         1   open tasks      │                                               
+  │         1   evidence files  │                                               
+  │         1   runbooks        │                                               
+  │                             │                                               
+  └─────────────────────────────┘                                               
+                                                                                
+  ┌──────────────────────────────────┐                                          
+  │                                  │                                          
+  │        project acme — Acme Corp  │                                          
+  │         branch main              │                                          
+  │           jira ACME              │                                          
+  │          graph none              │                                          
+  │                                  │                                          
+  └──────────────────────────────────┘                                          
+                                                                                
+                                                                                
+  ▸ recent tasks                                                                
+                                                                                
+    ACME-1       bugfix     review           Fix the preview timeout            
+                                                                                
+    stale runbooks                                                              
+                                                                                
+    RB-900 Preview endpoint returns 503 under load                              
+                                                                                
+    latest evidence                                                             
+                                                                                
+    ACME-1/cold-start.png attached ✓                                            
+  ├ acme  ✓ ACME-1  j/k move block • g/G top/bottom • enter open bl…  koi-pond  
+                                                                                
 ═══ s3-tasks-list ═══
-                                                                             
-  0  1  [2]  3  4  5                                                         
-                                                                             
-                                                                             
-    Tasks (1 shown · state: active · kind: all)                              
-                                                                             
-  ▸ ACME-1       [bugfix   ] review   Fix the preview timeout                
-      no branch · no PR · 1 obs · 1 evidence · updated                       
-                                                                             
-    tasks 1-1 of 1                                                           
-                                                                             
-    j/k move • g/G top/bottom • enter detail • c copy key • o open jira • …  
-                                                                             
+                                                                                
+  0  1  [2]  3  4  5                                                            
+                                                                                
+                                                                                
+    Tasks (1 shown · state: active · kind: all)                                 
+                                                                                
+  ▸ ACME-1       [bugfix   ] review   Fix the preview timeout                   
+      no branch · no PR · 1 obs · 1 evidence · updated                          
+                                                                                
+    tasks 1-1 of 1                                                              
+  ├ acme  ✓ ACME-1  j/k move • g/G top/bottom • enter detail • c co…  koi-pond  
+                                                                                
 ═══ s4-tasks-detail ═══
                                                                                         
   0  1  [2]  3  4  5                                                                    
@@ -82,8 +79,7 @@
     evidence (1) — e opens the Evidence tab                                             
                                                                                         
     ACME-1/cold-start.png cold start exceeds 30s attached ✓                             
-                                                                                        
-    j/k move • enter observation • e evidence • x context pack • …                      
+  ├ acme  ✓ ACME-1  j/k move • enter observation • e evidence • x c…  koi-pond          
                                                                                         
 ═══ s5-context-pack ═══
                                                                                 
@@ -100,8 +96,7 @@
                                                                                 
                                                                                 
     lines 1-6 of 6                                                              
-                                                                                
-    j/k scroll • c copy to clipboard • w write context-pack.md • r rebuild • …  
+  ├ acme  ✓ ACME-1  j/k scroll • c copy to clipboard • w write cont…  koi-pond  
                                                                                 
 ═══ s6-evidence-list ═══
                                                                                                         
@@ -113,8 +108,7 @@
   ▸  cold-start.png                                 [png ] ACME-1       cold start exceeds 30s ✓ jira   
                                                                                                         
     files 1-1 of 1                                                                                      
-                                                                                                        
-    j/k move • g/G top/bottom • enter detail • c copy path • o open file • …                            
+  ├ acme  ✓ ACME-1  j/k move • g/G top/bottom • enter detail • c co…  koi-pond                          
                                                                                                         
 ═══ s7-evidence-detail ═══
                                                                                                        
@@ -142,8 +136,7 @@
                                                                                                        
                                                                                                        
       no manifest.json next to this file                                                               
-                                                                                                       
-    o open with system viewer • c copy sha256 • p copy path • m manifest • …                           
+  ├ acme  ✓ ACME-1  o open with system viewer • c copy sha256 • p c…  koi-pond                         
                                                                                                        
 ═══ s8-runbooks-index ═══
                                                                                                        
@@ -163,8 +156,7 @@
   │                                                             │                                      
   └─────────────────────────────────────────────────────────────┘                                      
                                                                                                        
-                                                                                                       
-    j/k move • g/G top/bottom • enter view • c copy vault path • a all/project • …                     
+  ├ acme  ✓ ACME-1  j/k move • g/G top/bottom • enter view • c copy…  koi-pond                         
                                                                                                        
 ═══ s9-runbooks-markdown ═══
                                                                                   
@@ -183,62 +175,59 @@
                                                                                   
                                                                                   
     lines 1-6 of 6                                                                
-                                                                                  
-    j/k scroll • g/G top/bottom • e open in $EDITOR • t executions in Memory • …  
+  ├ acme  ✓ ACME-1  j/k scroll • g/G top/bottom • e open in $EDITOR…  koi-pond    
                                                                                   
 ═══ s10-memory ═══
-                                                        
-  0  [1]  2  3  4  5                                    
-                                                        
-  ╭──────────────────────────────────────────────────╮  
-  │         █████ █   █  ████ ████   ███  █   █      │  
-  │       ≈ █     ██  █ █     █   █ █   █ ██ ██      │  
-  │       ◈ ████  █ █ █ █  ██ ████  █████ █ █ █      │  
-  │       ≈ █     █  ██ █   █ █  █  █   █ █   █      │  
-  │         █████ █   █  ████ █   █ █   █ █   █      │  
-  │                                                  │  
-  │ engram 1.20.1-golden — An elephant never forgets │  
-  ╰──────────────────────────────────────────────────╯  
-                                                        
-                                                        
-  ┌───────────────────────────┐                         
-  │                           │                         
-  │        12   sessions      │                         
-  │       348   observations  │                         
-  │        57   prompts       │                         
-  │         2   projects      │                         
-  │                           │                         
-  └───────────────────────────┘                         
-                                                        
-    Projects                                            
-                                                        
-    • engram                                            
-    • acme                                              
-                                                        
-    Actions                                             
-                                                        
-   ▸ Search memories                                    
-      Recent observations                               
-      Browse sessions                                   
-      Setup agent plugin                                
-      Cloud sync settings                               
-      Quit                                              
-                                                        
-    j/k navigate • enter select • s search • q quit     
-                                                        
+                                                                                
+  0  [1]  2  3  4  5                                                            
+                                                                                
+  ╭──────────────────────────────────────────────────╮                          
+  │         █████ █   █  ████ ████   ███  █   █      │                          
+  │       ≈ █     ██  █ █     █   █ █   █ ██ ██      │                          
+  │       ◈ ████  █ █ █ █  ██ ████  █████ █ █ █      │                          
+  │       ≈ █     █  ██ █   █ █  █  █   █ █   █      │                          
+  │         █████ █   █  ████ █   █ █   █ █   █      │                          
+  │                                                  │                          
+  │ engram 1.20.1-golden — An elephant never forgets │                          
+  ╰──────────────────────────────────────────────────╯                          
+                                                                                
+                                                                                
+  ┌───────────────────────────┐                                                 
+  │                           │                                                 
+  │        12   sessions      │                                                 
+  │       348   observations  │                                                 
+  │        57   prompts       │                                                 
+  │         2   projects      │                                                 
+  │                           │                                                 
+  └───────────────────────────┘                                                 
+                                                                                
+    Projects                                                                    
+                                                                                
+    • engram                                                                    
+    • acme                                                                      
+                                                                                
+    Actions                                                                     
+                                                                                
+   ▸ Search memories                                                            
+      Recent observations                                                       
+      Browse sessions                                                           
+      Setup agent plugin                                                        
+      Cloud sync settings                                                       
+      Quit                                                                      
+  ├ acme  ✓ ACME-1  j/k navigate • enter select • s search • q quit   koi-pond  
+                                                                                
 ═══ s11-cloud ═══
-                                              
-  0  1  2  3  4  [5]                          
-                                              
-    Cloud sync settings                       
-                                              
-  ─────────────────────                       
-                                              
-                                              
-   ▸ Configure server                         
-      View status                             
-      Enroll projects                         
-      Back                                    
-                                              
-    j/k navigate • enter select • esc/q back  
-                                              
+                                                                                
+  0  1  2  3  4  [5]                                                            
+                                                                                
+    Cloud sync settings                                                         
+                                                                                
+  ─────────────────────                                                         
+                                                                                
+                                                                                
+   ▸ Configure server                                                           
+      View status                                                               
+      Enroll projects                                                           
+      Back                                                                      
+  ├ acme  ✓ ACME-1  j/k navigate • enter select • esc/q back          koi-pond  
+                                                                                

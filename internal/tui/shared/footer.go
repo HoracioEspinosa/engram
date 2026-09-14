@@ -55,3 +55,18 @@ func HintsFrom(st theme.Styles, bindings []key.Binding, budget int) string {
 
 	return st.Help.Render(line)
 }
+
+// PlainHintsFrom is HintsFrom's unstyled, unbudgeted half: the hints joined
+// into one line, for a caller that does its own width arithmetic. The status
+// bar needs the text before it can decide how much of it fits.
+func PlainHintsFrom(bindings []key.Binding) string {
+	hints := make([]string, 0, len(bindings))
+	for _, b := range bindings {
+		h := b.Help()
+		if !b.Enabled() || h.Key == "" || h.Desc == "" {
+			continue
+		}
+		hints = append(hints, h.Key+" "+h.Desc)
+	}
+	return strings.Join(hints, hintSeparator)
+}

@@ -272,6 +272,11 @@ type Styles struct {
 	// Panel frames a floating overlay over the screen it was opened from.
 	Panel lipgloss.Style
 
+	// StatusBar paints the frame's own bottom line. Unlike Help it carries
+	// no margin: the bar is the last row of the frame, not a footer set off
+	// from the body above it.
+	StatusBar lipgloss.Style
+
 	// Wordmark.
 	LogoFrame    lipgloss.Style
 	LogoAccent   lipgloss.Style
@@ -458,6 +463,9 @@ func New(p Palette) Styles {
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(p.Overlay).
 		Padding(0, 1)
+
+	s.StatusBar = lipgloss.NewStyle().
+		Foreground(p.Subtext)
 
 	s.LogoFrame = lipgloss.NewStyle().
 		Border(wordmarkBorder()).

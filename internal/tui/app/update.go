@@ -83,6 +83,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dashboard = m.dashboard.applyLoaded(msg)
 		return m, nil
 
+	case ancestorsLoadedMsg:
+		if msg.slug != m.project || msg.err != nil {
+			// A chain for a project the user has since left, or a lookup
+			// that failed: the breadcrumb falls back to the project on its
+			// own rather than showing somebody else's parents.
+			return m, nil
+		}
+		m.ancestors = msg.nodes
+		return m, nil
+
 	case selectorLoadedMsg:
 		m.selector = m.selector.applyLoaded(msg)
 		return m, nil
@@ -332,7 +342,8 @@ func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.evidence = m.evidence.WithProject(selected.Slug)
 			m.runbooks = m.runbooks.WithProject(selected.Slug)
 			m.memory = m.memory.WithProject(selected.Slug)
-			return m, loadDashboard(m.projects, selected.Slug)
+			m.ancestors = nil
+			return m, tea.Batch(loadDashboard(m.projects, selected.Slug), loadAncestors(m.tree, selected.Slug))
 		}
 		return m, nil
 	case "/":

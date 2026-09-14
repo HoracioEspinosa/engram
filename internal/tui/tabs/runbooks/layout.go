@@ -14,9 +14,10 @@ const (
 	minVisibleItems = 3
 
 	// indexChrome and viewChrome are what each screen spends on its header,
-	// help footer and any banner above the list/body.
-	indexChrome = 5
-	viewChrome  = 8
+	// any banner above the list/body, and the frame's own rows: the tab bar
+	// above and the one-line status bar below.
+	indexChrome = 4
+	viewChrome  = 7
 
 	// pageSize is how many rows the page keys move by. store.ListRunbooks
 	// defaults to 50 when Limit is unset, so paging by the same number keeps

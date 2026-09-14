@@ -347,7 +347,7 @@ func TestLoadDashboardKeepsTheCardWhenALaterCallFails(t *testing.T) {
 	}
 }
 
-func TestStatusTextReportsTheSyncLifecycleOnceEnrolled(t *testing.T) {
+func TestStatusBarReportsTheSyncLifecycleOnceEnrolled(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.dashboard = newDashboardModel(nil, "nextcloud")
 	m.dashboard = m.dashboard.applyLoaded(dashboardLoadedMsg{
@@ -356,8 +356,15 @@ func TestStatusTextReportsTheSyncLifecycleOnceEnrolled(t *testing.T) {
 		health: data.ProjectHealth{Sync: store.ProjectSyncSummary{Enrolled: true, Lifecycle: "idle"}},
 	})
 
-	if got := m.statusText(); got != "sync: idle" {
-		t.Fatalf("statusText() = %q, want %q", got, "sync: idle")
+	seg, ok := m.syncSegment()
+	if !ok {
+		t.Fatal("an enrolled project reports no sync segment at all")
+	}
+	if seg.Text != "sync: idle" {
+		t.Fatalf("sync segment = %q, want %q", seg.Text, "sync: idle")
+	}
+	if seg.Priority != statusPrioritySync {
+		t.Fatalf("sync priority = %d, want the highest (%d): it is the one segment that never gives ground", seg.Priority, statusPrioritySync)
 	}
 }
 

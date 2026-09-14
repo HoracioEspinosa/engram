@@ -41,5 +41,7 @@ func New(s *store.Store, version string, project string, palette theme.Palette) 
 	).WithThemePicker(
 		data.NewThemeReader(s),
 		data.NewSettingsWriter(s),
+	).WithProjectTree(
+		data.NewProjectTreeReader(s),
 	)
 }

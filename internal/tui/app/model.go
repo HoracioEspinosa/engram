@@ -56,6 +56,11 @@ type Model struct {
 	cloud    cloud.Model
 	projects data.ProjectReader
 
+	// tree feeds the status bar's breadcrumb. It is optional: a workspace
+	// built without one simply shows the project on its own.
+	tree      data.ProjectTreeReader
+	ancestors []data.ProjectNode
+
 	project   string
 	selector  selectorModel
 	dashboard dashboardModel
@@ -113,6 +118,13 @@ func New(mem data.MemorySource, projects data.ProjectReader, task data.TaskSourc
 	return m
 }
 
+// WithProjectTree returns a copy of the root able to place the active
+// project in the forest, which is what the status bar's breadcrumb reads.
+func (m Model) WithProjectTree(r data.ProjectTreeReader) Model {
+	m.tree = r
+	return m
+}
+
 // WithUpdateChecker returns a copy of the root whose Memory tab asks check
 // for the release banner instead of GitHub. A golden suite driving the real
 // program uses it to keep the banner out of the frame it snapshots: whether
@@ -154,6 +166,9 @@ func (m Model) Init() tea.Cmd {
 	// If starting on the dashboard, load it.
 	if m.screen == screenDashboard && m.project != "" {
 		cmds = append(cmds, loadDashboard(m.projects, m.project))
+	}
+	if cmd := loadAncestors(m.tree, m.project); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 	// If starting on the selector — no project was resolvable — load its
 	// card list too, so S1 shows real projects instead of an empty list
@@ -210,16 +225,4 @@ func (m Model) withTab(id tabs.ID, t tabs.Tab) Model {
 		}
 	}
 	return m
-}
-
-// statusText returns the status line text for the active project's sync state,
-// or an empty string if no project is active or syncing is not enabled.
-func (m Model) statusText() string {
-	if m.dashboard.slug == "" && m.project == "" {
-		return ""
-	}
-	if m.dashboard.health.Sync.Enrolled {
-		return "sync: " + m.dashboard.health.Sync.Lifecycle
-	}
-	return ""
 }

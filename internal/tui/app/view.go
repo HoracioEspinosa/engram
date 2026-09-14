@@ -44,8 +44,8 @@ func (m Model) View() string {
 		return m.styles.App.Render(m.compose(body, m.viewHelpOverlay()))
 	}
 
-	if hints := shared.HintsFrom(m.styles, m.activeScreenHelp(), m.width); hints != "" {
-		body = strings.TrimRight(body, "\n") + "\n" + hints
+	if bar := m.viewStatusBar(); bar != "" {
+		body = strings.TrimRight(body, "\n") + "\n" + bar
 	}
 
 	return m.styles.App.Render(body)

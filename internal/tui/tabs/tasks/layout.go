@@ -17,10 +17,11 @@ const (
 	minVisibleItems = 3
 
 	// listChrome, detailChrome and contextPackChrome are what each screen
-	// spends on its header, help footer and any banner above the list/body.
-	listChrome        = 6
-	detailChrome      = 14
-	contextPackChrome = 5
+	// spends on its header, any banner above the list/body, and the frame's
+	// own rows: the tab bar above and the one-line status bar below.
+	listChrome        = 5
+	detailChrome      = 13
+	contextPackChrome = 4
 )
 
 // Widths of the tab's fixed columns, in terminal cells.

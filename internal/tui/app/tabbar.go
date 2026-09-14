@@ -96,11 +96,8 @@ func (m Model) viewTabBar() string {
 		}
 	}
 
-	bar := strings.Join(parts, "  ")
-	if !compact {
-		if status := m.statusText(); status != "" {
-			bar += "  " + m.styles.Help.Render(status)
-		}
-	}
-	return m.styles.TabBar.Render(bar)
+	// The sync state used to be appended here; it lives in the status bar
+	// now, where it is one segment among the rest of the frame's context
+	// instead of an afterthought hanging off the last tab.
+	return m.styles.TabBar.Render(strings.Join(parts, "  "))
 }
