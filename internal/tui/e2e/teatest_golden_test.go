@@ -211,6 +211,33 @@ func teatestScreens() []teatestScreen {
 			},
 		},
 		{
+			name:           "palette-empty",
+			initialProject: "acme",
+			steps: []teatestStep{
+				{key: tea.KeyMsg{Type: tea.KeyCtrlK}, waitFor: "Type at least"},
+			},
+		},
+		{
+			name:           "palette-results",
+			initialProject: "acme",
+			steps: []teatestStep{
+				{key: tea.KeyMsg{Type: tea.KeyCtrlK}, waitFor: "Type at least"},
+				// The store answers with one hit of every kind, so the last
+				// group's heading only appears once the search has resolved —
+				// which is what makes it a safe wait target across the
+				// hundred-millisecond debounce.
+				{key: keyRune("preview"), waitFor: "runbooks"},
+			},
+		},
+		{
+			name:           "palette-prefix",
+			initialProject: "acme",
+			steps: []teatestStep{
+				{key: tea.KeyMsg{Type: tea.KeyCtrlK}, waitFor: "Type at least"},
+				{key: keyRune("t:preview"), waitFor: "[tasks]"},
+			},
+		},
+		{
 			name:           "s11-cloud",
 			initialProject: "acme",
 			steps: []teatestStep{
@@ -226,7 +253,7 @@ func teatestScreens() []teatestScreen {
 // reader the workspace consumes — the same data.Fake* seam every tabs/*
 // Update test already uses, just wired through the real root instead of a
 // leaf tab.
-func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook, tree *data.FakeProjectTree, graph *data.FakeGraph, bench *data.FakeBenchmark) {
+func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook, tree *data.FakeProjectTree, graph *data.FakeGraph, bench *data.FakeBenchmark, search *data.FakeSearch) {
 	t.Helper()
 	seedVaultFixture(t)
 	// Evidence's detail screen (S7) renders an absolute filesystem path
@@ -343,7 +370,18 @@ func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakePro
 		}},
 	}}}
 
-	return mem, projects, task, ev, rb, tree, graph, bench
+	// One hit of every kind, so the palette's scene shows all six groups in
+	// the order it declares them.
+	search = &data.FakeSearch{Hits: []data.SearchHit{
+		{Kind: data.SearchKindCard, Slug: "acme", Project: "acme", Title: "Acme Corp", Subtitle: "umbrella"},
+		{Kind: data.SearchKindTask, ID: 1, Project: "acme", Title: "Fix the preview timeout", Subtitle: "ACME-1 · review"},
+		{Kind: data.SearchKindObservation, ID: 501, Project: "acme", Title: "Root cause: preview worker pool exhausted"},
+		{Kind: data.SearchKindEvidence, ID: 1, Project: "acme", Title: "ACME-1/cold-start.png"},
+		{Kind: data.SearchKindBenchmark, ID: 7, Project: "acme", Title: "preview p95", Subtitle: "812 ms"},
+		{Kind: data.SearchKindRunbook, Slug: "RB-900", Project: "acme", Title: "Preview endpoint returns 503 under load"},
+	}}
+
+	return mem, projects, task, ev, rb, tree, graph, bench, search
 }
 
 func float64Ptr(v float64) *float64 { return &v }
@@ -424,12 +462,14 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 	t.Helper()
 	t.Setenv("ENGRAM_TIMEZONE", "UTC")
 
-	mem, projects, task, ev, rb, tree, graph, bench := teatestFixtures(t)
+	mem, projects, task, ev, rb, tree, graph, bench, search := teatestFixtures(t)
 	m := app.New(mem, projects, task, ev, rb, e2eVersion, theme.Default(), screen.initialProject).
 		WithUpdateChecker(quietUpdateCheck).
 		WithProjectTree(tree).
 		WithGraph(graph, graph).
-		WithBenchmarks(bench)
+		WithBenchmarks(bench).
+		WithSearch(search, &data.FakeSettings{}).
+		WithSearchHistory([]string{"cold start", "preview 503"})
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(size.width, size.height))
 	var buf strings.Builder

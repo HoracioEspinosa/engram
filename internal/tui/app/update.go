@@ -27,6 +27,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if handled, next, cmd := m.updateProjectTree(msg); handled {
 			return next, cmd
 		}
+		if handled, next, cmd := m.updatePalette(msg); handled {
+			return next, cmd
+		}
 		if m.showHelp {
 			// While the "?" overlay (rfc-tui.md §7.1) is open, every key but
 			// the three that close it is swallowed here, before it ever
@@ -41,34 +44,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateActive(msg)
 
 	case tabs.NavigateMsg:
-		if msg.Target == tabs.Memory && msg.ObservationID != 0 {
-			// A deep-link into one observation (rfc-tui.md §3.1 S4's "Enter
-			// opens the observation in Memory"), not a plain tab switch: skip
-			// activate()'s generic tab.Refresh() and load that observation's
-			// detail directly instead.
-			m.active = tabs.Memory
-			return m, m.memory.OpenObservation(msg.ObservationID)
+		if msg.Slug != "" && msg.Slug != m.project {
+			// A hit in another project: the whole workspace moves, not only
+			// the tab, so the row the reader opened can be found again.
+			scoped, cmd := m.openProject(msg.Slug)
+			next := scoped.(Model)
+			if msg.Target == tabs.Home {
+				return next, cmd
+			}
+			model, activateCmd := next.routeNavigate(msg)
+			return model, tea.Batch(cmd, activateCmd)
 		}
-		if msg.Target == tabs.Memory && msg.Query != "" {
-			// Runbooks' "t" (rfc-tui.md §3.1 S8/S9): open Memory pre-searched
-			// for this runbook's executions instead of landing on whatever
-			// screen Memory last showed.
-			m.active = tabs.Memory
-			return m, m.memory.SearchFor(msg.Query)
-		}
-		if msg.Target == tabs.Tasks && msg.TaskID != 0 {
-			// The mirror image, for S7's "Enter" on an evidence file: open
-			// that file's task directly instead of landing on the list.
-			m.active = tabs.Tasks
-			return m, m.tasks.OpenTask(msg.TaskID)
-		}
-		if msg.Target == tabs.Evidence && msg.TaskID != 0 {
-			// S4's "e" key: filter Evidence to the task under view (S6's
-			// task_id filter) instead of showing every file in the project.
-			m.active = tabs.Evidence
-			return m, m.evidence.OpenForTask(msg.TaskID)
-		}
-		return m.activate(msg.Target)
+		return m.routeNavigate(msg)
+
+	case searchTickMsg, searchDoneMsg, searchHistorySavedMsg:
+		return m.updatePaletteMessage(msg)
 
 	case ancestorsLoadedMsg:
 		if msg.slug != m.project || msg.err != nil {
@@ -108,6 +98,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m.broadcast(msg)
+}
+
+// routeNavigate opens whatever one NavigateMsg points at: a deep link into a
+// row, or a plain tab switch.
+func (m Model) routeNavigate(msg tabs.NavigateMsg) (tea.Model, tea.Cmd) {
+	{
+		if msg.Target == tabs.Memory && msg.ObservationID != 0 {
+			// A deep-link into one observation (rfc-tui.md §3.1 S4's "Enter
+			// opens the observation in Memory"), not a plain tab switch: skip
+			// activate()'s generic tab.Refresh() and load that observation's
+			// detail directly instead.
+			m.active = tabs.Memory
+			return m, m.memory.OpenObservation(msg.ObservationID)
+		}
+		if msg.Target == tabs.Memory && msg.Query != "" {
+			// Runbooks' "t" (rfc-tui.md §3.1 S8/S9): open Memory pre-searched
+			// for this runbook's executions instead of landing on whatever
+			// screen Memory last showed.
+			m.active = tabs.Memory
+			return m, m.memory.SearchFor(msg.Query)
+		}
+		if msg.Target == tabs.Tasks && msg.TaskID != 0 {
+			// The mirror image, for S7's "Enter" on an evidence file: open
+			// that file's task directly instead of landing on the list.
+			m.active = tabs.Tasks
+			return m, m.tasks.OpenTask(msg.TaskID)
+		}
+		if msg.Target == tabs.Evidence && msg.TaskID != 0 {
+			// S4's "e" key: filter Evidence to the task under view (S6's
+			// task_id filter) instead of showing every file in the project.
+			m.active = tabs.Evidence
+			return m, m.evidence.OpenForTask(msg.TaskID)
+		}
+		if msg.Target == tabs.Evidence && msg.EvidenceID != 0 {
+			// The palette's own deep link: one file, opened by its id.
+			m.active = tabs.Evidence
+			opened, cmd := m.evidence.OpenEvidence(msg.EvidenceID)
+			m.evidence = opened
+			return m, cmd
+		}
+		return m.activate(msg.Target)
+	}
 }
 
 // deliver hands msg to one tab and stores the result back. A message for a

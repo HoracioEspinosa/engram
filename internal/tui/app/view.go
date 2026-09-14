@@ -29,6 +29,10 @@ func (m Model) View() string {
 		return m.styles.App.Render(m.compose(body, m.viewThemePicker()))
 	}
 
+	if m.palette.open {
+		return m.styles.App.Render(m.compose(body, m.viewPalette()))
+	}
+
 	if m.tree.open {
 		return m.styles.App.Render(m.compose(body, m.viewProjectTree()))
 	}

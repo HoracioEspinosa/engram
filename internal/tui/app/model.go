@@ -72,6 +72,11 @@ type Model struct {
 	// picking a theme repaints every tab, which is something only the root
 	// can do.
 	themePicker themePickerModel
+
+	// palette is the ctrl+k workspace search. It is root state for the same
+	// reason the tree is: a hit can be in another project, and moving the
+	// whole workspace is something only the root can do.
+	palette paletteModel
 }
 
 // New builds the root workspace around the readers its tabs consume: mem feeds
@@ -98,6 +103,7 @@ func New(mem data.MemorySource, projects data.ProjectReader, task data.TaskSourc
 		cloud:       cloud.New(),
 		tree:        newTreeModel(nil),
 		themePicker: newThemePickerModel(styles),
+		palette:     newPaletteModel(styles),
 	}
 	m = m.withStyles(styles)
 
@@ -152,6 +158,7 @@ func (m Model) withStyles(s theme.Styles) Model {
 	m.runbooks = m.runbooks.WithStyles(s)
 	m.cloud = m.cloud.WithStyles(s)
 	m.themePicker = m.themePicker.withStyles(s)
+	m.palette.styles = s
 	return m
 }
 

@@ -54,6 +54,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			m.Cursor = 0
 			m.Scroll = 0
 		}
+		if m.FocusID != 0 {
+			m = m.focusRow(m.FocusID)
+		}
 		return m, nil
 
 	case manifestLoadedMsg:

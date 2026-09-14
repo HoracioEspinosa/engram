@@ -237,6 +237,104 @@
       Quit                                                                      
   ├ acme  ✓ ACME-1  j/k navigate • enter select • s search • q quit   koi-pond  
                                                                                 
+═══ palette-empty ═══
+                                                                              
+  [⌂0] ≣1 ✓2 ▪3 ∿4 ▤5 ⋈6 ⌘7                                                   
+                                                                              
+  ┌────────────────────────────────────────────────────────────┐              
+  │                                                            │              
+  │  · Acme Corp                                               │              
+  │  42 observations   1 open tasks   1 evidence   1 runbooks  │              
+  │                                                            │              
+  └────────╭──────────────────────────────────────────────────────╮           
+           │ Search                                               │           
+           │                                                      │           
+  › recent │ ⌕ > Search the workspace (t: e: m: r: p: b:)         │           
+           │                                                      │           
+    ACME-1 │   Type at least 2 characters.                        │           
+           │                                                      │           
+    latest │   recent searches                                    │           
+           │                                                      │           
+    ACME-1/│   cold start                                         │ttached ●  
+           │   preview 503                                        │           
+    code gr│                                                      │           
+           │   ↑/↓ move • tab next group • enter open • esc close │           
+    ▲ code_╰──────────────────────────────────────────────────────╯           
+    1284 nodes  3901 edges  17 communities                                    
+    built 2026-01-14 08:00:00                                                 
+                                                                              
+    benchmarks                                                                
+                                                                              
+    p95                    812 ms         ⇓-13.6%                             
+    rps                    412 ops        ⇓-17.6%                             
+                                                                              
+                                                                              
+═══ palette-results ═══
+                                                                              
+  [⌂0] ≣1 ╭───────────────────────────────────────────────────────╮           
+          │ Search                                                │           
+  ┌───────│                                                       │           
+  │       │ ⌕ > preview                                           │           
+  │  · Acm│                                                       │           
+  │  42 ob│   ◆ projects                                          │           
+  │       │                                                       │           
+  └───────│ › Acme Corp  acme  umbrella                           │           
+          │                                                       │           
+          │   ✓ tasks                                             │           
+  › recent│                                                       │           
+          │   Fix the preview timeout  acme  ACME-1 · review      │           
+    ACME-1│                                                       │           
+          │   ≣ memory                                            │           
+    latest│                                                       │           
+          │   Root cause: preview worker pool   acme              │           
+    ACME-1│                                                       │ttached ●  
+          │   ▪ evidence                                          │           
+    code g│                                                       │           
+          │   ACME-1/cold-start.png  acme                         │           
+    ▲ code│                                                       │           
+    1284 n│   ∿ benchmarks                                        │           
+    built │                                                       │           
+          │   preview p95  acme  812 ms                           │           
+    benchm│                                                       │           
+          │   ▤ runbooks                                          │           
+    p95   │                                                       │           
+    rps   │   Preview endpoint returns 503 und  acme              │           
+          │                                                       │           
+          │   ↑/↓ move • tab next group • enter open • esc close  │           
+          ╰───────────────────────────────────────────────────────╯           
+                                                                              
+═══ palette-prefix ═══
+                                                                              
+  [⌂0] ≣1 ✓2 ▪3 ∿4 ▤5 ⋈6 ⌘7                                                   
+                                                                              
+  ┌────────────────────────────────────────────────────────────┐              
+  │                                                            │              
+  │  · Acme Corp                                               │              
+  │  42 observations   1 open tasks   1 evidence   1 runbooks  │              
+  │                                                            │              
+  └────────────────────────────────────────────────────────────┘              
+                                                                              
+                                                                              
+  › re╭────────────────────────────────────────────────────────────────╮      
+      │ Search                                                         │      
+    AC│                                                                │      
+      │ ⌕ > t:preview                                          [tasks] │      
+    la│   searching…                                                   │      
+      │                                                                │      
+    AC│   ↑/↓ move • tab next group • enter open • esc close           │ed ●  
+      ╰────────────────────────────────────────────────────────────────╯      
+    code graph                                                                
+                                                                              
+    ▲ code_changed                                                            
+    1284 nodes  3901 edges  17 communities                                    
+    built 2026-01-14 08:00:00                                                 
+                                                                              
+    benchmarks                                                                
+                                                                              
+    p95                    812 ms         ⇓-13.6%                             
+    rps                    412 ops        ⇓-17.6%                             
+                                                                              
+                                                                              
 ═══ s11-cloud ═══
                                                                                 
   ⌂0 ≣1 ✓2 ▪3 ∿4 ▤5 ⋈6 ⌘7                                                       

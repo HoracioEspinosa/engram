@@ -27,6 +27,9 @@ func (k rootHelpKeyMap) FullHelp() [][]key.Binding {
 // Help() otherwise (rfc-tui.md §7.1: "lista los atajos que esa pantalla
 // declara, no una lista fija").
 func (m Model) activeScreenHelp() []key.Binding {
+	if m.palette.open {
+		return paletteHelp()
+	}
 	if m.tree.open {
 		return treeHelp()
 	}

@@ -96,6 +96,11 @@ type Model struct {
 	ManifestChecked bool
 	ManifestErr     string
 
+	// FocusID is the row a deep link asked for, honoured once the load it
+	// issued comes back and then cleared: a cursor is set from rows that
+	// exist, and the rows do not exist until they arrive.
+	FocusID int64
+
 	// Feedback shared by every screen.
 	CopyFeedback string
 	ErrorMsg     string
@@ -192,6 +197,33 @@ func (m Model) Refresh() tea.Cmd {
 // changes only once the load comes back through Update, not here.
 func (m Model) OpenForTask(taskID int64) tea.Cmd {
 	return loadEvidence(m.reader, m.project, store.EvidenceListFilter{TaskID: taskID})
+}
+
+// OpenEvidence reloads the project's list and puts the cursor on one row, the
+// deep link the workspace search palette drives via
+// tabs.NavigateMsg.EvidenceID.
+//
+// The store has no "get one evidence row" query — the tab keeps whatever the
+// list gave it (see EvidenceReader's doc comment) — so this reloads the list
+// and remembers which row to land on once it arrives.
+func (m Model) OpenEvidence(id int64) (Model, tea.Cmd) {
+	m.FocusID = id
+	return m, loadEvidence(m.reader, m.project, store.EvidenceListFilter{})
+}
+
+// focusRow puts the cursor on the row a deep link named, and clears the
+// request either way: a file that is no longer in the list leaves the cursor
+// where it was rather than pinning the tab to a row that will never arrive.
+func (m Model) focusRow(id int64) Model {
+	m.FocusID = 0
+	for i, item := range m.Items {
+		if item.ID == id {
+			m.Cursor = i
+			m.Scroll = 0
+			return m
+		}
+	}
+	return m
 }
 
 // absolutePath resolves a stored evidence path — relative to

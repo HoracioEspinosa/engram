@@ -56,7 +56,27 @@ func New(s *store.Store, version string, project string, palette theme.Palette) 
 		data.NewGraphSyncer(s, workingDir()),
 	).WithBenchmarks(
 		data.NewBenchmarkReader(s),
+	).WithSearch(
+		data.NewGlobalSearcher(s),
+		data.NewSettingsWriter(s),
+	).WithSearchHistory(
+		searchHistory(data.NewSettingsReader(s)),
 	)
+}
+
+// searchHistory reads the queries the workspace last remembered. It runs once,
+// here, rather than every time the palette opens: a settings read is cheap but
+// a read on the render path is a read nobody can see failing. A store that
+// will not answer yields no history, which is what a fresh install has anyway.
+func searchHistory(reader data.SettingsReader) []string {
+	if reader == nil {
+		return nil
+	}
+	raw, _, err := reader.Setting(app.SearchHistoryKey)
+	if err != nil {
+		return nil
+	}
+	return app.DecodeSearchHistory(raw)
 }
 
 // workingDir is the checkout the graph syncer resolves graph.json and git HEAD

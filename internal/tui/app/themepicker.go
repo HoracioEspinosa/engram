@@ -153,6 +153,11 @@ func (m Model) CapturingText() bool {
 	if m.themePicker.open && m.themePicker.list.FilterState() == list.Filtering {
 		return true
 	}
+	if m.palette.open {
+		// The palette is a text box with a list under it: every key that is
+		// not one of its own four is a character.
+		return true
+	}
 	return m.tree.open && m.tree.filterInput.Focused()
 }
 

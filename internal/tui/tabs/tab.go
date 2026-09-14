@@ -127,10 +127,19 @@ type Targeted interface {
 //   - Query: §3.1 S8/S9's "t" opens Memory pre-searched for
 //     "runbook/RB-NNN", the executions recorded against that runbook
 //     (D-09's `runbook/RB-NNN/exec/<task-key>` topic_key convention).
+//   - EvidenceID and BenchmarkID are the same idea for the two kinds the
+//     workspace search can land on directly: one file, one measurement.
+//   - Slug rescopes the workspace before the target opens. A search that
+//     crosses projects has to move the whole workspace, not only the tab:
+//     a task from another project opened inside this one's Tasks list would
+//     be a row nobody can find again.
 type NavigateMsg struct {
 	Target        ID
 	ObservationID int64
 	TaskID        int64
+	EvidenceID    int64
+	BenchmarkID   int64
+	Slug          string
 	Query         string
 }
 

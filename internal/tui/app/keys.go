@@ -8,6 +8,10 @@ import "github.com/charmbracelet/bubbles/key"
 type globalKeyMap struct {
 	// Quit leaves the TUI from anywhere, including a focused text input.
 	Quit key.Binding
+	// Search opens the workspace search palette. Like the tree it lives on a
+	// modifier: "/" belongs to whichever screen has a search of its own, and
+	// the palette borrows that key only where nothing else claims it.
+	Search key.Binding
 	// ProjectSelector opens S1. It lives on a modifier because the letter
 	// keys belong to the screens: "p" is a page key in a paginated list and
 	// the copy-path action on Evidence's detail, and a global that moved
@@ -35,6 +39,10 @@ var globalKeys = globalKeyMap{
 	Quit: key.NewBinding(
 		key.WithKeys("ctrl+c"),
 		key.WithHelp("ctrl+c", "quit"),
+	),
+	Search: key.NewBinding(
+		key.WithKeys("ctrl+k"),
+		key.WithHelp("ctrl+k", "search"),
 	),
 	ProjectSelector: key.NewBinding(
 		key.WithKeys("ctrl+p"),
@@ -73,6 +81,7 @@ func globalHelpBindings() []key.Binding {
 	return []key.Binding{
 		globalKeys.SwitchTab,
 		globalKeys.NextTab,
+		globalKeys.Search,
 		globalKeys.ProjectSelector,
 		globalKeys.Refresh,
 		globalKeys.ThemePicker,
