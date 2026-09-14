@@ -18,7 +18,7 @@
 #     conversation.
 #   * The tool catalogue can only grow. The `tools/list` reply is stored as
 #     tools-list-<label>.json and compared against tools-list-baseline.json:
-#     a name that disappears between phases fails here, which is the whole
+#     a name that disappears between runs fails here, which is the whole
 #     point of keeping the additive rule enforceable rather than aspirational.
 #
 # Three behaviours of the current binary are held fixed rather than worked
@@ -54,8 +54,9 @@ PROJECT="koi-garden"
 # would make this suite's result depend on whether seed.sh ran first.
 SMOKE_DATA_DIR=/data/smoke
 # The agent and projects profiles together register 28 tools today (18 + 10).
-# The floor is an inequality, not an equality, because later phases add tools
-# to the session and must not have to edit this number to stay green.
+# The floor is an inequality, not an equality: the tool catalogue only grows,
+# so adding a tool to the session must not require editing this number to
+# stay green.
 MIN_TOOLS=28
 
 require_cmd docker jq rg

@@ -20,9 +20,10 @@
 #     running them, so a command split across several arguments loses its
 #     quoting silently.
 #
-# The .ansi capture is what the colour and contrast assertions of later phases
-# read; the .txt capture is what the width assertion below reads and what a
-# reviewer actually looks at.
+# The .ansi capture keeps the raw escape sequences a frame was drawn with,
+# which is where its colour and contrast information lives; the .txt capture
+# is what the width assertion below reads and what a reviewer actually looks
+# at.
 
 set -euo pipefail
 

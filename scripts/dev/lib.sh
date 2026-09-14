@@ -193,8 +193,8 @@ ensure_volume() {
 # Two independent ways in are checked: the ENGRAM_DATA_DIR this shell would
 # hand to a container, and every path Compose resolves in the merged config
 # (which is where a relative `./`-mount or a ${HOME} interpolation would show
-# up). The resolved config is also written out as the isolation evidence for
-# the phase gate.
+# up). The resolved config is also written out as the isolation evidence a
+# reviewer checks before signing off on a run.
 assert_no_live_db() {
   if [ "${ENGRAM_DATA_DIR:-}" = "$LIVE_DB_DIR" ]; then
     fail "ENGRAM_DATA_DIR points at the live store ($LIVE_DB_DIR); the dev environment never opens it"

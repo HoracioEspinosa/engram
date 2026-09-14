@@ -137,8 +137,9 @@ evidence tsukimi-bridge TSU-204 "tsukimi-bridge/TSU-204/01-galeria.png" "la gale
 # internal/runbooks/service_map.go (internal/runbooks/index.go:24), exactly as
 # --vault-dir does, and that map only knows fifteen real service slugs. Every
 # fixture service sits outside it on purpose, so the whole fixture is skipped as
-# unknown_service and runbook_index stays empty; taking that count to zero is a
-# later phase's criterion, not a seeding failure.
+# unknown_service and runbook_index stays empty: the map is a fixed list, so
+# every fictional service is rejected until the map becomes data-driven, and
+# that rejection is not a seeding failure.
 rm -f "$SEED_OUT"/runbooks-sync-*.json
 for slug in koi-garden koi-garden-pond-02 tsukimi-bridge; do
   log "runbooks: syncing $slug from /vault/Runbooks/.entries.json"
@@ -150,7 +151,7 @@ for slug in koi-garden koi-garden-pond-02 tsukimi-bridge; do
   runbooks_status=$?
   set -e
   if [ "$runbooks_status" -ne 0 ]; then
-    log "WARN runbooks sync for $slug exited $runbooks_status (see $SEED_OUT/runbooks-sync-$slug.json and .stderr); recorded, not fatal in this phase"
+    log "WARN runbooks sync for $slug exited $runbooks_status (see $SEED_OUT/runbooks-sync-$slug.json and .stderr); recorded, not fatal for seeding"
   fi
 done
 

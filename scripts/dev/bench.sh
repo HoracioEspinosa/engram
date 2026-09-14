@@ -14,11 +14,11 @@
 # internal/store carries no Benchmark functions yet: they arrive with the
 # performance work, and the ones this script asks for by name are the paths
 # that work targets. Until then `bench.sh baseline` says so and exits clean,
-# because a phase that has not written a benchmark has not regressed one
-# either. Any other label stops instead: comparing against a baseline that
-# holds no sample is not a green run, it is benchstat given nothing to read.
+# because code that has not written a benchmark has not regressed one either.
+# Any other label stops instead: comparing against a baseline that holds no
+# sample is not a green run, it is benchstat given nothing to read.
 #
-# Usage: bench.sh <label>     e.g. bench.sh baseline, bench.sh fase-1
+# Usage: bench.sh <label>     e.g. bench.sh baseline, bench.sh store-hot-paths
 
 set -euo pipefail
 
