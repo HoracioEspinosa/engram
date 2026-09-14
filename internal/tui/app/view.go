@@ -51,6 +51,28 @@ func (m Model) View() string {
 	return m.styles.App.Render(body)
 }
 
+// bodyWidth is how many cells the frame's body may occupy: the terminal less
+// the app frame's own padding. A root that has not received a
+// tea.WindowSizeMsg yet assumes the width the wireframes were drawn at.
+func (m Model) bodyWidth() int {
+	if m.width <= 0 {
+		return defaultBodyWidth
+	}
+	if w := m.width - bodyMargin; w >= minBodyWidth {
+		return w
+	}
+	return minBodyWidth
+}
+
+// bodyMargin is what the app frame spends either side of the body,
+// minBodyWidth the narrowest body worth laying out, and defaultBodyWidth
+// what a root with no size yet assumes.
+const (
+	bodyMargin       = 4
+	minBodyWidth     = 24
+	defaultBodyWidth = 80
+)
+
 // overlayChromeCells and overlayChromeRows are what an overlay's own content
 // must give back to whatever frames it: the app frame's horizontal padding,
 // the panel's border and padding, and a margin either side so the screen

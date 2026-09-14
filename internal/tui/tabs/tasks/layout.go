@@ -24,9 +24,30 @@ const (
 	contextPackChrome = 4
 )
 
-// Widths of the tab's fixed columns, in terminal cells.
+// Caps and fixed costs of the tab's rows, in terminal cells. What a column
+// actually gets is solved from the screen's width — see taskColumns.
 const (
 	taskKeyCells         = 12
 	taskKindCells        = 9
+	taskStateCells       = 18
 	observationTypeCells = 10
+
+	// taskRowFixed is what a list row spends outside its solved columns:
+	// the cursor marker and the brackets around the kind badge.
+	taskRowFixed = 4
+	// detailObservationFixed and detailEvidenceFixed are the same reckoning
+	// for the two lists inside the detail screen.
+	detailObservationFixed = 32
+	detailEvidenceFixed    = 4
+	// detailBadgeCells is the width of the attached/unattached badge.
+	detailBadgeCells = 11
+	// minTitleCells is the narrowest title worth drawing.
+	minTitleCells = 12
+
+	// bodyMargin is what the app frame spends either side of a tab's body,
+	// minBodyWidth the narrowest body worth laying out, and
+	// defaultBodyWidth what a screen with no size yet assumes.
+	bodyMargin       = 4
+	minBodyWidth     = 24
+	defaultBodyWidth = 80
 )

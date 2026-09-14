@@ -73,6 +73,10 @@ type Model struct {
 	Width  int
 	Height int
 
+	// Focus is which pane answers the cursor keys at the split breakpoint.
+	// Below it there is only the master, and "l" leaves the focus there.
+	Focus shared.Pane
+
 	// List (S6).
 	Items  []store.EvidenceListItem
 	Cursor int

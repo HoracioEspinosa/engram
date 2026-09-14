@@ -18,8 +18,8 @@ func TestUpdateClipboardCopiedMsgSetsFeedback(t *testing.T) {
 	updatedModel, cmd := m.Update(shared.CopiedMsg{Sequence: "\x1b]52;c;aGVsbG8=\x07"})
 	updated := updatedModel.(Model)
 
-	if updated.CopyFeedback != "✓ Copied!" {
-		t.Fatalf("CopyFeedback = %q, want %q", updated.CopyFeedback, "✓ Copied!")
+	if updated.CopyFeedback != "Copied!" {
+		t.Fatalf("CopyFeedback = %q, want %q", updated.CopyFeedback, "Copied!")
 	}
 	if cmd == nil {
 		t.Fatal("shared.CopiedMsg should return a clear-feedback command")
@@ -30,7 +30,7 @@ func TestUpdateClipboardCopiedMsgSetsFeedback(t *testing.T) {
 
 func TestUpdateClipboardClearMsgClearsFeedback(t *testing.T) {
 	m := New(nil, "")
-	m.CopyFeedback = "✓ Copied!"
+	m.CopyFeedback = "Copied!"
 
 	updatedModel, cmd := m.Update(shared.ClearFeedbackMsg{})
 	updated := updatedModel.(Model)
@@ -206,10 +206,10 @@ func TestViewShowsCopyFeedback(t *testing.T) {
 		Title:   "Test",
 		Content: "content",
 	}
-	m.CopyFeedback = "✓ Copied!"
+	m.CopyFeedback = "Copied!"
 
 	view := m.View()
-	if !strings.Contains(view, "✓ Copied!") {
+	if !strings.Contains(view, "Copied!") {
 		t.Fatal("view should display CopyFeedback when set")
 	}
 }
@@ -228,7 +228,7 @@ func TestViewDoesNotShowCopyFeedbackWhenEmpty(t *testing.T) {
 	m.CopyFeedback = ""
 
 	view := m.View()
-	if strings.Contains(view, "✓ Copied!") {
+	if strings.Contains(view, "Copied!") {
 		t.Fatal("view should not show copy feedback when CopyFeedback is empty")
 	}
 }

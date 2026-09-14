@@ -173,7 +173,7 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 	case shared.CopiedMsg:
 		// Emit the OSC 52 sequence to stdout so the terminal copies the content,
 		// set the feedback label, and schedule its removal after 2 seconds.
-		m.CopyFeedback = "✓ Copied!"
+		m.CopyFeedback = "Copied!"
 		return m, tea.Batch(
 			tea.Println(msg.Sequence),
 			shared.ClearFeedbackAfter(2*time.Second),

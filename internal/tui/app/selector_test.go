@@ -358,7 +358,7 @@ func TestSelectorMoveCursorOnAnEmptyListIsANoOp(t *testing.T) {
 func TestViewSelectorRendersLoadingThenRows(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.screen = screenSelector
-	if out := m.View(); !strings.Contains(out, "Loading projects") {
+	if out := m.View(); !strings.Contains(out, "loading the projects") {
 		t.Fatalf("an unloaded selector should show a loading state, got:\n%s", out)
 	}
 

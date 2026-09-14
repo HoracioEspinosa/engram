@@ -8,6 +8,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -284,7 +285,7 @@ func orEmpty(v *string) string {
 func (m Model) viewDashboardBlock(title string, id dashBlock, body string) string {
 	heading := "  " + title
 	if m.dashboard.cursor == id {
-		heading = "▸ " + title
+		heading = shared.RowCursor(m.styles, true) + title
 	}
 	return m.styles.SectionHeading.Render(heading) + "\n" + body
 }
@@ -330,7 +331,7 @@ func (m Model) viewDashboardEvidence() string {
 	for _, e := range m.dashboard.evidence {
 		badge := m.styles.StaleBadge.Render("unattached")
 		if e.AttachedJira {
-			badge = m.styles.AttachedBadge.Render("attached ✓")
+			badge = m.styles.AttachedBadge.Render("attached " + m.styles.Icons.Glyph(theme.IconFresh))
 		}
 		b.WriteString(fmt.Sprintf("  %s %s\n", shared.Truncate(e.Path, 46), badge))
 	}

@@ -79,7 +79,7 @@ func TestViewRendersEveryScreenWithoutPanicking(t *testing.T) {
 		{"error-and-copy-banner", func() Model {
 			m := withHeight(New(&data.FakeTask{}).WithProject("acme"), 30)
 			m.ErrorMsg = "database is locked"
-			m.CopyFeedback = "✓ Copied!"
+			m.CopyFeedback = "Copied!"
 			return m
 		}},
 	}
@@ -126,7 +126,7 @@ func TestViewTaskRowCoversTheNoBranchAndNoPRDefaults(t *testing.T) {
 	item.Branch = nil
 	item.PRUrl = nil
 
-	out := m.viewTaskRow(item, false)
+	out := m.viewTaskRow(item, false, taskColumns(m.masterWidth()))
 	if !strings.Contains(out, "no branch") {
 		t.Fatalf("row with no branch = %q, want it to say \"no branch\"", out)
 	}
@@ -136,7 +136,7 @@ func TestViewTaskRowCoversTheNoBranchAndNoPRDefaults(t *testing.T) {
 
 	item.Branch = strp("fix/ACME-1")
 	item.PRUrl = strp("https://github.com/acme/repo/pull/1")
-	out = m.viewTaskRow(item, true)
+	out = m.viewTaskRow(item, true, taskColumns(m.masterWidth()))
 	if !strings.Contains(out, "PR linked") {
 		t.Fatalf("row with a PR = %q, want it to say \"PR linked\"", out)
 	}

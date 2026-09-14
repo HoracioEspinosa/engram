@@ -44,4 +44,24 @@ const (
 const (
 	timelineTypeCells   = 12
 	sessionProjectCells = 20
+
+	// timelineFocusFrame is what the focus card's border and padding spend
+	// before its own text starts.
+	timelineFocusFrame = 8
+	// sessionRowFixed is what a session row spends outside its four solved
+	// columns: the cursor marker and the three separators.
+	sessionRowFixed = 8
+	// timelineRowFixed is what a timeline row spends before its title: the
+	// indent, the connector, the id and the spaces between them.
+	timelineRowFixed = 14
+	// minTimelineTitle is the narrowest title worth drawing on that row.
+	minTimelineTitle = 12
+
+	// bodyMargin is what the app frame spends either side of a tab's body:
+	// two cells of padding on each edge.
+	bodyMargin = 4
+	// minBodyWidth is the narrowest body worth laying out.
+	minBodyWidth = 24
+	// defaultBodyWidth is what a screen that never learned its size assumes.
+	defaultBodyWidth = 80
 )

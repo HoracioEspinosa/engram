@@ -17,6 +17,7 @@ import (
 
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -103,6 +104,10 @@ type Model struct {
 	Screen Screen
 	Width  int
 	Height int
+
+	// Focus is which pane answers the cursor keys at the split breakpoint.
+	// Below it there is only the master, and "l" leaves the focus there.
+	Focus shared.Pane
 
 	// List (S3).
 	Items  []store.TaskListItem

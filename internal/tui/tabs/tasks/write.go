@@ -30,6 +30,6 @@ func (m Model) writeContextPack() (tabs.Tab, tea.Cmd) {
 		m.ErrorMsg = "could not write " + path + ": " + err.Error()
 		return m, nil
 	}
-	m.CopyFeedback = "✓ Saved " + path
+	m.CopyFeedback = "Saved " + path
 	return m, shared.ClearFeedbackAfter(2 * time.Second)
 }

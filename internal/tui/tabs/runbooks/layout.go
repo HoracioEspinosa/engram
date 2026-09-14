@@ -25,11 +25,25 @@ const (
 	pageSize = 50
 )
 
-// Widths of the index row's fixed columns, in terminal cells.
+// Caps and fixed costs of the index row, in terminal cells. What a column
+// actually gets is solved from the screen's width — see runbookColumns.
 const (
 	runbookIDCells       = 8
-	runbookTitleCells    = 40
 	runbookProjectCells  = 12
 	runbookCategoryCells = 14
 	runbookPatternCells  = 12
+	runbookAgeCells      = 7
+
+	// runbookRowFixed is what a row spends outside its solved columns: the
+	// cursor marker.
+	runbookRowFixed = 2
+	// symptomsLabelCells is what the preview's "symptoms: " label spends.
+	symptomsLabelCells = 12
+
+	// bodyMargin is what the app frame spends either side of a tab's body,
+	// minBodyWidth the narrowest body worth laying out, and
+	// defaultBodyWidth what a screen with no size yet assumes.
+	bodyMargin       = 4
+	minBodyWidth     = 24
+	defaultBodyWidth = 80
 )

@@ -52,7 +52,7 @@ func TestViewIndexRendersEveryStateWithoutPanicking(t *testing.T) {
 		{"error-and-copy-banner", func() Model {
 			m := withHeight(newModel(&data.FakeRunbook{}, nil).WithProject("acme"), 30)
 			m.ErrorMsg = "database is locked"
-			m.CopyFeedback = "✓ Copied!"
+			m.CopyFeedback = "Copied!"
 			return m
 		}},
 	}

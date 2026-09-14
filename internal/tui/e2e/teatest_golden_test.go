@@ -139,7 +139,7 @@ func teatestScreens() []teatestScreen {
 			initialProject: "acme",
 			steps: []teatestStep{
 				{key: keyRune("2"), waitFor: "ACME-1"},
-				{key: teatestEnterKey, waitFor: "Root cause: preview worker pool exhausted"},
+				{key: teatestEnterKey, waitFor: "Root cause: preview"},
 			},
 		},
 		{
@@ -147,7 +147,7 @@ func teatestScreens() []teatestScreen {
 			initialProject: "acme",
 			steps: []teatestStep{
 				{key: keyRune("2"), waitFor: "ACME-1"},
-				{key: teatestEnterKey, waitFor: "Root cause: preview worker pool exhausted"},
+				{key: teatestEnterKey, waitFor: "Root cause: preview"},
 				{key: keyRune("x"), waitFor: "# Context pack: acme / ACME-1"},
 			},
 		},
@@ -301,8 +301,20 @@ func seedVaultFixture(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "Runbooks"), 0o755); err != nil {
 		t.Fatalf("mkdir vault fixture dir: %v", err)
 	}
+	// The fenced Go block is not decoration: it is the only thing in this
+	// suite that drives glamour's chroma path, so the scene proves a code
+	// block is styled from the palette rather than from glamour's own fixed
+	// scheme.
 	content := "# Preview endpoint returns 503 under load\n\n" +
-		"Restart the preview worker pool and watch memory.\n"
+		"Restart the preview worker pool and watch memory.\n\n" +
+		"```go\n" +
+		"func restart(pool *Pool) error {\n" +
+		"\tif err := pool.Drain(); err != nil {\n" +
+		"\t\treturn fmt.Errorf(\"drain: %w\", err)\n" +
+		"\t}\n" +
+		"\treturn pool.Start()\n" +
+		"}\n" +
+		"```\n"
 	if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
 		t.Fatalf("write vault fixture: %v", err)
 	}

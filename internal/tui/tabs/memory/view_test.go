@@ -6,6 +6,7 @@ import (
 
 	"github.com/HoracioEspinosa/engram/internal/setup"
 	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 	"github.com/HoracioEspinosa/engram/internal/version"
 )
 
@@ -27,7 +28,7 @@ func TestRenderObservationListItem(t *testing.T) {
 		true,
 	)
 
-	if !strings.Contains(line, "▸") {
+	if !strings.Contains(line, shared.RowCursor(m.styles, true)) {
 		t.Fatal("selected item should include cursor marker")
 	}
 	if !strings.Contains(line, "Title here") {

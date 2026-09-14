@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -147,7 +148,7 @@ func TestViewRendersTheMenu(t *testing.T) {
 			t.Fatalf("view should render menu item %q", item)
 		}
 	}
-	if !strings.Contains(out, "▸ View status") {
+	if !strings.Contains(out, shared.RowCursor(m.Styles(), true)+"View status") {
 		t.Fatal("view should mark the item under the cursor")
 	}
 	// The footer belongs to the root frame now: the tab declares its keys in

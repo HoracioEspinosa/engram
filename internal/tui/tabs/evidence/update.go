@@ -74,7 +74,7 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 		return m, nil
 
 	case shared.CopiedMsg:
-		m.CopyFeedback = "✓ Copied!"
+		m.CopyFeedback = "Copied!"
 		return m, tea.Batch(
 			tea.Println(msg.Sequence),
 			shared.ClearFeedbackAfter(2*time.Second),
@@ -93,30 +93,24 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 	visible := shared.VisibleItems(m.Height, listChrome, evidenceItemLines, minVisibleItems)
 
+	cursor := shared.ListCursor{Index: m.Cursor, Offset: m.Scroll}
+
 	switch key {
 	case "up", "k":
-		if m.Cursor > 0 {
-			m.Cursor--
-			if m.Cursor < m.Scroll {
-				m.Scroll = m.Cursor
-			}
-		}
+		m.Cursor, m.Scroll = cursor.Move(-1, len(m.Items), visible).Unpack()
 	case "down", "j":
-		if m.Cursor < len(m.Items)-1 {
-			m.Cursor++
-			if m.Cursor >= m.Scroll+visible {
-				m.Scroll = m.Cursor - visible + 1
-			}
-		}
+		m.Cursor, m.Scroll = cursor.Move(1, len(m.Items), visible).Unpack()
+	case "h":
+		// The list is always there; "h" brings the focus back to it.
+		m.Focus = shared.FocusLeft()
+	case "l":
+		// Inert below the split breakpoint: there is no second pane to
+		// move to, and a focus the reader cannot see is worse than none.
+		m.Focus = shared.FocusRight(m.regions())
 	case "g":
-		m.Cursor, m.Scroll = 0, 0
+		m.Cursor, m.Scroll = cursor.Top().Unpack()
 	case "G":
-		if len(m.Items) > 0 {
-			m.Cursor = len(m.Items) - 1
-			if m.Cursor >= visible {
-				m.Scroll = m.Cursor - visible + 1
-			}
-		}
+		m.Cursor, m.Scroll = cursor.Bottom(len(m.Items), visible).Unpack()
 	case "enter":
 		if len(m.Items) > 0 && m.Cursor < len(m.Items) {
 			item := m.Items[m.Cursor]

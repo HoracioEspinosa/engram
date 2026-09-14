@@ -19,6 +19,13 @@ func LocalTime(utc string) string {
 	return timeutil.FormatLocal(utc)
 }
 
+// LocalDate is LocalTime without the clock — the form a narrow row falls
+// back to when the full timestamp no longer leaves the title room to say
+// anything.
+func LocalDate(utc string) string {
+	return FormatReviewDate(LocalTime(utc))
+}
+
 // FormatReviewDate reduces a stored review deadline to its calendar day. Input
 // that parses in none of the accepted layouts is returned truncated to its
 // first ten characters, or unchanged when it is shorter than a date.

@@ -781,7 +781,7 @@ func TestUpdateOnCopiedMsgSetsFeedbackAndSchedulesItsClear(t *testing.T) {
 
 func TestUpdateOnClearFeedbackMsgClearsTheBanner(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")
-	m.CopyFeedback = "✓ Copied!"
+	m.CopyFeedback = "Copied!"
 
 	m, _ = step(t, m, shared.ClearFeedbackMsg{})
 	if m.CopyFeedback != "" {

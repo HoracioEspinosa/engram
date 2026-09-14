@@ -194,7 +194,7 @@ type Model struct {
 	SessionDeleteProject string
 
 	// Clipboard feedback
-	CopyFeedback string // "✓ Copied!" or "" — shown for 2 s after copy
+	CopyFeedback string // "Copied!" or "" — shown for 2 s after copy
 
 	// Setup
 	SetupAgents           []setup.Agent

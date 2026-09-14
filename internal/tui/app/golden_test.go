@@ -189,7 +189,7 @@ func goldenScenes() []goldenScene {
 			m.memory.Screen = memory.ScreenRecent
 			m.memory.RecentObservations = goldenObservations()
 			m.memory.RecentTotal = len(m.memory.RecentObservations)
-			m.memory.CopyFeedback = "✓ Copied!"
+			m.memory.CopyFeedback = "Copied!"
 			return m
 		}},
 		{name: "observation-detail-loading", build: func(m Model) Model {

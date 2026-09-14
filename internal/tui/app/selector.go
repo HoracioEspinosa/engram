@@ -9,16 +9,24 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 
+	"github.com/charmbracelet/bubbles/spinner"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// Widths of the two text columns of the selector table, in terminal cells.
-// The header row and the data rows read them from here so the two cannot
-// drift apart.
+// Caps and fixed costs of the selector table, in terminal cells. What each
+// column actually gets is solved from the screen's width — see
+// selectorColumns — so the header row and the data rows, which both call it,
+// cannot drift apart.
 const (
-	selectorSlugCells = 22
-	selectorNameCells = 28
+	selectorSlugCells  = 22
+	selectorCountCells = 6
+	selectorStaleCells = 8
+
+	// selectorRowFixed is what a row spends outside its solved columns: the
+	// cursor marker.
+	selectorRowFixed = 2
 )
 
 // selectorModel is the Project Selector (S1, rfc-tui.md §5.S1): every live
@@ -208,7 +216,7 @@ func (m Model) viewSelector() string {
 		b.WriteString(m.styles.Error.Render("  " + m.selector.err))
 		b.WriteString("\n")
 	case !m.selector.loaded:
-		b.WriteString(m.styles.StatCard.Render("Loading projects..."))
+		b.WriteString(shared.Loading(m.styles, spinner.Model{}, "the projects"))
 		b.WriteString("\n")
 	case len(m.selector.filtered) == 0:
 		b.WriteString(m.styles.NoResults.Render("  No projects match the filter."))
@@ -223,20 +231,33 @@ func (m Model) viewSelector() string {
 	return b.String()
 }
 
+// selectorColumns solves the project table against the width it is drawn in.
+// The slug and the display name stretch; the three counters are digits and
+// never need more than their cap.
+func (m Model) selectorColumns() []int {
+	return shared.SolveColumns(m.bodyWidth()-selectorRowFixed, 1, []shared.Column{
+		{Min: 10, Max: selectorSlugCells, Weight: 2},
+		{Min: 12, Weight: 3},
+		{Min: selectorCountCells, Max: selectorCountCells},
+		{Min: selectorCountCells, Max: selectorCountCells},
+		{Min: selectorStaleCells, Max: selectorStaleCells},
+	})
+}
+
 func (m Model) selectorHeaderRow() string {
-	line := fmt.Sprintf("  %s%s %s %8s %8s %10s",
-		shared.PadCells("", 2),
-		shared.PadCells("slug", selectorSlugCells),
-		shared.PadCells("display name", selectorNameCells),
-		"obs", "open", "stale RB")
-	return m.styles.Help.Render(line) + "\n"
+	w := m.selectorColumns()
+	line := fmt.Sprintf("  %s %s %s %s %s",
+		shared.Cell("slug", w[0]),
+		shared.Cell("display name", w[1]),
+		shared.Cell("obs", w[2]),
+		shared.Cell("open", w[3]),
+		shared.Cell("stale RB", w[4]))
+	return m.styles.Help.Render(strings.TrimRight(line, " ")) + "\n"
 }
 
 func (m Model) selectorRow(c store.ProjectCardListItem, selected bool) string {
-	cursor := "  "
 	rowStyle := m.styles.ListItem
 	if selected {
-		cursor = "▸ "
 		rowStyle = m.styles.ListSelected
 	}
 
@@ -247,10 +268,13 @@ func (m Model) selectorRow(c store.ProjectCardListItem, selected bool) string {
 		stale = fmt.Sprintf("%d", c.Counts.RunbooksStale)
 	}
 
-	line := fmt.Sprintf("%s%s %s %8s %8s %10s",
-		cursor,
-		shared.PadCells(shared.Truncate(c.Slug, selectorSlugCells), selectorSlugCells),
-		shared.PadCells(shared.Truncate(c.DisplayName, selectorNameCells), selectorNameCells),
-		obs, open, stale)
-	return rowStyle.Render(line) + "\n"
+	w := m.selectorColumns()
+	line := fmt.Sprintf("%s%s %s %s %s %s",
+		shared.RowCursor(m.styles, selected),
+		shared.Field(c.Slug, w[0]),
+		shared.Field(c.DisplayName, w[1]),
+		shared.Cell(obs, w[2]),
+		shared.Cell(open, w[3]),
+		shared.Cell(stale, w[4]))
+	return rowStyle.Render(strings.TrimRight(line, " ")) + "\n"
 }

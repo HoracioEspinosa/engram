@@ -144,7 +144,7 @@ func TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector(t *testing.T) {
 
 func TestBroadcastReachesAnInactiveTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.memory.CopyFeedback = "✓ Copied!"
+	m.memory.CopyFeedback = "Copied!"
 	m.active = tabs.Cloud
 
 	m, _ = step(t, m, shared.ClearFeedbackMsg{})

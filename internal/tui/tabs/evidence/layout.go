@@ -25,9 +25,27 @@ const (
 	pageSize = 50
 )
 
-// Widths of the list row's fixed columns, in terminal cells.
+// Caps and fixed costs of the list row, in terminal cells. The name and the
+// "proves" note are solved from the screen's width instead — see
+// evidenceColumns.
 const (
-	evidenceNameCells = 46
-	evidenceKindCells = 4
-	evidenceTaskCells = 12
+	evidenceKindCells     = 4
+	evidenceTaskCells     = 12
+	evidenceAttachedCells = 6
+
+	// evidenceRowFixed is what a row spends outside its solved columns: the
+	// cursor marker and the brackets around the kind badge.
+	evidenceRowFixed = 4
+	// detailCardFrame is what the detail card's border, padding and indent
+	// spend before its own text starts, and detailLabelCells what the label
+	// column of each row inside it takes.
+	detailCardFrame  = 10
+	detailLabelCells = 22
+
+	// bodyMargin is what the app frame spends either side of a tab's body.
+	bodyMargin = 4
+	// minBodyWidth is the narrowest body worth laying out, and
+	// defaultBodyWidth what a screen with no size yet assumes.
+	minBodyWidth     = 24
+	defaultBodyWidth = 80
 )

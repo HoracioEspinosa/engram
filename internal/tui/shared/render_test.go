@@ -24,7 +24,7 @@ func TestObservationListItemRendersBothLines(t *testing.T) {
 		Selected:  true,
 	})
 
-	if !strings.Contains(line, "▸") {
+	if !strings.Contains(line, RowCursor(st, true)) {
 		t.Fatal("selected item should include cursor marker")
 	}
 	if !strings.Contains(line, "Title here") {
@@ -66,9 +66,10 @@ func TestObservationListItemBadgesNeedsReview(t *testing.T) {
 }
 
 func TestObservationListItemUnselectedHasNoCursor(t *testing.T) {
-	line := ObservationListItem(theme.Default(), ObservationLine{ID: 1, Type: "note", Title: "plain"})
+	st := theme.Default()
+	line := ObservationListItem(st, ObservationLine{ID: 1, Type: "note", Title: "plain"})
 
-	if strings.Contains(line, "▸") {
+	if strings.Contains(line, RowCursor(st, true)) {
 		t.Fatal("an unselected item should not carry the cursor marker")
 	}
 }
@@ -85,12 +86,13 @@ func TestObservationState(t *testing.T) {
 }
 
 func TestMenuMarksTheCursor(t *testing.T) {
-	out := Menu(theme.Default(), []string{"first", "second", "third"}, 1)
+	st := theme.Default()
+	out := Menu(st, []string{"first", "second", "third"}, 1)
 
-	if !strings.Contains(out, "▸ second") {
+	if !strings.Contains(out, RowCursor(st, true)+"second") {
 		t.Fatalf("cursor should mark the second item, got %q", out)
 	}
-	if strings.Contains(out, "▸ first") || strings.Contains(out, "▸ third") {
+	if strings.Contains(out, RowCursor(st, true)+"first") || strings.Contains(out, RowCursor(st, true)+"third") {
 		t.Fatal("only the item under the cursor carries the marker")
 	}
 	if lines := strings.Count(out, "\n"); lines != 3 {
@@ -99,9 +101,10 @@ func TestMenuMarksTheCursor(t *testing.T) {
 }
 
 func TestMenuWithAnOutOfRangeCursorMarksNothing(t *testing.T) {
-	out := Menu(theme.Default(), []string{"first", "second"}, 9)
+	st := theme.Default()
+	out := Menu(st, []string{"first", "second"}, 9)
 
-	if strings.Contains(out, "▸") {
+	if strings.Contains(out, RowCursor(st, true)) {
 		t.Fatal("a cursor past the end should mark nothing rather than panic")
 	}
 }

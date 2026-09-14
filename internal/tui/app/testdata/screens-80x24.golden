@@ -21,7 +21,7 @@
                                                                                 
     Actions                                                                     
                                                                                 
-   ▸ Search memories                                                            
+   › Search memories                                                            
       Recent observations                                                       
       Browse sessions                                                           
       Setup agent plugin                                                        
@@ -55,17 +55,17 @@
                                                                                 
     Projects                                                                    
                                                                                 
-    • engram                                                                    
-    • clarodrive                                                                
-    • middleware                                                                
-    • portal                                                                    
-    • lookup                                                                    
+    · engram                                                                    
+    · clarodrive                                                                
+    · middleware                                                                
+    · portal                                                                    
+    · lookup                                                                    
       ...and 1 more projects                                                    
                                                                                 
     Actions                                                                     
                                                                                 
       Search memories                                                           
-   ▸ Recent observations                                                        
+   › Recent observations                                                        
       Browse sessions                                                           
       Setup agent plugin                                                        
       Cloud sync settings                                                       
@@ -100,16 +100,16 @@
                                                                                 
     Projects                                                                    
                                                                                 
-    • engram                                                                    
-    • clarodrive                                                                
-    • middleware                                                                
-    • portal                                                                    
-    • lookup                                                                    
+    · engram                                                                    
+    · clarodrive                                                                
+    · middleware                                                                
+    · portal                                                                    
+    · lookup                                                                    
       ...and 1 more projects                                                    
                                                                                 
     Actions                                                                     
                                                                                 
-   ▸ Search memories                                                            
+   › Search memories                                                            
       Recent observations                                                       
       Browse sessions                                                           
       Setup agent plugin                                                        
@@ -145,16 +145,16 @@
                                                                                 
     Projects                                                                    
                                                                                 
-    • engram                                                                    
-    • clarodrive                                                                
-    • middleware                                                                
-    • portal                                                                    
-    • lookup                                                                    
+    · engram                                                                    
+    · clarodrive                                                                
+    · middleware                                                                
+    · portal                                                                    
+    · lookup                                                                    
       ...and 1 more projects                                                    
                                                                                 
     Actions                                                                     
                                                                                 
-   ▸ Search memories                                                            
+   › Search memories                                                            
       Recent observations                                                       
       Browse sessions                                                           
       Setup agent plugin                                                        
@@ -188,16 +188,16 @@
                                                                                 
     Projects                                                                    
                                                                                 
-    • engram                                                                    
-    • clarodrive                                                                
-    • middleware                                                                
-    • portal                                                                    
-    • lookup                                                                    
+    · engram                                                                    
+    · clarodrive                                                                
+    · middleware                                                                
+    · portal                                                                    
+    · lookup                                                                    
       ...and 1 more projects                                                    
                                                                                 
     Actions                                                                     
                                                                                 
-   ▸ Search memories                                                            
+   › Search memories                                                            
       Recent observations                                                       
       Browse sessions                                                           
       Setup agent plugin                                                        
@@ -238,39 +238,39 @@
   enter search • esc back                                             koi-pond  
                                                                                 
 ═══ search-results ═══
-                                                                                                                        
-  0  [1]  2  3  4  5                                                                                                    
-                                                                                                                        
-    Search: "wal" — 4 results                                                                                           
-                                                                                                                        
-  ───────────────────────────                                                                                           
-                                                                                                                        
-    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                             
-      SQLite WAL keeps readers unblocked while the MCP server writes.                                                   
-  ▸ #102   [bugfix      ] [needs_review]  Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                       
-    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                
-      Header line carries id, type and badges; preview carries content.                                                 
-    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                   
-      Rendered bytes must survive a package move untouched.                                                             
-  j/k navigate • g/G top/bottom • enter detail • c copy • t timelin…  koi-pond                                          
-                                                                                                                        
+                                                                                  
+  0  [1]  2  3  4  5                                                              
+                                                                                  
+    Search: "wal" — 4 results                                                     
+                                                                                  
+  ───────────────────────────                                                     
+                                                                                  
+    #101   [decision    ]   Adopt WAL mode for the…  engram  2026-01-15 09:30:00  
+      SQLite WAL keeps readers unblocked while the MCP server writes.             
+  › #102   [bugfix      ] [needs_review]  Session delete …  2026-01-15 10:05:00   
+      Guard the delete path so orphan observations cannot appear.                 
+    #103   [pattern     ]   Two-line list item  clarodrive  2026-01-15 11:45:00   
+      Header line carries id, type and badges; preview carries content.           
+    #104   [note        ]   Golden files are the refactor …  2026-01-16 08:00:00  
+      Rendered bytes must survive a package move untouched.                       
+  j/k navigate • g/G top/bottom • enter detail • c copy • t timelin…  koi-pond    
+                                                                                  
 ═══ search-results-scrolled ═══
-                                                                                                                         
-  0  [1]  2  3  4  5                                                                                                     
-                                                                                                                         
-    Search: "wal" — 4 results                                                                                            
-                                                                                                                         
-  ───────────────────────────                                                                                            
-                                                                                                                         
-    #102   [bugfix      ] [needs_review]   Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                        
-    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                 
-      Header line carries id, type and badges; preview carries content.                                                  
-  ▸ #104   [note        ]  Golden files are the refactor oracle  2026-01-16 08:00:00                                     
-      Rendered bytes must survive a package move untouched.                                                              
-  j/k navigate • g/G top/bottom • enter detail • c copy • t timelin…  koi-pond                                           
-                                                                                                                         
+                                                                                  
+  0  [1]  2  3  4  5                                                              
+                                                                                  
+    Search: "wal" — 4 results                                                     
+                                                                                  
+  ───────────────────────────                                                     
+                                                                                  
+    #102   [bugfix      ] [needs_review]   Session delete …  2026-01-15 10:05:00  
+      Guard the delete path so orphan observations cannot appear.                 
+    #103   [pattern     ]   Two-line list item  clarodrive  2026-01-15 11:45:00   
+      Header line carries id, type and badges; preview carries content.           
+  › #104   [note        ]  Golden files are the refactor …  2026-01-16 08:00:00   
+      Rendered bytes must survive a package move untouched.                       
+  j/k navigate • g/G top/bottom • enter detail • c copy • t timelin…  koi-pond    
+                                                                                  
 ═══ search-results-empty ═══
                                                                                 
   0  [1]  2  3  4  5                                                            
@@ -284,23 +284,23 @@
   j/k navigate • g/G top/bottom • enter detail • c copy • t timelin…  koi-pond  
                                                                                 
 ═══ recent ═══
-                                                                                                                         
-  0  [1]  2  3  4  5                                                                                                     
-                                                                                                                         
-    Recent Observations — 4 total                                                                                        
-                                                                                                                         
-  ───────────────────────────────                                                                                        
-                                                                                                                         
-    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                              
-      SQLite WAL keeps readers unblocked while the MCP server writes.                                                    
-    #102   [bugfix      ] [needs_review]   Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                        
-  ▸ #103   [pattern     ] [pinned]  Two-line list item  clarodrive  2026-01-15 11:45:00                                  
-      Header line carries id, type and badges; preview carries content.                                                  
-    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                    
-      Rendered bytes must survive a package move untouched.                                                              
-  j/k navigate • g/G top/bottom • enter detail • c copy • t timelin…  koi-pond                                           
-                                                                                                                         
+                                                                                  
+  0  [1]  2  3  4  5                                                              
+                                                                                  
+    Recent Observations — 4 total                                                 
+                                                                                  
+  ───────────────────────────────                                                 
+                                                                                  
+    #101   [decision    ]   Adopt WAL mode for the…  engram  2026-01-15 09:30:00  
+      SQLite WAL keeps readers unblocked while the MCP server writes.             
+    #102   [bugfix      ] [needs_review]   Session delete …  2026-01-15 10:05:00  
+      Guard the delete path so orphan observations cannot appear.                 
+  › #103   [pattern     ]  Two-line list item  clarodrive  2026-01-15 11:45:00    
+      Header line carries id, type and badges; preview carries content.           
+    #104   [note        ]   Golden files are the refactor …  2026-01-16 08:00:00  
+      Rendered bytes must survive a package move untouched.                       
+  j/k navigate • g/G top/bottom • enter detail • c copy • t timelin…  koi-pond    
+                                                                                  
 ═══ recent-empty ═══
                                                                                 
   0  [1]  2  3  4  5                                                            
@@ -314,25 +314,25 @@
   j/k navigate • g/G top/bottom • enter detail • c copy • t timelin…  koi-pond  
                                                                                 
 ═══ recent-copy-feedback ═══
-                                                                                                                         
-  0  [1]  2  3  4  5                                                                                                     
-                                                                                                                         
-    Recent Observations — 4 total                                                                                        
-                                                                                                                         
-  ───────────────────────────────                                                                                        
-                                                                                                                         
-  ▸ #101   [decision    ]  Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                               
-      SQLite WAL keeps readers unblocked while the MCP server writes.                                                    
-    #102   [bugfix      ] [needs_review]   Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                        
-    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                 
-      Header line carries id, type and badges; preview carries content.                                                  
-    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                    
-      Rendered bytes must survive a package move untouched.                                                              
-                                                                                                                         
-   ✓ Copied!                                                                                                             
-  j/k navigate • g/G top/bottom • enter detail • c copy • t timelin…  koi-pond                                           
-                                                                                                                         
+                                                                                  
+  0  [1]  2  3  4  5                                                              
+                                                                                  
+    Recent Observations — 4 total                                                 
+                                                                                  
+  ───────────────────────────────                                                 
+                                                                                  
+  › #101   [decision    ]  Adopt WAL mode for the…  engram  2026-01-15 09:30:00   
+      SQLite WAL keeps readers unblocked while the MCP server writes.             
+    #102   [bugfix      ] [needs_review]   Session delete …  2026-01-15 10:05:00  
+      Guard the delete path so orphan observations cannot appear.                 
+    #103   [pattern     ]   Two-line list item  clarodrive  2026-01-15 11:45:00   
+      Header line carries id, type and badges; preview carries content.           
+    #104   [note        ]   Golden files are the refactor …  2026-01-16 08:00:00  
+      Rendered bytes must survive a package move untouched.                       
+                                                                                  
+   Copied!                                                                        
+  j/k navigate • g/G top/bottom • enter detail • c copy • t timelin…  koi-pond    
+                                                                                  
 ═══ observation-detail-loading ═══
                                                                                 
   0  [1]  2  3  4  5                                                            
@@ -415,45 +415,45 @@
   j/k scroll • esc/q back                                             koi-pond  
                                                                                 
 ═══ timeline ═══
-                                                                                    
-  0  [1]  2  3  4  5                                                                
-                                                                                    
-    Timeline — Observation #102 (3 total in session)                                
-                                                                                    
-  ──────────────────────────────────────────────────                                
-                                                                                    
-         Session:  session-alpha       Project:  engram                             
-                                                                                    
-                                                                                    
-    Before                                                                          
-                                                                                    
-    │ #101  [decision    ]    Adopt WAL mode for the local store                    
-    │                                                                               
-  ┌──────────────────────────────────────────────────────────────────────────────┐  
-  │   #102 [bugfix]  Session delete refused when observations remain             │  
-  │     Guard the delete path so orphan observations cannot appear in the store. │  
-  └──────────────────────────────────────────────────────────────────────────────┘  
-    │                                                                               
-                                                                                    
-    After                                                                           
-                                                                                    
-    │ #103  [pattern     ]    Two-line list item                                    
-  j/k scroll • esc/q back                                             koi-pond      
-                                                                                    
+                                                                                
+  0  [1]  2  3  4  5                                                            
+                                                                                
+    Timeline — Observation #102 (3 total in session)                            
+                                                                                
+  ──────────────────────────────────────────────────                            
+                                                                                
+         Session:  session-alpha       Project:  engram                         
+                                                                                
+                                                                                
+    Before                                                                      
+                                                                                
+    ├ #101  [decision    ]    Adopt WAL mode for the local store                
+    ├                                                                           
+  ┌──────────────────────────────────────────────────────────────────────────┐  
+  │   #102 [bugfix]  Session delete refused when observations remain         │  
+  │     Guard the delete path so orphan observations cannot appear in the s… │  
+  └──────────────────────────────────────────────────────────────────────────┘  
+    ├                                                                           
+                                                                                
+    After                                                                       
+                                                                                
+    ├ #103  [pattern     ]    Two-line list item                                
+  j/k scroll • esc/q back                                             koi-pond  
+                                                                                
 ═══ sessions ═══
-                                                                                                     
-  0  [1]  2  3  4  5                                                                                 
-                                                                                                     
-    Sessions — 4 total                                                                               
-                                                                                                     
-  ────────────────────                                                                               
-                                                                                                     
-    engram                2026-01-15 09:00:00         8 obs    Refactored the TUI into tab packages  
-  ▸ clarodrive            2026-01-16 07:40:00         3 obs                                          
-    middleware            2026-01-17 12:15:00        11 obs    Traced the recovery lookup            
-    portal                2026-01-18 16:20:00         1 obs                                          
-  j/k navigate • g/G top/bottom • enter view session • d delete • e…  koi-pond                       
-                                                                                                     
+                                                                                
+  0  [1]  2  3  4  5                                                            
+                                                                                
+    Sessions — 4 total                                                          
+                                                                                
+  ────────────────────                                                          
+                                                                                
+    engram           2026-01-15    8 obs     Refactored the TUI into tab pa…    
+  › clarodrive       2026-01-16    3 obs                                        
+    middleware       2026-01-17    11 obs    Traced the recovery lookup         
+    portal           2026-01-18    1 obs                                        
+  j/k navigate • g/G top/bottom • enter view session • d delete • e…  koi-pond  
+                                                                                
 ═══ sessions-empty ═══
                                                                                 
   0  [1]  2  3  4  5                                                            
@@ -467,22 +467,22 @@
   j/k navigate • g/G top/bottom • enter view session • d delete • e…  koi-pond  
                                                                                 
 ═══ sessions-delete-prompt ═══
-                                                                                      
-  0  [1]  2  3  4  5                                                                  
-                                                                                      
-    Sessions — 4 total                                                                
-                                                                                      
-  ────────────────────                                                                
-                                                                                      
-                                                                                      
-                                                                                      
-    Confirm Session Delete                                                            
-                                                                                      
-                                                                                      
-      Delete session "session-beta" from project "clarodrive"?                        
-    Sessions with observations cannot be deleted; Engram will refuse unsafe deletes.  
-  y delete • n/esc cancel                                             koi-pond        
-                                                                                      
+                                                                                
+  0  [1]  2  3  4  5                                                            
+                                                                                
+    Sessions — 4 total                                                          
+                                                                                
+  ────────────────────                                                          
+                                                                                
+                                                                                
+                                                                                
+    Confirm Session Delete                                                      
+                                                                                
+                                                                                
+      Delete session "session-beta" from project "clarodrive"?                  
+    Sessions with observations cannot be deleted; Engram will refuse unsafe d…  
+  y delete • n/esc cancel                                             koi-pond  
+                                                                                
 ═══ sessions-deleting ═══
                                                                                 
   0  [1]  2  3  4  5                                                            
@@ -500,28 +500,28 @@
   j/k navigate • g/G top/bottom • enter view session • d delete • e…  koi-pond  
                                                                                 
 ═══ session-detail ═══
-                                                                                                                        
-  0  [1]  2  3  4  5                                                                                                    
-                                                                                                                        
-    Session: engram — 2026-01-15 09:00:00                                                                               
-                                                                                                                        
-  ───────────────────────────────────────                                                                               
-                                                                                                                        
-         Summary:  Refactored the TUI into tab packages                                                                 
-                                                                                                                        
-                                                                                                                        
-    Observations (4)                                                                                                    
-                                                                                                                        
-    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                             
-      SQLite WAL keeps readers unblocked while the MCP server writes.                                                   
-  ▸ #102   [bugfix      ] [needs_review]  Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                       
-    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                
-      Header line carries id, type and badges; preview carries content.                                                 
-    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                   
-      Rendered bytes must survive a package move untouched.                                                             
-  j/k navigate • enter detail • c copy • t timeline • esc/q back      koi-pond                                          
-                                                                                                                        
+                                                                                  
+  0  [1]  2  3  4  5                                                              
+                                                                                  
+    Session: engram — 2026-01-15 09:00:00                                         
+                                                                                  
+  ───────────────────────────────────────                                         
+                                                                                  
+         Summary:  Refactored the TUI into tab packages                           
+                                                                                  
+                                                                                  
+    Observations (4)                                                              
+                                                                                  
+    #101   [decision    ]   Adopt WAL mode for the…  engram  2026-01-15 09:30:00  
+      SQLite WAL keeps readers unblocked while the MCP server writes.             
+  › #102   [bugfix      ] [needs_review]  Session delete …  2026-01-15 10:05:00   
+      Guard the delete path so orphan observations cannot appear.                 
+    #103   [pattern     ]   Two-line list item  clarodrive  2026-01-15 11:45:00   
+      Header line carries id, type and badges; preview carries content.           
+    #104   [note        ]   Golden files are the refactor …  2026-01-16 08:00:00  
+      Rendered bytes must survive a package move untouched.                       
+  j/k navigate • enter detail • c copy • t timeline • esc/q back      koi-pond    
+                                                                                  
 ═══ session-detail-empty ═══
                                                                                 
   0  [1]  2  3  4  5                                                            
@@ -561,7 +561,7 @@
     Select an agent to set up                                                   
                                                                                 
                                                                                 
-   ▸ Claude Code                                                                
+   › Claude Code                                                                
           Install to:  /Users/dev/.claude/plugins                               
                                                                                 
       OpenCode                                                                  
@@ -605,7 +605,7 @@
   ──────────────────────────────                                                
                                                                                 
                                                                                 
-    ✓ Installed claude-code plugin                                              
+    ● Installed claude-code plugin                                              
                                                                                 
                                                                                 
     Permissions Allowlist                                                       
@@ -623,7 +623,7 @@
                                                                                 
   ──────────────────────────────                                                
                                                                                 
-    ✓ Installed opencode plugin (2 files)                                       
+    ● Installed opencode plugin (2 files)                                       
         Location:  /Users/dev/.config/opencode/plugins                          
                                                                                 
                                                                                 
@@ -642,13 +642,13 @@
                                                                                 
   ──────────────────────────────                                                
                                                                                 
-    ✓ Installed claude-code plugin                                              
+    ● Installed claude-code plugin                                              
         Location:  claude plugin system                                         
                                                                                 
                                                                                 
     Next Steps                                                                  
                                                                                 
-    ✓   Engram tools added to allowlist                                         
+    ●   Engram tools added to allowlist                                         
     1. Restart Claude Code — the plugin is active immediately                   
     2. Verify with: claude plugin list                                          
   esc/q/enter back to dashboard                                       koi-pond  
@@ -661,13 +661,13 @@
                                                                                 
   ──────────────────────────────                                                
                                                                                 
-    ✓ Installed claude-code plugin                                              
+    ● Installed claude-code plugin                                              
         Location:  claude plugin system                                         
                                                                                 
                                                                                 
     Next Steps                                                                  
                                                                                 
-    ✗   Allowlist update failed: permission denied                              
+    ⊗   Allowlist update failed: permission denied                              
       Add manually to permissions.allow in ~/.claude/settings.json              
     1. Restart Claude Code — the plugin is active immediately                   
     2. Verify with: claude plugin list                                          
@@ -681,7 +681,7 @@
                                                                                 
   ──────────────────────────────                                                
                                                                                 
-     ✗ Installation failed: network unreachable                                 
+     ⊗ Installation failed: network unreachable                                 
   esc/q/enter back to dashboard                                       koi-pond  
                                                                                 
 ═══ cloud-settings ═══
@@ -695,7 +695,7 @@
                                                                                 
       Configure server                                                          
       View status                                                               
-   ▸ Enroll projects                                                            
+   › Enroll projects                                                            
       Back                                                                      
   j/k navigate • enter select • esc/q back                            koi-pond  
                                                                                 

@@ -1,13 +1,13 @@
 ═══ s1-project-selector ═══
-                                                                                        
-    Select a project                                                                    
-                                                                                        
-                                                                                        
-                                                                                        
-      slug                   display name                      obs     open   stale RB  
-   ▸ acme                   Acme Corp                          42        1          0   
-  j/k move • g/G top/bottom • enter open • / filter • i sort by hea…  koi-pond          
-                                                                                        
+                                                                                
+    Select a project                                                            
+                                                                                
+                                                                                
+                                                                                
+    slug                   display name                 obs    open   stale RB  
+   › acme                   Acme Corp                    42     1      0        
+  j/k move • g/G top/bottom • enter open • / filter • i sort by hea…  koi-pond  
+                                                                                
 ═══ s2-project-dashboard ═══
                                                                                 
   [0]  1  2  3  4  5                                                            
@@ -31,7 +31,7 @@
   └──────────────────────────────────┘                                          
                                                                                 
                                                                                 
-  ▸ recent tasks                                                                
+  › recent tasks                                                                
                                                                                 
     ACME-1       bugfix     review           Fix the preview timeout            
                                                                                 
@@ -41,142 +41,149 @@
                                                                                 
     latest evidence                                                             
                                                                                 
-    ACME-1/cold-start.png attached ✓                                            
+    ACME-1/cold-start.png attached ●                                            
   ├ acme  ✓ ACME-1  j/k move block • g/G top/bottom • enter open bl…  koi-pond  
                                                                                 
 ═══ s3-tasks-list ═══
-                                                                                
-  0  1  [2]  3  4  5                                                            
-                                                                                
-                                                                                
-    Tasks (1 shown · state: active · kind: all)                                 
-                                                                                
-  ▸ ACME-1       [bugfix   ] review   Fix the preview timeout                   
-      no branch · no PR · 1 obs · 1 evidence · updated                          
-                                                                                
-    tasks 1-1 of 1                                                              
-  ├ acme  ✓ ACME-1  j/k move • g/G top/bottom • enter detail • c co…  koi-pond  
-                                                                                
+                                                                                  
+  0  1  [2]  3  4  5                                                              
+                                                                                  
+                                                                                  
+    Tasks (1 shown · state: active · kind: all)                                   
+                                                                                  
+  › ACME-1   [bugf] review   Fix the preview timeout                              
+      no branch · no PR · 1 obs · 1 evidence · updated                            
+                                                                                  
+    tasks 1-1 of 1                                                                
+  ├ acme  ✓ ACME-1  j/k move • g/G top/bottom • enter detail • c co…  koi-pond    
+                                                                                  
 ═══ s4-tasks-detail ═══
-                                                                                        
-  0  1  [2]  3  4  5                                                                    
-                                                                                        
-  ACME-1 — Fix the preview timeout                                                      
-                                                                                        
-  ┌────────────────────────┐                                                            
-  │                        │                                                            
-  │           kind bugfix  │                                                            
-  │          state review  │                                                            
-  │           jira ACME-1  │                                                            
-  │                        │                                                            
-  └────────────────────────┘                                                            
-                                                                                        
-                                                                                        
-    observations (1) — enter opens it in Memory                                         
-                                                                                        
-  ▸ #501   [discovery ]  Root cause: preview worker pool exhausted 2026-01-15 09:30:00  
-                                                                                        
-    evidence (1) — e opens the Evidence tab                                             
-                                                                                        
-    ACME-1/cold-start.png cold start exceeds 30s attached ✓                             
-  ├ acme  ✓ ACME-1  j/k move • enter observation • e evidence • x c…  koi-pond          
-                                                                                        
+                                                                                 
+  0  1  [2]  3  4  5                                                             
+                                                                                 
+  ACME-1 — Fix the preview timeout                                               
+                                                                                 
+  ┌────────────────────────┐                                                     
+  │                        │                                                     
+  │           kind bugfix  │                                                     
+  │          state review  │                                                     
+  │           jira ACME-1  │                                                     
+  │                        │                                                     
+  └────────────────────────┘                                                     
+                                                                                 
+                                                                                 
+    observations (1) — enter opens it in Memory                                  
+                                                                                 
+  › #501   [discovery ]  Root cause: preview worker pool e… 2026-01-15 09:30:00  
+                                                                                 
+    evidence (1) — e opens the Evidence tab                                      
+                                                                                 
+    ACME-1/cold-start.png                 cold start exceeds 30s ● attached      
+  ├ acme  ✓ ACME-1  j/k move • enter observation • e evidence • x c…  koi-pond   
+                                                                                 
 ═══ s5-context-pack ═══
-                                                                                
-  0  1  [2]  3  4  5                                                            
-                                                                                
-  Context pack — ACME-1                                                         
-                         88 chars est. · built 00:00:00                         
-                                                                                
-    # Context pack: acme / ACME-1                                               
-                                                                                
-    ## Task                                                                     
-    ACME-1 - bugfix - review                                                    
-    Fix the preview timeout                                                     
-                                                                                
-                                                                                
-    lines 1-6 of 6                                                              
-  ├ acme  ✓ ACME-1  j/k scroll • c copy to clipboard • w write cont…  koi-pond  
-                                                                                
-═══ s6-evidence-list ═══
-                                                                                                        
-  0  1  2  [3]  4  5                                                                                    
-                                                                                                        
-                                                                                                        
-    Evidence (1 shown · task: all · all attached states)                                                
-                                                                                                        
-  ▸  cold-start.png                                 [png ] ACME-1       cold start exceeds 30s ✓ jira   
-                                                                                                        
-    files 1-1 of 1                                                                                      
-  ├ acme  ✓ ACME-1  j/k move • g/G top/bottom • enter detail • c co…  koi-pond                          
-                                                                                                        
-═══ s7-evidence-detail ═══
-                                                                                                       
-  0  1  2  [3]  4  5                                                                                   
-                                                                                                       
-  cold-start.png                                                                                       
-                                                                                                       
-  ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐  
-  │                                                                                                 │  
-  │           path /fixtures/evidence/ACME-1/cold-start.png  (copy with p)                          │  
-  │         sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  (copy with c)  │  
-  │           size unknown                                                                          │  
-  │           kind png                                                                              │  
-  │         proves cold start exceeds 30s                                                           │  
-  │           task ACME-1                                                                           │  
-  │                                                                                                 │  
-  └─────────────────────────────────────────────────────────────────────────────────────────────────┘  
-                                                                                                       
-  attached_jira ✓ attached                                                                             
-  attached_conf                                                                                        
-       luence   not needed                                                                             
-                                                                                                       
-                                                                                                       
-    manifest.json (m)                                                                                  
-                                                                                                       
-                                                                                                       
-      no manifest.json next to this file                                                               
-  ├ acme  ✓ ACME-1  o open with system viewer • c copy sha256 • p c…  koi-pond                         
-                                                                                                       
-═══ s8-runbooks-index ═══
-                                                                                                       
-  0  1  2  3  [4]  5                                                                                   
-                                                                                                       
-                                                                                                       
-    Runbooks (this project · a toggle)                                                                 
-                                                                                                       
-  ▸ RB-900    Preview endpoint returns 503 under load  acme         performance    —            new ⚠  
-                                                                                                       
-    runbooks 1-1 of 1                                                                                  
-                                                                                                       
-  ┌─────────────────────────────────────────────────────────────┐                                      
-  │                                                             │                                      
-  │  RB-900 · status verified · exec_count 0 · last_exec never  │                                      
-  │  vault Runbooks/RB-900.md                                   │                                      
-  │                                                             │                                      
-  └─────────────────────────────────────────────────────────────┘                                      
-                                                                                                       
-  ├ acme  ✓ ACME-1  j/k move • g/G top/bottom • enter view • c copy…  koi-pond                         
-                                                                                                       
-═══ s9-runbooks-markdown ═══
                                                                                   
-  0  1  2  3  [4]  5                                                              
+  0  1  [2]  3  4  5                                                              
                                                                                   
-  RB-900 — Preview endpoint returns 503 under load                                
-                                                    stale ⚠                       
-    service acme · severity — · category performance · pattern —                  
-    last_verified never · automation_level — · status verified                    
+  Context pack — ACME-1                                                           
+                         88 chars est. · built 00:00:00                           
                                                                                   
+    # Context pack: acme / ACME-1                                                 
                                                                                   
-     Preview endpoint returns 503 under load                                      
-                                                                                  
-    Restart the preview worker pool and watch memory.                             
-                                                                                  
+    ## Task                                                                       
+    ACME-1 - bugfix - review                                                      
+    Fix the preview timeout                                                       
                                                                                   
                                                                                   
     lines 1-6 of 6                                                                
-  ├ acme  ✓ ACME-1  j/k scroll • g/G top/bottom • e open in $EDITOR…  koi-pond    
+  ├ acme  ✓ ACME-1  j/k scroll • c copy to clipboard • w write cont…  koi-pond    
                                                                                   
+═══ s6-evidence-list ═══
+                                                                                
+  0  1  2  [3]  4  5                                                            
+                                                                                
+                                                                                
+    Evidence (1 shown · task: all · all attached states)                        
+                                                                                
+  ›  cold-start.png           [png] ACME-1   cold start exce… ● jira            
+                                                                                
+    files 1-1 of 1                                                              
+  ├ acme  ✓ ACME-1  j/k move • g/G top/bottom • enter detail • c co…  koi-pond  
+                                                                                
+═══ s7-evidence-detail ═══
+                                                                                
+  0  1  2  [3]  4  5                                                            
+                                                                                
+  cold-start.png                                                                
+                                                                                
+  ┌──────────────────────────────────────────────────────────────┐              
+  │                                                              │              
+  │           path /fixtures/evidence/ACME-1/cold-start.png  (…  │              
+  │         sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…  │              
+  │           size unknown                                       │              
+  │           kind png                                           │              
+  │         proves cold start exceeds 30s                        │              
+  │           task ACME-1                                        │              
+  │                                                              │              
+  └──────────────────────────────────────────────────────────────┘              
+                                                                                
+  attached_jira ● attached                                                      
+  attached_conf                                                                 
+       luence   not needed                                                      
+                                                                                
+                                                                                
+    manifest.json (m)                                                           
+                                                                                
+                                                                                
+      no manifest.json next to this file                                        
+  ├ acme  ✓ ACME-1  o open with system viewer • c copy sha256 • p c…  koi-pond  
+                                                                                
+═══ s8-runbooks-index ═══
+                                                                                
+  0  1  2  3  [4]  5                                                            
+                                                                                
+                                                                                
+    Runbooks (this project · a toggle)                                          
+                                                                                
+  › RB-900  Preview endpoint returns 503 under load  acme   perfor      new ▲   
+                                                                                
+    runbooks 1-1 of 1                                                           
+                                                                                
+  ┌─────────────────────────────────────────────────────────────┐               
+  │                                                             │               
+  │  RB-900 · status verified · exec_count 0 · last_exec never  │               
+  │  vault Runbooks/RB-900.md                                   │               
+  │                                                             │               
+  └─────────────────────────────────────────────────────────────┘               
+                                                                                
+  ├ acme  ✓ ACME-1  j/k move • g/G top/bottom • enter view • c copy…  koi-pond  
+                                                                                
+═══ s9-runbooks-markdown ═══
+                                                                                
+  0  1  2  3  [4]  5                                                            
+                                                                                
+  RB-900 — Preview endpoint returns 503 under load                              
+                                                    stale ▲                     
+    service acme · severity · · category performance · pattern ·                
+    last_verified never · automation_level · · status verified                  
+                                                                                
+                                                                                
+     Preview endpoint returns 503 under load                                    
+                                                                                
+    Restart the preview worker pool and watch memory.                           
+                                                                                
+      func restart(pool *Pool) error {                                          
+          if err := pool.Drain(); err != nil {                                  
+              return fmt.Errorf("drain: %w", err)                               
+          }                                                                     
+          return pool.Start()                                                   
+      }                                                                         
+                                                                                
+                                                                                
+                                                                                
+    lines 1-13 of 13                                                            
+  ├ acme  ✓ ACME-1  j/k scroll • g/G top/bottom • e open in $EDITOR…  koi-pond  
+                                                                                
 ═══ s10-memory ═══
                                                                                 
   0  [1]  2  3  4  5                                                            
@@ -203,12 +210,12 @@
                                                                                 
     Projects                                                                    
                                                                                 
-    • engram                                                                    
-    • acme                                                                      
+    · engram                                                                    
+    · acme                                                                      
                                                                                 
     Actions                                                                     
                                                                                 
-   ▸ Search memories                                                            
+   › Search memories                                                            
       Recent observations                                                       
       Browse sessions                                                           
       Setup agent plugin                                                        
@@ -225,7 +232,7 @@
   ─────────────────────                                                         
                                                                                 
                                                                                 
-   ▸ Configure server                                                           
+   › Configure server                                                           
       View status                                                               
       Enroll projects                                                           
       Back                                                                      
