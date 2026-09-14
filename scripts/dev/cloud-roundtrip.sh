@@ -26,10 +26,12 @@
 # below is the one docker-compose.dev.yml hands the server; it is local-only
 # and is not a secret.
 #
-# Not covered here, and deliberately left to the phase 2 gate: a card with
-# `parent_slug` actually set, `project_aliases` and `benchmarks`. No shipped
-# CLI writes any of the three today, so a round trip over them would be a test
-# of a SQL statement this script wrote, not of the product.
+# The hierarchy, the aliases and the benchmarks are written here with the
+# shipped CLI — `project set-parent`, `project alias add`, `project bench add` —
+# so the round trip over them exercises the product rather than a SQL statement
+# this script wrote. A card is also given a non-default kind, description, icon,
+# colour and tags, because a column that only ever replicates its default proves
+# nothing about whether it replicates.
 #
 # Usage (from the repository root):
 #   bash scripts/dev/cloud-roundtrip.sh
@@ -140,6 +142,14 @@ compare_table() {
 
 trap stop_cloud_profile EXIT
 
+# The server is wiped first. rt-a and rt-b are recreated on every run and mint
+# fresh sync ids, so a cloud that kept the last run's rows would hand rt-b both
+# generations: two cards for one slug, two tasks holding one Jira key, and a
+# comparison that fails for a reason that has nothing to do with this run.
+log "resetting the cloud database so the rehearsal starts from an empty server"
+"${DC[@]}" --profile cloud rm -sf postgres-dev cloud-dev >/dev/null 2>&1 || true
+docker volume rm engram-dev-pg >/dev/null 2>&1 || true
+
 log "starting the cloud profile (postgres-dev, cloud-dev)"
 "${DC[@]}" --profile cloud up -d postgres-dev cloud-dev
 
@@ -179,11 +189,29 @@ rt "$DIR_A" koi-garden project koi-garden upsert \
   --jira-project KOI \
   --knowledge-hub koi-garden/README.md \
   --json >"$CLOUD_OUT/rt-a-card-koi-garden.json"
+# Every optional column is given a value that is not its default: a comparison
+# over defaults cannot tell replication from two databases agreeing by accident.
 rt "$DIR_A" koi-garden-pond-02 project koi-garden-pond-02 upsert \
   --display-name "Koi Garden · Pond 02" \
   --jira-project KOI \
   --knowledge-hub koi-garden/README.md \
+  --kind instance \
+  --description "El segundo estanque del jardin" \
+  --icon pond \
+  --color accent \
+  --tag instance --tag pond \
   --json >"$CLOUD_OUT/rt-a-card-koi-garden-pond-02.json"
+
+log "rt-a: hierarchy"
+# set-parent is the only writer that walks the ancestors, refuses a cycle and
+# rewrites the depth of the subtree, so it is also the only honest way to get a
+# non-NULL parent_slug into the round trip.
+rt "$DIR_A" koi-garden-pond-02 project set-parent koi-garden-pond-02 --to koi-garden \
+  --json >"$CLOUD_OUT/rt-a-set-parent.json"
+
+log "rt-a: alias"
+rt "$DIR_A" koi-garden project alias add koi_garden --to koi-garden \
+  --json >"$CLOUD_OUT/rt-a-alias.json"
 
 log "rt-a: tasks"
 rt "$DIR_A" koi-garden project koi-garden tasks upsert \
@@ -212,6 +240,15 @@ rt "$DIR_A" koi-garden project koi-garden evidence add KOI-1099 \
   --kind png \
   --proves "la traza muestra el timeout del lookup" \
   --json >"$CLOUD_OUT/rt-a-evidence-koi-1099.json"
+
+log "rt-a: benchmark"
+rt "$DIR_A" koi-garden project koi-garden bench add KOI-1099 \
+  --name lookup \
+  --metric lookup.p95 \
+  --unit ms \
+  --value 1512 \
+  --baseline \
+  --json >"$CLOUD_OUT/rt-a-bench-koi-1099.json"
 
 log "rt-a: observation"
 rt "$DIR_A" koi-garden save \
@@ -267,11 +304,54 @@ EVIDENCE_COLUMNS="sync_id, project, task_sync_id, path, sha256, category, kind, 
 
 OBSERVATION_COLUMNS="sync_id, type, title, content, project, scope, topic_key"
 
+ALIAS_COLUMNS="alias, sync_id, slug, source"
+
+# baseline_set_at is excluded: the flag is what travels, and the moment it was
+# raised is stamped by whichever machine raised it.
+BENCHMARK_COLUMNS="sync_id, project, task_sync_id, name, metric, unit, direction, value, baseline,
+  run_path, sha256, config_stamp, captured_at, notes, source"
+
 log "comparing the two stores field by field"
 compare_table project_cards "$CARD_COLUMNS" "project_cards WHERE deleted_at IS NULL ORDER BY slug"
 compare_table tasks "$TASK_COLUMNS" "tasks WHERE deleted_at IS NULL ORDER BY sync_id"
 compare_table evidence "$EVIDENCE_COLUMNS" "evidence WHERE deleted_at IS NULL ORDER BY sync_id"
 compare_table observations "$OBSERVATION_COLUMNS" "observations WHERE deleted_at IS NULL ORDER BY sync_id"
+compare_table project_aliases "$ALIAS_COLUMNS" "project_aliases WHERE deleted_at IS NULL ORDER BY alias"
+compare_table benchmarks "$BENCHMARK_COLUMNS" "benchmarks WHERE deleted_at IS NULL ORDER BY sync_id"
+
+# ─── 6b. the values, not only the agreement ──────────────────────────────────
+#
+# compare_table proves the two stores say the same thing. These prove that what
+# they say is what rt-a wrote: a round trip that dropped the hierarchy on both
+# sides would agree perfectly and be worthless.
+
+expect_value() {
+  local label="$1" want="$2" got="$3"
+  if [ "$got" = "$want" ]; then
+    pass "$label = $got"
+  else
+    report_fail "$label = ${got:-<empty>}, expected $want"
+  fi
+}
+
+pond_row="$(sql "$DIR_B" "SELECT parent_slug || '|' || depth || '|' || kind || '|' || icon || '|' || color || '|' || tags
+  FROM project_cards WHERE slug = 'koi-garden-pond-02';")"
+expect_value "rt-b koi-garden-pond-02 hierarchy and metadata" \
+  'koi-garden|1|instance|pond|accent|["instance","pond"]' "$pond_row"
+
+pond_description="$(sql "$DIR_B" "SELECT description FROM project_cards WHERE slug = 'koi-garden-pond-02';")"
+expect_value "rt-b koi-garden-pond-02 description" "El segundo estanque del jardin" "$pond_description"
+
+alias_rows="$(sql "$DIR_B" "SELECT count(*) FROM project_aliases WHERE deleted_at IS NULL;")"
+expect_value "rt-b project_aliases rows" "1" "$alias_rows"
+alias_row="$(sql "$DIR_B" "SELECT alias || ' -> ' || slug FROM project_aliases WHERE deleted_at IS NULL;")"
+expect_value "rt-b alias" "koi_garden -> koi-garden" "$alias_row"
+
+bench_rows="$(sql "$DIR_B" "SELECT count(*) FROM benchmarks WHERE deleted_at IS NULL;")"
+expect_value "rt-b benchmarks rows" "1" "$bench_rows"
+bench_row="$(sql "$DIR_B" "SELECT metric || '|' || unit || '|' || direction || '|' || baseline
+  FROM benchmarks WHERE deleted_at IS NULL;")"
+expect_value "rt-b benchmark" 'lookup.p95|ms|lower|1' "$bench_row"
 
 # The three staleness columns are a local verdict about a local checkout, so a
 # replica that has never seen the repository must hold none of them.
@@ -307,19 +387,13 @@ fi
 
 cat <<'NOTCOVERED'
 
-Deferred to the phase 2 gate — no shipped CLI writes any of these today, so a
-round trip over them would exercise a SQL statement this script wrote rather
-than the product:
-  * project_cards.parent_slug carrying a value (and the depth it implies).
-    `engram project <slug> upsert` has no --parent-slug flag, so every card
-    here replicates at depth 0 with a NULL parent. The column itself is
-    compared above and does travel; what is untested is a non-NULL one.
-  * project_aliases. No subcommand writes a row, so the table is empty on both
-    ends and its replication is unproven.
-  * benchmarks. Same: empty on both ends, replication unproven.
-  * kind, description, icon, color and tags likewise have no flag on `upsert`,
-    so they replicate at their defaults ('repo', NULL, NULL, NULL, NULL). The
-    columns are compared, the non-default values are not.
+Still outside this rehearsal:
+  * A conflict. Both replicas are written by one machine, so last-write-wins is
+    never asked to choose between two edits of the same row.
+  * A subtree deeper than one level, and a reparenting that arrives before the
+    card it points at. sync_apply_deferred is asserted empty above, which is
+    what would catch the second; neither is provoked on purpose.
+  * The three staleness columns beyond "they do not travel", asserted above.
 NOTCOVERED
 
 printf '\ncloud-roundtrip: %d passed, %d failed\nartifacts: %s\n' "$PASS_COUNT" "$FAIL_COUNT" "$CLOUD_OUT"
