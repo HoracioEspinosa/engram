@@ -37,6 +37,9 @@ const (
 	// projEvidenceRebuildID gives evidence the category the vault files it
 	// under and widens kind to the file types people actually capture.
 	projEvidenceRebuildID = "proj-0004-evidence-rebuild"
+	// projBenchmarksID adds the measurements a task was justified by, so a
+	// number that argued for a change is kept next to the change.
+	projBenchmarksID = "proj-0005-benchmarks"
 )
 
 // projectsHierarchyDDL is the proj-0001-cards-hierarchy step. It is written as
@@ -369,36 +372,32 @@ func (s *Store) migrateProjects() error {
 // (which projectsSchemaDDL just created in its version-2 shape) and an existing
 // one both walk the same path exactly once.
 func (s *Store) migrateProjectsToV3() error {
+	// A step that rewrites a table goes through s.rebuild, which copies the
+	// whole file first: the old table is gone by the time anything downstream
+	// can fail, so without the copy there would be nothing to go back to.
 	steps := []struct {
-		id  string
-		ddl string
+		id      string
+		ddl     string
+		rebuild bool
 	}{
-		{projCardsHierarchyID, projectsHierarchyDDL},
-		{projAliasesID, projectAliasesDDL},
+		{id: projCardsHierarchyID, ddl: projectsHierarchyDDL},
+		{id: projAliasesID, ddl: projectAliasesDDL},
+		{id: projTasksRebuildID, ddl: tasksRebuildDDL, rebuild: true},
+		{id: projEvidenceRebuildID, ddl: evidenceRebuildDDL, rebuild: true},
+		{id: projBenchmarksID, ddl: benchmarksDDL},
 	}
 	for _, step := range steps {
-		if err := s.once(step.id, func() error {
-			_, err := s.execHook(s.db, step.ddl)
-			return err
-		}); err != nil {
-			return err
+		ddl := step.ddl
+		var err error
+		if step.rebuild {
+			err = s.rebuild(step.id, func() error { return s.rebuildTable(ddl) })
+		} else {
+			err = s.once(step.id, func() error {
+				_, execErr := s.execHook(s.db, ddl)
+				return execErr
+			})
 		}
-	}
-
-	// The rebuilds go through s.rebuild, which copies the whole file first:
-	// the old table is gone by the time anything downstream can fail, so there
-	// is nothing left to roll back to without one.
-	rebuilds := []struct {
-		id  string
-		ddl string
-	}{
-		{projTasksRebuildID, tasksRebuildDDL},
-		{projEvidenceRebuildID, evidenceRebuildDDL},
-	}
-	for _, step := range rebuilds {
-		if err := s.rebuild(step.id, func() error {
-			return s.rebuildTable(step.ddl)
-		}); err != nil {
+		if err != nil {
 			return err
 		}
 	}
@@ -599,6 +598,52 @@ CREATE TABLE IF NOT EXISTS project_aliases (
 CREATE INDEX IF NOT EXISTS idx_project_aliases_slug ON project_aliases(slug);
 `
 
+// benchmarksDDL is the proj-0005-benchmarks step. A measurement is what
+// justified a change, and it was being kept as an attached file nobody could
+// query: the number, its unit and which run it came from all lived inside a
+// JSON blob. Here they are columns, so "is this better than before" is a
+// comparison rather than a reading exercise.
+//
+// A measurement is immutable — it was taken at a moment, from a run, and no
+// later run makes it untrue. The one thing that moves is which row is the
+// baseline, and idx_benchmarks_one_baseline makes the database enforce that
+// only one row per metric claims it.
+const benchmarksDDL = `
+CREATE TABLE IF NOT EXISTS benchmarks (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    sync_id         TEXT    NOT NULL UNIQUE,
+    project         TEXT    NOT NULL REFERENCES project_cards(slug)
+                            ON DELETE RESTRICT ON UPDATE CASCADE,
+    task_id         INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    task_sync_id    TEXT    NOT NULL REFERENCES tasks(sync_id) ON DELETE CASCADE,
+    name            TEXT    NOT NULL CHECK (length(trim(name)) > 0),
+    metric          TEXT    NOT NULL CHECK (length(trim(metric)) > 0),
+    unit            TEXT    NOT NULL
+                    CHECK (unit IN ('ms','s','count','bytes','kib','mib','pct','ops','rps','usd','score')),
+    direction       TEXT    NOT NULL DEFAULT 'lower' CHECK (direction IN ('lower','higher')),
+    value           REAL    NOT NULL,
+    baseline        INTEGER NOT NULL DEFAULT 0 CHECK (baseline IN (0, 1)),
+    baseline_set_at TEXT,
+    run_path        TEXT    CHECK (run_path IS NULL
+                                   OR (length(trim(run_path)) > 0
+                                       AND run_path NOT LIKE '/%'
+                                       AND run_path NOT LIKE '~%'
+                                       AND run_path NOT LIKE '%..%')),
+    sha256          TEXT    CHECK (sha256 IS NULL OR (length(sha256) = 64 AND sha256 = lower(sha256))),
+    config_stamp    TEXT,
+    captured_at     TEXT    NOT NULL,
+    notes           TEXT,
+    source          TEXT    NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','json')),
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    deleted_at      TEXT,
+    UNIQUE (task_sync_id, name, metric, captured_at),
+    CHECK (baseline = 0 OR baseline_set_at IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_task ON benchmarks(task_id, captured_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_benchmarks_one_baseline
+    ON benchmarks(task_sync_id, metric) WHERE baseline = 1 AND deleted_at IS NULL;
+`
+
 // projectsSchemaDropDDL removes every engram-projects object in dependency
 // order: FTS5 sync triggers first, then the FTS5 virtual tables, then the
 // contract and auxiliary tables (children before parents so foreign keys
@@ -619,6 +664,7 @@ DROP TABLE IF EXISTS runbook_index_fts;
 DROP TABLE IF EXISTS tasks_fts;
 DROP TABLE IF EXISTS task_link_tombstones;
 DROP TABLE IF EXISTS project_aliases;
+DROP TABLE IF EXISTS benchmarks;
 DROP TABLE IF EXISTS observation_refs;
 DROP TABLE IF EXISTS task_observations;
 DROP TABLE IF EXISTS evidence;
@@ -665,6 +711,7 @@ type ProjectsSchemaStatus struct {
 	RunbookIndex     int  `json:"runbook_index"`
 	TaskObservations int  `json:"task_observations"`
 	ProjectAliases   int  `json:"project_aliases"`
+	Benchmarks       int  `json:"benchmarks"`
 }
 
 // ProjectsSchemaStatus reads the current state of the engram-projects
@@ -702,6 +749,7 @@ func (s *Store) ProjectsSchemaStatus() (ProjectsSchemaStatus, error) {
 		{"runbook_index", &status.RunbookIndex},
 		{"task_observations", &status.TaskObservations},
 		{"project_aliases", &status.ProjectAliases},
+		{"benchmarks", &status.Benchmarks},
 	}
 	for _, c := range counts {
 		if err := s.db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", c.table)).Scan(c.dest); err != nil {
