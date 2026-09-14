@@ -77,9 +77,11 @@ func (s *Store) ResolveProjectCard(slug string) (ResolvedProjectCard, error) {
 	// A field is open while the card still holds the value the schema would
 	// have given it on its own; take returns false once it has been answered.
 	open := map[string]func(ProjectCard) bool{
-		"repo_url":           func(c ProjectCard) bool { return trimPtr(c.RepoURL) == nil },
-		"default_branch":     func(c ProjectCard) bool { return c.DefaultBranch == "" || c.DefaultBranch == "master" },
-		"jira_project":       func(c ProjectCard) bool { return c.JiraProject == "" || c.JiraProject == defaultJira || c.JiraProject == "PROJ" },
+		"repo_url":       func(c ProjectCard) bool { return trimPtr(c.RepoURL) == nil },
+		"default_branch": func(c ProjectCard) bool { return c.DefaultBranch == "" || c.DefaultBranch == "master" },
+		"jira_project": func(c ProjectCard) bool {
+			return c.JiraProject == "" || c.JiraProject == defaultJira || c.JiraProject == "PROJ"
+		},
 		"jira_component":     func(c ProjectCard) bool { return trimPtr(c.JiraComponent) == nil },
 		"knowledge_hub_path": func(c ProjectCard) bool { return trimPtr(c.KnowledgeHubPath) == nil },
 		"graph_path":         func(c ProjectCard) bool { return c.GraphPath == "" || c.GraphPath == "graphify-out/graph.json" },

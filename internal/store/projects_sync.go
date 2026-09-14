@@ -241,22 +241,22 @@ type syncProjectAliasPayload struct {
 }
 
 type syncBenchmarkPayload struct {
-	SyncID        string   `json:"sync_id"`
-	Project       string   `json:"project"`
-	TaskSyncID    string   `json:"task_sync_id"`
-	Name          string   `json:"name"`
-	Metric        string   `json:"metric"`
-	Unit          string   `json:"unit"`
-	Direction     string   `json:"direction"`
-	Value         float64  `json:"value"`
-	Baseline      bool     `json:"baseline"`
-	BaselineSetAt *string  `json:"baseline_set_at,omitempty"`
-	RunPath       *string  `json:"run_path,omitempty"`
-	SHA256        *string  `json:"sha256,omitempty"`
-	ConfigStamp   *string  `json:"config_stamp,omitempty"`
-	CapturedAt    string   `json:"captured_at"`
-	Notes         *string  `json:"notes,omitempty"`
-	Source        string   `json:"source"`
+	SyncID        string  `json:"sync_id"`
+	Project       string  `json:"project"`
+	TaskSyncID    string  `json:"task_sync_id"`
+	Name          string  `json:"name"`
+	Metric        string  `json:"metric"`
+	Unit          string  `json:"unit"`
+	Direction     string  `json:"direction"`
+	Value         float64 `json:"value"`
+	Baseline      bool    `json:"baseline"`
+	BaselineSetAt *string `json:"baseline_set_at,omitempty"`
+	RunPath       *string `json:"run_path,omitempty"`
+	SHA256        *string `json:"sha256,omitempty"`
+	ConfigStamp   *string `json:"config_stamp,omitempty"`
+	CapturedAt    string  `json:"captured_at"`
+	Notes         *string `json:"notes,omitempty"`
+	Source        string  `json:"source"`
 	CreatedAt     string  `json:"created_at"`
 	DeletedAt     *string `json:"deleted_at,omitempty"`
 }
