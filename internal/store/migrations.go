@@ -128,6 +128,60 @@ func (s *Store) rebuild(id string, fn func() error) error {
 	})
 }
 
+// rebuildTable runs the DDL that replaces one table with a reshaped copy, with
+// the guard rails a rebuild needs and an ordinary migration does not.
+//
+// Foreign keys go off before the transaction opens, not inside it: SQLite
+// ignores the pragma while a transaction is active, and with keys enforced the
+// DROP of the old table would cascade through every row that references it —
+// the evidence and the observation links of every task. They come back on
+// afterwards, and PRAGMA foreign_key_check runs before the commit so a rebuild
+// that left a dangling reference is rolled back instead of stored.
+func (s *Store) rebuildTable(ddl string) (err error) {
+	if _, err := s.execHook(s.db, `PRAGMA foreign_keys = OFF`); err != nil {
+		return fmt.Errorf("engram: disable foreign keys for rebuild: %w", err)
+	}
+	defer func() {
+		if _, onErr := s.execHook(s.db, `PRAGMA foreign_keys = ON`); onErr != nil && err == nil {
+			err = fmt.Errorf("engram: re-enable foreign keys after rebuild: %w", onErr)
+		}
+	}()
+
+	tx, err := s.beginTxHook()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := s.execHook(tx, ddl); err != nil {
+		return fmt.Errorf("engram: rebuild table: %w", err)
+	}
+	if err := foreignKeyCheckTx(tx); err != nil {
+		return err
+	}
+	return s.commitHook(tx)
+}
+
+// foreignKeyCheckTx reports the first dangling reference PRAGMA
+// foreign_key_check finds, or nil when the schema is whole.
+func foreignKeyCheckTx(tx *sql.Tx) error {
+	rows, err := tx.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		return fmt.Errorf("engram: check foreign keys after rebuild: %w", err)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var table, parent sql.NullString
+		var rowid, fkid sql.NullInt64
+		if err := rows.Scan(&table, &rowid, &parent, &fkid); err != nil {
+			return fmt.Errorf("engram: read foreign key violation: %w", err)
+		}
+		return fmt.Errorf("engram: rebuild left %s row %d pointing at a missing %s row",
+			table.String, rowid.Int64, parent.String)
+	}
+	return rows.Err()
+}
+
 // backupBeforeRebuild copies the database to engram.db.pre-<id>.bak. VACUUM INTO
 // writes a consistent copy from inside SQLite, which a file copy cannot promise
 // while the WAL holds committed pages the main file does not.

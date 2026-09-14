@@ -371,7 +371,7 @@ func (s *Store) ProjectCardCounts(slug string) (ProjectCardCounts, error) {
 		return c, err
 	}
 	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM tasks WHERE project = ? AND deleted_at IS NULL AND state NOT IN ('done','cancelled')`, slug,
+		`SELECT COUNT(*) FROM tasks WHERE project = ? AND deleted_at IS NULL AND state NOT IN ('done','cancelled','archived')`, slug,
 	).Scan(&c.TasksActive); err != nil {
 		return c, err
 	}

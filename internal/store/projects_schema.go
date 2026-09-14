@@ -30,6 +30,10 @@ const (
 	// projAliasesID adds the table that lets one project answer to more than
 	// one name without any historical row being renamed.
 	projAliasesID = "proj-0002-project-aliases"
+	// projTasksRebuildID reshapes tasks around the vault: a slug of its own, a
+	// summary, a note for what is left, the folder it lives in, a parent task,
+	// and the three states the vault README already uses.
+	projTasksRebuildID = "proj-0003-tasks-rebuild"
 )
 
 // projectsHierarchyDDL is the proj-0001-cards-hierarchy step. It is written as
@@ -376,8 +380,105 @@ func (s *Store) migrateProjectsToV3() error {
 			return err
 		}
 	}
-	return nil
+
+	// The rebuilds go through s.rebuild, which copies the whole file first:
+	// the old table is gone by the time anything downstream can fail, so there
+	// is nothing left to roll back to without one.
+	return s.rebuild(projTasksRebuildID, func() error {
+		return s.rebuildTable(tasksRebuildDDL)
+	})
 }
+
+// tasksRebuildDDL replaces tasks with its version-3 shape. A rebuild rather
+// than a column-by-column ALTER because three of the changes cannot be
+// expressed as additions: the state CHECK has to accept three more values, the
+// identity CHECK has to accept a slug where it used to demand a Jira key or an
+// SDD change, and closed_at has to be legal on an archived task.
+//
+// Everything the old table held is carried over verbatim. The new columns land
+// as NULL, which is what "we do not know yet" looks like for a task written
+// before the vault had a say in any of it.
+const tasksRebuildDDL = `
+CREATE TABLE tasks_rebuild (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    sync_id              TEXT    NOT NULL UNIQUE,
+    project              TEXT    NOT NULL REFERENCES project_cards(slug)
+                                 ON DELETE RESTRICT ON UPDATE CASCADE,
+    jira_key             TEXT    UNIQUE
+                         CHECK (jira_key IS NULL OR jira_key GLOB '[A-Z]*-[0-9]*'),
+    sdd_change           TEXT    CHECK (sdd_change IS NULL OR sdd_change = lower(sdd_change)),
+    slug                 TEXT    CHECK (slug IS NULL
+                                        OR (slug = lower(trim(slug)) AND length(slug) BETWEEN 1 AND 80)),
+    title                TEXT    NOT NULL CHECK (length(trim(title)) > 0),
+    summary              TEXT    CHECK (summary IS NULL OR length(summary) <= 1000),
+    pending_note         TEXT,
+    vault_path           TEXT    CHECK (vault_path IS NULL
+                                        OR (length(trim(vault_path)) > 0
+                                            AND vault_path NOT LIKE '/%'
+                                            AND vault_path NOT LIKE '~%'
+                                            AND vault_path NOT LIKE '%..%')),
+    kind                 TEXT    NOT NULL
+                         CHECK (kind IN ('feature','bugfix','refactor','incident','migration','spike')),
+    state                TEXT    NOT NULL DEFAULT 'open'
+                         CHECK (state IN ('open','analysis','in_progress','review','verified',
+                                          'done','blocked','cancelled','pending','archived','unverified')),
+    jira_status          TEXT,
+    jira_status_category TEXT    CHECK (jira_status_category IS NULL
+                                        OR jira_status_category IN ('new','indeterminate','done')),
+    state_synced_at      TEXT,
+    branch               TEXT,
+    pr_url               TEXT,
+    knowledge_ref        TEXT,
+    assignee             TEXT,
+    parent_task_id       INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+    parent_task_sync_id  TEXT,
+    created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+    closed_at            TEXT,
+    deleted_at           TEXT,
+    CHECK (closed_at IS NULL OR state IN ('done','cancelled','archived')),
+    CHECK (jira_key IS NOT NULL OR sdd_change IS NOT NULL OR slug IS NOT NULL),
+    CHECK (parent_task_id IS NULL OR parent_task_id <> id)
+);
+
+INSERT INTO tasks_rebuild
+    (id, sync_id, project, jira_key, sdd_change, slug, title, summary, pending_note, vault_path,
+     kind, state, jira_status, jira_status_category, state_synced_at, branch, pr_url,
+     knowledge_ref, assignee, parent_task_id, parent_task_sync_id,
+     created_at, updated_at, closed_at, deleted_at)
+SELECT id, sync_id, project, jira_key, sdd_change, NULL, title, NULL, NULL, NULL,
+       kind, state, jira_status, jira_status_category, state_synced_at, branch, pr_url,
+       knowledge_ref, assignee, NULL, NULL,
+       created_at, updated_at, closed_at, deleted_at
+FROM tasks;
+
+DROP TABLE tasks;
+ALTER TABLE tasks_rebuild RENAME TO tasks;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_project_state ON tasks(project, state, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_sdd_change    ON tasks(project, sdd_change);
+CREATE INDEX IF NOT EXISTS idx_tasks_deleted       ON tasks(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent        ON tasks(parent_task_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_project_slug
+    ON tasks(project, slug) WHERE slug IS NOT NULL AND deleted_at IS NULL;
+
+CREATE TRIGGER IF NOT EXISTS tasks_fts_insert AFTER INSERT ON tasks BEGIN
+    INSERT INTO tasks_fts(rowid, title, jira_key, sdd_change, branch, project)
+    VALUES (new.id, new.title, new.jira_key, new.sdd_change, new.branch, new.project);
+END;
+CREATE TRIGGER IF NOT EXISTS tasks_fts_delete AFTER DELETE ON tasks BEGIN
+    INSERT INTO tasks_fts(tasks_fts, rowid, title, jira_key, sdd_change, branch, project)
+    VALUES ('delete', old.id, old.title, old.jira_key, old.sdd_change, old.branch, old.project);
+END;
+CREATE TRIGGER IF NOT EXISTS tasks_fts_update AFTER UPDATE ON tasks BEGIN
+    INSERT INTO tasks_fts(tasks_fts, rowid, title, jira_key, sdd_change, branch, project)
+    VALUES ('delete', old.id, old.title, old.jira_key, old.sdd_change, old.branch, old.project);
+    INSERT INTO tasks_fts(rowid, title, jira_key, sdd_change, branch, project)
+    VALUES (new.id, new.title, new.jira_key, new.sdd_change, new.branch, new.project);
+END;
+
+INSERT INTO tasks_fts(tasks_fts) VALUES('rebuild');
+`
 
 // projectAliasesDDL is the proj-0002-project-aliases step. An alias is a name
 // that resolves to a project, never a rename: nothing historical moves, so a
