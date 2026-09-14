@@ -210,7 +210,6 @@ func (m Model) viewDashboard() string {
 	if !m.dashboard.loaded {
 		b.WriteString(m.styles.StatCard.Render("Loading " + m.project + "..."))
 		b.WriteString("\n")
-		b.WriteString(m.styles.Help.Render("  p project • q quit"))
 		return b.String()
 	}
 
@@ -220,7 +219,6 @@ func (m Model) viewDashboard() string {
 	b.WriteString(m.viewDashboardBlock("stale runbooks", dashBlockRunbooks, m.viewDashboardRunbooks()))
 	b.WriteString(m.viewDashboardBlock("latest evidence", dashBlockEvidence, m.viewDashboardEvidence()))
 
-	b.WriteString(m.styles.Help.Render("\n  1-5 tabs • j/k/h/l block • enter open block • p project • r refresh • q quit"))
 	return b.String()
 }
 

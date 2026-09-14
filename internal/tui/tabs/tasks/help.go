@@ -3,9 +3,12 @@ package tasks
 import "github.com/charmbracelet/bubbles/key"
 
 // Help lists whichever screen is on display's own bindings (rfc-tui.md
-// §7.2), the same ones each screen's view.go footer already prints, plus
-// "g"/"G" on the list — a real binding handleListKeys already answers to,
-// just not named in that footer's hand-written text.
+// §7.2). It is the single declaration of what the screen answers to: the "?"
+// overlay and the footer are both rendered from it, so a key that works and
+// a key that is advertised cannot drift apart.
+//
+// The root's own bindings — tabs, refresh, the project selector, help, quit —
+// are not repeated here; globalHelpBindings owns those.
 func (m Model) Help() []key.Binding {
 	switch m.Screen {
 	case ScreenDetail:
@@ -41,7 +44,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 			key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "state filter")),
 			key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "kind filter")),
-			key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "next page")),
+			key.NewBinding(key.WithKeys("p", "n"), key.WithHelp("p/n", "page")),
 			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "dashboard")),
 		}

@@ -56,8 +56,6 @@ func (m Model) viewList() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(m.styles.Help.Render(
-		"  j/k move • enter detail • c copy path • o open file • t filter task • a toggle attached • r refresh • esc dashboard"))
 	return b.String()
 }
 
@@ -163,8 +161,6 @@ func (m Model) viewDetail() string {
 
 	b.WriteString(m.viewManifestSection())
 
-	b.WriteString(m.styles.Help.Render(
-		"  o open with system viewer • c copy sha256 • p copy path • m manifest • enter task • esc back"))
 	return b.String()
 }
 

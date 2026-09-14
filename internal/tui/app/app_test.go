@@ -117,11 +117,9 @@ func TestKeysReachOnlyTheActiveTab(t *testing.T) {
 	}
 }
 
-// TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector pins rfc-tui.md
-// §7.2's footnote on S7: "p copia la ruta y el selector de proyecto se abre
-// con P". Everywhere else lowercase "p" is the global project-selector
-// shortcut the root intercepts before the active tab ever sees it; on
-// Evidence's detail screen alone, S7's own "p" (copy path) must win.
+// TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector pins S7's own "p"
+// (copy path). The project selector lives on ctrl+p, so the letter belongs to
+// the screen on every screen, with no per-screen exception to remember.
 func TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	// New now opens the selector without a resolvable project (T-10.02);
@@ -141,43 +139,6 @@ func TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector(t *testing.T) {
 	}
 	if _, ok := cmd().(shared.CopiedMsg); !ok {
 		t.Fatalf("p produced %T, want shared.CopiedMsg", cmd())
-	}
-}
-
-// TestEvidenceDetailCapitalPOpensTheProjectSelector pins the other half of
-// the same footnote: S7 moves the project-selector shortcut to uppercase P.
-func TestEvidenceDetailCapitalPOpensTheProjectSelector(t *testing.T) {
-	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the selector without a resolvable project (T-10.02);
-	// this case's premise is being on Evidence's detail screen already, not
-	// the selector "P" is supposed to open.
-	m.screen = screenTab
-	m.active = tabs.Evidence
-	item := store.EvidenceListItem{Evidence: store.Evidence{ID: 1, Path: "ACME-1/a.png"}}
-	m.evidence.Screen = evidence.ScreenDetail
-	m.evidence.Selected = &item
-
-	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("P")})
-	if m.screen != screenSelector {
-		t.Fatalf("screen = %v, want screenSelector: S7 moves the global shortcut to capital P", m.screen)
-	}
-}
-
-// TestLowercasePStillOpensTheSelectorOutsideEvidenceDetail guards against
-// the S7 override leaking into every other screen: p keeps opening the
-// selector everywhere else, Evidence's own list (S6) included.
-func TestLowercasePStillOpensTheSelectorOutsideEvidenceDetail(t *testing.T) {
-	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the selector without a resolvable project (T-10.02);
-	// this case's premise is being on the Tasks tab already, so the
-	// assertion actually exercises "p" reaching the global handler from a
-	// tab instead of trivially staying on the selector it never left.
-	m.screen = screenTab
-	m.active = tabs.Tasks
-
-	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
-	if m.screen != screenSelector {
-		t.Fatalf("screen = %v, want screenSelector: p is the global shortcut everywhere but Evidence's S7", m.screen)
 	}
 }
 

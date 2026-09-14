@@ -14,7 +14,6 @@ func (m Model) View() string {
 	b.WriteString(m.styles.Header.Render("  Cloud sync settings"))
 	b.WriteString("\n\n")
 	b.WriteString(shared.Menu(m.styles, menuItems, m.Cursor))
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter select • esc/q back"))
 
 	return b.String()
 }

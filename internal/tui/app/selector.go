@@ -220,7 +220,6 @@ func (m Model) viewSelector() string {
 		}
 	}
 
-	b.WriteString(m.styles.Help.Render("  j/k move • enter open • / filter • i sort by health • r refresh • q quit"))
 	return b.String()
 }
 

@@ -150,9 +150,6 @@ func (m Model) viewDashboard() string {
 	b.WriteString("\n")
 	b.WriteString(shared.Menu(m.styles, dashboardMenuItems, m.Cursor))
 
-	// Help
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter select • s search • q quit"))
-
 	return b.String()
 }
 
@@ -166,8 +163,6 @@ func (m Model) viewSearch() string {
 
 	b.WriteString(m.styles.SearchInput.Render(m.SearchInput.View()))
 	b.WriteString("\n\n")
-
-	b.WriteString(m.styles.Help.Render("  Type a query and press enter • esc go back"))
 
 	return b.String()
 }
@@ -188,7 +183,6 @@ func (m Model) viewSearchResults() string {
 	if resultCount == 0 {
 		b.WriteString(m.styles.NoResults.Render("No memories found. Try a different query."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  / new search • esc back"))
 		return b.String()
 	}
 
@@ -209,8 +203,6 @@ func (m Model) viewSearchResults() string {
 		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.Scroll+1, end, resultCount))
 	}
 
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter detail • c copy • t timeline • L link to task • / search • esc back"))
-
 	return b.String()
 }
 
@@ -227,7 +219,6 @@ func (m Model) viewRecent() string {
 	if count == 0 {
 		b.WriteString(m.styles.NoResults.Render("No observations yet."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  esc back"))
 		return b.String()
 	}
 
@@ -246,8 +237,6 @@ func (m Model) viewRecent() string {
 	if count > visibleItems {
 		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.Scroll+1, end, count))
 	}
-
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter detail • c copy • t timeline • L link to task • esc back"))
 
 	return b.String()
 }
@@ -355,8 +344,6 @@ func (m Model) viewObservationDetail() string {
 		b.WriteString(shared.RangeIndicator(m.styles, "line", m.DetailScroll+1, end, len(contentLines)))
 	}
 
-	b.WriteString(m.styles.Help.Render("\n  j/k scroll • c copy • t timeline • L link to task • esc back"))
-
 	return b.String()
 }
 
@@ -423,8 +410,6 @@ func (m Model) viewTimeline() string {
 		}
 	}
 
-	b.WriteString(m.styles.Help.Render("\n  j/k scroll • esc back"))
-
 	return b.String()
 }
 
@@ -454,14 +439,12 @@ func (m Model) viewSessions() string {
 		b.WriteString("\n")
 		b.WriteString(m.styles.Timestamp.Render("  Sessions with observations cannot be deleted; Engram will refuse unsafe deletes."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  [y] Delete  [n] Cancel  [esc] Cancel"))
 		return b.String()
 	}
 
 	if count == 0 {
 		b.WriteString(m.styles.NoResults.Render("No sessions yet."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  esc back"))
 		return b.String()
 	}
 
@@ -501,8 +484,6 @@ func (m Model) viewSessions() string {
 		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.Scroll+1, end, count))
 	}
 
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter view session • d delete • esc back"))
-
 	return b.String()
 }
 
@@ -537,7 +518,6 @@ func (m Model) viewSessionDetail() string {
 	if count == 0 {
 		b.WriteString(m.styles.NoResults.Render("No observations in this session."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  esc back"))
 		return b.String()
 	}
 
@@ -556,8 +536,6 @@ func (m Model) viewSessionDetail() string {
 	if count > visibleItems {
 		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.SessionDetailScroll+1, end, count))
 	}
-
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter detail • c copy • t timeline • esc back"))
 
 	return b.String()
 }
@@ -602,7 +580,6 @@ func (m Model) viewSetup() string {
 		b.WriteString("\n")
 		b.WriteString(m.styles.Timestamp.Render("  This prevents Claude Code from asking permission on every tool call."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  [y] Yes  [n] No"))
 		return b.String()
 	}
 
@@ -655,7 +632,6 @@ func (m Model) viewSetup() string {
 			}
 		}
 
-		b.WriteString(m.styles.Help.Render("\n  enter/esc back to dashboard"))
 		return b.String()
 	}
 
@@ -675,8 +651,6 @@ func (m Model) viewSetup() string {
 			m.styles.DetailLabel.Render("Install to:"),
 			m.styles.Timestamp.Render(agent.InstallDir)))
 	}
-
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter install • esc back"))
 
 	return b.String()
 }

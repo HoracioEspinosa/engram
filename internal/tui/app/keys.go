@@ -8,9 +8,10 @@ import "github.com/charmbracelet/bubbles/key"
 type globalKeyMap struct {
 	// Quit leaves the TUI from anywhere, including a focused text input.
 	Quit key.Binding
-	// ProjectSelector opens S1. Evidence's detail screen (S7) moves this to
-	// uppercase "P" and keeps lowercase "p" for its own copy-path action —
-	// rfc-tui.md §7.2's footnote, resolved in updateActive.
+	// ProjectSelector opens S1. It lives on a modifier because the letter
+	// keys belong to the screens: "p" is a page key in a paginated list and
+	// the copy-path action on Evidence's detail, and a global that moved
+	// between screens to make room was a rule nobody could remember.
 	ProjectSelector key.Binding
 	// Dashboard opens S2, the active project's Project Dashboard.
 	Dashboard key.Binding
@@ -33,8 +34,8 @@ var globalKeys = globalKeyMap{
 		key.WithHelp("ctrl+c", "quit"),
 	),
 	ProjectSelector: key.NewBinding(
-		key.WithKeys("p"),
-		key.WithHelp("p", "project"),
+		key.WithKeys("ctrl+p"),
+		key.WithHelp("ctrl+p", "project"),
 	),
 	Dashboard: key.NewBinding(
 		key.WithKeys("0"),

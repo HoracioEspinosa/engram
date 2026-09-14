@@ -194,8 +194,6 @@ func (m Model) handleIndexKeys(key string) (tabs.Tab, tea.Cmd) {
 		if len(m.Items) > 0 && m.Cursor < len(m.Items) {
 			return m, tabs.NavigateToMemorySearch("runbook/" + m.Items[m.Cursor].ID)
 		}
-	case "r":
-		return m, m.reload()
 	case "esc", "q":
 		return m, tabs.Home()
 	}
@@ -278,8 +276,6 @@ func (m Model) handleViewKeys(key string) (tabs.Tab, tea.Cmd) {
 		return m, shared.Copy(item.VaultPath)
 	case "o":
 		return m, openHub(m.projects, m.project)
-	case "r":
-		return m, loadMarkdown(item, m.Width, m.styles.Palette)
 	case "esc", "q":
 		m.Screen = ScreenIndex
 		m.Selected = nil

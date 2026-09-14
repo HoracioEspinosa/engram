@@ -1,173 +1,171 @@
 ═══ s1-project-selector ═══
-                                                                                        
-    Select a project                                                                    
-                                                                                        
-                                                                                        
-                                                                                        
-      slug                   display name                      obs     open   stale RB  
-   ▸ acme                   Acme Corp                          42        1          0   
-                                                                                        
-    j/k move • enter open • / filter • i sort by health • r refresh • q quit            
-                                                                                        
+                                                                                               
+    Select a project                                                                           
+                                                                                               
+                                                                                               
+                                                                                               
+      slug                   display name                      obs     open   stale RB         
+   ▸ acme                   Acme Corp                          42        1          0          
+                                                                                               
+    j/k move • g/G top/bottom • enter open • / filter • i sort by health • r refresh • q quit  
+                                                                                               
 ═══ s2-project-dashboard ═══
-                                                                                  
-  [0 Dashboard]  1 Memory  2 Tasks  3 Evidence  4 Runbooks  5 Cloud               
-                                                                                  
-  ┌─────────────────────────────┐                                                 
-  │                             │                                                 
-  │        42   observations    │                                                 
-  │         1   open tasks      │                                                 
-  │         1   evidence files  │                                                 
-  │         1   runbooks        │                                                 
-  │                             │                                                 
-  └─────────────────────────────┘                                                 
-                                                                                  
-  ┌──────────────────────────────────┐                                            
-  │                                  │                                            
-  │        project acme — Acme Corp  │                                            
-  │         branch main              │                                            
-  │           jira ACME              │                                            
-  │          graph none              │                                            
-  │                                  │                                            
-  └──────────────────────────────────┘                                            
-                                                                                  
-                                                                                  
-  ▸ recent tasks                                                                  
-                                                                                  
-    ACME-1       bugfix     review           Fix the preview timeout              
-                                                                                  
-    stale runbooks                                                                
-                                                                                  
-    RB-900 Preview endpoint returns 503 under load                                
-                                                                                  
-    latest evidence                                                               
-                                                                                  
-    ACME-1/cold-start.png attached ✓                                              
-                                                                                  
-                                                                                  
-    1-5 tabs • j/k/h/l block • enter open block • p project • r refresh • q quit  
-                                                                                  
+                                                                             
+  [0 Dashboard]  1 Memory  2 Tasks  3 Evidence  4 Runbooks  5 Cloud          
+                                                                             
+  ┌─────────────────────────────┐                                            
+  │                             │                                            
+  │        42   observations    │                                            
+  │         1   open tasks      │                                            
+  │         1   evidence files  │                                            
+  │         1   runbooks        │                                            
+  │                             │                                            
+  └─────────────────────────────┘                                            
+                                                                             
+  ┌──────────────────────────────────┐                                       
+  │                                  │                                       
+  │        project acme — Acme Corp  │                                       
+  │         branch main              │                                       
+  │           jira ACME              │                                       
+  │          graph none              │                                       
+  │                                  │                                       
+  └──────────────────────────────────┘                                       
+                                                                             
+                                                                             
+  ▸ recent tasks                                                             
+                                                                             
+    ACME-1       bugfix     review           Fix the preview timeout         
+                                                                             
+    stale runbooks                                                           
+                                                                             
+    RB-900 Preview endpoint returns 503 under load                           
+                                                                             
+    latest evidence                                                          
+                                                                             
+    ACME-1/cold-start.png attached ✓                                         
+                                                                             
+    j/k move block • g/G top/bottom • enter open block • r refresh • q quit  
+                                                                             
 ═══ s3-tasks-list ═══
-                                                                                                                                
-  0 Dashboard  1 Memory  [2 Tasks]  3 Evidence  4 Runbooks  5 Cloud                                                             
-                                                                                                                                
-                                                                                                                                
-    Tasks (1 shown · state: active · kind: all)                                                                                 
-                                                                                                                                
-  ▸ ACME-1       [bugfix   ] review   Fix the preview timeout                                                                   
-      no branch · no PR · 1 obs · 1 evidence · updated                                                                          
-                                                                                                                                
-    tasks 1-1 of 1                                                                                                              
-                                                                                                                                
-    j/k move • enter detail • c copy key • o open jira • / search • f state • K kind • n next page • r refresh • esc dashboard  
-                                                                                                                                
+                                                                                                                         
+  0 Dashboard  1 Memory  [2 Tasks]  3 Evidence  4 Runbooks  5 Cloud                                                      
+                                                                                                                         
+                                                                                                                         
+    Tasks (1 shown · state: active · kind: all)                                                                          
+                                                                                                                         
+  ▸ ACME-1       [bugfix   ] review   Fix the preview timeout                                                            
+      no branch · no PR · 1 obs · 1 evidence · updated                                                                   
+                                                                                                                         
+    tasks 1-1 of 1                                                                                                       
+                                                                                                                         
+    j/k move • g/G top/bottom • enter detail • c copy key • o open jira • / search • f state filter • K kind filter • …  
+                                                                                                                         
 ═══ s4-tasks-detail ═══
-                                                                                                                                               
-  0 Dashboard  1 Memory  [2 Tasks]  3 Evidence  4 Runbooks  5 Cloud                                                                            
-                                                                                                                                               
-  ACME-1 — Fix the preview timeout                                                                                                             
-                                                                                                                                               
-  ┌────────────────────────┐                                                                                                                   
-  │                        │                                                                                                                   
-  │           kind bugfix  │                                                                                                                   
-  │          state review  │                                                                                                                   
-  │           jira ACME-1  │                                                                                                                   
-  │                        │                                                                                                                   
-  └────────────────────────┘                                                                                                                   
-                                                                                                                                               
-                                                                                                                                               
-    observations (1) — enter opens it in Memory                                                                                                
-                                                                                                                                               
-  ▸ #501   [discovery ]  Root cause: preview worker pool exhausted 2026-01-15 09:30:00                                                         
-                                                                                                                                               
-    evidence (1) — e opens the Evidence tab                                                                                                    
-                                                                                                                                               
-    ACME-1/cold-start.png cold start exceeds 30s attached ✓                                                                                    
-                                                                                                                                               
-    j/k move • enter observation • e evidence • x context pack • s state • l link obs • c copy key • o jira • u pr • b copy branch • esc back  
-                                                                                                                                               
+                                                                                                                       
+  0 Dashboard  1 Memory  [2 Tasks]  3 Evidence  4 Runbooks  5 Cloud                                                    
+                                                                                                                       
+  ACME-1 — Fix the preview timeout                                                                                     
+                                                                                                                       
+  ┌────────────────────────┐                                                                                           
+  │                        │                                                                                           
+  │           kind bugfix  │                                                                                           
+  │          state review  │                                                                                           
+  │           jira ACME-1  │                                                                                           
+  │                        │                                                                                           
+  └────────────────────────┘                                                                                           
+                                                                                                                       
+                                                                                                                       
+    observations (1) — enter opens it in Memory                                                                        
+                                                                                                                       
+  ▸ #501   [discovery ]  Root cause: preview worker pool exhausted 2026-01-15 09:30:00                                 
+                                                                                                                       
+    evidence (1) — e opens the Evidence tab                                                                            
+                                                                                                                       
+    ACME-1/cold-start.png cold start exceeds 30s attached ✓                                                            
+                                                                                                                       
+    j/k move • enter observation • e evidence • x context pack • s change state • l link observation • c copy key • …  
+                                                                                                                       
 ═══ s5-context-pack ═══
-                                                                                       
-  0 Dashboard  1 Memory  [2 Tasks]  3 Evidence  4 Runbooks  5 Cloud                    
-                                                                                       
-  Context pack — ACME-1                                                                
-                         88 chars est. · built 00:00:00                                
-                                                                                       
-    # Context pack: acme / ACME-1                                                      
-                                                                                       
-    ## Task                                                                            
-    ACME-1 - bugfix - review                                                           
-    Fix the preview timeout                                                            
-                                                                                       
-                                                                                       
-    lines 1-6 of 6                                                                     
-                                                                                       
-    j/k scroll • c copy to clipboard • w write context-pack.md • r rebuild • esc back  
-                                                                                       
+                                                                                         
+  0 Dashboard  1 Memory  [2 Tasks]  3 Evidence  4 Runbooks  5 Cloud                      
+                                                                                         
+  Context pack — ACME-1                                                                  
+                         88 chars est. · built 00:00:00                                  
+                                                                                         
+    # Context pack: acme / ACME-1                                                        
+                                                                                         
+    ## Task                                                                              
+    ACME-1 - bugfix - review                                                             
+    Fix the preview timeout                                                              
+                                                                                         
+                                                                                         
+    lines 1-6 of 6                                                                       
+                                                                                         
+    j/k scroll • c copy to clipboard • w write context-pack.md • r rebuild • esc/q back  
+                                                                                         
 ═══ s6-evidence-list ═══
-                                                                                                                         
-  0 Dashboard  1 Memory  2 Tasks  [3 Evidence]  4 Runbooks  5 Cloud                                                      
-                                                                                                                         
-                                                                                                                         
-    Evidence (1 shown · task: all · all attached states)                                                                 
-                                                                                                                         
-  ▸  cold-start.png                                 [png ] ACME-1       cold start exceeds 30s ✓ jira                    
-                                                                                                                         
-    files 1-1 of 1                                                                                                       
-                                                                                                                         
-    j/k move • enter detail • c copy path • o open file • t filter task • a toggle attached • r refresh • esc dashboard  
-                                                                                                                         
+                                                                                                                  
+  0 Dashboard  1 Memory  2 Tasks  [3 Evidence]  4 Runbooks  5 Cloud                                               
+                                                                                                                  
+                                                                                                                  
+    Evidence (1 shown · task: all · all attached states)                                                          
+                                                                                                                  
+  ▸  cold-start.png                                 [png ] ACME-1       cold start exceeds 30s ✓ jira             
+                                                                                                                  
+    files 1-1 of 1                                                                                                
+                                                                                                                  
+    j/k move • g/G top/bottom • enter detail • c copy path • o open file • t filter task • a toggle attached • …  
+                                                                                                                  
 ═══ s7-evidence-detail ═══
-                                                                                                       
-  0 Dashboard  1 Memory  2 Tasks  [3 Evidence]  4 Runbooks  5 Cloud                                    
-                                                                                                       
-  cold-start.png                                                                                       
-                                                                                                       
-  ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐  
-  │                                                                                                 │  
-  │           path /fixtures/evidence/ACME-1/cold-start.png  (copy with p)                          │  
-  │         sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  (copy with c)  │  
-  │           size unknown                                                                          │  
-  │           kind png                                                                              │  
-  │         proves cold start exceeds 30s                                                           │  
-  │           task ACME-1                                                                           │  
-  │                                                                                                 │  
-  └─────────────────────────────────────────────────────────────────────────────────────────────────┘  
-                                                                                                       
-  attached_jira ✓ attached                                                                             
-  attached_conf                                                                                        
-       luence   not needed                                                                             
-                                                                                                       
-                                                                                                       
-    manifest.json (m)                                                                                  
-                                                                                                       
-                                                                                                       
-      no manifest.json next to this file                                                               
-                                                                                                       
-                                                                                                       
-    o open with system viewer • c copy sha256 • p copy path • m manifest • enter task • esc back       
-                                                                                                       
+                                                                                                                
+  0 Dashboard  1 Memory  2 Tasks  [3 Evidence]  4 Runbooks  5 Cloud                                             
+                                                                                                                
+  cold-start.png                                                                                                
+                                                                                                                
+  ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐           
+  │                                                                                                 │           
+  │           path /fixtures/evidence/ACME-1/cold-start.png  (copy with p)                          │           
+  │         sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  (copy with c)  │           
+  │           size unknown                                                                          │           
+  │           kind png                                                                              │           
+  │         proves cold start exceeds 30s                                                           │           
+  │           task ACME-1                                                                           │           
+  │                                                                                                 │           
+  └─────────────────────────────────────────────────────────────────────────────────────────────────┘           
+                                                                                                                
+  attached_jira ✓ attached                                                                                      
+  attached_conf                                                                                                 
+       luence   not needed                                                                                      
+                                                                                                                
+                                                                                                                
+    manifest.json (m)                                                                                           
+                                                                                                                
+                                                                                                                
+      no manifest.json next to this file                                                                        
+                                                                                                                
+    o open with system viewer • c copy sha256 • p copy path • m manifest • enter task • r refresh • esc/q back  
+                                                                                                                
 ═══ s8-runbooks-index ═══
-                                                                                                                
-  0 Dashboard  1 Memory  2 Tasks  3 Evidence  [4 Runbooks]  5 Cloud                                             
-                                                                                                                
-                                                                                                                
-    Runbooks (this project · a toggle)                                                                          
-                                                                                                                
-  ▸ RB-900    Preview endpoint returns 503 under load  acme         performance    —            new ⚠           
-                                                                                                                
-    runbooks 1-1 of 1                                                                                           
-                                                                                                                
-  ┌─────────────────────────────────────────────────────────────┐                                               
-  │                                                             │                                               
-  │  RB-900 · status verified · exec_count 0 · last_exec never  │                                               
-  │  vault Runbooks/RB-900.md                                   │                                               
-  │                                                             │                                               
-  └─────────────────────────────────────────────────────────────┘                                               
-                                                                                                                
-                                                                                                                
-    j/k move • enter view • c copy vault path • a all/project • / search • t executions • r refresh • esc back  
-                                                                                                                
+                                                                                                                          
+  0 Dashboard  1 Memory  2 Tasks  3 Evidence  [4 Runbooks]  5 Cloud                                                       
+                                                                                                                          
+                                                                                                                          
+    Runbooks (this project · a toggle)                                                                                    
+                                                                                                                          
+  ▸ RB-900    Preview endpoint returns 503 under load  acme         performance    —            new ⚠                     
+                                                                                                                          
+    runbooks 1-1 of 1                                                                                                     
+                                                                                                                          
+  ┌─────────────────────────────────────────────────────────────┐                                                         
+  │                                                             │                                                         
+  │  RB-900 · status verified · exec_count 0 · last_exec never  │                                                         
+  │  vault Runbooks/RB-900.md                                   │                                                         
+  │                                                             │                                                         
+  └─────────────────────────────────────────────────────────────┘                                                         
+                                                                                                                          
+                                                                                                                          
+    j/k move • g/G top/bottom • enter view • c copy vault path • a all/project • / search • t executions • r refresh • …  
+                                                                                                                          
 ═══ s9-runbooks-markdown ═══
                                                                                                                           
   0 Dashboard  1 Memory  2 Tasks  3 Evidence  [4 Runbooks]  5 Cloud                                                       
@@ -186,7 +184,7 @@
                                                                                                                           
     lines 1-6 of 6                                                                                                        
                                                                                                                           
-    j/k scroll • e open in $EDITOR • t executions in Memory • c copy vault path • o open hub • esc back                   
+    j/k scroll • g/G top/bottom • e open in $EDITOR • t executions in Memory • c copy vault path • o open hub • …         
                                                                                                                           
 ═══ s10-memory ═══
                                                                         
@@ -228,7 +226,6 @@
       Cloud sync settings                                               
       Quit                                                              
                                                                         
-                                                                        
     j/k navigate • enter select • s search • q quit                     
                                                                         
 ═══ s11-cloud ═══
@@ -244,7 +241,6 @@
       View status                                                    
       Enroll projects                                                
       Back                                                           
-                                                                     
                                                                      
     j/k navigate • enter select • esc/q back                         
                                                                      

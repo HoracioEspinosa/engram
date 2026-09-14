@@ -412,22 +412,21 @@ func TestDetailOKeyOpensTheFileWithTheInjectableOpener(t *testing.T) {
 	}
 }
 
-func TestDetailRKeyReloadsTheManifest(t *testing.T) {
+// TestRefreshOnTheDetailReloadsTheManifest covers what the root's refresh
+// binding reaches on this screen. The key itself is the root's — every screen
+// answers one Refresh instead of reimplementing "r" for itself.
+func TestRefreshOnTheDetailReloadsTheManifest(t *testing.T) {
 	item := sampleItem(1, 9, "ACME-9", "ACME-9/a.png", false)
 	m := detailModel(t, item)
 	m.ManifestChecked = true
 
-	updated, cmd := m.handleDetailKeys("r")
-	m2 := updated.(Model)
-	if m2.ManifestChecked {
-		t.Fatal("r should mark the manifest unchecked while the reload is in flight")
-	}
+	cmd := m.Refresh()
 	if cmd == nil {
-		t.Fatal("r should reload the manifest")
+		t.Fatal("Refresh on the detail should reload the manifest")
 	}
 	msg, ok := run(t, cmd).(manifestLoadedMsg)
 	if !ok || msg.evidenceID != item.ID {
-		t.Fatalf("r's command produced %+v, want a manifestLoadedMsg for id %d", run(t, cmd), item.ID)
+		t.Fatalf("Refresh produced %+v, want a manifestLoadedMsg for id %d", run(t, cmd), item.ID)
 	}
 }
 

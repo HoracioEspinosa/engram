@@ -1,9 +1,19 @@
 package app
 
+import (
+	"strings"
+
+	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+)
+
 // View draws the application frame around the active screen's body. The
 // persistent tab bar (rfc-tui.md §5, §7) sits above the Dashboard and every
 // tab; the Selector keeps its own distinct header instead (§5's S1
 // wireframe), since there is no project yet to number tabs for.
+//
+// The footer belongs to the frame, not to the screen: it is rendered here
+// from whatever the active screen declares in Help(), so a screen names its
+// keys once and never prints them.
 func (m Model) View() string {
 	var body string
 
@@ -26,7 +36,11 @@ func (m Model) View() string {
 		// rather than compositing over it: bubbles has no layering
 		// primitive in the v1 line this fork stays on (rfc-tui.md §6), and
 		// a full-screen swap keeps the overlay legible at 80 columns too.
-		body = m.viewHelpOverlay()
+		return m.styles.App.Render(m.viewHelpOverlay())
+	}
+
+	if hints := shared.HintsFrom(m.styles, m.activeScreenHelp(), m.width); hints != "" {
+		body = strings.TrimRight(body, "\n") + "\n" + hints
 	}
 
 	return m.styles.App.Render(body)

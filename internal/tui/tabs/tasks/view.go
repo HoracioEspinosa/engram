@@ -68,8 +68,6 @@ func (m Model) viewList() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(m.styles.Help.Render(
-		"  j/k move • enter detail • c copy key • o open jira • / search • f state • K kind • n next page • r refresh • esc dashboard"))
 	return b.String()
 }
 
@@ -200,8 +198,6 @@ func (m Model) viewDetail() string {
 		}
 	}
 
-	b.WriteString(m.styles.Help.Render(
-		"  j/k move • enter observation • e evidence • x context pack • s state • l link obs • c copy key • o jira • u pr • b copy branch • esc back"))
 	return b.String()
 }
 
@@ -251,6 +247,5 @@ func (m Model) viewContextPack() string {
 	b.WriteString(shared.RangeIndicator(m.styles, "lines", start+1, end, len(lines)))
 	b.WriteString("\n")
 
-	b.WriteString(m.styles.Help.Render("  j/k scroll • c copy to clipboard • w write context-pack.md • r rebuild • esc back"))
 	return b.String()
 }

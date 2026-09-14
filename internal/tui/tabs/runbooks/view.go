@@ -71,8 +71,6 @@ func (m Model) viewIndex() string {
 		}
 	}
 
-	b.WriteString(m.styles.Help.Render(
-		"  j/k move • enter view • c copy vault path • a all/project • / search • t executions • r refresh • esc back"))
 	return b.String()
 }
 
@@ -195,8 +193,6 @@ func (m Model) viewMarkdown() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(m.styles.Help.Render(
-		"  j/k scroll • e open in $EDITOR • t executions in Memory • c copy vault path • o open hub • esc back"))
 	return b.String()
 }
 

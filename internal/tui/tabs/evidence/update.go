@@ -134,8 +134,6 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 		return m.toggleTaskFilter()
 	case "a":
 		return m.toggleAttachedFilter()
-	case "r":
-		return m, loadEvidence(m.reader, m.project, m.Filter)
 	case "esc", "q":
 		return m, tabs.Home()
 	}
@@ -208,9 +206,6 @@ func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 		return m.openManifestFile(item)
 	case "enter":
 		return m, tabs.NavigateToTask(item.TaskID)
-	case "r":
-		m.ManifestChecked = false
-		return m, loadManifest(item)
 	case "esc", "q":
 		m.Screen = ScreenList
 		m.Selected = nil
