@@ -1,0 +1,39 @@
+# .graphifyignore MERGES with .gitignore (last-match-wins), it does not replace it.
+# Every rule here still matters for paths already tracked by Git: a .gitignore-only
+# rule never excludes a tracked path, only .graphifyignore does.
+
+# The graph's own output, and VCS metadata.
+graphify-out/
+.git/
+
+# Compiled Mach-O binaries committed under cmd/engram/. They are tracked, so
+# .gitignore cannot keep them out of the graph.
+cmd/engram/main
+cmd/engram/gentle-creation
+bin/
+/engram
+*.exe
+
+# Dependency and build trees, should any land here.
+vendor/
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
+
+# Generated skill symlinks, they resolve outside the repo.
+.claude/skills
+.codex/skills
+.github/skills
+.gemini/skills
+
+# Minified third-party bundles. Tracked by Git and shipped as static assets, so
+# only this file can keep their one-letter symbols out of the graph.
+*.min.js
+*.min.css
+
+# Archived specs. The active ones under openspec/ stay in the graph; the closed
+# history diluted structural queries over the Go code at 15% of all nodes.
+openspec/changes/archive/
