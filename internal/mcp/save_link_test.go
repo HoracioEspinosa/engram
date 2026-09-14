@@ -178,3 +178,26 @@ func TestSaveGraphRefWithoutCommitIsTyped(t *testing.T) {
 		t.Fatalf("a refused save must persist nothing, got %d", len(obs))
 	}
 }
+
+// TestSaveShortGraphCommitIsInvalid pins that an abbreviated sha is named the
+// same way here as on mem_task_link: the commit was passed and is wrong, which
+// is a different repair from the one graph_commit_required asks for, so it
+// carries its own code on both surfaces.
+func TestSaveShortGraphCommitIsInvalid(t *testing.T) {
+	s, _ := seedSaveTask(t, "engram")
+
+	envelope, res := saveWith(t, s, map[string]any{
+		"title": "abbreviated", "content": "c", "project": "engram",
+		"graph_ref": "node:auth", "graph_commit": testGraphCommit[:7],
+	})
+	if !res.IsError || envelope["code"] != "graph_commit_invalid" {
+		t.Fatalf("expected a typed graph_commit_invalid error, got %#v", envelope)
+	}
+	obs, err := s.RecentObservations("engram", "project", 10)
+	if err != nil {
+		t.Fatalf("RecentObservations: %v", err)
+	}
+	if len(obs) != 0 {
+		t.Fatalf("a refused save must persist nothing, got %d", len(obs))
+	}
+}

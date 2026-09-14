@@ -454,7 +454,7 @@ Examples:
 				),
 				mcp.WithString("graph_commit",
 					mcp.Pattern(`^[0-9a-f]{40}$`),
-					mcp.Description("Commit graph_ref was resolved against. Falls back to the project card's graph_commit when omitted; the save is refused when neither exists."),
+					mcp.Description("Commit graph_ref was resolved against, as the full 40-character sha. Falls back to the project card's graph_commit when omitted; the save is refused with graph_commit_required when neither exists, and with graph_commit_invalid when the sha is abbreviated."),
 				),
 			),
 			queuedWriteHandler(writeQueue, handleSave(s, cfg, activity)),
@@ -1524,8 +1524,14 @@ func handleSave(s *store.Store, cfg MCPConfig, activity *SessionActivity) server
 			switch {
 			case errors.Is(err, store.ErrCrossProjectLink):
 				return toolError("cross_project_link", "observation and task belong to different projects", nil), nil
-			case errors.Is(err, store.ErrGraphCommitRequired), errors.Is(err, store.ErrGraphCommitNotFullSHA):
+			case errors.Is(err, store.ErrGraphCommitRequired):
 				return toolError("graph_commit_required", err.Error(), nil), nil
+			case errors.Is(err, store.ErrGraphCommitNotFullSHA):
+				// A commit that was passed and is wrong asks for a different
+				// repair from one that is missing, and mem_task_link already
+				// names it this way.
+				return toolError("graph_commit_invalid", err.Error(),
+					map[string]any{"hint": "pass the full 40-character commit sha, as git rev-parse HEAD prints it"}), nil
 			}
 			return mcp.NewToolResultError("Failed to save: " + err.Error()), nil
 		}

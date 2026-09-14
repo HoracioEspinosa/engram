@@ -1163,7 +1163,7 @@ The ten `projects` tools are unchanged in name and shape; these fields were adde
 
 | Tool                 | New arguments                                                                       | New answer fields                                              |
 | -------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `mem_save`           | `task`, `role`, `graph_ref`, `graph_commit`                                          | `data.linked_task`, `data.role`, `data.refs_added`, `data.graph_commit_source` (`arg` or `card`) |
+| `mem_save`           | `task`, `role`, `graph_ref`, `graph_commit`                                          | `data.linked_task`, `data.role`, `data.refs_added`, `data.graph_commit_source` (`arg` or `card`); `graph_commit_invalid` for an abbreviated commit sha |
 | `mem_search`         | `offset`, `task`, `graph_ref`, `since`, `until`, `include_children`                  | `data.results[]`, `data.total`, `data.offset`, `data.limit`     |
 | `mem_context`        | `limit` (1–50)                                                                        | —                                                                |
 | `mem_pin`            | `pinned` (unpin without a second tool)                                                | —                                                                |
