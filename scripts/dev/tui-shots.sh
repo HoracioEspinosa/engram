@@ -65,7 +65,7 @@ POND_SCENES=(
   "memory|1"
   "memory-detail|1;j;Enter;Enter"
   "tasks|2"
-  "tasks-detail|2;Enter"
+  "tasks-detail|2;j;Enter"
   "evidence|3"
   "evidence-detail|3;Enter"
   "benchmarks|4"
@@ -85,7 +85,7 @@ POND_SCENES=(
 # one that draws its own swatches.
 DAY_SCENES=(
   "home|"
-  "tasks-detail|2;Enter"
+  "tasks-detail|2;j;Enter"
   "settings|7"
 )
 

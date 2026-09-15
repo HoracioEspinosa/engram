@@ -18,9 +18,9 @@
 #   <range>   any git range, default HEAD~1..HEAD. In CI, the PR's own range.
 #   --warn    report the violation and exit 0 instead of failing.
 #
-# --warn is how CI runs it while docs/tui/img/ does not exist: the guard has
-# nothing to point at, and a hard failure nobody can satisfy only teaches
-# people to ignore the job. Dropping the flag from the CI step is what arms it.
+# --warn stays for a local run where the captures are still being rendered.
+# CI runs it armed: docs/tui/img/ holds a capture of every screen, so a
+# regenerated golden always has one to be reviewed against.
 
 set -euo pipefail
 
@@ -58,6 +58,16 @@ RANGE="${RANGE:-HEAD~1..HEAD}"
 
 if ! git -C "$ROOT_DIR" rev-parse --quiet --verify "${RANGE%%..*}" >/dev/null 2>&1; then
   fail "the range $RANGE names a commit this checkout does not have (a shallow clone needs fetch-depth: 0)"
+fi
+
+# A guard that points at an empty directory passes everything. The captures
+# are what makes a golden reviewable, so their absence is a failure of the
+# guard itself rather than a clean run.
+IMG_DIR="$ROOT_DIR/docs/tui/img"
+if [ "$WARN_ONLY" -eq 0 ]; then
+  if [ -z "$(find "$IMG_DIR" -name '*.png' -print -quit 2>/dev/null)" ]; then
+    fail "no capture under docs/tui/img/ — render the tapes before arming this guard (scripts/dev/tapes.sh, then the shots profile)"
+  fi
 fi
 
 CHANGED="$(git -C "$ROOT_DIR" diff --name-only "$RANGE")"

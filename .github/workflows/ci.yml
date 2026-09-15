@@ -57,11 +57,10 @@ jobs:
       # person would want to look at. The capture in docs/tui/img/ is what
       # makes a regenerated golden reviewable.
       #
-      # --warn while docs/tui/img/ does not exist: the guard has nothing to
-      # point at, and a hard failure nobody can satisfy only teaches people to
-      # ignore the job. Dropping the flag is what arms it.
+      # Armed: docs/tui/img/ holds a capture of every screen, so a
+      # regenerated golden always has a picture to be reviewed against.
       - name: Require a capture beside every regenerated golden
-        run: bash scripts/dev/golden-guard.sh --warn "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+        run: bash scripts/dev/golden-guard.sh "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
 
   e2e-tests:
     name: E2E Tests
