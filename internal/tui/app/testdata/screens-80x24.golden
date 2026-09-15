@@ -273,7 +273,7 @@
       theme            koi-pond                                                 
       icons            unicode                                                  
   ›  vault root       · not configured                                          
-      evidence dir     /root/.clarodrive/evidence  ▲ missing                    
+      evidence dir     ~/.clarodrive/evidence  ▲ missing                        
       cloud            sync configuration                                       
       doctor           no settings store bound                                  
   j/k navigate • g/G top/bottom • enter change • esc/q back           koi-pond  

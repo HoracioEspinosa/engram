@@ -111,6 +111,47 @@ func TestTheVaultAndEvidenceRowsReadTheRealEnvironment(t *testing.T) {
 	}
 }
 
+// TestVaultAndEvidencePathsUnderHomeAreShownAsATilde pins the fix for the
+// golden suite depending on whoever's machine recorded it: the vault root and
+// evidence dir are resolved by joining $HOME with a fixed suffix, so without
+// abbreviation the row would print the literal recording environment's home
+// directory (/root/... in a dev container, /home/runner/... in CI) instead of
+// a portable ~/... that reads the same everywhere.
+func TestVaultAndEvidencePathsUnderHomeAreShownAsATilde(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	vault := home + "/.clarodrive"
+	t.Setenv(shared.VaultRootEnv, vault)
+	t.Setenv(shared.EvidenceDirEnv, vault+"/evidence")
+
+	m, _ := built(t)
+	out := m.View()
+
+	if !strings.Contains(out, "~/.clarodrive/evidence") {
+		t.Errorf("an evidence dir under $HOME should show as ~/.clarodrive/evidence, got:\n%s", out)
+	}
+	if strings.Contains(out, home) {
+		t.Errorf("the settings list should not leak the real home directory, got:\n%s", out)
+	}
+}
+
+// TestAnEvidenceDirOutsideHomeIsShownIntact pins the other half of the same
+// fix: a root that does not live under $HOME (CD_EVIDENCE_DIR pointed
+// somewhere else entirely) must reach the screen unabbreviated.
+func TestAnEvidenceDirOutsideHomeIsShownIntact(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(shared.EvidenceDirEnv, "/mnt/external/evidence")
+
+	m, _ := built(t)
+	out := m.View()
+
+	if !strings.Contains(out, "/mnt/external/evidence") {
+		t.Errorf("an evidence dir outside $HOME should be shown intact, got:\n%s", out)
+	}
+}
+
 func TestTheThemeRowAsksTheRootForThePicker(t *testing.T) {
 	m, _ := built(t)
 	m.Cursor = int(rowTheme)

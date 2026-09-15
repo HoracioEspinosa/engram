@@ -310,8 +310,8 @@ func (m Model) viewList() string {
 	rows := [rowCount]struct{ label, value string }{
 		rowTheme:       {"theme", m.styles.Palette.Name},
 		rowIcons:       {"icons", string(m.IconMode)},
-		rowVaultRoot:   {"vault root", m.presence(vaultRoot, vaultOK && dirExists(vaultRoot))},
-		rowEvidenceDir: {"evidence dir", m.presence(evidenceRoot, dirExists(evidenceRoot))},
+		rowVaultRoot:   {"vault root", m.presence(shared.AbbreviateHome(vaultRoot), vaultOK && dirExists(vaultRoot))},
+		rowEvidenceDir: {"evidence dir", m.presence(shared.AbbreviateHome(evidenceRoot), dirExists(evidenceRoot))},
 		rowCloud:       {"cloud", "sync configuration"},
 		rowDoctor:      {"doctor", m.doctorSummary()},
 	}
