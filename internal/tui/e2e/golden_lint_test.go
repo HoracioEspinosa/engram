@@ -3,7 +3,6 @@ package e2e
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -174,16 +173,10 @@ func lintFrozenTabBar(scene frozenScene, width int) (problems []string, hasTabBa
 
 		// One slot carries one digit: its own. A second digit inside the same
 		// span is the next slot, drawn without the blank cells that separate
-		// them, and a slot that does not open on its own digit is one the
-		// previous span already swallowed.
-		fields := strings.Fields(strings.Trim(text, "[]"))
-		digits := 0
-		for _, field := range fields {
-			if _, err := strconv.Atoi(strings.Trim(field, "[]")); err == nil {
-				digits++
-			}
-		}
-		if digits != 1 || len(fields) == 0 || strings.Trim(fields[0], "[]") != strconv.Itoa(i) {
+		// them, and a slot whose digit is not its own is one the previous span
+		// already swallowed.
+		digit, digits := slotDigit(text)
+		if digits != 1 || digit != i {
 			return []string{fmt.Sprintf("%s: tab bar slot %d reads %q, so the slots have run together:\n%s",
 				scene.name, i, text, row)}, true
 		}
@@ -212,11 +205,32 @@ func frozenTabBarRow(scene frozenScene) string {
 	if len(spans) < 2 {
 		return ""
 	}
-	first := strings.Trim(strings.TrimSpace(frozenCells(row, spans[0])), "[]")
-	if digit, _, _ := strings.Cut(first, " "); digit != "0" {
+	if digit, digits := slotDigit(frozenCells(row, spans[0])); digits != 1 || digit != 0 {
 		return ""
 	}
 	return row
+}
+
+// slotDigit reads the digit one bar slot carries and how many it carries at
+// all.
+//
+// A slot is drawn as its glyph, its digit and — above the breakpoint — its
+// label, so the digit is neither the first rune nor a field of its own. What
+// the rule needs is that there is exactly one of them and that it is the
+// slot's: two digits in one span are two slots that have run together, and a
+// digit that is not the slot's own is a slot the span before it swallowed.
+func slotDigit(text string) (digit, digits int) {
+	digit = -1
+	for _, r := range text {
+		if r < '0' || r > '9' {
+			continue
+		}
+		if digits == 0 {
+			digit = int(r - '0')
+		}
+		digits++
+	}
+	return digit, digits
 }
 
 // lintFrozenStatusBar requires the frame's bottom line, which is the one row

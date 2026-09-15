@@ -12,6 +12,9 @@ import (
 // above it, every slot shows its label too.
 const tabBarBreakpoint = 100
 
+// tabSlotGap is what separates one bar slot from the next.
+const tabSlotGap = "  "
+
 // tabBarEntry names one slot of the bar, in the fixed order §6.9 draws it.
 type tabBarEntry struct {
 	digit string
@@ -88,5 +91,11 @@ func (m Model) viewTabBar() string {
 	// The sync state used to be appended here; it lives in the status bar
 	// now, where it is one segment among the rest of the frame's context
 	// instead of an afterthought hanging off the last tab.
-	return m.styles.TabBar.Render(strings.Join(parts, " "))
+	//
+	// Two blank cells between slots, never one: a slot carries a space of its
+	// own between its digit and its label, so a single-cell join makes the
+	// whole bar one run of text. That is not only how the pointer finds its
+	// hitboxes and how the golden lint counts the slots — it is how the bar
+	// reads, since adjacent slots would otherwise look like one long label.
+	return m.styles.TabBar.Render(strings.Join(parts, tabSlotGap))
 }

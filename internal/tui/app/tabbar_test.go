@@ -8,6 +8,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // TestTabBarShowsFullLabelsAtOrAboveTheBreakpoint pins §6.9's bar: at 100
@@ -26,6 +27,29 @@ func TestTabBarShowsFullLabelsAtOrAboveTheBreakpoint(t *testing.T) {
 	for _, want := range []string{"0 Home", "1 Memory", "4 Benchmarks", "7 Settings"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected %q at %d columns, got:\n%s", want, tabBarBreakpoint, out)
+		}
+	}
+}
+
+// TestTabBarSlotsStayApartAtEveryWidth pins the separation the pointer and the
+// golden lint both read the bar by.
+//
+// A single blank cell with text behind it is a word break inside one slot —
+// which is exactly what "0 Home" is — so slots only one cell apart parse as a
+// single run: the bar would read as one word and click as one target. The
+// labels appear above the breakpoint and vanish below it, so the separation
+// has to hold at both widths or the pointer works on one terminal and not the
+// other.
+func TestTabBarSlotsStayApartAtEveryWidth(t *testing.T) {
+	for _, width := range []int{80, 120} {
+		m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+		m.tree.open = false
+		m, _ = step(t, m, tea.WindowSizeMsg{Width: width, Height: 40})
+
+		row := strings.TrimSpace(ansi.Strip(m.viewTabBar()))
+		if got := len(SlotSpans(row)); got != len(tabBarEntries) {
+			t.Fatalf("%d columns: the bar parses as %d slots, want %d:\n%s",
+				width, got, len(tabBarEntries), row)
 		}
 	}
 }

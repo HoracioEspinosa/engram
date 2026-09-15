@@ -28,7 +28,7 @@
                                                                                                             
 ═══ home ═══
                                                                                                                         
-  [⌂0 Home] ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                               
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
                                                                                                                         
   ┌────────────────────────────────────────────────────────────┐                                                        
   │                                                            │                                                        
@@ -60,7 +60,7 @@
                                                                                                                         
 ═══ s3-tasks-list ═══
                                                                                                                           
-  ⌂0 Home ≣1 Memory [✓2 Tasks] ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                                 
+  ⌂0 Home  ≣1 Memory  [✓2 Tasks]  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                          
                                                                                                                           
                                                                                                                           
     Tasks (1 shown · state: active · kind: all)                                                                           
@@ -73,7 +73,7 @@
                                                                                                                           
 ═══ s4-tasks-detail ═══
                                                                                                                          
-  ⌂0 Home ≣1 Memory [✓2 Tasks] ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                                
+  ⌂0 Home  ≣1 Memory  [✓2 Tasks]  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                         
                                                                                                                          
   ACME-1 — Fix the preview timeout                                                                                       
                                                                                                                          
@@ -97,7 +97,7 @@
                                                                                                                          
 ═══ s5-context-pack ═══
                                                                                                                           
-  ⌂0 Home ≣1 Memory [✓2 Tasks] ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                                 
+  ⌂0 Home  ≣1 Memory  [✓2 Tasks]  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                          
                                                                                                                           
   Context pack — ACME-1                                                                                                   
                          88 chars est. · built 00:00:00                                                                   
@@ -114,7 +114,7 @@
                                                                                                                           
 ═══ s6-evidence-list ═══
                                                                                                                         
-  ⌂0 Home ≣1 Memory ✓2 Tasks [▪3 Evidence] ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                               
+  ⌂0 Home  ≣1 Memory  ✓2 Tasks  [▪3 Evidence]  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
                                                                                                                         
                                                                                                                         
     Evidence (1 shown · task: all · all attached states)                                                                
@@ -126,7 +126,7 @@
                                                                                                                         
 ═══ s7-evidence-detail ═══
                                                                                                                         
-  ⌂0 Home ≣1 Memory ✓2 Tasks [▪3 Evidence] ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                               
+  ⌂0 Home  ≣1 Memory  ✓2 Tasks  [▪3 Evidence]  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
                                                                                                                         
   cold-start.png                                                                                                        
                                                                                                                         
@@ -154,7 +154,7 @@
                                                                                                                         
 ═══ benchmarks-table ═══
                                                                                                                         
-  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence [∿4 Benchmarks] ▤5 Runbooks ⋈6 Graph ⌘7 Settings                               
+  ⌂0 Home  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  [∿4 Benchmarks]  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
                                                                                                                         
     Benchmarks (2 shown)                                                                                                
                                                                                                                         
@@ -199,7 +199,7 @@
                                                                                                                         
 ═══ graph-stale ═══
                                                                                                                         
-  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks [⋈6 Graph] ⌘7 Settings                               
+  ⌂0 Home  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  [⋈6 Graph]  ⌘7 Settings                        
                                                                                                                         
     Code graph                                                                                                          
                                                                                                                         
@@ -225,7 +225,7 @@
                                                                                                                         
 ═══ s8-runbooks-index ═══
                                                                                                                         
-  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks [▤5 Runbooks] ⋈6 Graph ⌘7 Settings                               
+  ⌂0 Home  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  [▤5 Runbooks]  ⋈6 Graph  ⌘7 Settings                        
                                                                                                                         
                                                                                                                         
     Runbooks (this project · a toggle)                                                                                  
@@ -245,7 +245,7 @@
                                                                                                                         
 ═══ s9-runbooks-markdown ═══
                                                                                                                         
-  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks [▤5 Runbooks] ⋈6 Graph ⌘7 Settings                               
+  ⌂0 Home  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  [▤5 Runbooks]  ⋈6 Graph  ⌘7 Settings                        
                                                                                                                         
   RB-900 — Preview endpoint returns 503 under load                                                                      
                                                     stale ▲                                                             
@@ -271,7 +271,7 @@
                                                                                                                         
 ═══ s10-memory ═══
                                                                                                                         
-  ⌂0 Home [≣1 Memory] ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                               
+  ⌂0 Home  [≣1 Memory]  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
                                                                                                                         
   ╭──────────────────────────────────────────────────╮                                                                  
   │         █████ █   █  ████ ████   ███  █   █      │                                                                  
@@ -310,7 +310,7 @@
                                                                                                                         
 ═══ palette-empty ═══
                                                                                                                       
-  [⌂0 Home] ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                             
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                      
                                                                                                                       
   ┌────────────────────────────────────────────────────────────┐                                                      
   │                                                            │                                                      
@@ -342,7 +342,7 @@
                                                                                                                       
 ═══ palette-results ═══
                                                                                                                       
-  [⌂0 Home] ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                             
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                      
                                                                                                                       
   ┌────────────────────────────────────────────────────────────┐                                                      
   │                                                            │                                                      
@@ -374,7 +374,7 @@
                                                                                                                       
 ═══ palette-prefix ═══
                                                                                                                       
-  [⌂0 Home] ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                             
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                      
                                                                                                                       
   ┌────────────────────────────────────────────────────────────┐                                                      
   │                                                            │                                                      
@@ -406,7 +406,7 @@
                                                                                                                       
 ═══ settings ═══
                                                                                                                         
-  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph [⌘7 Settings]                               
+  ⌂0 Home  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  [⌘7 Settings]                        
                                                                                                                         
     Settings                                                                                                            
                                                                                                                         
@@ -422,7 +422,7 @@
                                                                                                                         
 ═══ theme-picker ═══
                                                                                                                       
-  [⌂0 Home] ≣1 Memory ✓2 Ta╭──────────────────────────────────────────────────────────────╮                           
+  [⌂0 Home]  ≣1 Memory  ✓2 ╭──────────────────────────────────────────────────────────────╮tings                      
                            │   Theme                                                      │                           
   ┌────────────────────────│                                                              │                           
   │                        │                                                              │                           
@@ -457,7 +457,7 @@
                                                                                                                       
 ═══ theme-picker-invalid ═══
                                                                                                                       
-  [⌂0 Home] ≣1 Memory ✓2 Ta╭──────────────────────────────────────────────────────────────╮                           
+  [⌂0 Home]  ≣1 Memory  ✓2 ╭──────────────────────────────────────────────────────────────╮tings                      
                            │   Theme                                                      │                           
   ┌────────────────────────│                                                              │                           
   │                        │                                                              │                           
