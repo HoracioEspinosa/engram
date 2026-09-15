@@ -228,3 +228,46 @@ func doCookieFormRequest(t *testing.T, handler http.Handler, path string, cookie
 	body, _ := io.ReadAll(rec.Body)
 	return rec.Code, string(body)
 }
+
+// TestCloudRuntimeInsecureNoAuthServesSyncRoutes is the end-to-end proof that
+// the insecure local-development mode documented in docs/ARCHITECTURE.md and
+// docs/quickstart.md actually reaches the sync routes. It calls the real
+// newCloudRuntime constructor with ENGRAM_CLOUD_INSECURE_NO_AUTH=1 and no
+// token, and drives unauthenticated HTTP requests through the assembled
+// server, proving:
+//
+//   - an unauthenticated GET /sync/pull for an allowlisted project succeeds,
+//     because no principal is required when no authenticator can mint one;
+//   - the project allowlist still scopes the request, so a project outside it
+//     is refused with 403.
+func TestCloudRuntimeInsecureNoAuthServesSyncRoutes(t *testing.T) {
+	testDSN := openIsolatedCloudRuntimeSchema(t)
+
+	t.Setenv("ENGRAM_CLOUD_TOKEN", "")
+	t.Setenv("ENGRAM_CLOUD_INSECURE_NO_AUTH", "1")
+
+	cfg := cloud.Config{
+		DSN:              testDSN,
+		JWTSecret:        "e2e-insecure-mode-jwt-secret-32-bytes-plus",
+		AllowedProjects:  []string{"demo-project"},
+		MaxPushBodyBytes: cloud.DefaultMaxPushBodyBytes,
+	}
+
+	rt, err := newCloudRuntime(cfg)
+	if err != nil {
+		t.Fatalf("newCloudRuntime: %v", err)
+	}
+	dcr, ok := rt.(*defaultCloudRuntime)
+	if !ok {
+		t.Fatalf("expected *defaultCloudRuntime, got %T", rt)
+	}
+	t.Cleanup(func() { _ = dcr.store.Close() })
+	handler := dcr.server.Handler()
+
+	if status, body := doBearerRequest(t, handler, http.MethodGet, "/sync/pull?project=demo-project", ""); status != http.StatusOK {
+		t.Fatalf("expected the insecure mode to serve /sync/pull without a token, got status=%d body=%s", status, body)
+	}
+	if status, body := doBearerRequest(t, handler, http.MethodGet, "/sync/pull?project=other", ""); status != http.StatusForbidden {
+		t.Fatalf("expected the allowlist to still refuse an unlisted project, got status=%d body=%s", status, body)
+	}
+}

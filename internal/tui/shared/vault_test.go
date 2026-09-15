@@ -14,8 +14,8 @@ func TestVaultRootHonoursTheEnvOverride(t *testing.T) {
 	}
 }
 
-// TestVaultRootReportsUnconfiguredWhenUnset pins ADR-053 §6: the variable
-// has no default to fall back to, so an unset ENGRAM_VAULT_ROOT must be
+// TestVaultRootReportsUnconfiguredWhenUnset pins the no-default rule: the
+// variable has nothing to fall back to, so an unset ENGRAM_VAULT_ROOT must be
 // reported as "not configured" (ok=false) rather than resolved to a guessed
 // path that may or may not exist on this machine.
 func TestVaultRootReportsUnconfiguredWhenUnset(t *testing.T) {

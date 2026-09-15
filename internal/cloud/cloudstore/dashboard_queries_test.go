@@ -130,7 +130,6 @@ func TestListDistinctTypesScansReadModel(t *testing.T) {
 
 // TestDashboardRowDetailFields seeds a read model with an observation containing
 // content, topic_key, and tool_name and asserts the new flat-row fields are populated.
-// Satisfies REQ-102.
 func TestDashboardRowDetailFields(t *testing.T) {
 	toolName := "mem_save"
 	topicKey := "architecture/auth-model"
@@ -221,7 +220,7 @@ func TestDashboardRowDetailFields(t *testing.T) {
 }
 
 // TestCloudstoreSystemHealthAggregates asserts that SystemHealth() counts match
-// what was seeded in the read model. Satisfies REQ-105.
+// what was seeded in the read model.
 // This test uses the loadDashboardReadModel override so it does NOT require a real DB.
 func TestCloudstoreSystemHealthAggregates(t *testing.T) {
 	chunks := []dashboardChunkRow{

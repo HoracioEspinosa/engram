@@ -28,8 +28,8 @@ func (f *fakeAutosyncManager) Status() autosync.Status {
 }
 
 func (f *fakeAutosyncManager) Run(_ context.Context) {}
-func (f *fakeAutosyncManager) NotifyDirty()      {}
-func (f *fakeAutosyncManager) Stop()             {}
+func (f *fakeAutosyncManager) NotifyDirty()          {}
+func (f *fakeAutosyncManager) Stop()                 {}
 func (f *fakeAutosyncManager) StopForUpgrade(_ string) error {
 	return nil
 }
@@ -37,7 +37,7 @@ func (f *fakeAutosyncManager) ResumeAfterUpgrade(_ string) error {
 	return nil
 }
 
-// ─── Status adapter tests (REQ-209) ──────────────────────────────────────────
+// ─── Status adapter tests ────────────────────────────────────────────────────
 
 func TestSyncStatusAdapterHealthy(t *testing.T) {
 	mgr := &fakeAutosyncManager{status: autosync.Status{Phase: autosync.PhaseHealthy}}

@@ -14,8 +14,9 @@ This is the complete technical reference for Engram. For getting started, see th
 | --------------------------------------------------------- | ------------------------------------------------------------ |
 | [Database Schema](#database-schema)                       | Tables, FTS5, SQLite config                                  |
 | [HTTP API](#http-api-endpoints)                           | All REST endpoints with request/response details             |
-| [MCP Tools](#mcp-tools-20-tools)                          | Detailed reference for all 20 memory tools                   |
+| [MCP Tools](#mcp-tools)                                   | Reference for the 20 agent and admin tools — see Tool profiles for the full breakdown |
 | [MCP Project Resolution](#mcp-project-resolution)         | Auto-detection algorithm, response envelope, tool categories |
+| [Workspace Tools](#workspace-tools-profile-workspace)     | The project tree, the vault scanners, benchmarks and the global search |
 | [Memory Protocol](#memory-protocol)                       | When/how agents should use the tools                         |
 | [Project Name Normalization](#project-name-normalization) | Auto-detection, normalization, similar-project warnings      |
 | [Features](#features)                                     | FTS5 search, timeline, privacy, git sync, compression        |
@@ -745,11 +746,45 @@ Most successful MCP tool responses use this envelope:
   "project": "engram",
   "project_source": "git_remote",
   "project_path": "/home/user/engram",
-  "result": "...(tool output)..."
+  "result": "...(tool output)...",
+  "data": { "...": "the same answer, structured" }
 }
 ```
 
-Error responses include `available_projects` when the error is `ambiguous_project` or `unknown_project`.
+`data` carries the structured answer of every tool under one field name, whichever
+helper built the envelope. For the tools whose `result` is already an object it is
+the same value; for the ones whose `result` is prose it is the object behind that
+prose, with the rendered text under `data.text`. `result` is unchanged — nothing
+that read it before reads anything different now.
+
+Error responses carry the machine-readable code under both `code` and
+`error_code`, with the message under `error` and `message`, and `isError: true`.
+They include `available_projects` when the error is `ambiguous_project` or
+`unknown_project`.
+
+### Tool profiles
+
+`engram mcp --tools=<list>` takes profile names, individual tool names, or both.
+
+| Profile     | Tools | What it is                                                                             |
+| ----------- | ----- | -------------------------------------------------------------------------------------- |
+| `agent`     | 18    | What the memory protocols call during a coding session                                  |
+| `admin`     | 4     | Manual curation for the TUI and dashboards (`mem_delete`, `mem_stats`, `mem_timeline`, `mem_merge_projects`) |
+| `projects`  | 10    | Project cards, tasks, evidence, the runbook index and the context pack                  |
+| `workspace` | 10    | The seven workspace tools plus `mem_project_card`, `mem_task_list` and `mem_context_pack` |
+
+The profiles are what an agent loads, not a partition of the registry: `workspace`
+deliberately re-exports the three `projects` tools a workspace session never stops
+calling, and `projects` is unchanged by it — `--tools=projects` still resolves to
+exactly the ten it always did.
+
+Recommended for work inside a project repository:
+
+```bash
+engram mcp --tools=agent,projects,workspace   # 35 tools, the overlap counted once
+```
+
+Omitting `--tools` registers everything (39 tools today).
 
 Exceptions:
 
@@ -809,7 +844,12 @@ Returns success even when cwd is ambiguous — empty `project` + non-empty `avai
 
 ---
 
-## MCP Tools (20 tools)
+## MCP Tools
+
+This section documents the 20 `agent` and `admin` tools shared across every profile
+combination. The ten `projects` tools and the seven `workspace` tools are covered in
+[Tool profiles](#tool-profiles) above and [Workspace Tools](#workspace-tools-profile-workspace)
+below.
 
 ### mem_search
 
@@ -830,7 +870,7 @@ conflicts: #<id> (<title>)        — judged conflict with another memory
 conflict: contested by #<id> (pending)  — pending (not yet judged)
 ```
 
-Multiple annotation lines appear when multiple relations apply — one per related observation. Titles are retrieved via JOIN (no N+1 queries). When the related observation has been deleted, `(deleted)` replaces the title. Agent parsers should match by prefix — these prefixes are stable across versions (REQ-012).
+Multiple annotation lines appear when multiple relations apply — one per related observation. Titles are retrieved via JOIN (no N+1 queries). When the related observation has been deleted, `(deleted)` replaces the title. Agent parsers should match by prefix — these prefixes are stable across versions.
 
 Pending relations (from `mem_save` conflict surfacing, before `mem_judge` is called) produce the `conflict: contested by #<id> (pending)` form. Judged relations produce the enriched form with title.
 
@@ -970,6 +1010,190 @@ Behavior:
 - Idempotent: the same `(source_id, target_id)` pair updates the existing row rather than inserting a duplicate
 - `not_conflict` verdicts are no-ops — acknowledged but not persisted, matching the scan flow contract
 - Cross-project relations are rejected with an error
+
+---
+
+## Workspace Tools (profile: workspace)
+
+Seven tools that read and write the knowledge vault next to the store: the project
+tree, the evidence scanner, benchmarks, the vault importer, and the one search that
+answers across every kind of row at once. They are the MCP face of the same
+operations `engram project …` exposes — the CLI and the tools call the same code,
+so a rule is enforced once.
+
+Every one of them answers in the shared envelope (`project`, `project_source`,
+`project_path`, `result`, `data`) and refuses with a typed `code`. All but
+`mem_workspace_search` are deferred (load them with ToolSearch): they are the
+deliberate steps of a reorganisation, asked for by name.
+
+Three of them default to a dry run — the scanner, the benchmark importer and the
+vault importer — and the dry run is real — the same walk, the same
+hashes, the same decisions, and not one write — so the plan you approve is the plan
+that runs.
+
+### mem_project_tree
+
+Walk the hierarchy in preorder: a root and everything under it, or the whole forest.
+
+| Parameter        | Type    | Default | Meaning                                              |
+| ---------------- | ------- | ------- | ---------------------------------------------------- |
+| `root`           | string  | —       | Slug to start from; omit for the whole forest        |
+| `include_counts` | boolean | `false` | Add each node's observation/task/evidence/runbook counters |
+| `depth`          | number  | `3`     | Levels to return, counting the root as one (1–3)     |
+
+`data.nodes[]` carries `slug`, `display_name`, `kind`, `icon`, `color`,
+`description`, `tags`, `parent`, `depth`, `children`, and `counts` when asked for.
+Errors: `unknown_project`.
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"mem_project_tree",
+ "arguments":{"root":"koi-garden","include_counts":true}}}
+```
+
+### mem_evidence_scan
+
+Walk a task's vault folder and register what it holds as evidence, hashing each file.
+Idempotent by `(task, sha256)`: the same bytes found under a new name update the
+row's path and category instead of duplicating it.
+
+| Parameter   | Type    | Default | Meaning                                          |
+| ----------- | ------- | ------- | ------------------------------------------------ |
+| `task`      | string  | —       | Required. `PROJ-123 \| task-<hex> \| #42 \| change:<sdd_change> \| slug` |
+| `category`  | string  | —       | One of the eleven vault folders; omit for all     |
+| `dry_run`   | boolean | `true`  | Report the plan without writing                   |
+| `max_bytes` | number  | —       | Skip files larger than this instead of hashing them |
+
+`data` carries `added`, `updated`, `skipped[{path, reason}]`,
+`benchmark_candidates[]`, `total_bytes`, plus `root` and `task_dir` so a scan that
+found nothing still says where it looked. Errors: `unknown_task`,
+`ambiguous_task`, `evidence_root_unresolved`, `path_escapes_vault`,
+`restricted_path_rejected`, `invalid_enum`.
+
+### mem_benchmark_add
+
+Record one measurement. Marking it as the baseline demotes the previous baseline of
+the same metric in the same transaction.
+
+| Parameter                                | Type    | Default        | Meaning                                  |
+| ---------------------------------------- | ------- | -------------- | ---------------------------------------- |
+| `task`, `name`, `metric`, `unit`, `value` | —       | —              | Required                                 |
+| `unit`                                   | string  | —              | `ms` `s` `bytes` `kib` `mib` `usd` `ops` `rps` `score` `count` `pct` |
+| `direction`                              | string  | from the unit  | `lower` or `higher`                      |
+| `baseline`                               | boolean | `false`        | Make this the metric's baseline          |
+| `run_path`, `sha256`, `config_stamp`, `captured_at`, `notes` | — | — | Provenance |
+
+`data` carries `benchmark`, `created`, `duplicate` and `demoted_baseline`. A
+second write of the same value under the same `(task, name, metric,
+captured_at)` is a retry: it succeeds with `created:false` and `duplicate:true`,
+and hands back the row already recorded. Errors: `duplicate_benchmark` (that key
+is recorded with a *different* value, which is never overwritten — the error
+carries the row it collided with), `invalid_enum`, `unknown_task`,
+`ambiguous_task`.
+
+### mem_benchmark_list
+
+Measurements newest first, each next to the baseline of its own metric.
+
+| Parameter          | Type    | Default | Meaning                                              |
+| ------------------ | ------- | ------- | ---------------------------------------------------- |
+| `task`             | string  | —       | Narrow to one task; omit to list the project         |
+| `project`          | string  | cwd     | Slug, resolved by precedence when omitted            |
+| `metric`           | string  | —       | Narrow to one metric                                 |
+| `include_children` | boolean | `false` | Widen to the child tasks, or to the project subtree  |
+| `limit`, `offset`  | number  | 50, 0   | 1–200                                                |
+
+`data.items[]` are benchmark rows plus `baseline_value` and `delta_pct`, both absent
+when the metric has no baseline yet — a delta against nothing is a number with no
+meaning. Errors: `unknown_task`, `ambiguous_task`, `unknown_project`.
+
+### mem_benchmark_import
+
+Read one run file into a task's measurements.
+
+| Parameter  | Type    | Default | Meaning                                                   |
+| ---------- | ------- | ------- | --------------------------------------------------------- |
+| `task`     | string  | —       | Required                                                   |
+| `path`     | string  | —       | Required. The run file to read                             |
+| `map[]`    | array   | —       | `{metric, unit, pointer}` with an RFC 6901 JSON pointer    |
+| `baseline` | boolean | `false` | Make every imported metric its own baseline                |
+| `dry_run`  | boolean | `true`  | Report what would be imported without writing              |
+
+A run carrying the `engram.benchmark.v1` marker is read directly. Anything else is a
+harness's own output and needs a pointer map, given here or found as
+`benchmark_map.json` beside the run; without one the run stays an attached file and
+the caller is told why. `data` carries `imported`, `duplicates`, `skipped[]`,
+`format`, `metrics[]` and `demoted_baselines[]`. Errors: `run_not_found`,
+`not_engram_benchmark_v1`, `pointer_unresolved`, `restricted_path_rejected`,
+`invalid_enum`, `unknown_task`.
+
+### mem_vault_sync
+
+Read a whole knowledge vault — `<root>/<project>/<task>/` — into projects, tasks,
+evidence and benchmarks.
+
+| Parameter      | Type    | Default | Meaning                                                  |
+| -------------- | ------- | ------- | -------------------------------------------------------- |
+| `project`      | string  | —       | Import one project's folder; omit for the whole vault     |
+| `root`         | string  | —       | Vault root; falls back to the card's knowledge hub, then `ENGRAM_VAULT_ROOT` |
+| `dry_run`      | boolean | `true`  | Report the plan without writing                           |
+| `apply_states` | boolean | `true`  | Take task states from the vault README's task map         |
+| `include_arch` | boolean | `false` | Import `_arquitectura` as a spike                         |
+
+A folder is a task when it holds a `README.md`; `_`- and `.`-prefixed folders are
+not tasks. Title, summary, kind and vault path are written only at creation, so a
+re-import never undoes a correction — state is the one thing the vault stays the
+authority on. `data` carries `projects[]`, `tasks[{action, slug, jira_key, state, kind, title, vault_path}]`,
+`evidence{added, updated, skipped}`, `benchmarks{…}` and `warnings[]`. Errors:
+`vault_root_unresolved`, `vault_readme_unparsed`, `restricted_path_rejected`.
+
+### mem_workspace_search
+
+Search observations, tasks, evidence, runbooks, project cards and benchmarks in one
+call, capped per kind. Use it when you do not yet know which kind of row holds the
+answer. It is the one workspace tool that stays in context.
+
+| Parameter  | Type    | Default | Meaning                                                |
+| ---------- | ------- | ------- | ------------------------------------------------------ |
+| `query`    | string  | —       | Required, two characters or more; the last token matches as a prefix |
+| `project`  | string  | —       | Scope to one project; omit to search everything        |
+| `subtree`  | boolean | `false` | Widen `project` to the project and everything under it |
+| `kinds[]`  | array   | all six | `observation` `task` `evidence` `runbook` `card` `benchmark` |
+| `per_kind` | number  | `5`     | 1–25                                                    |
+
+`data.hits[]` carries `kind`, `id`, `ref`, `project`, `title`, `snippet`,
+`updated_at` and `rank`; `data.totals` says how many there were per kind before the
+cap, so a caller can render "5 of 40". Errors: `query_too_short`, `invalid_enum`,
+`unknown_project`.
+
+### What the `projects` tools gained
+
+The ten `projects` tools are unchanged in name and shape; these fields were added.
+
+| Tool                 | New arguments                                                                       | New answer fields                                              |
+| -------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `mem_save`           | `task`, `role`, `graph_ref`, `graph_commit`                                          | `data.linked_task`, `data.role`, `data.refs_added`, `data.graph_commit_source` (`arg` or `card`); `graph_commit_invalid` for an abbreviated commit sha |
+| `mem_search`         | `offset`, `task`, `graph_ref`, `since`, `until`, `include_children`                  | `data.results[]`, `data.total`, `data.offset`, `data.limit`     |
+| `mem_context`        | `limit` (1–50)                                                                        | —                                                                |
+| `mem_pin`            | `pinned` (unpin without a second tool)                                                | —                                                                |
+| `mem_current_project` | —                                                                                    | `data.resolved{slug, via, alias_source}`                         |
+| `mem_project_card`   | `include_graph_status`                                                                | `data.graph{commit, head, stale, stale_reason, changed_files, checked_at}`, `data.hierarchy{parent, depth, children}`, `data.inherited{field:{value, from}}` |
+| `mem_project_upsert` | `parent`, `kind`, `description`, `icon`, `color`, `tags[]`, `aliases[]`              | `data.aliases_added`, `data.alias_errors{alias:{code}}`          |
+| `mem_task_upsert`    | `slug`, `summary`, `pending_note`, `vault_path`, `parent_task`; eleven states        | —                                                                |
+| `mem_task_list`      | `match_mode`, `include_archived`, `include_children`                                  | `data.projects`                                                  |
+| `mem_task_link`      | —                                                                                     | `graph_commit_invalid` for an abbreviated commit sha             |
+| `mem_evidence_add`   | `category` (eleven vault folders), nineteen kinds                                     | —                                                                |
+| `mem_evidence_list`  | `category`, `query`, `include_children`                                               | —                                                                |
+| `mem_context_pack`   | `hierarchy` and `benchmarks` sections                                                 | —                                                                |
+
+`mem_project_upsert(parent=…)` is a second write: the card is upserted first and the
+parent set through the one path that walks the ancestors, refuses a cycle and
+rewrites the depth of the subtree. When that second step fails the envelope carries
+the card that was written together with `project_cycle`, `project_depth_exceeded` or
+`parent_rejected`.
+
+`graph_ref` always needs `graph_commit`, and the commit must be the full
+40-character sha: an abbreviated one is ambiguous, stops resolving as a repository
+grows, and the column that stores it takes exactly forty characters.
 
 ---
 

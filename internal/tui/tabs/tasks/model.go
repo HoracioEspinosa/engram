@@ -1,7 +1,7 @@
 // Package tasks is the Tasks workspace tab: the task list, a task's detail,
-// and the context pack it can build from there (rfc-tui.md §3.1 S3-S5).
+// and the context pack it can build from there.
 //
-// It is an isolated Elm sub-model, shaped like tabs/memory and tabs/cloud:
+// It is an isolated Elm sub-model, shaped like the other workspace tabs:
 //   - screen constants are a local iota; the root does not know them
 //   - one Model struct holds all of the tab's state
 //   - vim keys (j/k) navigate, PrevScreen-style back-navigation walks up
@@ -17,6 +17,8 @@ import (
 
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -25,8 +27,8 @@ import (
 
 // ─── Screens ─────────────────────────────────────────────────────────────────
 
-// Screen is the Tasks tab's own screen enum (rfc-tui.md §3.1: S3 list, S4
-// detail, S5 context pack). Not exported to the root, same as memory.Screen.
+// Screen is the Tasks tab's own screen enum: list, detail, context pack. Not
+// exported to the root, same as memory.Screen.
 type Screen int
 
 const (
@@ -37,25 +39,36 @@ const (
 
 // stateOptions lists every value the tasks.state CHECK constraint accepts
 // (internal/store/projects_schema.go), in the order the inline state-change
-// picker (S4, key "s") offers them. Built from the internal/tasks constants
+// picker on the task detail screen, key "s", offers them. Built from the
+// internal/tasks constants
 // so the picker can never drift from the schema it writes against.
 var stateOptions = append(append([]string{}, tasksdomain.ActiveStates...), tasksdomain.StateDone, tasksdomain.StateCancelled)
 
 // kindOptions is the fixed set of task kinds the tasks.kind CHECK constraint
-// accepts; "" means no kind filter (rfc-tui.md §3.1 S3's "k filtro kind").
+// accepts; "" means no kind filter, which is what the Tasks list's "K" key
+// cycles back to.
 var kindOptions = []string{"", "feature", "bugfix", "refactor", "incident", "migration", "spike"}
 
-// pageSize is how many tasks S3's "n" (next page) advances by. rfc-tui.md
-// §9.2's list query never fixes a page size; store.TaskListFilter defaults
-// to 20 when Limit is unset, so paging by the same number keeps one "page"
-// meaning the same thing whether or not the user ever presses "n".
+// pageSize is how many tasks the page keys move by. The list query fixes no
+// page size of its own; store.TaskListFilter defaults to 20 when
+// Limit is unset, so paging by the same number keeps one "page" meaning the
+// same thing whether or not the user ever presses a page key.
 const pageSize = 20
+
+// pageLimit is the page size in force: the filter's own, or the default when
+// it has none.
+func (m Model) pageLimit() int {
+	if m.Filter.Limit > 0 {
+		return m.Filter.Limit
+	}
+	return pageSize
+}
 
 // ─── messages (data loaded) ─────────────────────────────────────────────────
 
 type tasksLoadedMsg struct {
-	items []store.TaskListItem
-	err   error
+	page data.Page[store.TaskListItem]
+	err  error
 }
 
 type taskDetailLoadedMsg struct {
@@ -87,7 +100,7 @@ type contextPackLoadedMsg struct {
 
 // Model is the Tasks tab's state.
 type Model struct {
-	reader  data.TaskReader
+	reader  data.TaskSource
 	styles  theme.Styles
 	project string
 
@@ -95,15 +108,24 @@ type Model struct {
 	Width  int
 	Height int
 
-	// List (S3).
-	Items       []store.TaskListItem
-	Cursor      int
-	Scroll      int
+	// Focus is which pane answers the cursor keys at the split breakpoint.
+	// Below it there is only the master, and "l" leaves the focus there.
+	Focus shared.Pane
+
+	// List screen.
+	Items  []store.TaskListItem
+	Cursor int
+	Scroll int
+	// Total is how many tasks the filter matches in the store, not how many
+	// came back on this page: the range indicator reports the count the
+	// query itself produced, and the page keys need it to know where the
+	// last page ends.
+	Total       int
 	Filter      store.TaskListFilter
 	Searching   bool
 	SearchInput textinput.Model
 
-	// Detail (S4).
+	// Detail screen.
 	Detail        *data.TaskDetail
 	DetailCursor  int
 	DetailScroll  int
@@ -112,7 +134,7 @@ type Model struct {
 	Linking       bool
 	LinkInput     textinput.Model
 
-	// Context pack (S5).
+	// Context pack screen.
 	ContextPack       string
 	ContextPackBuilt  time.Time
 	ContextPackScroll int
@@ -126,7 +148,7 @@ type Model struct {
 // project: the root scopes it with WithProject once one is active, exactly
 // as it constructs app.dashboardModel — see app.Model.New and the selector's
 // "enter" key.
-func New(r data.TaskReader) Model {
+func New(r data.TaskSource) Model {
 	search := textinput.New()
 	search.Placeholder = "Search tasks..."
 	search.CharLimit = 200
@@ -148,7 +170,7 @@ func New(r data.TaskReader) Model {
 // WithStyles returns a copy of m painted with styles instead of the default
 // theme.New built it with — app.New calls this once, right after New, so
 // the tab renders under the same resolved palette as the workspace chrome
-// around it (rfc-tui.md §8.2's --theme / ENGRAM_TUI_THEME / tui.theme).
+// around it, whichever of --theme, ENGRAM_TUI_THEME or tui.theme resolved it.
 func (m Model) WithStyles(styles theme.Styles) Model {
 	m.styles = styles
 	return m
@@ -169,11 +191,34 @@ func (m Model) WithProject(project string) Model {
 	m.Items = nil
 	m.Cursor = 0
 	m.Scroll = 0
+	m.Total = 0
 	m.Filter = store.TaskListFilter{}
 	m.Detail = nil
 	m.ErrorMsg = ""
 	return m
 }
+
+// SelectedKey is the display key of whatever the tab is sitting on: the task
+// open in the detail screen, or the row under the list cursor. It is what the
+// status bar shows, so the key of the task being worked on stays on screen
+// while the user is reading its evidence or its memory somewhere else.
+func (m Model) SelectedKey() string {
+	if m.Detail != nil {
+		return m.Detail.Task.Key()
+	}
+	if m.Cursor >= 0 && m.Cursor < len(m.Items) {
+		return m.Items[m.Cursor].Key()
+	}
+	return ""
+}
+
+// HasPrevPage reports whether a page of tasks sits before the one on screen.
+func (m Model) HasPrevPage() bool { return m.Filter.Offset > 0 }
+
+// HasNextPage reports whether a page of tasks sits after the one on screen.
+// It reads the store's own total rather than guessing from a short page, so
+// the last page stays put instead of wrapping round to the first.
+func (m Model) HasNextPage() bool { return m.Filter.Offset+len(m.Items) < m.Total }
 
 // Title is the label the tab bar shows for this tab.
 func (Model) Title() string { return "Tasks" }
@@ -189,17 +234,17 @@ func (m Model) Init() tea.Cmd {
 }
 
 // OpenTask returns the command that loads id's detail. It is what the root
-// drives when another tab asks to deep-link into a task (rfc-tui.md §3.1
-// S7: Enter on an evidence file opens its task here) — the same command
+// drives when another tab asks to deep-link into a task (Enter on the
+// evidence detail screen opens that file's task here) — the same command
 // loadTaskDetail already issues on the "enter" key from the list screen,
 // exposed so a message from outside this package can trigger it too.
 func (m Model) OpenTask(id int64) tea.Cmd {
 	return loadTaskDetail(m.reader, id)
 }
 
-// Refresh reloads the data behind the current screen: the filtered list on
-// S3, the task (and its observations/evidence) on S4, or the context pack on
-// S5. The root calls it on "r" and whenever this tab becomes active.
+// Refresh reloads the data behind the current screen: the filtered list, the
+// task (and its observations/evidence) on the detail screen, or the context
+// pack. The root calls it on "r" and whenever this tab becomes active.
 func (m Model) Refresh() tea.Cmd {
 	switch m.Screen {
 	case ScreenDetail:
@@ -213,3 +258,11 @@ func (m Model) Refresh() tea.Cmd {
 	}
 	return loadTasks(m.reader, m.project, m.Filter)
 }
+
+// The messages this tab issues belong to it alone: the root delivers each
+// to its owner rather than broadcasting it to every tab (tabs.Targeted).
+func (tasksLoadedMsg) TabOwner() tabs.ID       { return tabs.Tasks }
+func (taskDetailLoadedMsg) TabOwner() tabs.ID  { return tabs.Tasks }
+func (stateUpdatedMsg) TabOwner() tabs.ID      { return tabs.Tasks }
+func (observationLinkedMsg) TabOwner() tabs.ID { return tabs.Tasks }
+func (contextPackLoadedMsg) TabOwner() tabs.ID { return tabs.Tasks }

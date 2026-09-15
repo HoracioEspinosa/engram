@@ -3,6 +3,9 @@ package theme
 import (
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
@@ -57,27 +60,29 @@ type contrastIssue struct {
 // that shift if a palette's hex values change.
 func (i contrastIssue) key() string { return i.role + "/" + i.bg }
 
-func (i contrastIssue) String() string {
-	return fmt.Sprintf("%s on %s: contrast %.2f:1, want >= %.1f:1", i.role, i.bg, i.ratio, MinContrastRatio)
+// bar returns the ratio this role has to clear. Overlay is never painted as
+// text — theme.go only ever hands it to BorderForeground — so WCAG 1.4.11's
+// 3:1 for non-text contrast is the criterion that applies to it, and holding
+// it to 1.4.3's 4.5:1 would be citing the wrong rule at it.
+func (i contrastIssue) bar() float64 {
+	if i.role == "Overlay" {
+		return MinOverlayContrastRatio
+	}
+	return MinContrastRatio
 }
 
-// legibilityIssues checks every foreground role a screen actually paints
-// against both background planes it can land on — Base (the app frame) and
-// Surface (panels and cards, theme.go's StatCard/TimelineFocus/SearchInput
-// borders sit on either) — and reports every pair under MinContrastRatio.
-// Overlay is excluded: theme.go never uses it as a text foreground, only as
-// BorderForeground for separators, which WCAG 1.4.11 (non-text contrast,
-// 3:1) governs instead of 1.4.3 — a different criterion this task was not
-// asked to add.
-func legibilityIssues(p Palette) []contrastIssue {
-	backgrounds := []struct {
-		name  string
-		color lipgloss.Color
-	}{
-		{"Base", p.Base},
-		{"Surface", p.Surface},
-	}
-	foregrounds := []struct {
+func (i contrastIssue) String() string {
+	return fmt.Sprintf("%s on %s: contrast %.2f:1, want >= %.1f:1", i.role, i.bg, i.ratio, i.bar())
+}
+
+// paletteRoles lists every role that is drawn on top of a plane, paired with
+// the colour the palette holds for it. The ten text roles come first, then the
+// separator, which answers to its own bar.
+func paletteRoles(p Palette) []struct {
+	name  string
+	color lipgloss.Color
+} {
+	return []struct {
 		name  string
 		color lipgloss.Color
 	}{
@@ -91,34 +96,64 @@ func legibilityIssues(p Palette) []contrastIssue {
 		{"Warning", p.Warning},
 		{"Danger", p.Danger},
 		{"Info", p.Info},
+		{"Overlay", p.Overlay},
+	}
+}
+
+// legibilityIssues checks every role a screen paints against the background
+// planes it can land on, and reports every pair under the bar that role
+// answers to.
+//
+// The ten text roles are measured against both planes — Base (the app frame)
+// and Surface (panels and cards, theme.go's StatCard/TimelineFocus/SearchInput
+// borders sit on either). Overlay is measured against Base alone, because Base
+// is the only plane it is ever drawn on: theme.go hands it to BorderForeground
+// and to glamour's HorizontalRule, and both are painted on the terminal's
+// default background. Surface is never filled underneath one, so a bar against
+// it would be a rule no pixel obeys and Palette.Validate does not enforce —
+// and validate.go measuring one thing while this test measures another is the
+// asymmetry that lets `engram theme import` refuse a palette engram ships.
+func legibilityIssues(p Palette) []contrastIssue {
+	backgrounds := []struct {
+		name  string
+		color lipgloss.Color
+	}{
+		{"Base", p.Base},
+		{"Surface", p.Surface},
 	}
 
 	var issues []contrastIssue
 	for _, bg := range backgrounds {
-		for _, fg := range foregrounds {
+		for _, fg := range paletteRoles(p) {
+			if fg.name == "Overlay" && bg.name != "Base" {
+				continue
+			}
+			issue := contrastIssue{role: fg.name, bg: bg.name}
 			ratio, err := ContrastRatio(fg.color, bg.color)
 			if err != nil {
 				// A malformed hex value is its own failure, at an
 				// impossible ratio so it always sorts as a violation.
-				issues = append(issues, contrastIssue{role: fg.name, bg: bg.name, ratio: 0})
+				issues = append(issues, issue)
 				continue
 			}
-			if ratio < MinContrastRatio {
-				issues = append(issues, contrastIssue{role: fg.name, bg: bg.name, ratio: ratio})
+			issue.ratio = ratio
+			if ratio < issue.bar() {
+				issues = append(issues, issue)
 			}
 		}
 	}
 	return issues
 }
 
-// knownContrastDebt lists (role, background) pairs that fail
-// MinContrastRatio today under hues this task did not choose freely:
-// elephant is the palette already shipping — theme.go's Elephant doc
-// comment fixes its hues so "an upgrade never surprises anyone" — and
-// kanagawa's hues are rfc-tui.md §8.1's own table, transcribed faithfully
-// rather than adjusted on this task's own authority. Both gaps are reported
-// to the architect (see this task's report) instead of silently patched
-// here or hidden by loosening MinContrastRatio for everyone.
+// knownContrastDebt lists (role, background) pairs that fail their bar under
+// hues chosen elsewhere: elephant carries engram's original hardcoded colours
+// — theme.go's Elephant doc comment fixes them so "an upgrade never surprises
+// anyone" — and kanagawa's come from the upstream colour scheme, transcribed
+// faithfully rather than adjusted here.
+//
+// Every entry belongs to one of those two inherited palettes. The four koi
+// palettes are this workspace's own and carry none: a palette designed here
+// that cannot clear its own bar is a palette to fix, not to excuse.
 //
 // TestKnownContrastDebtIsStillReal asserts every pair listed here still
 // genuinely fails, so a future colour fix that raises a ratio above the bar
@@ -134,16 +169,20 @@ var knownContrastDebt = map[string]map[string]bool{
 		"Danger/Base":       true,
 		"Danger/Surface":    true,
 		"Secondary/Surface": true,
+		// Kanagawa's separator draws a panel border its own ground swallows,
+		// at 2.23:1. Palette.Validate rejects exactly this pair, so
+		// `engram theme import` refuses from a user a palette engram ships
+		// as a builtin; the entry keeps that visible rather than hidden.
+		"Overlay/Base": true,
 	},
 }
 
-// TestRegisteredPalettesAreLegible is the contrast test rfc-tui.md T-10.06
-// asks for: every colour the registry exposes through --theme /
+// TestRegisteredPalettesAreLegible is the contrast bar the workspace holds
+// itself to: every colour the registry exposes through --theme /
 // ENGRAM_TUI_THEME / tui.theme must clear MinContrastRatio (WCAG 2.1 AA,
 // 4.5:1) for every semantic foreground role against both background planes,
-// except the pre-existing debt knownContrastDebt names and tracks. Any
-// other violation — including one in a role or palette not listed there —
-// fails the test.
+// except the debt knownContrastDebt names and tracks. Any other violation —
+// including one in a role or palette not listed there — fails the test.
 //
 // This test's own sensitivity is proven by
 // TestLegibilityIssuesCatchesAnIllegiblePalette below: a palette outside the
@@ -183,6 +222,249 @@ func TestKnownContrastDebtIsStillReal(t *testing.T) {
 				t.Errorf("%s: %q no longer fails MinContrastRatio — remove it from knownContrastDebt", name, key)
 			}
 		}
+	}
+}
+
+// TestOverlayIsVisibleAgainstTheGround is the separator's own criterion,
+// separated out from the ten text roles so a failure reads as what it is: a
+// panel whose border a reader cannot find.
+//
+// It matters more here than in an interface that fills its panels. Nothing in
+// this workspace paints a background — a panel is a border in Overlay and
+// nothing else — so an invisible separator does not merely look weak, it
+// removes the only thing telling a reader where one panel stops and the next
+// begins.
+//
+// The ground is Base and only Base, the same plane Palette.Validate measures
+// against: a border and a horizontal rule are drawn on the terminal's default
+// background, never inside a filled panel.
+func TestOverlayIsVisibleAgainstTheGround(t *testing.T) {
+	for _, name := range paletteNames() {
+		t.Run(name, func(t *testing.T) {
+			p := registry[name]()
+			debt := knownContrastDebt[name]
+			ratio, err := ContrastRatio(p.Overlay, p.Base)
+			if err != nil {
+				t.Fatalf("Overlay on Base: %v", err)
+			}
+			issue := contrastIssue{role: "Overlay", bg: "Base", ratio: ratio}
+			if ratio >= MinOverlayContrastRatio {
+				return
+			}
+			if debt[issue.key()] {
+				t.Logf("known contrast debt on an inherited palette: %s", issue)
+				return
+			}
+			t.Error(issue)
+		})
+	}
+}
+
+// translucentDesktops are the two extremes a desktop behind a terminal window
+// can be. Anything a real wallpaper does sits between them, so a palette that
+// clears its bar against both clears it against everything in between.
+var translucentDesktops = []struct {
+	name  string
+	color lipgloss.Color
+}{
+	{"black", "#000000"},
+	{"white", "#ffffff"},
+}
+
+// terminalOpacity is the background opacity the workspace is designed to stay
+// legible at — a terminal pane showing ten percent of whatever is behind it.
+const terminalOpacity = 0.90
+
+// koiPaletteNames lists the palettes this workspace designed, in the order
+// they are offered. The inherited three are deliberately absent: they were
+// composed for opaque terminals by other people and holding them to a
+// translucency budget they never had would be inventing a failure.
+var koiPaletteNames = []string{"koi-pond", "koi-day", "showa", "ogon"}
+
+// TestKoiPalettesStayLegibleOverTranslucentBackgrounds is the check that makes
+// the koi palettes usable on the terminals they were designed for.
+//
+// A pane at ninety percent opacity does not show Base. It shows Base mixed
+// with the desktop, and that mixed plane is what a reader actually reads text
+// against — so a palette validated only against its own hex values is
+// validated against a colour nobody sees. Both extremes are checked, because a
+// dark palette in front of a bright desktop is the case that washes out and a
+// light one in front of a dark desktop is the case that muddies.
+//
+// Surface is deliberately not composited. Nothing in this workspace paints a
+// panel background: a panel is a border in Overlay, a selected row is a cursor
+// glyph in Primary. Surface is a role the palette carries for the contrast
+// budget and for the one place a background survives — glamour's H1 — so
+// compositing it would measure a plane that is never drawn, and would fail on
+// arithmetic rather than on anything a reader could see.
+func TestKoiPalettesStayLegibleOverTranslucentBackgrounds(t *testing.T) {
+	var report strings.Builder
+	fmt.Fprintf(&report, "koi palettes at %.0f%% opacity, text >= %.1f:1, overlay >= %.1f:1\n",
+		terminalOpacity*100, MinContrastRatio, MinOverlayContrastRatio)
+
+	for _, name := range koiPaletteNames {
+		ctor, ok := registry[name]
+		if !ok {
+			t.Fatalf("koiPaletteNames names %q, which is not a registered palette", name)
+		}
+		p := ctor()
+
+		t.Run(name, func(t *testing.T) {
+			for _, desktop := range translucentDesktops {
+				plane, err := Composite(p.Base, desktop.color, terminalOpacity)
+				if err != nil {
+					t.Fatalf("Composite(%s, %s): %v", p.Base, desktop.color, err)
+				}
+				worst := math.Inf(1)
+				worstRole := ""
+				for _, role := range paletteRoles(p) {
+					ratio, err := ContrastRatio(role.color, plane)
+					if err != nil {
+						t.Errorf("%s over %s: %v", role.name, desktop.name, err)
+						continue
+					}
+					issue := contrastIssue{role: role.name, bg: "Base over " + desktop.name, ratio: ratio}
+					if ratio < issue.bar() {
+						t.Error(issue)
+					}
+					if margin := ratio - issue.bar(); margin < worst {
+						worst, worstRole = margin, role.name
+					}
+					fmt.Fprintf(&report, "  %-9s %-15s %-10s %s %6.2f:1\n",
+						name, "Base/"+desktop.name, plane, pad(role.name), ratio)
+				}
+				fmt.Fprintf(&report, "  %-9s %-15s %-10s tightest margin %+.2f (%s)\n",
+					name, "Base/"+desktop.name, plane, worst, worstRole)
+			}
+		})
+	}
+	writeContrastReport(t, report.String())
+}
+
+// pad widens a role name to a fixed column so the report lines up when it is
+// read in a terminal rather than diffed.
+func pad(role string) string {
+	const width = 10
+	for len(role) < width {
+		role += " "
+	}
+	return role
+}
+
+// writeContrastReport drops the measured ratios next to the rest of a run's
+// evidence when one is being collected, and does nothing otherwise. A gate
+// wants the numbers, not just a pass; a developer running `go test` wants
+// neither a file appearing in their working tree nor a failure because a
+// directory they never heard of does not exist.
+func writeContrastReport(t *testing.T, report string) {
+	t.Helper()
+	dir := strings.TrimSpace(os.Getenv("ENGRAM_TEST_OUT"))
+	if dir == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Logf("contrast report not written: %v", err)
+		return
+	}
+	path := filepath.Join(dir, "theme-contrast.log")
+	if err := os.WriteFile(path, []byte(report), 0o644); err != nil {
+		t.Logf("contrast report not written: %v", err)
+		return
+	}
+	t.Logf("contrast report written to %s", path)
+}
+
+// TestCompositeIsTheIdentityAtFullOpacity and its siblings pin the blend
+// itself, so the translucency test above is measuring what it claims to.
+func TestCompositeIsTheIdentityAtFullOpacity(t *testing.T) {
+	got, err := Composite("#0d1b21", "#ffffff", 1)
+	if err != nil {
+		t.Fatalf("Composite: %v", err)
+	}
+	if got != lipgloss.Color("#0d1b21") {
+		t.Fatalf("Composite at full opacity = %s, want the background unchanged", got)
+	}
+}
+
+func TestCompositeIsTheDesktopAtZeroOpacity(t *testing.T) {
+	got, err := Composite("#0d1b21", "#ffffff", 0)
+	if err != nil {
+		t.Fatalf("Composite: %v", err)
+	}
+	if got != lipgloss.Color("#ffffff") {
+		t.Fatalf("Composite at zero opacity = %s, want the desktop", got)
+	}
+}
+
+func TestCompositeMixesHalfway(t *testing.T) {
+	got, err := Composite("#000000", "#ffffff", 0.5)
+	if err != nil {
+		t.Fatalf("Composite: %v", err)
+	}
+	// Half of 255 rounds to 128, not 127: the blend rounds rather than
+	// truncating, so a pane at fifty percent does not drift darker than it
+	// should.
+	if got != lipgloss.Color("#808080") {
+		t.Fatalf("Composite halfway between black and white = %s, want #808080", got)
+	}
+}
+
+func TestCompositeClampsAnImpossibleOpacity(t *testing.T) {
+	over, err := Composite("#0d1b21", "#ffffff", 4)
+	if err != nil {
+		t.Fatalf("Composite: %v", err)
+	}
+	if over != lipgloss.Color("#0d1b21") {
+		t.Errorf("an opacity above 1 gave %s, want the background unchanged", over)
+	}
+	under, err := Composite("#0d1b21", "#ffffff", -2)
+	if err != nil {
+		t.Fatalf("Composite: %v", err)
+	}
+	if under != lipgloss.Color("#ffffff") {
+		t.Errorf("an opacity below 0 gave %s, want the desktop", under)
+	}
+}
+
+func TestCompositeRejectsNonHexColours(t *testing.T) {
+	if _, err := Composite("240", "#ffffff", 0.9); err == nil {
+		t.Error("Composite accepted a bare ANSI index as the background")
+	}
+	if _, err := Composite("#0d1b21", "white", 0.9); err == nil {
+		t.Error("Composite accepted a colour name as the desktop")
+	}
+}
+
+// TestTranslucencyCheckCatchesAWashedOutPalette proves the translucency test
+// is not vacuous: a palette whose text only just clears its bar on an opaque
+// ground genuinely fails once the ground is mixed with a bright desktop.
+func TestTranslucencyCheckCatchesAWashedOutPalette(t *testing.T) {
+	// White-ish text on a near-black ground: 18:1 opaque, which any check
+	// waves through.
+	const text = "#e6edef"
+	const base = "#0d1b21"
+	opaque, err := ContrastRatio(text, base)
+	if err != nil {
+		t.Fatalf("ContrastRatio: %v", err)
+	}
+
+	// The same pair at ten percent opacity, which is far past anything the
+	// workspace supports, has to come out worse — otherwise Composite is not
+	// doing anything and the test above proves nothing.
+	plane, err := Composite(base, "#ffffff", 0.10)
+	if err != nil {
+		t.Fatalf("Composite: %v", err)
+	}
+	washed, err := ContrastRatio(text, plane)
+	if err != nil {
+		t.Fatalf("ContrastRatio: %v", err)
+	}
+	if washed >= opaque {
+		t.Fatalf("text on a mostly-white plane scored %.2f:1, no worse than %.2f:1 on the opaque ground",
+			washed, opaque)
+	}
+	if washed >= MinContrastRatio {
+		t.Fatalf("text on a mostly-white plane still scored %.2f:1: the check would pass anything", washed)
 	}
 }
 

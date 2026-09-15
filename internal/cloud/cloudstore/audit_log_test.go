@@ -12,7 +12,7 @@ import (
 // ─── Phase 1.1: DDL + Schema ─────────────────────────────────────────────────
 
 // TestAuditLogMigrationIdempotent verifies that calling migrate() twice produces
-// no error and no duplicate tables or indexes. REQ-400 scenario 2.
+// no error and no duplicate tables or indexes.
 func TestAuditLogMigrationIdempotent(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -30,7 +30,7 @@ func TestAuditLogMigrationIdempotent(t *testing.T) {
 }
 
 // TestAuditLogMigrationCreatesTable verifies that migrate() creates the
-// cloud_sync_audit_log table with all required columns and 3 indexes. REQ-400 scenario 1.
+// cloud_sync_audit_log table with all required columns and 3 indexes.
 func TestAuditLogMigrationCreatesTable(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -116,7 +116,7 @@ func containsString(slice []string, s string) bool {
 // ─── Phase 1.3: InsertAuditEntry ─────────────────────────────────────────────
 
 // TestInsertAuditEntryRoundTrip verifies that InsertAuditEntry inserts one row
-// and ListAuditEntriesPaginated retrieves it with matching fields. REQ-401, REQ-402.
+// and ListAuditEntriesPaginated retrieves it with matching fields.
 func TestInsertAuditEntryRoundTrip(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -169,7 +169,7 @@ func TestInsertAuditEntryRoundTrip(t *testing.T) {
 }
 
 // TestInsertAuditEntryCancelledContext verifies that a cancelled context returns
-// an error and no row is inserted. REQ-402 scenario 2.
+// an error and no row is inserted.
 func TestInsertAuditEntryCancelledContext(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -203,7 +203,7 @@ func TestInsertAuditEntryCancelledContext(t *testing.T) {
 // ─── Phase 1.4: ListAuditEntriesPaginated ────────────────────────────────────
 
 // TestAuditListPaginationAndTotal seeds 25 rows and verifies page 1 of 10
-// returns 10 rows with total=25 and rows are sorted DESC. REQ-403 scenario 1.
+// returns 10 rows with total=25 and rows are sorted DESC.
 func TestAuditListPaginationAndTotal(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -246,7 +246,7 @@ func TestAuditListPaginationAndTotal(t *testing.T) {
 }
 
 // TestAuditListContributorFilter seeds alice+bob rows and verifies contributor
-// filter narrows to alice only. REQ-403 scenario 2.
+// filter narrows to alice only.
 func TestAuditListContributorFilter(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -289,7 +289,6 @@ func TestAuditListContributorFilter(t *testing.T) {
 }
 
 // TestAuditListOutcomeFilter verifies outcome filter narrows to matching rows.
-// REQ-403 (implied by REQ-410).
 func TestAuditListOutcomeFilter(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -331,7 +330,7 @@ func TestAuditListOutcomeFilter(t *testing.T) {
 }
 
 // TestAuditListTimeRangeFilter verifies that OccurredAtFrom/OccurredAtTo are
-// applied as inclusive bounds. REQ-403 scenario 3.
+// applied as inclusive bounds.
 func TestAuditListTimeRangeFilter(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -380,7 +379,7 @@ func TestAuditListTimeRangeFilter(t *testing.T) {
 }
 
 // TestAuditListEmptyResult verifies that a filter matching no rows returns
-// empty slice, total=0, err=nil. REQ-403 scenario 4.
+// empty slice, total=0, err=nil.
 func TestAuditListEmptyResult(t *testing.T) {
 	cs := openTestCloudStore(t)
 
@@ -471,9 +470,9 @@ func TestInsertAuditEntryEmptyMetadataStoredAsNull(t *testing.T) {
 	}
 }
 
-// ─── JW5: metadata field persisted in INSERT ──────────────────────────────────
+// ─── Metadata field persisted in INSERT ─────────────────────────────────────
 
-// TestInsertAuditEntryPersistsMetadata verifies JW5: an AuditEntry with a
+// TestInsertAuditEntryPersistsMetadata verifies that an AuditEntry with a
 // non-nil Metadata map must have that metadata stored in the DB (not silently dropped).
 // Postgres-gated; skips when CLOUDSTORE_TEST_DSN is absent.
 func TestInsertAuditEntryPersistsMetadata(t *testing.T) {

@@ -717,7 +717,7 @@ func (cs *CloudStore) migrate(ctx context.Context) error {
 			END IF;
 		END $$`,
 		`CREATE INDEX IF NOT EXISTS idx_cloud_project_controls_enabled ON cloud_project_controls(sync_enabled)`,
-		// cloud_mutations: journal for fine-grained mutation sync (REQ-200, REQ-201).
+		// cloud_mutations: journal for fine-grained mutation sync.
 		`CREATE TABLE IF NOT EXISTS cloud_mutations (
 			seq        BIGSERIAL PRIMARY KEY,
 			project    TEXT NOT NULL,
@@ -740,7 +740,7 @@ func (cs *CloudStore) migrate(ctx context.Context) error {
 		END $$`,
 		`CREATE INDEX IF NOT EXISTS idx_cloud_mutations_project ON cloud_mutations(project)`,
 		`CREATE INDEX IF NOT EXISTS idx_cloud_mutations_seq ON cloud_mutations(seq)`,
-		// cloud_sync_audit_log: persistent audit trail for push-rejection events (REQ-400).
+		// cloud_sync_audit_log: persistent audit trail for push-rejection events.
 		`CREATE TABLE IF NOT EXISTS cloud_sync_audit_log (
 			id           SERIAL PRIMARY KEY,
 			occurred_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),

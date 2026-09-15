@@ -1,0 +1,7 @@
+{
+  "services": [
+    { "slug": "koi-garden", "aliases": ["koi", "garden"] },
+    { "slug": "koi-garden-pond-02", "aliases": ["pond-02"] },
+    { "slug": "tsukimi-bridge", "aliases": ["tsukimi"] }
+  ]
+}

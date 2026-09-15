@@ -156,6 +156,7 @@ func goldenScenes() []goldenScene {
 			m.memory.Screen = memory.ScreenSearchResults
 			m.memory.SearchQuery = "wal"
 			m.memory.SearchResults = goldenSearchResults()
+			m.memory.SearchTotal = len(m.memory.SearchResults)
 			m.memory.Cursor = 1
 			return m
 		}},
@@ -163,6 +164,7 @@ func goldenScenes() []goldenScene {
 			m.memory.Screen = memory.ScreenSearchResults
 			m.memory.SearchQuery = "wal"
 			m.memory.SearchResults = goldenSearchResults()
+			m.memory.SearchTotal = len(m.memory.SearchResults)
 			m.memory.Cursor = 3
 			m.memory.Scroll = 1
 			return m
@@ -175,6 +177,7 @@ func goldenScenes() []goldenScene {
 		{name: "recent", build: func(m Model) Model {
 			m.memory.Screen = memory.ScreenRecent
 			m.memory.RecentObservations = goldenObservations()
+			m.memory.RecentTotal = len(m.memory.RecentObservations)
 			m.memory.Cursor = 2
 			return m
 		}},
@@ -185,7 +188,8 @@ func goldenScenes() []goldenScene {
 		{name: "recent-copy-feedback", build: func(m Model) Model {
 			m.memory.Screen = memory.ScreenRecent
 			m.memory.RecentObservations = goldenObservations()
-			m.memory.CopyFeedback = "✓ Copied!"
+			m.memory.RecentTotal = len(m.memory.RecentObservations)
+			m.memory.CopyFeedback = "Copied!"
 			return m
 		}},
 		{name: "observation-detail-loading", build: func(m Model) Model {
@@ -312,9 +316,9 @@ func goldenScenes() []goldenScene {
 			m.memory.SetupError = "network unreachable"
 			return m
 		}},
-		{name: "cloud-settings", build: func(m Model) Model {
-			m.active = tabs.Cloud
-			m.cloud.Cursor = 2
+		{name: "settings", build: func(m Model) Model {
+			m.active = tabs.Settings
+			m.settings.Cursor = 2
 			return m
 		}},
 		{name: "unknown-screen", build: func(m Model) Model {
@@ -329,10 +333,10 @@ func renderScene(t *testing.T, scene goldenScene, size goldenSize) string {
 	t.Helper()
 
 	m := New(nil, nil, nil, nil, nil, goldenVersion, theme.Default(), "")
-	// New now opens the selector without a resolvable project (T-10.02);
-	// every scene here is a tab screen (Memory's own sub-screens, or Cloud),
-	// so that is set explicitly rather than relied on as New's default.
-	m.screen = screenTab
+	// New opens the project tree when no project resolves; every scene here
+	// is a tab screen (Memory's own sub-screens, or Settings), so that is set
+	// explicitly rather than relied on as a default.
+	m.tree.open = false
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: size.width, Height: size.height})
 	m = sized.(Model)
 	m = scene.build(m)

@@ -7,35 +7,19 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 	"github.com/HoracioEspinosa/engram/internal/version"
 )
 
 // ─── Logo ────────────────────────────────────────────────────────────────────
 
+// renderLogo draws the workspace's wordmark above the dashboard.
+//
+// The mark itself lives in the theme package, with the palette that colours it
+// and the glyph vocabulary that decorates it — this view decides only what the
+// tagline says.
 func (m Model) renderLogo(version string) string {
-	logoText := []string{
-		`███████ ███    ██  ██████  ██████   █████  ███    ███ `,
-		`██      ████   ██ ██       ██   ██ ██   ██ ████  ████ `,
-		`█████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██ `,
-		`██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██ `,
-		`███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██ `,
-	}
-
-	var b strings.Builder
-
-	// Header line inside box (Cyber-Elephant Terminal)
-	b.WriteString(m.styles.LogoAccent.Render(" 🐘 SYSTEM ONLINE ") + strings.Repeat(" ", 32) + m.styles.LogoAccent.Render(" MEM: OK 100% ") + "\n\n")
-
-	// Logo body with gradient (logoText and the gradient are the same length)
-	for i, line := range logoText {
-		b.WriteString(" " + m.styles.LogoGradient[i].Render(line) + "\n")
-	}
-	b.WriteString("\n")
-
-	// Footer inside box
-	b.WriteString(m.styles.LogoTagline.Render(" > engram " + version + " — An elephant never forgets"))
-
-	return m.styles.LogoFrame.Render(b.String()) + "\n"
+	return m.styles.RenderWordmark("engram "+version+m.styles.Icons.Dash()+"An elephant never forgets") + "\n"
 }
 
 // ─── View (screen router) ────────────────────────────────────────────────────
@@ -130,7 +114,7 @@ func (m Model) viewDashboard() string {
 				if i >= limit {
 					break
 				}
-				b.WriteString(m.styles.ListItem.Render("• " + p))
+				b.WriteString(m.styles.ListItem.Render(m.styles.Icons.Glyph(theme.IconUnknown) + " " + p))
 				b.WriteString("\n")
 			}
 
@@ -150,9 +134,6 @@ func (m Model) viewDashboard() string {
 	b.WriteString("\n")
 	b.WriteString(shared.Menu(m.styles, dashboardMenuItems, m.Cursor))
 
-	// Help
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter select • s search • q quit"))
-
 	return b.String()
 }
 
@@ -167,8 +148,6 @@ func (m Model) viewSearch() string {
 	b.WriteString(m.styles.SearchInput.Render(m.SearchInput.View()))
 	b.WriteString("\n\n")
 
-	b.WriteString(m.styles.Help.Render("  Type a query and press enter • esc go back"))
-
 	return b.String()
 }
 
@@ -178,8 +157,8 @@ func (m Model) viewSearchResults() string {
 	var b strings.Builder
 
 	resultCount := len(m.SearchResults)
-	header := fmt.Sprintf("  Search: %q — %d result", m.SearchQuery, resultCount)
-	if resultCount != 1 {
+	header := fmt.Sprintf("  Search: %q%s%d result", m.SearchQuery, m.styles.Icons.Dash(), m.SearchTotal)
+	if m.SearchTotal != 1 {
 		header += "s"
 	}
 	b.WriteString(m.styles.Header.Render(header))
@@ -188,7 +167,6 @@ func (m Model) viewSearchResults() string {
 	if resultCount == 0 {
 		b.WriteString(m.styles.NoResults.Render("No memories found. Try a different query."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  / new search • esc back"))
 		return b.String()
 	}
 
@@ -204,13 +182,39 @@ func (m Model) viewSearchResults() string {
 		b.WriteString(m.renderObservationListItem(i, r.ID, r.Type, r.Title, r.Content, r.CreatedAt, r.Project, r.State(), r.ReviewAfter, r.Pinned))
 	}
 
-	// Scroll indicator
-	if resultCount > visibleItems {
-		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.Scroll+1, end, resultCount))
+	// Range indicator: absolute positions against the store's own hit count,
+	// not against the slice that fits on this page.
+	if m.SearchTotal > visibleItems {
+		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.SearchOffset+m.Scroll+1, m.SearchOffset+end, m.SearchTotal))
 	}
 
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter detail • c copy • t timeline • L link to task • / search • esc back"))
+	return shared.SplitPanes(m.styles, m.regions(), b.String(), m.viewObservationPane(observationAt(m.SearchResults, m.Cursor, func(r store.SearchResult) store.Observation { return r.Observation })))
+}
 
+// observationAt is the observation the cursor is on, or nil. It takes the
+// row's own accessor because a search hit and a recent observation carry the
+// same observation under two different types.
+func observationAt[T any](rows []T, cursor int, obs func(T) store.Observation) *store.Observation {
+	if cursor < 0 || cursor >= len(rows) {
+		return nil
+	}
+	o := obs(rows[cursor])
+	return &o
+}
+
+// viewObservationPane is the right-hand pane at the split breakpoint: the
+// content of the observation under the cursor, so a list of titles can be
+// read without opening each one.
+func (m Model) viewObservationPane(o *store.Observation) string {
+	if o == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(m.styles.Title.Render(o.Title))
+	b.WriteString("\n")
+	b.WriteString(m.styles.Timestamp.Render(o.Type + m.styles.Icons.Separator() + shared.LocalTime(o.CreatedAt)))
+	b.WriteString("\n\n")
+	b.WriteString(m.styles.DetailContent.Render(o.Content))
 	return b.String()
 }
 
@@ -220,14 +224,13 @@ func (m Model) viewRecent() string {
 	var b strings.Builder
 
 	count := len(m.RecentObservations)
-	header := fmt.Sprintf("  Recent Observations — %d total", count)
+	header := fmt.Sprintf("  Recent Observations%s%d total", m.styles.Icons.Dash(), m.RecentTotal)
 	b.WriteString(m.styles.Header.Render(header))
 	b.WriteString("\n")
 
 	if count == 0 {
 		b.WriteString(m.styles.NoResults.Render("No observations yet."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  esc back"))
 		return b.String()
 	}
 
@@ -243,13 +246,11 @@ func (m Model) viewRecent() string {
 		b.WriteString(m.renderObservationListItem(i, o.ID, o.Type, o.Title, o.Content, o.CreatedAt, o.Project, o.State(), o.ReviewAfter, o.Pinned))
 	}
 
-	if count > visibleItems {
-		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.Scroll+1, end, count))
+	if m.RecentTotal > visibleItems {
+		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.RecentOffset+m.Scroll+1, m.RecentOffset+end, m.RecentTotal))
 	}
 
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter detail • c copy • t timeline • L link to task • esc back"))
-
-	return b.String()
+	return shared.SplitPanes(m.styles, m.regions(), b.String(), m.viewObservationPane(observationAt(m.RecentObservations, m.Cursor, func(o store.Observation) store.Observation { return o })))
 }
 
 // ─── Observation Detail ──────────────────────────────────────────────────────
@@ -346,16 +347,14 @@ func (m Model) viewObservationDetail() string {
 		end = len(contentLines)
 	}
 
-	for i := m.DetailScroll; i < end; i++ {
-		b.WriteString(contentLines[i])
-		b.WriteString("\n")
-	}
+	// The body goes through bubbles/viewport rather than a hand-sliced
+	// window, the same way the runbook markdown and the context pack do.
+	b.WriteString(shared.Viewport(wrappedContent, wrapWidth, end-m.DetailScroll, m.DetailScroll))
+	b.WriteString("\n")
 
 	if len(contentLines) > maxLines {
 		b.WriteString(shared.RangeIndicator(m.styles, "line", m.DetailScroll+1, end, len(contentLines)))
 	}
-
-	b.WriteString(m.styles.Help.Render("\n  j/k scroll • c copy • t timeline • L link to task • esc back"))
 
 	return b.String()
 }
@@ -373,7 +372,7 @@ func (m Model) viewTimeline() string {
 	}
 
 	tl := m.Timeline
-	header := fmt.Sprintf("  Timeline — Observation #%d (%d total in session)", tl.Focus.ID, tl.TotalInRange)
+	header := fmt.Sprintf("  Timeline%sObservation #%d (%d total in session)", m.styles.Icons.Dash(), tl.Focus.ID, tl.TotalInRange)
 	b.WriteString(m.styles.Header.Render(header))
 	b.WriteString("\n")
 
@@ -391,39 +390,32 @@ func (m Model) viewTimeline() string {
 		b.WriteString(m.styles.SectionHeading.Render("  Before"))
 		b.WriteString("\n")
 		for _, e := range tl.Before {
-			b.WriteString(fmt.Sprintf("  %s %s %s  %s\n",
-				m.styles.TimelineConnector.Render("│"),
-				m.styles.ID.Render(fmt.Sprintf("#%-4d", e.ID)),
-				m.styles.TypeBadge.Render(fmt.Sprintf("[%-12s]", e.Type)),
-				m.styles.TimelineItem.Render(shared.Truncate(e.Title, 60))))
+			b.WriteString(m.renderTimelineRow(e.ID, e.Type, e.Title))
 		}
-		b.WriteString(fmt.Sprintf("  %s\n", m.styles.TimelineConnector.Render("│")))
+		b.WriteString(fmt.Sprintf("  %s\n", m.styles.TimelineConnector.Render(m.styles.Icons.Glyph(theme.IconTree))))
 	}
 
 	// Focus (highlighted)
+	// The focus card sits inside a border, so it gets the body width less
+	// its own frame rather than a constant that only fitted one terminal.
+	focusWidth := m.bodyWidth() - timelineFocusFrame
 	focusContent := fmt.Sprintf("  %s %s  %s\n  %s",
 		m.styles.ID.Render(fmt.Sprintf("#%d", tl.Focus.ID)),
 		m.styles.TypeBadge.Render("["+tl.Focus.Type+"]"),
-		m.styles.Emphasis.Render(tl.Focus.Title),
-		m.styles.DetailContent.Render(shared.Truncate(tl.Focus.Content, 120)))
+		m.styles.Emphasis.Render(shared.Truncate(tl.Focus.Title, focusWidth)),
+		m.styles.DetailContent.Render(shared.Truncate(tl.Focus.Content, focusWidth)))
 	b.WriteString(m.styles.TimelineFocus.Render(focusContent))
 	b.WriteString("\n")
 
 	// After entries
 	if len(tl.After) > 0 {
-		b.WriteString(fmt.Sprintf("  %s\n", m.styles.TimelineConnector.Render("│")))
+		b.WriteString(fmt.Sprintf("  %s\n", m.styles.TimelineConnector.Render(m.styles.Icons.Glyph(theme.IconTree))))
 		b.WriteString(m.styles.SectionHeading.Render("  After"))
 		b.WriteString("\n")
 		for _, e := range tl.After {
-			b.WriteString(fmt.Sprintf("  %s %s %s  %s\n",
-				m.styles.TimelineConnector.Render("│"),
-				m.styles.ID.Render(fmt.Sprintf("#%-4d", e.ID)),
-				m.styles.TypeBadge.Render(fmt.Sprintf("[%-12s]", e.Type)),
-				m.styles.TimelineItem.Render(shared.Truncate(e.Title, 60))))
+			b.WriteString(m.renderTimelineRow(e.ID, e.Type, e.Title))
 		}
 	}
-
-	b.WriteString(m.styles.Help.Render("\n  j/k scroll • esc back"))
 
 	return b.String()
 }
@@ -434,7 +426,7 @@ func (m Model) viewSessions() string {
 	var b strings.Builder
 
 	count := len(m.Sessions)
-	header := fmt.Sprintf("  Sessions — %d total", count)
+	header := fmt.Sprintf("  Sessions%s%d total", m.styles.Icons.Dash(), count)
 	b.WriteString(m.styles.Header.Render(header))
 	b.WriteString("\n")
 
@@ -452,16 +444,16 @@ func (m Model) viewSessions() string {
 		b.WriteString("\n\n")
 		b.WriteString(m.styles.DetailContent.Render(fmt.Sprintf("  Delete session %q from project %q?", m.SessionDeleteID, m.SessionDeleteProject)))
 		b.WriteString("\n")
-		b.WriteString(m.styles.Timestamp.Render("  Sessions with observations cannot be deleted; Engram will refuse unsafe deletes."))
+		b.WriteString(m.styles.Timestamp.Render("  " + shared.Truncate(
+			"Sessions with observations cannot be deleted; Engram will refuse unsafe deletes.",
+			m.bodyWidth()-2)))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  [y] Delete  [n] Cancel  [esc] Cancel"))
 		return b.String()
 	}
 
 	if count == 0 {
 		b.WriteString(m.styles.NoResults.Render("No sessions yet."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  esc back"))
 		return b.String()
 	}
 
@@ -472,36 +464,41 @@ func (m Model) viewSessions() string {
 		end = count
 	}
 
+	// The columns are solved against the width the screen actually has, so
+	// the row fits at 80 as well as at 200.
+	widths := shared.SolveColumns(m.bodyWidth()-sessionRowFixed, 2, []shared.Column{
+		{Min: 8, Max: sessionProjectCells, Weight: 1},
+		{Min: 10, Max: 19},
+		{Min: 6, Max: 8},
+		{Min: 12, Weight: 3},
+	})
+
 	for i := m.Scroll; i < end; i++ {
 		s := m.Sessions[i]
-		cursor := "  "
 		style := m.styles.ListItem
 		if i == m.Cursor {
-			cursor = "▸ "
 			style = m.styles.ListSelected
 		}
 
 		summary := ""
 		if s.Summary != nil {
-			summary = shared.Truncate(*s.Summary, 50)
+			summary = *s.Summary
 		}
 
-		line := fmt.Sprintf("%s%s  %s  %s obs  %s",
-			cursor,
-			m.styles.Project.Render(fmt.Sprintf("%-20s", s.Project)),
-			m.styles.Timestamp.Render(shared.LocalTime(s.StartedAt)),
-			m.styles.StatNumber.Render(fmt.Sprintf("%d", s.ObservationCount)),
-			style.Render(summary))
+		line := fmt.Sprintf("%s%s  %s  %s  %s",
+			shared.RowCursor(m.styles, i == m.Cursor),
+			m.styles.Project.Render(shared.Cell(s.Project, widths[0])),
+			m.styles.Timestamp.Render(shared.Cell(shared.LocalTime(s.StartedAt), widths[1])),
+			m.styles.StatNumber.Render(shared.Cell(fmt.Sprintf("%d obs", s.ObservationCount), widths[2])),
+			style.Render(shared.Field(summary, widths[3])))
 
-		b.WriteString(line)
+		b.WriteString(strings.TrimRight(line, " "))
 		b.WriteString("\n")
 	}
 
 	if count > visibleItems {
 		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.Scroll+1, end, count))
 	}
-
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter view session • d delete • esc back"))
 
 	return b.String()
 }
@@ -519,7 +516,7 @@ func (m Model) viewSessionDetail() string {
 	}
 
 	sess := m.Sessions[m.SelectedSessionIdx]
-	header := fmt.Sprintf("  Session: %s — %s", sess.Project, shared.LocalTime(sess.StartedAt))
+	header := fmt.Sprintf("  Session: %s%s%s", sess.Project, m.styles.Icons.Dash(), shared.LocalTime(sess.StartedAt))
 	b.WriteString(m.styles.Header.Render(header))
 	b.WriteString("\n")
 
@@ -537,7 +534,6 @@ func (m Model) viewSessionDetail() string {
 	if count == 0 {
 		b.WriteString(m.styles.NoResults.Render("No observations in this session."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  esc back"))
 		return b.String()
 	}
 
@@ -557,8 +553,6 @@ func (m Model) viewSessionDetail() string {
 		b.WriteString(shared.RangeIndicator(m.styles, "showing", m.SessionDetailScroll+1, end, count))
 	}
 
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter detail • c copy • t timeline • esc back"))
-
 	return b.String()
 }
 
@@ -567,7 +561,7 @@ func (m Model) viewSessionDetail() string {
 func (m Model) viewSetup() string {
 	var b strings.Builder
 
-	b.WriteString(m.styles.Header.Render("  Setup — Install Agent Plugin"))
+	b.WriteString(m.styles.Header.Render("  Setup" + m.styles.Icons.Dash() + "Install Agent Plugin"))
 	b.WriteString("\n")
 
 	// Show spinner while installing
@@ -593,7 +587,7 @@ func (m Model) viewSetup() string {
 	if m.SetupAllowlistPrompt && m.SetupResult != nil {
 		successMsg := fmt.Sprintf("Installed %s plugin", m.SetupResult.Agent)
 		b.WriteString(fmt.Sprintf("\n  %s %s\n\n",
-			m.styles.SuccessInline.Render("✓"),
+			m.styles.SuccessInline.Render(m.styles.Icons.Glyph(theme.IconFresh)),
 			m.styles.SuccessInline.Render(successMsg)))
 
 		b.WriteString(m.styles.SectionHeading.Render("  Permissions Allowlist"))
@@ -602,14 +596,13 @@ func (m Model) viewSetup() string {
 		b.WriteString("\n")
 		b.WriteString(m.styles.Timestamp.Render("  This prevents Claude Code from asking permission on every tool call."))
 		b.WriteString("\n\n")
-		b.WriteString(m.styles.Help.Render("  [y] Yes  [n] No"))
 		return b.String()
 	}
 
 	// Show result after install
 	if m.SetupDone {
 		if m.SetupError != "" {
-			b.WriteString(m.styles.Error.Render("  ✗ Installation failed: " + m.SetupError))
+			b.WriteString(m.styles.Error.Render("  " + m.styles.Icons.Glyph(theme.IconTaskCancelled) + " Installation failed: " + m.SetupError))
 			b.WriteString("\n\n")
 		} else if m.SetupResult != nil {
 			successMsg := fmt.Sprintf("Installed %s plugin", m.SetupResult.Agent)
@@ -617,7 +610,7 @@ func (m Model) viewSetup() string {
 				successMsg += fmt.Sprintf(" (%d files)", m.SetupResult.Files)
 			}
 			b.WriteString(fmt.Sprintf("  %s %s\n",
-				m.styles.SuccessInline.Render("✓"),
+				m.styles.SuccessInline.Render(m.styles.Icons.Glyph(theme.IconFresh)),
 				m.styles.SuccessInline.Render(successMsg)))
 			b.WriteString(fmt.Sprintf("  %s %s\n\n",
 				m.styles.DetailLabel.Render("Location:"),
@@ -639,23 +632,22 @@ func (m Model) viewSetup() string {
 				b.WriteString("\n")
 				if m.SetupAllowlistApplied {
 					b.WriteString(fmt.Sprintf("  %s %s\n",
-						m.styles.SuccessInline.Render("✓"),
+						m.styles.SuccessInline.Render(m.styles.Icons.Glyph(theme.IconFresh)),
 						m.styles.DetailContent.Render("Engram tools added to allowlist")))
 				} else if m.SetupAllowlistError != "" {
 					b.WriteString(fmt.Sprintf("  %s %s\n",
-						m.styles.DangerInline.Render("✗"),
+						m.styles.DangerInline.Render(m.styles.Icons.Glyph(theme.IconTaskCancelled)),
 						m.styles.DetailContent.Render("Allowlist update failed: "+m.SetupAllowlistError)))
 					b.WriteString(m.styles.DetailContent.Render("  Add manually to permissions.allow in ~/.claude/settings.json"))
 					b.WriteString("\n")
 				}
-				b.WriteString(m.styles.DetailContent.Render("1. Restart Claude Code — the plugin is active immediately"))
+				b.WriteString(m.styles.DetailContent.Render("1. Restart Claude Code" + m.styles.Icons.Dash() + "the plugin is active immediately"))
 				b.WriteString("\n")
 				b.WriteString(m.styles.DetailContent.Render("2. Verify with: claude plugin list"))
 				b.WriteString("\n")
 			}
 		}
 
-		b.WriteString(m.styles.Help.Render("\n  enter/esc back to dashboard"))
 		return b.String()
 	}
 
@@ -666,7 +658,7 @@ func (m Model) viewSetup() string {
 
 	for i, agent := range m.SetupAgents {
 		if i == m.Cursor {
-			b.WriteString(m.styles.MenuSelected.Render("▸ " + agent.Description))
+			b.WriteString(m.styles.MenuSelected.Render(shared.RowCursor(m.styles, true) + agent.Description))
 		} else {
 			b.WriteString(m.styles.MenuItem.Render("  " + agent.Description))
 		}
@@ -675,8 +667,6 @@ func (m Model) viewSetup() string {
 			m.styles.DetailLabel.Render("Install to:"),
 			m.styles.Timestamp.Render(agent.InstallDir)))
 	}
-
-	b.WriteString(m.styles.Help.Render("\n  j/k navigate • enter install • esc back"))
 
 	return b.String()
 }
@@ -700,18 +690,18 @@ func (m Model) renderObservationListItem(index int, id int64, obsType, title, co
 		State:     state,
 		Pinned:    pinned,
 		Selected:  index == m.Cursor,
+		Width:     m.bodyWidth(),
 	})
 }
 
 // ─── Link to Task (L) ────────────────────────────────────────────────────────
 
-// viewLinkPicker renders the "L" overlay (rfc-tui.md §5): the task search
-// box while a query is being typed, or the shared.Menu list of matches once
-// one has run — the same list component the Tasks tab's state picker uses
-// (ADR-051 §4).
+// viewLinkPicker renders the "L" overlay: the task search box while a query
+// is being typed, or the shared.Menu list of matches once one has run — the
+// same list component the Tasks tab's state picker uses.
 func (m Model) viewLinkPicker() string {
 	var b strings.Builder
-	b.WriteString(m.styles.SectionHeading.Render("  link to task (enter select · esc cancel)"))
+	b.WriteString(m.styles.SectionHeading.Render("  link to task (enter select" + m.styles.Icons.Separator() + "esc cancel)"))
 	b.WriteString("\n")
 
 	if m.LinkQuery.Focused() {
@@ -737,4 +727,45 @@ func (m Model) viewLinkPicker() string {
 // linkTaskLabel formats one shared.Menu row for the picker.
 func linkTaskLabel(t store.TaskListItem) string {
 	return fmt.Sprintf("%s  %s  (%s)", data.TaskKey(t.Task), shared.Truncate(t.Title, 50), t.State)
+}
+
+// bodyWidth is how many cells this tab's rows may occupy: the terminal less
+// what the app frame spends either side of it. A screen that has not received
+// a tea.WindowSizeMsg yet assumes the width every wireframe was drawn at,
+// rather than collapsing every column to its minimum.
+func (m Model) bodyWidth() int {
+	if m.Width <= 0 {
+		return defaultBodyWidth
+	}
+	if w := m.Width - bodyMargin; w >= minBodyWidth {
+		return w
+	}
+	return minBodyWidth
+}
+
+// regions is the tab's master/detail split for its current width.
+func (m Model) regions() shared.Regions {
+	// The split depends on the width alone; a screen that has not learned
+	// its height yet still has to know how wide its columns are.
+	height := m.Height
+	if height < 1 {
+		height = 1
+	}
+	return shared.Layout(m.bodyWidth(), height)
+}
+
+// renderTimelineRow draws one neighbour of the focused observation. The title
+// takes whatever the body has left once the connector, the id and the type
+// badge are paid, so a narrow terminal shortens the title instead of running
+// the row off the screen.
+func (m Model) renderTimelineRow(id int64, obsType, title string) string {
+	titleWidth := m.bodyWidth() - timelineRowFixed - timelineTypeCells
+	if titleWidth < minTimelineTitle {
+		titleWidth = minTimelineTitle
+	}
+	return fmt.Sprintf("  %s %s %s  %s\n",
+		m.styles.TimelineConnector.Render(m.styles.Icons.Glyph(theme.IconTree)),
+		m.styles.ID.Render(fmt.Sprintf("#%-4d", id)),
+		m.styles.TypeBadge.Render("["+shared.PadCells(obsType, timelineTypeCells)+"]"),
+		m.styles.TimelineItem.Render(shared.Truncate(title, titleWidth)))
 }

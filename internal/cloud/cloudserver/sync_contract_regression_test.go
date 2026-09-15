@@ -186,7 +186,7 @@ func TestSyncPullChunkResponseSchemaUnchanged(t *testing.T) {
 
 // TestSyncMutationsPushResponseSchemaUnchanged proves POST
 // /sync/mutations/push still replies with exactly {accepted_seqs, project,
-// project_source, project_path} for existing clients (REQ-414 envelope).
+// project_source, project_path} for existing clients.
 func TestSyncMutationsPushResponseSchemaUnchanged(t *testing.T) {
 	ms := newFakeMutationStore()
 	srv := newMutationTestServer(ms, "secret", []string{"proj-a"})

@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// All tests in this file exercise engram-projects (RFC rfc-engram-projects.md)
-// data access against a throwaway store opened with t.TempDir()
+// All tests in this file exercise engram-projects data access against a
+// throwaway store opened with t.TempDir()
 // (newProjectsSchemaTestStore, defined in projects_schema_test.go). None of
 // them ever touch ~/.engram/engram.db.
 
@@ -50,6 +50,49 @@ func TestUpsertProjectCard_MinimalDefaultsDisplayNameToSlug(t *testing.T) {
 	}
 	if card.DisplayName != "middleware" {
 		t.Fatalf("expected display_name fallback to slug, got %q", card.DisplayName)
+	}
+}
+
+// TestProjectKnownSeesCardOnlyProject covers the window between creating a
+// project card and writing the first observation under it: the project is real
+// and every read tool has to accept it. It also pins the fallback for a store
+// that never created the engram-projects tables, where the answer is "not
+// known" rather than an error.
+func TestProjectKnownSeesCardOnlyProject(t *testing.T) {
+	s := newProjectsSchemaTestStore(t)
+
+	known, err := s.ProjectKnown("koi-garden")
+	if err != nil {
+		t.Fatalf("ProjectKnown before the card: %v", err)
+	}
+	if known {
+		t.Fatal("expected koi-garden to be unknown before its card exists")
+	}
+
+	if _, _, err := s.UpsertProjectCard(UpsertProjectCardParams{Slug: "koi-garden"}); err != nil {
+		t.Fatalf("UpsertProjectCard: %v", err)
+	}
+	if exists, err := s.ProjectExists("koi-garden"); err != nil || exists {
+		t.Fatalf("ProjectExists = %v, %v; want false, nil for a card without rows", exists, err)
+	}
+
+	known, err = s.ProjectKnown("koi-garden")
+	if err != nil {
+		t.Fatalf("ProjectKnown with a card: %v", err)
+	}
+	if !known {
+		t.Fatal("expected a project with only a card to be known")
+	}
+
+	if err := s.DropProjectsSchema(); err != nil {
+		t.Fatalf("DropProjectsSchema: %v", err)
+	}
+	known, err = s.ProjectKnown("koi-garden")
+	if err != nil {
+		t.Fatalf("ProjectKnown without the projects schema: %v", err)
+	}
+	if known {
+		t.Fatal("expected an unknown project without the projects schema, not an error")
 	}
 }
 
@@ -421,18 +464,18 @@ func TestListEvidence(t *testing.T) {
 	if items[0].JiraKey == nil || *items[0].JiraKey != "PROJ-1" {
 		t.Fatalf("expected jira_key joined from task, got %+v", items[0].JiraKey)
 	}
-	// rfc-tui.md §9.2's S6 query filters by e.task_id directly (the TUI's
-	// Evidence tab deep-links from a task's numeric row id, the same way
-	// tabs.NavigateMsg.ObservationID already does for Memory); TaskSyncID
-	// alone cannot serve that without a second lookup.
+	// The Evidence tab deep-links from a task's numeric row id, the same way
+	// tabs.NavigateMsg.ObservationID already does for Memory, so this query
+	// filters by e.task_id directly; TaskSyncID alone cannot serve that
+	// without a second lookup.
 	if items[0].TaskID != r.Task.ID {
 		t.Fatalf("expected task_id joined from the insert, got %d want %d", items[0].TaskID, r.Task.ID)
 	}
 }
 
-// TestListEvidenceFiltersByTaskID pins rfc-tui.md §9.2's S6 query
-// (`e.task_id = ?2`): the Evidence tab's tabs.NavigateMsg.TaskID deep link
-// (from S4's "e" key) filters by the numeric task id, not by TaskSyncID.
+// TestListEvidenceFiltersByTaskID pins the query (`e.task_id = ?2`) behind
+// the Evidence tab's tabs.NavigateMsg.TaskID deep link (from the "e" key):
+// it filters by the numeric task id, not by TaskSyncID.
 func TestListEvidenceFiltersByTaskID(t *testing.T) {
 	s := newProjectsSchemaTestStore(t)
 	r1, err := s.UpsertTask(UpsertTaskParams{Project: "nextcloud", JiraKey: strp("PROJ-1"), Title: strp("t1"), Kind: strp("incident")})
@@ -591,11 +634,10 @@ func TestFindRunbooks(t *testing.T) {
 
 // TestSearchRunbookIndex is SearchRunbookIndex's counterpart to TestFindRunbooks:
 // unlike FindRunbooks (mem_runbook_find's thinner item shape for the MCP
-// envelope), the TUI's Runbooks tab (rfc-tui.md §3.1 S8) renders search
-// results in the exact same table as the unfiltered index, so this proves the
-// full RunbookIndexRow — including Symptoms, which RunbookFindItem drops —
-// comes back ranked by BM25 over runbook_index_fts (rfc-tui.md §9.2's "S8
-// search by symptoms" query).
+// envelope), the TUI's Runbooks tab renders search results in the exact
+// same table as the unfiltered index, so this proves the full
+// RunbookIndexRow — including Symptoms, which RunbookFindItem drops — comes
+// back ranked by BM25 over runbook_index_fts.
 func TestSearchRunbookIndex(t *testing.T) {
 	s := newProjectsSchemaTestStore(t)
 	if _, err := s.SyncRunbookIndex(RunbookIndexSyncParams{
@@ -641,7 +683,7 @@ func TestSearchRunbookIndex(t *testing.T) {
 }
 
 // TestListRunbookIndex_EmptyProjectListsEveryProject pins the "a" (all
-// projects) toggle rfc-tui.md §3.1 S8 needs: ListRunbookIndex today (backing
+// projects) toggle the Runbooks tab needs: ListRunbookIndex today (backing
 // only the single-project GET /projects/{slug}/runbooks route) filters on
 // `project = ?` unconditionally, so an empty project returns zero rows
 // instead of "every project" — this is the gap the Runbooks tab's "a" key
@@ -753,7 +795,7 @@ func TestLinkTaskObservation_GraphCommitRejectionPersistsNothing(t *testing.T) {
 	}
 }
 
-// ─── TUI Tasks tab (rfc-tui.md §4.3, §9.2) ─────────────────────────────────
+// ─── TUI Tasks tab ──────────────────────────────────────────────────────────
 
 func TestGetTask_ReturnsAnyProjectByID(t *testing.T) {
 	s := newProjectsSchemaTestStore(t)
@@ -777,10 +819,10 @@ func TestGetTask_ReturnsAnyProjectByID(t *testing.T) {
 	}
 }
 
-// TestUpdateTaskStateMirror_LeavesJiraSyncFieldsUntouched pins ADR-028's
-// "el cambio de state es espejo": a TUI-driven state change must never look
-// like a Jira-confirmed transition, or the state_stale badge the dashboard
-// and context pack both rely on would lie.
+// TestUpdateTaskStateMirror_LeavesJiraSyncFieldsUntouched pins the rule that
+// a state change is only ever a local mirror: a TUI-driven state change must
+// never look like a Jira-confirmed transition, or the state_stale badge the
+// dashboard and context pack both rely on would lie.
 func TestUpdateTaskStateMirror_LeavesJiraSyncFieldsUntouched(t *testing.T) {
 	s := newProjectsSchemaTestStore(t)
 	upserted, err := s.UpsertTask(UpsertTaskParams{

@@ -1005,7 +1005,7 @@ func TestHandleDeletePrompt_BadID(t *testing.T) {
 	}
 }
 
-// ─── Phase E.1e — /sync/status exposes deferred + dead counts (REQ-007) ─────
+// ─── /sync/status exposes deferred + dead counts ────────────────────────────
 
 // TestSyncStatus_IncludesDeferredAndDeadCounts: 3 deferred + 1 dead →
 // /sync/status response must have deferred_count=3 and dead_count=1.
@@ -1043,7 +1043,7 @@ func TestSyncStatus_IncludesDeferredAndDeadCounts(t *testing.T) {
 	}
 }
 
-// ─── Conflict-Audit HTTP Tests (Phase E, REQ-006 thru REQ-011) ──────────────
+// ─── Conflict-Audit HTTP Tests ───────────────────────────────────────────────
 //
 // These tests cover the 6 new /conflicts/* routes.
 // Helpers below seed observations, relations, and deferred rows without
@@ -2166,5 +2166,112 @@ func TestMigrateProjectCaseOnlySkipped(t *testing.T) {
 	}
 	if resp["status"] != "skipped" {
 		t.Fatalf("expected status=skipped for case-only difference, got %v (full response: %#v)", resp["status"], resp)
+	}
+}
+
+func TestListenAddrDefaultsToLoopback(t *testing.T) {
+	for _, host := range []string{"", "   "} {
+		if got := listenAddr(host, 7437); got != "127.0.0.1:7437" {
+			t.Fatalf("listenAddr(%q, 7437) = %q, want 127.0.0.1:7437", host, got)
+		}
+	}
+}
+
+func TestListenAddrHonoursExplicitHost(t *testing.T) {
+	cases := []struct {
+		host string
+		port int
+		want string
+	}{
+		{host: "0.0.0.0", port: 7437, want: "0.0.0.0:7437"},
+		{host: "192.168.1.10", port: 8080, want: "192.168.1.10:8080"},
+		// An IPv6 literal comes back bracketed, otherwise the colons inside
+		// the address are indistinguishable from the port separator.
+		{host: "::", port: 7437, want: "[::]:7437"},
+	}
+	for _, tc := range cases {
+		if got := listenAddr(tc.host, tc.port); got != tc.want {
+			t.Fatalf("listenAddr(%q, %d) = %q, want %q", tc.host, tc.port, got, tc.want)
+		}
+	}
+}
+
+// startAndCaptureListener runs Start on port 0 against the real net.Listen and
+// returns both the address the server asked for and the socket it opened, so
+// the assertions cover the resolved string and the bind that followed it.
+func startAndCaptureListener(t *testing.T, s *Server) (string, *net.TCPAddr) {
+	t.Helper()
+
+	var requested string
+	var bound *net.TCPAddr
+	s.listen = func(network, address string) (net.Listener, error) {
+		requested = address
+		return net.Listen(network, address)
+	}
+	s.serve = func(ln net.Listener, h http.Handler) error {
+		addr, ok := ln.Addr().(*net.TCPAddr)
+		if !ok {
+			t.Fatalf("listener address is %T, want *net.TCPAddr", ln.Addr())
+		}
+		bound = addr
+		_ = ln.Close()
+		return errors.New("serve stopped")
+	}
+
+	if err := s.Start(); err == nil || err.Error() != "serve stopped" {
+		t.Fatalf("expected propagated serve error, got %v", err)
+	}
+	return requested, bound
+}
+
+// TestStartHonoursEngramHost binds a real listener on port 0, so the assertion
+// covers the socket the process actually opened rather than only a string.
+//
+// The bound address is checked for being unspecified rather than being exactly
+// "0.0.0.0": Go answers a wildcard request with a dual-stack socket that
+// reports itself as "::" while still accepting IPv4, and "reaches every
+// interface" is the property that matters here.
+func TestStartHonoursEngramHost(t *testing.T) {
+	t.Setenv("ENGRAM_HOST", "0.0.0.0")
+
+	requested, bound := startAndCaptureListener(t, New(newServerTestStore(t), 0))
+
+	if requested != "0.0.0.0:0" {
+		t.Fatalf("requested %q, want 0.0.0.0:0", requested)
+	}
+	if !bound.IP.IsUnspecified() {
+		t.Fatalf("listener bound to %s, want an unspecified address", bound.IP)
+	}
+}
+
+func TestStartStaysOnLoopbackWithoutEngramHost(t *testing.T) {
+	t.Setenv("ENGRAM_HOST", "")
+
+	requested, bound := startAndCaptureListener(t, New(newServerTestStore(t), 0))
+
+	if requested != "127.0.0.1:0" {
+		t.Fatalf("requested %q, want 127.0.0.1:0", requested)
+	}
+	if !bound.IP.IsLoopback() {
+		t.Fatalf("listener bound to %s, want a loopback address", bound.IP)
+	}
+}
+
+func TestSetHostOverridesEnvironment(t *testing.T) {
+	t.Setenv("ENGRAM_HOST", "0.0.0.0")
+	s := New(newServerTestStore(t), 7437)
+	s.SetHost("127.0.0.1")
+
+	var addr string
+	s.listen = func(network, address string) (net.Listener, error) {
+		addr = address
+		return nil, errors.New("listen failed")
+	}
+
+	if err := s.Start(); err == nil {
+		t.Fatalf("expected start to fail on listen error")
+	}
+	if addr != "127.0.0.1:7437" {
+		t.Fatalf("dialled %q, want 127.0.0.1:7437", addr)
 	}
 }

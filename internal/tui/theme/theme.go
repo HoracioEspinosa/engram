@@ -6,11 +6,7 @@
 // workspace without touching a single view.
 package theme
 
-import (
-	"strings"
-
-	"github.com/charmbracelet/lipgloss"
-)
+import "github.com/charmbracelet/lipgloss"
 
 // logoRows is the number of gradient stops the wordmark needs, one per row of
 // the ASCII logo.
@@ -38,14 +34,11 @@ type Palette struct {
 
 	// Primary marks the focused element and the brand.
 	Primary lipgloss.Color
-	// Secondary titles sections and headings (rfc-tui.md §8.1's "secondary"
-	// token: "títulos de sección").
+	// Secondary titles sections and headings.
 	Secondary lipgloss.Color
-	// Accent tags classifications such as an observation type badge
-	// (rfc-tui.md §8.1's "accent" token: "badges de tipo").
+	// Accent tags classifications such as an observation type badge.
 	Accent lipgloss.Color
-	// Highlight marks a search match inline (rfc-tui.md §8.1's "highlight"
-	// token: "coincidencias de búsqueda"). On elephant it happens to equal
+	// Highlight marks a search match inline. On elephant it happens to equal
 	// Success, which is why it is excluded from
 	// TestNoTwoDistinctRolesShareAColour.
 	Highlight lipgloss.Color
@@ -61,12 +54,10 @@ type Palette struct {
 	LogoGradient [logoRows]lipgloss.Color
 }
 
-// Elephant is the palette engram shipped with before theming existed —
-// rfc-tui.md §8 found these thirteen hex values hardcoded in styles.go under
-// a comment claiming Catppuccin Mocha, when they are actually Rosé Pine. It
-// stays selectable as "elephant" so an upgrade never surprises anyone who
-// liked the original look; CatppuccinMocha, not this, is the default (ADR-028
-// §5, rfc-tui.md §8.2).
+// Elephant is engram's original hardcoded palette: thirteen hex values
+// labelled Catppuccin Mocha that are in fact Rosé Pine. It stays selectable
+// as "elephant" so an upgrade never surprises anyone who likes that look;
+// CatppuccinMocha, not this, is the default.
 func Elephant() Palette {
 	var (
 		base      = lipgloss.Color("#191724")
@@ -104,8 +95,7 @@ func Elephant() Palette {
 }
 
 // CatppuccinMocha is the Catppuccin Mocha colour scheme and the default
-// theme (ADR-028 §5, rfc-tui.md §8.2). Values are transcribed from
-// rfc-tui.md §8.1's table, itself the project's canonical Catppuccin Mocha
+// theme. Values are transcribed from the scheme's published
 // hex codes (https://catppuccin.com/palette — mocha: lavender #b4befe,
 // mauve #cba6f7, peach #fab387, teal #94e2d5, blue #89b4fa), not composed.
 func CatppuccinMocha() Palette {
@@ -144,9 +134,8 @@ func CatppuccinMocha() Palette {
 	}
 }
 
-// Kanagawa is the Kanagawa "wave" colour scheme rfc-tui.md §8.1 specifies as
-// the second selectable option. Values are transcribed from that table,
-// itself Kanagawa's published hex codes
+// Kanagawa is the Kanagawa "wave" colour scheme, selectable as "kanagawa".
+// Values are transcribed from Kanagawa's published hex codes
 // (https://github.com/rebelot/kanagawa.nvim — wave: crystalBlue #7e9cd8,
 // oniViolet #957fb8, springGreen #98bb6c, carpYellow #e6c384, samuraiRed
 // #e82424, springBlue #7fb4ca, surimiOrange #ffa066, waveAqua2 #7aa89f), not
@@ -187,62 +176,23 @@ func Kanagawa() Palette {
 	}
 }
 
-// registry lists every palette selectable by name (rfc-tui.md §8.2). The
-// three keys are the only valid values for --theme, ENGRAM_TUI_THEME and
-// tui.theme.
+// registry lists every palette the binary ships, by the name --theme,
+// ENGRAM_TUI_THEME, settings['tui.theme'] and config.json all spell. The four
+// koi palettes are the workspace's own; the three below them are kept
+// selectable so an upgrade never takes away a look somebody chose.
 var registry = map[string]func() Palette{
+	"koi-pond":         KoiPond,
+	"koi-day":          KoiDay,
+	"showa":            Showa,
+	"ogon":             Ogon,
 	"catppuccin-mocha": CatppuccinMocha,
 	"kanagawa":         Kanagawa,
 	"elephant":         Elephant,
 }
 
-// DefaultThemeName is the palette rfc-tui.md §8.2 and ADR-028 §5 fix as the
-// out-of-the-box theme.
-const DefaultThemeName = "catppuccin-mocha"
-
-// pickName returns the first non-blank candidate among flag, env and config,
-// in that precedence order, or "" if all three are blank. Resolve and
-// UnknownName both build on it so the two never disagree on which tier won.
-func pickName(flag, env, config string) string {
-	for _, candidate := range []string{flag, env, config} {
-		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}
-
-// Resolve picks a palette by name from flag, env or config, in that order of
-// precedence — the first non-blank one wins outright, with no fallthrough to
-// a lower tier if it turns out invalid. rfc-tui.md §8.2: "flag `--theme` >
-// ENGRAM_TUI_THEME > tui.theme > catppuccin-mocha". A blank or unrecognised
-// name at the winning tier resolves to DefaultThemeName, never to a lower
-// tier's value, so a typo in --theme cannot silently fall back to whatever
-// ENGRAM_TUI_THEME happens to hold.
-func Resolve(flag, env, config string) Palette {
-	ctor, ok := registry[pickName(flag, env, config)]
-	if !ok {
-		ctor = registry[DefaultThemeName]
-	}
-	return ctor()
-}
-
-// UnknownName reports the winning candidate among flag, env and config when
-// it is non-blank and not a registered palette, so a caller can warn before
-// Resolve silently falls back to DefaultThemeName — rfc-tui.md §10.1's
-// smoke test: "engram tui --theme desconocido cae al default con aviso". It
-// returns "" when the winning candidate is blank, or already valid, in
-// which case no warning is warranted.
-func UnknownName(flag, env, config string) string {
-	name := pickName(flag, env, config)
-	if name == "" {
-		return ""
-	}
-	if _, ok := registry[name]; ok {
-		return ""
-	}
-	return name
-}
+// DefaultThemeName is the palette the workspace opens on when nothing else
+// has an opinion.
+const DefaultThemeName = "koi-pond"
 
 // Styles is every style the TUI renders with, built once from a Palette and
 // then copied by value into each tab.
@@ -254,6 +204,12 @@ type Styles struct {
 	// inline border — reads it from here instead of redefining one.
 	Palette Palette
 
+	// Icons is the glyph vocabulary the styles were built for. It travels
+	// with the styles for the same reason the palette does: a view that
+	// marks a row asks the set beside its styles rather than reaching for a
+	// second, possibly different, notion of what this terminal can draw.
+	Icons Set
+
 	// Frame.
 	App          lipgloss.Style
 	Header       lipgloss.Style
@@ -262,8 +218,8 @@ type Styles struct {
 	Notice       lipgloss.Style
 	UpdateBanner lipgloss.Style
 
-	// TabBar is the persistent tab bar's container (rfc-tui.md §7's chrome);
-	// TabActive and TabInactive style, respectively, the tab under the
+	// TabBar is the persistent tab bar's container; TabActive and
+	// TabInactive style, respectively, the tab under the
 	// cursor and every other one, so the bar always paints with the active
 	// palette instead of a default one.
 	TabBar      lipgloss.Style
@@ -306,6 +262,14 @@ type Styles struct {
 	SearchHighlight lipgloss.Style
 	NoResults       lipgloss.Style
 
+	// Panel frames a floating overlay over the screen it was opened from.
+	Panel lipgloss.Style
+
+	// StatusBar paints the frame's own bottom line. Unlike Help it carries
+	// no margin: the bar is the last row of the frame, not a footer set off
+	// from the body above it.
+	StatusBar lipgloss.Style
+
 	// Wordmark.
 	LogoFrame    lipgloss.Style
 	LogoAccent   lipgloss.Style
@@ -321,9 +285,10 @@ type Styles struct {
 	DangerInline  lipgloss.Style
 }
 
-// New builds the style set for a palette.
+// New builds the style set for a palette, with the default glyph vocabulary.
+// Use WithIcons to bind a resolved icon mode to it.
 func New(p Palette) Styles {
-	s := Styles{Palette: p}
+	s := Styles{Palette: p, Icons: Icons(IconModeUnicode)}
 
 	s.App = lipgloss.NewStyle().
 		Foreground(p.Text).
@@ -484,8 +449,19 @@ func New(p Palette) Styles {
 		PaddingLeft(2).
 		MarginTop(1)
 
+	// A panel is delimited by its border, never by a fill: a translucent
+	// terminal shows the desktop through any Background(), which is why the
+	// only legibility this palette promises is against Base.
+	s.Panel = lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(p.Overlay).
+		Padding(0, 1)
+
+	s.StatusBar = lipgloss.NewStyle().
+		Foreground(p.Subtext)
+
 	s.LogoFrame = lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
+		Border(wordmarkBorder()).
 		BorderForeground(p.Overlay).
 		Padding(0, 1).
 		MarginBottom(1)
@@ -520,9 +496,18 @@ func New(p Palette) Styles {
 	return s
 }
 
-// Default is the style set the TUI uses when no theme has been selected —
-// CatppuccinMocha, per ADR-028 §5 and rfc-tui.md §8.2's precedence chain
-// bottoming out at "catppuccin-mocha". Callers that build a screen without
-// going through theme.Resolve (a tab's own package tests, mostly) get this
-// same default rather than a second, competing notion of "no theme chosen".
-func Default() Styles { return New(CatppuccinMocha()) }
+// WithIcons returns a copy of the style set bound to a glyph vocabulary.
+//
+// It is a copy rather than a mutation for the same reason every style here is:
+// a tab holding a Styles must never observe another tab rebinding one.
+func (s Styles) WithIcons(mode IconMode) Styles {
+	s.Icons = Icons(mode)
+	return s
+}
+
+// Default is the style set the TUI uses when no theme has been selected — the
+// palette DefaultThemeName names, which is also where theme.Resolve's
+// precedence chain bottoms out. Callers that build a screen without going
+// through theme.Resolve (a tab's own package tests, mostly) get this same
+// default rather than a second, competing notion of "no theme chosen".
+func Default() Styles { return New(registry[DefaultThemeName]()) }

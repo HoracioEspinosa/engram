@@ -42,6 +42,43 @@ type Task struct {
 	CreatedAt          string  `json:"created_at"`
 	UpdatedAt          string  `json:"updated_at"`
 	ClosedAt           *string `json:"closed_at,omitempty"`
+
+	// Slug is the task's own name inside its project — the folder the vault
+	// keeps it in, for work that has no Jira ticket and no SDD change.
+	Slug *string `json:"slug,omitempty"`
+	// Summary is the opening paragraph of the task README, so a list can say
+	// what a task is about without opening it.
+	Summary *string `json:"summary,omitempty"`
+	// PendingNote says what is still open on a task the vault marks as
+	// "Con pendientes"; a pending state without it tells nobody anything.
+	PendingNote *string `json:"pending_note,omitempty"`
+	// VaultPath is the task's folder relative to the vault root. KnowledgeRef
+	// stays what it was: one curated document, not the whole directory.
+	VaultPath *string `json:"vault_path,omitempty"`
+	// ParentTaskID and ParentTaskSyncID place a task under another one. Both
+	// are kept: the id for local integrity, the sync_id so the link survives
+	// a trip through another machine.
+	ParentTaskID     *int64  `json:"parent_task_id,omitempty"`
+	ParentTaskSyncID *string `json:"parent_task_sync_id,omitempty"`
+}
+
+// Key is the identifier a surface shows for a task: the Jira key when the task
+// has one, else the slug the vault filed it under, else the SDD change, else
+// the sync id. The sync id is a last resort because it names the row, not the
+// work — a reader who sees it learns nothing about the task.
+//
+// Every surface that labels a task calls this, so the CLI table, the dashboard
+// and the tasks list cannot drift into naming the same task differently.
+func (t Task) Key() string {
+	for _, candidate := range []*string{t.JiraKey, t.Slug, t.SDDChange} {
+		if candidate == nil {
+			continue
+		}
+		if value := strings.TrimSpace(*candidate); value != "" {
+			return value
+		}
+	}
+	return t.SyncID
 }
 
 // UpsertTaskParams holds the optional fields of mem_task_upsert. A nil
@@ -60,6 +97,13 @@ type UpsertTaskParams struct {
 	PRUrl              *string
 	KnowledgeRef       *string
 	Assignee           *string
+	Slug               *string
+	Summary            *string
+	PendingNote        *string
+	VaultPath          *string
+	// ParentTask is a task reference in any of the forms ResolveTaskRef
+	// accepts, scoped to the same project.
+	ParentTask *string
 }
 
 // UpsertTaskResult is the outcome of UpsertTask.
@@ -71,13 +115,23 @@ type UpsertTaskResult struct {
 
 const taskSelectColumns = `id, sync_id, project, jira_key, sdd_change, title, kind, state,
 	jira_status, jira_status_category, state_synced_at, branch, pr_url, knowledge_ref, assignee,
-	created_at, updated_at, closed_at`
+	created_at, updated_at, closed_at, slug, summary, pending_note, vault_path,
+	parent_task_id, parent_task_sync_id`
+
+// taskScanTargets lists the destinations taskSelectColumns scans into, in the
+// same order. A query that appends columns of its own to that projection reuses
+// this rather than spelling the task's fields a second time, so a column added
+// to the table cannot end up scanned in one place and forgotten in the other.
+func taskScanTargets(t *Task) []any {
+	return []any{&t.ID, &t.SyncID, &t.Project, &t.JiraKey, &t.SDDChange, &t.Title, &t.Kind, &t.State,
+		&t.JiraStatus, &t.JiraStatusCategory, &t.StateSyncedAt, &t.Branch, &t.PRUrl, &t.KnowledgeRef, &t.Assignee,
+		&t.CreatedAt, &t.UpdatedAt, &t.ClosedAt, &t.Slug, &t.Summary, &t.PendingNote, &t.VaultPath,
+		&t.ParentTaskID, &t.ParentTaskSyncID}
+}
 
 func scanTask(row interface{ Scan(dest ...any) error }) (Task, error) {
 	var t Task
-	err := row.Scan(&t.ID, &t.SyncID, &t.Project, &t.JiraKey, &t.SDDChange, &t.Title, &t.Kind, &t.State,
-		&t.JiraStatus, &t.JiraStatusCategory, &t.StateSyncedAt, &t.Branch, &t.PRUrl, &t.KnowledgeRef, &t.Assignee,
-		&t.CreatedAt, &t.UpdatedAt, &t.ClosedAt)
+	err := row.Scan(taskScanTargets(&t)...)
 	return t, err
 }
 
@@ -160,10 +214,47 @@ func (s *Store) UpsertTask(p UpsertTaskParams) (UpsertTaskResult, error) {
 			return UpsertTaskResult{}, err
 		}
 	}
+	// The slug comes last: it is unique only within a project, so it is the
+	// weakest of the four identities and must never shadow a Jira key.
+	if !found && p.Slug != nil && strings.TrimSpace(*p.Slug) != "" {
+		var id int64
+		err := s.db.QueryRow(`SELECT id FROM tasks WHERE project = ? AND slug = ? AND deleted_at IS NULL`,
+			p.Project, strings.ToLower(strings.TrimSpace(*p.Slug))).Scan(&id)
+		if err == nil {
+			found = true
+			existingID = id
+			existingProject = p.Project
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return UpsertTaskResult{}, err
+		}
+	}
 
 	cardCreated, err := s.ensureMinimalProjectCard(p.Project)
 	if err != nil {
 		return UpsertTaskResult{}, err
+	}
+
+	// The parent is resolved before anything is written: a reference that
+	// names nothing, or names the task itself, must not leave the rest of the
+	// upsert applied.
+	var parentID *int64
+	var parentSyncID *string
+	if p.ParentTask != nil && strings.TrimSpace(*p.ParentTask) != "" {
+		parent, err := s.ResolveTaskRef(p.Project, *p.ParentTask)
+		if err != nil {
+			return UpsertTaskResult{}, err
+		}
+		if found && parent.ID == existingID {
+			return UpsertTaskResult{}, ErrTaskSelfParent
+		}
+		parentID = &parent.ID
+		parentSyncID = &parent.SyncID
+	}
+
+	slug := p.Slug
+	if slug != nil {
+		lowered := strings.ToLower(strings.TrimSpace(*slug))
+		slug = &lowered
 	}
 
 	now := s.nowUTC()
@@ -197,11 +288,14 @@ func (s *Store) UpsertTask(p UpsertTaskParams) (UpsertTaskResult, error) {
 			res, err := s.execHook(tx, `
 				INSERT INTO tasks (sync_id, project, jira_key, sdd_change, title, kind, state, jira_status,
 					jira_status_category, state_synced_at, branch, pr_url, knowledge_ref, assignee,
-					created_at, updated_at, closed_at)
-				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+					created_at, updated_at, closed_at, slug, summary, pending_note, vault_path,
+					parent_task_id, parent_task_sync_id)
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 				syncID, p.Project, nullableStr(p.JiraKey), nullableStr(p.SDDChange), *p.Title, *p.Kind, state,
 				nullableStr(p.JiraStatus), nullableStr(p.JiraStatusCategory), stateSyncedAt, nullableStr(p.Branch),
-				nullableStr(p.PRUrl), nullableStr(p.KnowledgeRef), nullableStr(p.Assignee), now, now, closedAt)
+				nullableStr(p.PRUrl), nullableStr(p.KnowledgeRef), nullableStr(p.Assignee), now, now, closedAt,
+				nullableStr(slug), nullableStr(p.Summary), nullableStr(p.PendingNote), nullableStr(p.VaultPath),
+				nullableInt64(parentID), nullableStr(parentSyncID))
 			if err != nil {
 				return fmt.Errorf("engram-projects: insert task: %w", err)
 			}
@@ -268,6 +362,26 @@ func (s *Store) UpsertTask(p UpsertTaskParams) (UpsertTaskResult, error) {
 			sets = append(sets, "assignee = ?")
 			args = append(args, *p.Assignee)
 		}
+		if slug != nil {
+			sets = append(sets, "slug = ?")
+			args = append(args, *slug)
+		}
+		if p.Summary != nil {
+			sets = append(sets, "summary = ?")
+			args = append(args, *p.Summary)
+		}
+		if p.PendingNote != nil {
+			sets = append(sets, "pending_note = ?")
+			args = append(args, *p.PendingNote)
+		}
+		if p.VaultPath != nil {
+			sets = append(sets, "vault_path = ?")
+			args = append(args, *p.VaultPath)
+		}
+		if parentID != nil {
+			sets = append(sets, "parent_task_id = ?", "parent_task_sync_id = ?")
+			args = append(args, *parentID, *parentSyncID)
+		}
 		args = append(args, existingID)
 		if err := s.withTx(func(tx *sql.Tx) error {
 			if _, err := s.execHook(tx, `UPDATE tasks SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...); err != nil {
@@ -286,12 +400,26 @@ func (s *Store) UpsertTask(p UpsertTaskParams) (UpsertTaskResult, error) {
 	return UpsertTaskResult{Task: task, Created: !found, CardCreated: cardCreated}, nil
 }
 
+// ErrTaskSelfParent is returned when a task is asked to be its own parent.
+var ErrTaskSelfParent = errors.New("a task cannot be its own parent")
+
 // TaskListFilter holds mem_task_list's filter parameters.
 type TaskListFilter struct {
-	State           string // "" or "active" -> every state except done/cancelled
-	Kind            string
-	JiraKey         string
-	Query           string
+	State   string // "" or "active" -> every state that is not closed
+	Kind    string
+	JiraKey string
+	Query   string
+	// States narrows the list to an explicit set, for a caller that wants
+	// more than one state but not all of them. It wins over State.
+	States []string
+	// IncludeArchived brings archived tasks back into a listing that would
+	// otherwise leave them out. Archived work is kept, not shown by default:
+	// it is history, and history is not a to-do list.
+	IncludeArchived bool
+	// MatchMode is how Query's tokens combine: "all" (default) needs every
+	// token, "any" needs one of them. A title search over a handful of tasks
+	// is often better served by the broader one.
+	MatchMode       string
 	Limit           int
 	Offset          int
 	StaleAfterHours int
@@ -305,86 +433,139 @@ type TaskListItem struct {
 	StateStale   bool `json:"state_stale"`
 }
 
+// defaultTaskListLimit is the page size a listing takes when the caller names
+// none. It is spelled once so ListTasksPage reports the same number the query
+// actually applied.
+const defaultTaskListLimit = 20
+
+// taskListQuery reads one page of tasks and everything the page needs in a
+// single round trip.
+//
+// The two counters are correlated subqueries rather than joins: a join to
+// task_observations and another to evidence would multiply the rows against
+// each other and force a GROUP BY over the whole task projection to undo the
+// damage. Each subquery is driven by its own index on task_id, so it costs a
+// lookup per row on the page — not per row in the table.
+//
+// total comes from COUNT(*) OVER (), which SQLite (3.25 and later) evaluates
+// over the whole filtered set before LIMIT is applied. That is the number a
+// pager needs, and it used to cost a second query that repeated the same
+// predicate — and could disagree with the page whenever a write landed between
+// the two.
+const taskListQuery = `
+SELECT %s,
+       (SELECT COUNT(*) FROM task_observations o WHERE o.task_id = t.id),
+       (SELECT COUNT(*) FROM evidence e WHERE e.task_id = t.id AND e.deleted_at IS NULL),
+       COUNT(*) OVER ()
+FROM tasks t
+WHERE %s
+ORDER BY t.updated_at DESC
+LIMIT ? OFFSET ?`
+
 // ListTasks lists tasks for a project applying TaskListFilter (RFC §5.4).
 func (s *Store) ListTasks(project string, f TaskListFilter) ([]TaskListItem, int, error) {
-	where := []string{"project = ?", "deleted_at IS NULL"}
+	where := []string{"t.project = ?", "t.deleted_at IS NULL"}
 	args := []any{project}
 
-	switch f.State {
-	case "", "active":
-		where = append(where, "state NOT IN ('done','cancelled')")
-	default:
-		where = append(where, "state = ?")
+	// An explicitly named state, one or many, is always honoured as asked.
+	// Only the default listing has an opinion: archived work is history, and
+	// history does not belong in a list of what is open.
+	switch {
+	case len(f.States) > 0:
+		placeholders := make([]string, 0, len(f.States))
+		for _, state := range f.States {
+			placeholders = append(placeholders, "?")
+			args = append(args, state)
+		}
+		where = append(where, "t.state IN ("+strings.Join(placeholders, ",")+")")
+	case f.State != "" && f.State != "active":
+		where = append(where, "t.state = ?")
 		args = append(args, f.State)
+	case f.IncludeArchived:
+		where = append(where, "t.state NOT IN ('done','cancelled')")
+	default:
+		where = append(where, "t.state NOT IN ('done','cancelled','archived')")
 	}
 	if f.Kind != "" {
-		where = append(where, "kind = ?")
+		where = append(where, "t.kind = ?")
 		args = append(args, f.Kind)
 	}
 	if f.JiraKey != "" {
-		where = append(where, "jira_key = ?")
+		where = append(where, "t.jira_key = ?")
 		args = append(args, f.JiraKey)
 	}
 	if strings.TrimSpace(f.Query) != "" {
-		where = append(where, "id IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)")
-		args = append(args, sanitizeFTS(f.Query))
+		where = append(where, "t.id IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)")
+		if f.MatchMode == "any" {
+			args = append(args, sanitizeFTSCandidates(f.Query))
+		} else {
+			args = append(args, sanitizeFTS(f.Query))
+		}
 	}
 	whereSQL := strings.Join(where, " AND ")
 
-	var total int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE `+whereSQL, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("engram-projects: count tasks: %w", err)
-	}
-
 	limit := f.Limit
 	if limit <= 0 {
-		limit = 20
+		limit = defaultTaskListLimit
 	}
-	listArgs := append(append([]any{}, args...), limit, f.Offset)
-	rows, err := s.db.Query(`SELECT `+taskSelectColumns+` FROM tasks WHERE `+whereSQL+
-		` ORDER BY updated_at DESC LIMIT ? OFFSET ?`, listArgs...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("engram-projects: list tasks: %w", err)
-	}
-	// The store pool is capped at one connection (Store.New), so every row
-	// must be drained and rows.Close()d before issuing the nested per-task
-	// count queries below — otherwise the second query blocks forever
-	// waiting for a connection this same open cursor is holding.
-	var tasksPage []Task
-	for rows.Next() {
-		t, err := scanTask(rows)
-		if err != nil {
-			rows.Close()
-			return nil, 0, err
-		}
-		tasksPage = append(tasksPage, t)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, 0, err
-	}
-	rows.Close()
-
 	staleAfterHours := f.StaleAfterHours
 	if staleAfterHours <= 0 {
 		staleAfterHours = 24
 	}
 
-	items := make([]TaskListItem, 0, len(tasksPage))
-	for _, t := range tasksPage {
-		item := TaskListItem{Task: t}
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM task_observations WHERE task_id = ?`, t.ID).
-			Scan(&item.Observations); err != nil {
+	rdb := s.readDB()
+	query := fmt.Sprintf(taskListQuery, prefixColumns(taskSelectColumns, "t"), whereSQL)
+	listArgs := append(append([]any{}, args...), limit, f.Offset)
+	rows, err := s.queryHook(rdb, query, listArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("engram-projects: list tasks: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]TaskListItem, 0, limit)
+	total := 0
+	for rows.Next() {
+		var item TaskListItem
+		dest := append(taskScanTargets(&item.Task), &item.Observations, &item.Evidence, &total)
+		if err := rows.Scan(dest...); err != nil {
 			return nil, 0, err
 		}
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM evidence WHERE task_id = ? AND deleted_at IS NULL`, t.ID).
-			Scan(&item.Evidence); err != nil {
-			return nil, 0, err
-		}
-		item.StateStale = isTaskStateStale(t.StateSyncedAt, staleAfterHours)
+		item.StateStale = isTaskStateStale(item.StateSyncedAt, staleAfterHours)
 		items = append(items, item)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if len(items) > 0 {
+		return items, total, nil
+	}
+
+	// An empty page carries no window function to read the total from. At
+	// offset zero that is the honest answer — nothing matched. Past the end it
+	// is not: the rows exist, this page just starts after them, and a pager
+	// told "zero" has no way back. Only that case pays for a second query.
+	if f.Offset <= 0 {
+		return items, 0, nil
+	}
+	if err := s.queryRowHook(rdb, `SELECT COUNT(*) FROM tasks t WHERE `+whereSQL, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("engram-projects: count tasks: %w", err)
+	}
 	return items, total, nil
+}
+
+// ListTasksPage is ListTasks with the page's own shape reported alongside it,
+// so a caller that paginates does not have to remember which default limit the
+// store applied.
+func (s *Store) ListTasksPage(project string, f TaskListFilter) (Page[TaskListItem], error) {
+	items, total, err := s.ListTasks(project, f)
+	if err != nil {
+		return Page[TaskListItem]{}, err
+	}
+	limit := f.Limit
+	if limit <= 0 {
+		limit = defaultTaskListLimit
+	}
+	return Page[TaskListItem]{Items: items, Total: total, Limit: limit, Offset: f.Offset}, nil
 }
 
 func isTaskStateStale(stateSyncedAt *string, staleAfterHours int) bool {
@@ -405,41 +586,52 @@ var (
 	changeRefRefPattern  = regexp.MustCompile(`^change:([a-z0-9][a-z0-9-]*)$`)
 )
 
-// ResolveTaskRef resolves a task reference string, scoped to project, using
-// one of the four forms documented in RFC §5.0: jira_key, sync_id, "#id", or
-// "change:sdd_change".
+// ResolveTaskRef resolves a task reference string in the five forms the
+// surfaces accept: jira_key, sync_id, "#id", "change:sdd_change", and the task
+// slug. Anything that matches none of the first four is read as a slug, which
+// is what an importer walking vault folders has to resolve with.
+//
+// An empty project searches the whole store. The workspace operations are given
+// a reference without a project — the task is what names the project, not the
+// other way round — and a reference that answers in two projects is refused
+// with ErrAmbiguousTask rather than decided by row order.
 func (s *Store) ResolveTaskRef(project, ref string) (Task, error) {
 	ref = strings.TrimSpace(ref)
-	switch {
-	case taskSyncIDRefPattern.MatchString(ref):
-		return s.getTaskByProjectColumn(project, "sync_id", ref)
-	case jiraKeyRefPattern.MatchString(ref):
-		return s.getTaskByProjectColumn(project, "jira_key", ref)
-	case localIDRefPattern.MatchString(ref):
-		m := localIDRefPattern.FindStringSubmatch(ref)
-		id, err := strconv.ParseInt(m[1], 10, 64)
-		if err != nil {
-			return Task{}, ErrUnknownTask
-		}
-		t, err := s.getTaskByID(id)
-		if err != nil {
-			return Task{}, err
-		}
-		if t.Project != project {
-			return Task{}, ErrUnknownTask
-		}
-		return t, nil
-	case changeRefRefPattern.MatchString(ref):
-		m := changeRefRefPattern.FindStringSubmatch(ref)
-		return s.getTaskByProjectColumn(project, "sdd_change", m[1])
-	default:
+	if ref == "" {
 		return Task{}, ErrUnknownTask
 	}
+
+	var (
+		column string
+		value  any
+	)
+	switch {
+	case taskSyncIDRefPattern.MatchString(ref):
+		column, value = "sync_id", ref
+	case jiraKeyRefPattern.MatchString(ref):
+		column, value = "jira_key", ref
+	case localIDRefPattern.MatchString(ref):
+		id, err := strconv.ParseInt(localIDRefPattern.FindStringSubmatch(ref)[1], 10, 64)
+		if err != nil {
+			return Task{}, ErrUnknownTask
+		}
+		column, value = "id", id
+	case changeRefRefPattern.MatchString(ref):
+		column, value = "sdd_change", changeRefRefPattern.FindStringSubmatch(ref)[1]
+	default:
+		column, value = "slug", ref
+	}
+
+	if strings.TrimSpace(project) != "" {
+		return s.getTaskByProjectColumn(project, column, value)
+	}
+	return s.getTaskAnywhere(column, value, ref)
 }
 
-func (s *Store) getTaskByProjectColumn(project, col, val string) (Task, error) {
-	t, err := scanTask(s.db.QueryRow(
-		`SELECT `+taskSelectColumns+` FROM tasks WHERE project = ? AND `+col+` = ? AND deleted_at IS NULL`,
+func (s *Store) getTaskByProjectColumn(project, col string, val any) (Task, error) {
+	t, err := scanTask(s.readDB().QueryRow(
+		`SELECT `+taskSelectColumns+` FROM tasks
+		 WHERE project = ? AND `+col+` = ? AND deleted_at IS NULL ORDER BY id LIMIT 1`,
 		project, val))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrUnknownTask
@@ -448,6 +640,41 @@ func (s *Store) getTaskByProjectColumn(project, col, val string) (Task, error) {
 		return Task{}, fmt.Errorf("engram-projects: resolve task ref: %w", err)
 	}
 	return t, nil
+}
+
+// getTaskAnywhere resolves a reference across every project, refusing the case
+// where more than one answers.
+func (s *Store) getTaskAnywhere(col string, val any, ref string) (Task, error) {
+	rows, err := s.readDB().Query(
+		`SELECT `+taskSelectColumns+` FROM tasks WHERE `+col+` = ? AND deleted_at IS NULL ORDER BY id`, val)
+	if err != nil {
+		return Task{}, fmt.Errorf("engram-projects: resolve task ref: %w", err)
+	}
+	defer rows.Close()
+
+	var found []Task
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return Task{}, fmt.Errorf("engram-projects: scan task ref: %w", err)
+		}
+		found = append(found, t)
+	}
+	if err := rows.Err(); err != nil {
+		return Task{}, fmt.Errorf("engram-projects: resolve task ref: %w", err)
+	}
+
+	switch len(found) {
+	case 0:
+		return Task{}, ErrUnknownTask
+	case 1:
+		return found[0], nil
+	}
+	projects := make([]string, 0, len(found))
+	for _, t := range found {
+		projects = append(projects, t.Project)
+	}
+	return Task{}, fmt.Errorf("%w: %s resolves in %s", ErrAmbiguousTask, ref, strings.Join(projects, ", "))
 }
 
 // ─── mem_task_link ───────────────────────────────────────────────────────────
@@ -532,6 +759,13 @@ func (s *Store) LinkTaskObservation(p LinkTaskObservationParams) (LinkTaskObserv
 	if p.GraphRef != nil && strings.TrimSpace(*p.GraphRef) != "" {
 		if p.GraphCommit == nil || strings.TrimSpace(*p.GraphCommit) == "" {
 			return LinkTaskObservationResult{}, ErrGraphCommitRequired
+		}
+		// The column is CHECKed at exactly 40 characters and the insert below
+		// ignores conflicts, so an abbreviated SHA used to be dropped without a
+		// word: the caller was told the link succeeded while the reference it
+		// asked for was never written.
+		if !isFullGitSHA(strings.TrimSpace(*p.GraphCommit)) {
+			return LinkTaskObservationResult{}, ErrGraphCommitNotFullSHA
 		}
 		candidates = append(candidates, refCandidate{"graph", *p.GraphRef, p.GraphCommit})
 	}
@@ -628,7 +862,7 @@ func TaskStateStale(stateSyncedAt *string, staleAfterHours int) bool {
 	return isTaskStateStale(stateSyncedAt, staleAfterHours)
 }
 
-// ─── TUI Tasks tab (rfc-tui.md §4.3, §9.2) ─────────────────────────────────
+// ─── TUI Tasks tab ──────────────────────────────────────────────────────────
 
 // GetTask returns one task by its numeric id, regardless of project. The id
 // is the tasks table's own primary key, so unlike ResolveTaskRef this needs
@@ -640,22 +874,24 @@ func (s *Store) GetTask(id int64) (Task, error) {
 
 // ErrInvalidTaskState is returned by UpdateTaskStateMirror when state is not
 // one of the values the tasks.state CHECK constraint accepts. It is distinct
-// from the rfc-engram-projects.md §5.0 sentinel errors above: this one guards
-// a write rfc-tui.md §9.2 adds for the TUI, not an engram-projects tool.
+// from the sentinel errors above: this one guards a write the TUI adds, not
+// an engram-projects tool.
 var ErrInvalidTaskState = errors.New("invalid task state")
 
 // mirrorableTaskStates lists every value the tasks.state CHECK constraint
 // accepts (internal/store/projects_schema.go), reusing the internal/tasks
-// constants so the two never drift apart.
-var mirrorableTaskStates = map[string]bool{
-	tasks.StateOpen: true, tasks.StateAnalysis: true, tasks.StateInProgress: true,
-	tasks.StateReview: true, tasks.StateVerified: true, tasks.StateDone: true,
-	tasks.StateBlocked: true, tasks.StateCancelled: true,
-}
+// list so the two never drift apart.
+var mirrorableTaskStates = func() map[string]bool {
+	states := make(map[string]bool, len(tasks.AllStates))
+	for _, state := range tasks.AllStates {
+		states[state] = true
+	}
+	return states
+}()
 
-// UpdateTaskStateMirror sets a task's local state mirror from the TUI
-// (rfc-tui.md §9.2, ADR-028: "el cambio de state es espejo"). Jira remains
-// the source of truth (D-02): this never talks to Jira and never touches
+// UpdateTaskStateMirror sets a task's local state mirror from the TUI. It is
+// only ever a mirror: Jira remains the source of truth (D-02), so this never
+// talks to Jira and never touches
 // jira_status, jira_status_category or state_synced_at — the columns the
 // sync pipeline reads to detect drift between the mirror and the real Jira
 // status. closed_at is cleared when the mirror moves a task out of a closed

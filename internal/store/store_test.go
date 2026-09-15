@@ -2501,8 +2501,8 @@ func TestMarkSyncPendingClearsDegradedMetadata(t *testing.T) {
 	}
 }
 
-// TestApplyObservationUpsertRejectsAStaleProjectRevert is the scenario
-// behind ADR-060's "the cloud can undo the consolidation on its own":
+// TestApplyObservationUpsertRejectsAStaleProjectRevert is the scenario where
+// the cloud could otherwise undo a consolidation on its own:
 // MergeProjects renames a row's project without minting a new updated_at
 // (mergeProjectScopedTableTx never touches it), so a pull that later
 // arrives carrying the pre-merge state — same content, same original
@@ -3822,7 +3822,9 @@ func TestMigrationInternalErrorAndNoopBranches(t *testing.T) {
 	})
 
 	t.Run("migrate returns deterministic exec hook errors", func(t *testing.T) {
-		s := newTestStore(t)
+		// The backfill runs once per database, so the failure has to be forced
+		// on a database that has not been migrated yet.
+		s := openMigrationTestStore(t, t.TempDir(), defaultStoreHooks())
 
 		origExec := s.hooks.exec
 		s.hooks.exec = func(db execer, query string, args ...any) (sql.Result, error) {
@@ -4258,6 +4260,12 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 		for _, needle := range failCases {
 			t.Run(needle, func(t *testing.T) {
 				s := newTestStore(t)
+				if strings.HasPrefix(needle, "UPDATE ") {
+					// The row rewrites are behind the migration ledger, so an
+					// already-migrated store never reaches them again. Only a
+					// database that has not been migrated yet can fail on one.
+					s = openMigrationTestStore(t, t.TempDir(), defaultStoreHooks())
+				}
 				if strings.Contains(needle, "CREATE TRIGGER prompt_fts_insert") {
 					if _, err := s.db.Exec(`
 						DROP TRIGGER IF EXISTS prompt_fts_insert;
@@ -7284,6 +7292,7 @@ func TestProjectScopedTablesMatchesTheLiveSchema(t *testing.T) {
 	}
 
 	want := map[string]wantShape{
+		"benchmarks":             {},
 		"cloud_upgrade_state":    {projectPK: true, hasUpdatedAt: true},
 		"evidence":               {},
 		"observations":           {hasUpdatedAt: true},
@@ -7372,7 +7381,7 @@ func TestMergeProjectsCoversEveryProjectScopedTable(t *testing.T) {
 }
 
 // TestMergeProjectsMovesEvidenceTasksRunbooksAndTombstones exercises the
-// four ordinary-column tables ADR-060's consolidation actually found rows
+// four ordinary-column tables project consolidation actually found rows
 // stranded in: evidence (10 rows), tasks (1 row), plus runbook_index and
 // prompt_tombstones, which have zero rows in production today but the same
 // gap in the code. It also confirms tasks_fts and runbook_index_fts — kept
@@ -7479,9 +7488,9 @@ func TestMergeProjectsMovesEvidenceTasksRunbooksAndTombstones(t *testing.T) {
 }
 
 // TestTablesReferencingProjectCards pins the exact set of tables discovered
-// via PRAGMA foreign_key_list as of this schema — tasks, evidence and
-// runbook_index, each through a foreign key on their own "project" column
-// into project_cards(slug). A future table with the same FK shape needs no
+// via PRAGMA foreign_key_list as of this schema — tasks, evidence,
+// runbook_index and benchmarks, each through a foreign key on their own
+// "project" column into project_cards(slug). A future table with the same FK shape needs no
 // matching addition here; this test is what would need updating to notice
 // that isn't happening automatically.
 func TestTablesReferencingProjectCards(t *testing.T) {
@@ -7500,7 +7509,7 @@ func TestTablesReferencingProjectCards(t *testing.T) {
 	for _, d := range dependents {
 		got[d.name] = true
 	}
-	want := map[string]bool{"tasks": true, "evidence": true, "runbook_index": true}
+	want := map[string]bool{"tasks": true, "evidence": true, "runbook_index": true, "benchmarks": true}
 	if len(got) != len(want) {
 		t.Fatalf("tablesReferencingProjectCards = %v, want %v", got, want)
 	}
@@ -8371,7 +8380,7 @@ func TestDeletePrompt_NotFound(t *testing.T) {
 	}
 }
 
-// ─── ProjectExists tests (Batch 2 — REQ-315) ─────────────────────────────────
+// ─── ProjectExists tests ────────────────────────────────────────────────────
 
 func TestProjectExists_EmptyStore(t *testing.T) {
 	s := newTestStore(t)
@@ -8482,7 +8491,7 @@ func TestProjectExists_Unknown(t *testing.T) {
 }
 
 // TestProjectExists_KnownViaEnrollmentOnly: a project enrolled via EnrollProject()
-// with no observations/sessions/prompts must still be found by ProjectExists (JC1).
+// with no observations/sessions/prompts must still be found by ProjectExists.
 func TestProjectExists_KnownViaEnrollmentOnly(t *testing.T) {
 	s := newTestStore(t)
 
@@ -9085,7 +9094,7 @@ func TestRepairDoesNotBackfillSessionsCloudWouldReject(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase F — Decay defaults wiring (REQ-006)
+// Decay defaults wiring
 // ---------------------------------------------------------------------------
 
 // queryReviewAfter returns the review_after and expires_at for a given observation ID.

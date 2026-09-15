@@ -38,8 +38,8 @@ func TestTitleIsTasks(t *testing.T) {
 	}
 }
 
-// TestRefreshOnTheListReloadsTheFilteredList pins the "r" key's route on S3
-// and app.Model's "activate this tab" call: with no task in Detail, Refresh
+// TestRefreshOnTheListReloadsTheFilteredList pins the "r" key's route on the
+// list and app.Model's "activate this tab" call: with no task in Detail, Refresh
 // falls through to reloading the list under the current filter.
 func TestRefreshOnTheListReloadsTheFilteredList(t *testing.T) {
 	fake := &data.FakeTask{ItemsByProject: map[string][]store.TaskListItem{
@@ -58,7 +58,8 @@ func TestRefreshOnTheListReloadsTheFilteredList(t *testing.T) {
 }
 
 // TestRefreshOnTheDetailReloadsTheTask pins the same "r" key once a task is
-// open on S4: it must reload that task's detail, not the list behind it.
+// open on the detail screen: it must reload that task's detail, not the list
+// behind it.
 func TestRefreshOnTheDetailReloadsTheTask(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
 	fake := &data.FakeTask{DetailByID: map[int64]data.TaskDetail{1: sampleDetail(task)}}
@@ -80,9 +81,8 @@ func TestRefreshOnTheDetailReloadsTheTask(t *testing.T) {
 	}
 }
 
-// TestRefreshOnTheContextPackReloadsIt pins the "r" key on S5 (rfc-tui.md
-// §3.1: "r rebuild"), which must rebuild the pack rather than the task
-// detail or the list.
+// TestRefreshOnTheContextPackReloadsIt pins the "r" key on the context pack,
+// where it rebuilds the pack rather than the task detail or the list.
 func TestRefreshOnTheContextPackReloadsIt(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
 	fake := &data.FakeTask{ContextPackByID: map[int64]string{1: "# pack v2"}}

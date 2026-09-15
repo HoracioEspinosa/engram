@@ -2,7 +2,9 @@ package evidence
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -60,7 +62,7 @@ func withHeight(m Model, h int) Model {
 	return m
 }
 
-// ─── List (S6) ───────────────────────────────────────────────────────────────
+// ─── List ────────────────────────────────────────────────────────────────────
 
 func TestNewStartsOnTheListScreenWithNoProject(t *testing.T) {
 	m := New(&data.FakeEvidence{})
@@ -215,8 +217,8 @@ func TestTaskFilterTogglesOnTheCursorRowAndBackToAll(t *testing.T) {
 		t.Fatal("t on a non-empty list should reload with a task filter")
 	}
 	m, _ = step(t, m, run(t, cmd))
-	if fake.LastFilter.TaskID != 9 {
-		t.Fatalf("LastFilter.TaskID = %d, want the cursor row's task 9", fake.LastFilter.TaskID)
+	if fake.LastFilter().TaskID != 9 {
+		t.Fatalf("LastFilter.TaskID = %d, want the cursor row's task 9", fake.LastFilter().TaskID)
 	}
 	if len(m.Items) != 1 || m.Items[0].TaskID != 9 {
 		t.Fatalf("Items = %+v, want only task 9's row", m.Items)
@@ -227,8 +229,8 @@ func TestTaskFilterTogglesOnTheCursorRowAndBackToAll(t *testing.T) {
 		t.Fatal("t again should clear the filter back to all")
 	}
 	m, _ = step(t, m, run(t, cmd))
-	if fake.LastFilter.TaskID != 0 {
-		t.Fatalf("LastFilter.TaskID = %d, want 0 (cleared)", fake.LastFilter.TaskID)
+	if fake.LastFilter().TaskID != 0 {
+		t.Fatalf("LastFilter.TaskID = %d, want 0 (cleared)", fake.LastFilter().TaskID)
 	}
 	if len(m.Items) != 2 {
 		t.Fatalf("Items = %+v, want both rows once the filter clears", m.Items)
@@ -265,12 +267,12 @@ func TestEscFromTheListGoesHome(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("esc should navigate home")
 	}
-	if _, ok := run(t, cmd).(tabs.HomeMsg); !ok {
-		t.Fatalf("esc produced %T, want tabs.HomeMsg", run(t, cmd))
+	if _, ok := run(t, cmd).(tabs.NavigateMsg); !ok {
+		t.Fatalf("esc produced %T, want tabs.NavigateMsg{Target: tabs.Home}", run(t, cmd))
 	}
 }
 
-// ─── Detail (S7) ─────────────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────────────────────
 
 func detailModel(t *testing.T, item store.EvidenceListItem) Model {
 	t.Helper()
@@ -412,22 +414,21 @@ func TestDetailOKeyOpensTheFileWithTheInjectableOpener(t *testing.T) {
 	}
 }
 
-func TestDetailRKeyReloadsTheManifest(t *testing.T) {
+// TestRefreshOnTheDetailReloadsTheManifest covers what the root's refresh
+// binding reaches on this screen. The key itself is the root's — every screen
+// answers one Refresh instead of reimplementing "r" for itself.
+func TestRefreshOnTheDetailReloadsTheManifest(t *testing.T) {
 	item := sampleItem(1, 9, "ACME-9", "ACME-9/a.png", false)
 	m := detailModel(t, item)
 	m.ManifestChecked = true
 
-	updated, cmd := m.handleDetailKeys("r")
-	m2 := updated.(Model)
-	if m2.ManifestChecked {
-		t.Fatal("r should mark the manifest unchecked while the reload is in flight")
-	}
+	cmd := m.Refresh()
 	if cmd == nil {
-		t.Fatal("r should reload the manifest")
+		t.Fatal("Refresh on the detail should reload the manifest")
 	}
 	msg, ok := run(t, cmd).(manifestLoadedMsg)
 	if !ok || msg.evidenceID != item.ID {
-		t.Fatalf("r's command produced %+v, want a manifestLoadedMsg for id %d", run(t, cmd), item.ID)
+		t.Fatalf("Refresh produced %+v, want a manifestLoadedMsg for id %d", run(t, cmd), item.ID)
 	}
 }
 
@@ -490,7 +491,7 @@ func TestEvidenceLoadedIgnoresAResponseForAnAbandonedProject(t *testing.T) {
 	m := New(&data.FakeEvidence{}).WithProject("acme")
 	m.Items = []store.EvidenceListItem{sampleItem(1, 9, "ACME-9", "a.png", false)}
 
-	m, _ = step(t, m, evidenceLoadedMsg{project: "other", items: nil})
+	m, _ = step(t, m, evidenceLoadedMsg{project: "other"})
 
 	if len(m.Items) != 1 {
 		t.Fatal("a load response for a project the user left must not clobber the current list")
@@ -539,7 +540,7 @@ func TestUpdateOnCopiedMsgSetsFeedbackAndSchedulesItsClear(t *testing.T) {
 
 func TestUpdateOnClearFeedbackMsgClearsTheBanner(t *testing.T) {
 	m := New(&data.FakeEvidence{}).WithProject("acme")
-	m.CopyFeedback = "✓ Copied!"
+	m.CopyFeedback = "Copied!"
 
 	m, _ = step(t, m, shared.ClearFeedbackMsg{})
 	if m.CopyFeedback != "" {
@@ -558,7 +559,11 @@ func TestEvidenceLoadedClampsAnOutOfRangeCursor(t *testing.T) {
 
 	m, _ = step(t, m, evidenceLoadedMsg{
 		project: "acme",
-		items:   []store.EvidenceListItem{sampleItem(1, 9, "ACME-9", "a.png", false)},
+		page: data.EvidencePage{Page: data.Page[store.EvidenceListItem]{
+			Items: []store.EvidenceListItem{sampleItem(1, 9, "ACME-9", "a.png", false)},
+			Total: 1,
+			Limit: 50,
+		}},
 	})
 	if m.Cursor != 0 || m.Scroll != 0 {
 		t.Fatalf("Cursor/Scroll = %d/%d, want reset to 0/0 once the reload is shorter", m.Cursor, m.Scroll)
@@ -586,5 +591,73 @@ func TestErrorFromTheListLoadIsSurfaced(t *testing.T) {
 	m, _ = step(t, m, run(t, m.Init()))
 	if m.ErrorMsg == "" {
 		t.Fatal("a failing load should surface an error")
+	}
+}
+
+// TestRangeIndicatorShowsStoreTotal: the footer counts what the filter
+// matched in the store, not the rows on the page.
+func TestRangeIndicatorShowsStoreTotal(t *testing.T) {
+	items := make([]store.EvidenceListItem, pageSize+4)
+	for i := range items {
+		items[i] = sampleItem(int64(i+1), 9, "ACME-9", fmt.Sprintf("a%d.png", i), false)
+	}
+	fake := &data.FakeEvidence{ItemsByProject: map[string][]store.EvidenceListItem{"acme": items}}
+	m := New(fake).WithProject("acme")
+	m.Height = 40
+	m, _ = step(t, m, run(t, m.Init()))
+
+	if m.Total != len(items) {
+		t.Fatalf("Total = %d, want the store's own %d", m.Total, len(items))
+	}
+	if got := m.View(); !strings.Contains(got, fmt.Sprintf("of %d", len(items))) {
+		t.Fatalf("range indicator does not report the store total %d:\n%s", len(items), got)
+	}
+}
+
+// TestPrevPageIsDisabledOnTheFirstPage and TestNextPageStopsAtTheLastPage
+// are the page pair: neither wraps, and neither queries the store when
+// there is nowhere to step.
+func TestPrevPageIsDisabledOnTheFirstPage(t *testing.T) {
+	items := make([]store.EvidenceListItem, pageSize+4)
+	for i := range items {
+		items[i] = sampleItem(int64(i+1), 9, "ACME-9", fmt.Sprintf("a%d.png", i), false)
+	}
+	fake := &data.FakeEvidence{ItemsByProject: map[string][]store.EvidenceListItem{"acme": items}}
+	m := New(fake).WithProject("acme")
+	m, _ = step(t, m, run(t, m.Init()))
+
+	updated, cmd := m.handleListKeys("p")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("p on the first page should not re-query the store")
+	}
+	if m.Filter.Offset != 0 {
+		t.Fatalf("Offset = %d, want the first page to stay put", m.Filter.Offset)
+	}
+}
+
+func TestNextPageStopsAtTheLastPage(t *testing.T) {
+	items := make([]store.EvidenceListItem, pageSize+4)
+	for i := range items {
+		items[i] = sampleItem(int64(i+1), 9, "ACME-9", fmt.Sprintf("a%d.png", i), false)
+	}
+	fake := &data.FakeEvidence{ItemsByProject: map[string][]store.EvidenceListItem{"acme": items}}
+	m := New(fake).WithProject("acme")
+	m, _ = step(t, m, run(t, m.Init()))
+
+	updated, cmd := m.handleListKeys("n")
+	m = updated.(Model)
+	m, _ = step(t, m, run(t, cmd))
+	if m.Filter.Offset != pageSize || len(m.Items) != 4 {
+		t.Fatalf("second page = offset %d with %d items, want %d and 4", m.Filter.Offset, len(m.Items), pageSize)
+	}
+
+	updated, cmd = m.handleListKeys("n")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("n on the last page should not re-query the store")
+	}
+	if m.Filter.Offset != pageSize {
+		t.Fatalf("Offset = %d, want the last page to stay put", m.Filter.Offset)
 	}
 }

@@ -1,0 +1,17 @@
+{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "engram-dev-smoke", "version": "0.1.0"}}}
+{"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "mem_project_upsert", "arguments": {"project": "koi-garden", "display_name": "Koi Garden", "default_branch": "main"}}}
+{"jsonrpc": "2.0", "id": 16, "method": "tools/call", "params": {"name": "mem_project_card", "arguments": {"project": "koi-garden", "include_counts": true}}}
+{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "mem_task_upsert", "arguments": {"project": "koi-garden", "jira_key": "KOI-1099", "title": "lookup timeout en el estanque", "kind": "bugfix", "state": "in_progress"}}}
+{"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "mem_save", "arguments": {"project": "koi-garden", "type": "decision", "title": "sdd/koi-workspace/smoke", "topic_key": "sdd/koi-workspace/smoke", "content": "seeded by mcp-smoke.sh"}}}
+{"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "mem_search", "arguments": {"project": "koi-garden", "query": "sdd/koi-workspace/smoke"}}}
+{"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "mem_get_observation", "arguments": {"id": 1}}}
+{"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "mem_evidence_add", "arguments": {"task": "KOI-1099", "path": "koi-garden/KOI-1099/01-traza.png", "sha256": "81c38e2a392ae7175653ff6e8e6926ebc6155de8d0c336b78c0c02668be1c3fd", "kind": "png", "proves": "la traza muestra el timeout a los 30s"}}}
+{"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "mem_evidence_list", "arguments": {"project": "koi-garden", "task": "KOI-1099"}}}
+{"jsonrpc": "2.0", "id": 10, "method": "tools/call", "params": {"name": "mem_task_list", "arguments": {"project": "koi-garden", "state": "active", "limit": 100}}}
+{"jsonrpc": "2.0", "id": 11, "method": "tools/call", "params": {"name": "mem_context_pack", "arguments": {"project": "koi-garden", "task": "KOI-1099"}}}
+{"jsonrpc": "2.0", "id": 12, "method": "tools/call", "params": {"name": "mem_project_card", "arguments": {"project": "koi-garden", "include_counts": true}}}
+{"jsonrpc": "2.0", "id": 13, "method": "tools/call", "params": {"name": "mem_project_upsert", "arguments": {"project": "Fantasma_Inexistente", "display_name": "Proyecto Inválido"}}}
+{"jsonrpc": "2.0", "id": 14, "method": "tools/call", "params": {"name": "mem_evidence_add", "arguments": {"task": "KOI-1099", "path": "/etc/passwd", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "kind": "png", "proves": "intento de path traversal absoluto"}}}
+{"jsonrpc": "2.0", "id": 15, "method": "tools/call", "params": {"name": "mem_task_link", "arguments": {"task": "KOI-1099", "observation_id": 1, "role": "root_cause", "graph_ref": "LookupClient.Resolve"}}}

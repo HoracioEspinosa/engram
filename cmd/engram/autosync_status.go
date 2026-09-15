@@ -14,8 +14,6 @@ type autosyncStatusProvider interface {
 // autosyncStatusAdapter implements server.SyncStatusProvider by mapping
 // autosync.Manager phases to server.SyncStatus. When mgr is nil (autosync
 // disabled), it falls back to the storeSyncStatusProvider.
-//
-// REQ-209, REQ-cloud-sync-status.
 type autosyncStatusAdapter struct {
 	mgr      autosyncStatusProvider
 	fallback server.SyncStatusProvider
@@ -47,8 +45,7 @@ func (a *autosyncStatusAdapter) Status(project string) server.SyncStatus {
 	return result
 }
 
-// mapPhase converts an autosync.Status to a server.SyncStatus.
-// Phase mapping per REQ-209:
+// mapPhase converts an autosync.Status to a server.SyncStatus:
 //   - PhaseHealthy → healthy
 //   - PhasePushing / PhasePulling / PhaseIdle → running
 //   - PhasePushFailed / PhasePullFailed / PhaseBackoff → degraded + transport_failed

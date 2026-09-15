@@ -6,10 +6,11 @@ import (
 
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 )
 
 // TestViewRendersEveryScreenWithoutPanicking is a smoke test, not a golden
-// file (teatest goldens are T-10.07's): it only pins that each screen, in
+// file (the teatest suite owns those): it only pins that each screen, in
 // its loading/empty/populated states, renders to a string instead of
 // panicking on a nil Selected or an empty slice.
 func TestViewRendersEveryScreenWithoutPanicking(t *testing.T) {
@@ -70,7 +71,7 @@ func TestViewRendersEveryScreenWithoutPanicking(t *testing.T) {
 		{"with-error-and-copy-feedback", func() Model {
 			m := New(&data.FakeEvidence{}).WithProject("acme")
 			m.ErrorMsg = "database is locked"
-			m.CopyFeedback = "✓ Copied!"
+			m.CopyFeedback = "Copied!"
 			return m
 		}},
 	}
@@ -121,10 +122,11 @@ func TestFormatBytesCoversEveryUnit(t *testing.T) {
 }
 
 func TestOrDash(t *testing.T) {
-	if got := orDash(""); got != "—" {
-		t.Errorf("orDash(\"\") = %q, want an em dash", got)
+	m := New(nil)
+	if got, want := m.orDash(""), m.styles.Icons.Glyph(theme.IconUnknown); got != want {
+		t.Errorf("orDash(\"\") = %q, want the vocabulary's unknown mark %q", got, want)
 	}
-	if got := orDash("p"); got != "p" {
+	if got := m.orDash("p"); got != "p" {
 		t.Errorf("orDash(%q) = %q, want the value unchanged", "p", got)
 	}
 }

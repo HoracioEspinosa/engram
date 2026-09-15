@@ -2,10 +2,13 @@ package tasks
 
 import "github.com/charmbracelet/bubbles/key"
 
-// Help lists whichever screen is on display's own bindings (rfc-tui.md
-// §7.2), the same ones each screen's view.go footer already prints, plus
-// "g"/"G" on the list — a real binding handleListKeys already answers to,
-// just not named in that footer's hand-written text.
+// Help lists whichever screen is on display's own bindings. It is the single
+// declaration of what the screen answers to: the "?" overlay and the footer
+// are both rendered from it, so a key that works and a key that is advertised
+// cannot drift apart.
+//
+// The root's own bindings — tabs, refresh, the project selector, help, quit —
+// are not repeated here; globalHelpBindings owns those.
 func (m Model) Help() []key.Binding {
 	switch m.Screen {
 	case ScreenDetail:
@@ -41,7 +44,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 			key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "state filter")),
 			key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "kind filter")),
-			key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "next page")),
+			key.NewBinding(key.WithKeys("p", "n"), key.WithHelp("p/n", "page")),
 			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "dashboard")),
 		}
@@ -49,7 +52,7 @@ func (m Model) Help() []key.Binding {
 }
 
 // CapturingText reports whether Tasks currently owns a focused text input or
-// a modal picker (rfc-tui.md §7.1's textinput suspension rule): the search
+// a modal picker, which is what suspends the root's global keys: the search
 // box, the "l" link-observation prompt, and the "s" state picker all take
 // raw keys the root's global bindings must not steal.
 func (m Model) CapturingText() bool {

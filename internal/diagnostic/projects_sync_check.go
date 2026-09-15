@@ -23,7 +23,7 @@ const CheckProjectsSync = "projects_sync"
 //   - deferred rows usually clear themselves on the next pull and otherwise
 //     need `engram conflicts replay`;
 //   - a pending backlog with replication switched off is not a fault at all,
-//     it is the documented default of ADR-025.
+//     it is the documented default until every binary on the team is current.
 type ProjectsSyncCheck struct{}
 
 func (ProjectsSyncCheck) Code() string { return CheckProjectsSync }
@@ -94,7 +94,7 @@ func (c ProjectsSyncCheck) Run(ctx context.Context, scope Scope) (CheckResult, e
 			Severity:     SeverityInfo,
 			ReasonCode:   c.Code() + "_disabled",
 			Message:      fmt.Sprintf("engram-projects replication is off; %d mutation(s) recorded before it was switched off are waiting.", status.TotalPending),
-			Why:          "ENGRAM_PROJECTS_SYNC defaults to off until every binary on the team understands the new entities (ADR-025); nothing is lost while it is off.",
+			Why:          "ENGRAM_PROJECTS_SYNC defaults to off until every binary on the team understands the new entities; nothing is lost while it is off.",
 			Evidence:     evidence,
 			SafeNextStep: "Set ENGRAM_PROJECTS_SYNC=1 once the cloud image and every teammate's binary are current.",
 		}, nil

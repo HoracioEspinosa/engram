@@ -21,7 +21,7 @@ func mustNewMutationTransport(t *testing.T, baseURL, token string) *MutationTran
 	return mt
 }
 
-// TestMutationTransportPushAccepted verifies REQ-200: valid push returns accepted_seqs.
+// TestMutationTransportPushAccepted verifies that a valid push returns accepted_seqs.
 func TestMutationTransportPushAccepted(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/sync/mutations/push" {
@@ -53,7 +53,7 @@ func TestMutationTransportPushAccepted(t *testing.T) {
 	}
 }
 
-// TestMutationTransportPushUnauth verifies REQ-200: 401 → HTTPStatusError.IsAuthFailure.
+// TestMutationTransportPushUnauth verifies that 401 → HTTPStatusError.IsAuthFailure.
 func TestMutationTransportPushUnauth(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -74,7 +74,7 @@ func TestMutationTransportPushUnauth(t *testing.T) {
 	}
 }
 
-// TestMutationTransportPullSinceSeq verifies REQ-201: pull returns mutations + has_more + latest_seq.
+// TestMutationTransportPullSinceSeq verifies that pull returns mutations + has_more + latest_seq.
 func TestMutationTransportPullSinceSeq(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/sync/mutations/pull" {
@@ -113,7 +113,7 @@ func TestMutationTransportPullSinceSeq(t *testing.T) {
 	}
 }
 
-// TestMutationTransportPullUnauth verifies REQ-201: 401 → error.
+// TestMutationTransportPullUnauth verifies that 401 → error.
 func TestMutationTransportPullUnauth(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -134,7 +134,7 @@ func TestMutationTransportPullUnauth(t *testing.T) {
 	}
 }
 
-// TestMutationTransportPush404ServerUnsupported verifies REQ-214: 404 → reason_code=server_unsupported.
+// TestMutationTransportPush404ServerUnsupported verifies that 404 → reason_code=server_unsupported.
 func TestMutationTransportPush404ServerUnsupported(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
@@ -155,7 +155,7 @@ func TestMutationTransportPush404ServerUnsupported(t *testing.T) {
 	}
 }
 
-// TestMutationTransportPull404ServerUnsupported verifies REQ-214: pull 404 → reason_code=server_unsupported.
+// TestMutationTransportPull404ServerUnsupported verifies that pull 404 → reason_code=server_unsupported.
 func TestMutationTransportPull404ServerUnsupported(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
@@ -176,7 +176,7 @@ func TestMutationTransportPull404ServerUnsupported(t *testing.T) {
 	}
 }
 
-// TestMutationTransportPush401VsNotFound verifies REQ-214: 401 → auth_required, not server_unsupported.
+// TestMutationTransportPush401VsNotFound verifies that 401 → auth_required, not server_unsupported.
 func TestMutationTransportPush401VsNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -246,7 +246,7 @@ func TestNewMutationTransportAcceptsValidURL(t *testing.T) {
 
 // ─── BC3: 404 warning log ─────────────────────────────────────────────────────
 
-// TestTransport404LogsServerUnsupportedWarning verifies BC3 / REQ-214:
+// TestTransport404LogsServerUnsupportedWarning verifies BC3:
 // When the server returns 404, newMutationHTTPStatusError must emit a log warning
 // containing "server_unsupported" and advice to deploy the server.
 func TestTransport404LogsServerUnsupportedWarning(t *testing.T) {

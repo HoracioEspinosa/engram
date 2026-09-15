@@ -1,13 +1,13 @@
-// Package project: code-graph summary (RFC rfc-engram-projects.md §8, ADR-026
-// "Indexación del code graph en engram-projects").
+// Package project: code-graph summary — indexes graphify's code graph into
+// engram-projects.
 //
 // SyncGraph reads <repo_dir>/<graph_path> (graphify's graph.json) and, when
-// present, the sibling GRAPH_REPORT.md, computes the graph_summary blob
-// (§8.3), and stamps graph_commit/graph_built_at/graph_summary on the
-// project's card in a single write. It never copies graph.json's nodes or
-// links into SQLite — graphify itself stays the query engine for structural
-// facts (`graphify explain|affected|query|path`); this file only produces
-// the small, cheap-to-read summary that ADR-026 decided to persist instead.
+// present, the sibling GRAPH_REPORT.md, computes the graph_summary blob,
+// and stamps graph_commit/graph_built_at/graph_summary on the project's
+// card in a single write. It never copies graph.json's nodes or links into
+// SQLite — graphify itself stays the query engine for structural facts
+// (`graphify explain|affected|query|path`); this file only produces the
+// small, cheap-to-read summary that gets persisted instead.
 //
 // This lives in internal/project rather than internal/store because
 // internal/project already depends on internal/store (see contextpack.go);
@@ -15,17 +15,19 @@
 // and aggregation logic — the actual "T-04.06" work — belongs here, and
 // internal/store only exposes the low-level StampProjectGraph write.
 //
-// Ground truth vs. the RFC, verified against three real graphify-out/
-// directories (629, 2242 and 9967 nodes) while implementing this file:
+// Ground truth vs. the original design, verified against three real
+// graphify-out/ directories (629, 2242 and 9967 nodes) while implementing
+// this file:
 //
-//   - `relation` is an open set, not the RFC/ADR-026's closed list of 10
-//     values. Observed additionally: imports_from, uses, uses_config,
-//     mixes_in, references_constant, requires_env; `case_of` from the RFC's
-//     list was never observed. Relations are therefore counted as a plain
-//     map of whatever strings appear, never validated against an enum.
+//   - `relation` is an open set, not the closed list of 10 values originally
+//     assumed. Observed additionally: imports_from, uses, uses_config,
+//     mixes_in, references_constant, requires_env; `case_of` from that
+//     original list was never observed. Relations are therefore counted as
+//     a plain map of whatever strings appear, never validated against an
+//     enum.
 //   - GRAPH_REPORT.md's "God Nodes" section never carries a file path (only
-//     `label` and `edges`) — the RFC's worked example shows a `file` next to
-//     each god node, but that column only exists in graph.json's
+//     `label` and `edges`) — the original worked example shows a `file`
+//     next to each god node, but that column only exists in graph.json's
 //     source_file, resolved here after the label+edge-count match.
 //   - Two distinct nodes can legitimately share a label and both rank as god
 //     nodes: a real ~10k-node PHP graph ranked two vendored `PHP-Parser`
@@ -203,16 +205,31 @@ func SyncGraph(s *store.Store, slug, repoDir, graphPath string) (store.GraphSync
 	if fi, statErr := os.Stat(fullPath); statErr == nil {
 		builtAt = fi.ModTime().UTC().Format("2006-01-02 15:04:05")
 	}
-	headCommit := gitHeadCommitTimeout(repoDir)
 
 	if err := s.StampProjectGraph(slug, stats.BuiltAtCommit, builtAt, &summaryJSON); err != nil {
 		return result, err
 	}
 
+	// The staleness verdict comes from CheckStaleness rather than from a
+	// commit comparison here: a commit that only moves prose changes HEAD
+	// without touching a single node, and reporting that as stale is what
+	// trained everyone to ignore the indicator. A failed check degrades to
+	// the commit comparison instead of failing a sync that already succeeded.
+	headCommit := gitHeadCommitTimeout(repoDir)
+	result.Stale = headCommit != "" && headCommit != stats.BuiltAtCommit
+	if staleness, staleErr := CheckStaleness(repoDir, stats.BuiltAtCommit, graphPath, time.Now().UTC()); staleErr == nil {
+		result.Stale = staleness.Stale
+		if staleness.HeadCommit != "" {
+			headCommit = staleness.HeadCommit
+		}
+		if err := s.StampGraphStaleness(slug, staleness.Reason, staleness.ChangedFiles, staleness.CheckedAt); err != nil {
+			return result, err
+		}
+	}
+
 	result.Synced = true
 	result.GraphCommit = stats.BuiltAtCommit
 	result.HeadCommit = headCommit
-	result.Stale = headCommit != "" && headCommit != stats.BuiltAtCommit
 	result.NodeCount = stats.NodeCount
 	result.EdgeCount = stats.EdgeCount
 	result.CommunityCount = len(stats.CommunitySize)
@@ -290,9 +307,9 @@ func decodeGraphJSON(path string) (*graphStats, error) {
 			}
 		default:
 			// directed, multigraph, graph, hyperedges: small in every
-			// graph.json observed (hyperedges is always []); ADR-026 notes
-			// degree computation ignores hyperedges since they are unused
-			// in every graph inspected so far.
+			// graph.json observed (hyperedges is always []); degree
+			// computation ignores hyperedges since they are unused in
+			// every graph inspected so far.
 			var discard any
 			if err := dec.Decode(&discard); err != nil {
 				return nil, fmt.Errorf("%s: %w", key, err)

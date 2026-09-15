@@ -1,6 +1,5 @@
 // Package tasks derives engram-projects task lifecycle state from the
-// literal Jira status strings mirrored by mem_task_upsert (RFC
-// rfc-engram-projects.md §5.3).
+// literal Jira status strings mirrored by mem_task_upsert.
 package tasks
 
 import (
@@ -37,18 +36,49 @@ const (
 	StateDone       = "done"
 	StateBlocked    = "blocked"
 	StateCancelled  = "cancelled"
+	// StatePending is work that reached its end and left something behind:
+	// the vault calls it "Con pendientes", and the note saying what is left
+	// lives on the task.
+	StatePending = "pending"
+	// StateArchived is work nobody is going to pick up again. It is closed,
+	// like done and cancelled, but it never says the work was finished.
+	StateArchived = "archived"
+	// StateUnverified is work that looks finished and has not been confirmed
+	// by anyone: the negation of verified, not a stage before it.
+	StateUnverified = "unverified"
 )
 
-// ActiveStates lists every state considered "active" by mem_task_list's
-// default filter (every state except done and cancelled).
-var ActiveStates = []string{
-	StateOpen, StateAnalysis, StateInProgress, StateReview, StateVerified, StateBlocked,
+// AllStates lists every value the tasks.state CHECK constraint accepts, in the
+// order the constraint spells them.
+var AllStates = []string{
+	StateOpen, StateAnalysis, StateInProgress, StateReview, StateVerified,
+	StateDone, StateBlocked, StateCancelled, StatePending, StateArchived, StateUnverified,
 }
 
-// ClosedStates lists the states that require closed_at to be set.
+// ValidState reports whether state is one of the values a task may hold.
+func ValidState(state string) bool {
+	for _, candidate := range AllStates {
+		if candidate == state {
+			return true
+		}
+	}
+	return false
+}
+
+// ActiveStates lists every state considered "active" by mem_task_list's
+// default filter: everything that is not closed. A task with pending work and
+// one nobody has confirmed are both still somebody's problem.
+var ActiveStates = []string{
+	StateOpen, StateAnalysis, StateInProgress, StateReview, StateVerified,
+	StateBlocked, StatePending, StateUnverified,
+}
+
+// ClosedStates lists the states that allow closed_at to be set — the states in
+// which nothing further is expected to happen to the task.
 var ClosedStates = map[string]bool{
 	StateDone:      true,
 	StateCancelled: true,
+	StateArchived:  true,
 }
 
 // DeriveState resolves the task state for an incoming jira_status. It first

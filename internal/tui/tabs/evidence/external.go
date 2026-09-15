@@ -7,17 +7,17 @@ import (
 
 // openFile is injectable so a test can assert on what would have been opened
 // without spawning a real viewer — the same seam tabs/tasks/external.go's
-// openURL uses. rfc-tui.md §3.1 wires it to S6/S7's "o" (open the evidence
-// file) and S7's "m" (open its manifest.json).
+// openURL uses. It backs "o" (open the evidence file) on both screens and
+// "m" (open its manifest.json) on the detail screen.
 var openFile = defaultOpenFile
 
 // openerFor picks the OS's registered-handler binary for goos: `open` on
-// macOS, `xdg-open` everywhere else (rfc-tui.md §9.3: "`o` abre el archivo
-// con `open`/`xdg-open`"). It takes goos as a parameter rather than reading
-// runtime.GOOS itself so a test can exercise both branches on any single
-// platform — the coverage gate (scripts/tui-coverage-gate.sh) runs on every
-// CI platform, and a branch keyed off the real runtime.GOOS could only ever
-// show one of its two outcomes as covered on a given machine.
+// macOS, `xdg-open` everywhere else. It takes goos as a parameter rather
+// than reading runtime.GOOS itself so a test can exercise both branches on
+// any single platform — the coverage gate (scripts/tui-coverage-gate.sh)
+// runs on every CI platform, and a branch keyed off the real runtime.GOOS
+// could only ever show one of its two outcomes as covered on a given
+// machine.
 func openerFor(goos string) string {
 	if goos == "darwin" {
 		return "open"
@@ -27,11 +27,10 @@ func openerFor(goos string) string {
 
 // defaultOpenFile shells out to openerFor(runtime.GOOS) for path. It only
 // starts the process — it does not wait for the viewer to exit — and
-// reports whether that process could even be launched; rfc-tui.md §9.3
-// documents that a terminal with neither binary (an SSH session with no
-// desktop) must degrade to "show the path and let the user copy it", which
-// is exactly what a non-nil error here drives in update.go instead of
-// silently doing nothing.
+// reports whether that process could even be launched: a terminal with
+// neither binary (an SSH session with no desktop) must degrade to showing
+// the path and letting the user copy it, which is exactly what a non-nil
+// error here drives in update.go instead of silently doing nothing.
 //
 // This function itself is not covered by any test: exercising it for real
 // would spawn an actual `open`/`xdg-open` process (a real GUI viewer on

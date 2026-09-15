@@ -17,9 +17,9 @@ func TestTitleIsRunbooks(t *testing.T) {
 }
 
 // TestWithStylesReplacesThePalette pins the seam app.New relies on to paint
-// every tab with the resolved theme instead of its own default (rfc-tui.md
-// §8.2): New() starts a tab on theme.Default(), and WithStyles must actually
-// replace it, not silently keep the default.
+// every tab with the resolved theme instead of its own default: New() starts
+// a tab on theme.Default(), and WithStyles must actually replace it, not
+// silently keep the default.
 func TestWithStylesReplacesThePalette(t *testing.T) {
 	m := newModel(&data.FakeRunbook{}, nil)
 	if m.Styles().Palette.Primary != theme.Default().Palette.Primary {
@@ -51,8 +51,8 @@ func TestRefreshReloadsTheIndexWithNoActiveSearch(t *testing.T) {
 	if !ok {
 		t.Fatalf("Refresh produced %T, want runbooksLoadedMsg", run(t, cmd))
 	}
-	if len(msg.items) != 1 || msg.items[0].ID != "RB-900" {
-		t.Fatalf("Refresh loaded %+v, want the seeded RB-900", msg.items)
+	if len(msg.page.Items) != 1 || msg.page.Items[0].ID != "RB-900" {
+		t.Fatalf("Refresh loaded %+v, want the seeded RB-900", msg.page.Items)
 	}
 }
 
@@ -72,16 +72,17 @@ func TestRefreshReRunsTheActiveSearch(t *testing.T) {
 		t.Fatal("Refresh with an active query should reload it")
 	}
 	run(t, cmd)
-	if fake.LastSearch.Query != "preview" {
-		t.Fatalf("LastSearch.Query = %q, want the active search re-issued", fake.LastSearch.Query)
+	if fake.LastSearch().Query != "preview" {
+		t.Fatalf("LastSearch.Query = %q, want the active search re-issued", fake.LastSearch().Query)
 	}
 }
 
 // TestRefreshReloadsTheMarkdownOnTheView pins Refresh()'s markdown branch,
-// the one "r" from S9 (TestOKeyOpensTheHubViaTheInjectableExecEditor and its
-// siblings only ever drive handleViewKeys("r") through Update, never
-// Refresh() itself, which the root also calls when this tab becomes active
-// again while already on the view).
+// the one "r" from the Markdown view
+// (TestOKeyOpensTheHubViaTheInjectableExecEditor and its siblings only ever
+// drive handleViewKeys("r") through Update, never Refresh() itself, which
+// the root also calls when this tab becomes active again while already on
+// the view).
 func TestRefreshReloadsTheMarkdownOnTheView(t *testing.T) {
 	item := sampleRunbook("RB-003", "acme", "Preview endpoint slow", true)
 	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")

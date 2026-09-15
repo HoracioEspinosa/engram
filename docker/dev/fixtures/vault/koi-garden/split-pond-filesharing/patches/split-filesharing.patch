@@ -1,0 +1,12 @@
+--- a/internal/filesharing/handler.go
++++ b/internal/filesharing/handler.go
+@@ -1,6 +1,8 @@
+ package filesharing
+ 
+-// TODO: this package still lives inside the koi-garden monolith.
++// PROOF OF CONCEPT -- not applied. Sketches the seam this package would need
++// before it could move into a standalone pond-filesharing service.
++// See koi-garden/split-pond-filesharing/analysis/alcance.md for the tradeoffs.
+ 
+ type Handler struct {
+ 	store Store

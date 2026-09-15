@@ -41,7 +41,7 @@ func stubDetection(t *testing.T, name, path string) {
 	t.Cleanup(func() { detectProjectFull = old })
 }
 
-// TestProjResolveScopeRejectsDirBasenameGuess ties the ADR-057 write-decider
+// TestProjResolveScopeRejectsDirBasenameGuess ties the write-decider
 // rule to the CLI's `engram project` family: without an explicit slug,
 // ENGRAM_PROJECT, or a git-backed cwd, it must not resolve to a
 // directory-name guess. Every subcommand under `engram project <slug> ...`
@@ -940,6 +940,56 @@ func TestCmdProjectRunbooksSyncFromVaultIndexesOnlyItsProject(t *testing.T) {
 	}
 }
 
+// TestCmdProjectRunbooksSyncHonorsTheVaultServiceMap pins the wiring between
+// the scan and the store: both resolve `service:` and both must resolve it
+// through the map that belongs to the checkout being synced. A slug that only
+// a vault's services.json declares passes the scan, so the store re-resolving
+// it through the no-context default would report it as unknown_service and
+// index nothing.
+func TestCmdProjectRunbooksSyncHonorsTheVaultServiceMap(t *testing.T) {
+	cfg := testConfig(t)
+	seedCard(t, cfg, "koi-garden")
+	vault := writeTestVault(t, map[string]string{
+		"Runbooks/services.json": `{"services":[{"slug":"koi-garden","aliases":["koi"]}]}`,
+		"Runbooks/Auth/RB-001 Autologin.md": `---
+type: runbook
+id: RB-001
+title: "Autologin fails on an expired token"
+service: koi-garden
+severity: P2
+category: auth
+status: verified
+symptoms:
+  - "/api/autologin returns 401 invalid_token"
+tags:
+  - type/runbook
+last_updated: 2026-08-14
+---
+
+# RB-001
+`,
+	})
+	t.Setenv("ENGRAM_PROJECT", "koi-garden")
+	exited := stubExit(t)
+
+	stdout, stderr := runProject(t, cfg, "runbooks", "sync", "--vault-dir", vault, "--json")
+	if *exited {
+		t.Fatalf("unexpected failure: %s", stderr)
+	}
+	result := envelopeResult(t, stdout)
+	sync, _ := result["sync"].(map[string]any)
+	if upserted, _ := sync["upserted"].(float64); upserted != 1 {
+		t.Fatalf("upserted = %v, want 1; sync = %#v", sync["upserted"], sync)
+	}
+	skipped, _ := sync["skipped"].([]any)
+	for _, sk := range skipped {
+		row, _ := sk.(map[string]any)
+		if row["reason"] == "unknown_service" {
+			t.Fatalf("services.json declares koi-garden, yet the sync skipped %#v", row)
+		}
+	}
+}
+
 func TestCmdProjectRunbooksSyncFromEntriesFile(t *testing.T) {
 	cfg := testConfig(t)
 	seedCard(t, cfg, "nextcloud")
@@ -1245,7 +1295,7 @@ func TestCmdProjectGraphRequiresSyncSubcommand(t *testing.T) {
 	if !*exited {
 		t.Fatal("`graph rebuild` must exit non-zero")
 	}
-	if !strings.Contains(stderr, "graph sync") {
+	if !strings.Contains(stderr, "graph <sync|check>") {
 		t.Fatalf("stderr = %q", stderr)
 	}
 }

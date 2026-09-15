@@ -24,7 +24,7 @@ func TestTemplRuntimePolicyIsDeterministic(t *testing.T) {
 }
 
 // TestStaticAssetByteFloors asserts that the embedded StaticFS contains real
-// (non-stub) static assets. Satisfies REQ-100.
+// (non-stub) static assets.
 func TestStaticAssetByteFloors(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -65,7 +65,7 @@ func TestStaticAssetByteFloors(t *testing.T) {
 }
 
 // TestTemplGeneratedFilesAreCheckedIn asserts that the templ-generated *_templ.go
-// files are committed alongside the .templ sources. Satisfies REQ-101.
+// files are committed alongside the .templ sources.
 func TestTemplGeneratedFilesAreCheckedIn(t *testing.T) {
 	_, callerFile, _, ok := runtime.Caller(0)
 	if !ok {

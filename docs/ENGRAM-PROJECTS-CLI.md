@@ -23,7 +23,7 @@ ENGRAM_PROJECT=nextcloud engram project card
 cd ~/Projects/clarodrive && engram project card
 ```
 
-The first argument is read as a subcommand when it is one (`card`, `upsert`, `graph`, `tasks`, `evidence`, `runbooks`, `context`), and as a slug otherwise. A project whose slug collides with a subcommand name has to be passed through `ENGRAM_PROJECT`.
+The first argument is read as a subcommand when it is one (`card`, `upsert`, `graph`, `tasks`, `evidence`, `runbooks`, `context`, `promote`, `tree`, `set-parent`, `alias`, `bench`, `import-vault`, `search`), and as a slug otherwise. A project whose slug collides with a subcommand name has to be passed through `ENGRAM_PROJECT`.
 
 Read subcommands refuse a project the store has never seen. Subcommands that can create a row — `upsert` and `tasks upsert` — additionally refuse an explicit slug that is neither backed by an existing card or observations nor equal to what `ENGRAM_PROJECT`/cwd resolve to, so a typo cannot silently open a new project.
 
@@ -73,6 +73,23 @@ engram project nextcloud card --graph-summary --json \
 | `absolute_path_rejected` | `--path` must be relative to the evidence directory |
 | `vault_dir_not_found` | `--vault-dir` has no `Runbooks/` folder |
 | `entries_rejected` | No indexable runbook entry survived parsing and filtering |
+| `project_cycle` | The parent would make the project its own ancestor |
+| `project_depth_exceeded` | The parent would push the project, or something below it, past three levels |
+| `set_parent_failed` | The move was refused for a reason none of the above names |
+| `alias_owns_rows` | The name already holds memories of its own — merge the projects instead |
+| `ambiguous_task` | The task reference resolves in more than one project |
+| `evidence_root_unresolved` | No folder under the vault root matches the task |
+| `vault_root_unresolved` | No argument, card or `ENGRAM_VAULT_ROOT` says where the vault is |
+| `vault_readme_unparsed` | The vault README carries no "Mapa de tareas" section, and states were asked for |
+| `path_escapes_vault` | A recorded vault path climbs out of the vault root |
+| `restricted_path_rejected` | The path resolves, through every symlink, under a restricted root |
+| `run_not_found` | The benchmark run file is not there |
+| `not_engram_benchmark_v1` | The run is in the harness's own format and no pointer map was given |
+| `pointer_unresolved` | A JSON Pointer in the map does not address anything in the run |
+| `query_too_short` | `search` needs at least two characters |
+| `unknown_theme` | No theme answers to that name (`engram theme`) |
+| `invalid_theme` | The document is not a theme: a missing role, a bad name, a short gradient |
+| `invalid_palette` | The palette parses but fails validation; `--force` stores it anyway |
 
 ## Subcommands
 
@@ -111,7 +128,134 @@ engram project nextcloud upsert \
 
 Flags: `--display-name`, `--repo-url`, `--default-branch`, `--jira-project`, `--jira-component`, `--knowledge-hub`, `--owner`, `--graph-path`, `--json`.
 
+It also takes what a person chooses about a project, and where it sits in the tree:
+
+```bash
+engram project nextcloud-00 upsert \
+  --parent nextcloud --kind instance \
+  --description "Instancia base de producción" --icon repo --color primary \
+  --tag instancia --tag produccion --alias nextcloud_00
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--parent <slug>` | Move the card under another project |
+| `--root` | Move the card to the top of the tree (mutually exclusive with `--parent`) |
+| `--kind` | `umbrella`, `repo`, `instance`, `service`, `dataset` or `knowledge` |
+| `--description` | One line about what the project is |
+| `--icon` | Icon token |
+| `--color` | Palette role token (`primary`, `accent`, …) or `#rrggbb` |
+| `--tag T` | Repeatable; stored as a JSON array |
+| `--alias A` | Repeatable; each one becomes a name that resolves to this project |
+
+The parent is a second write, and deliberately so: `set-parent` is the only path that validates the cycle and rewrites the depth of everything below the card. When it is refused, the card the upsert already wrote is still reported alongside the error, so a rejected move never reads as a rejected upsert.
+
 The code graph is not touched here; that is `graph sync`.
+
+### `tree [<root>]`
+
+Walks the project tree in preorder — the whole forest, or one subtree when `<root>` names a project.
+
+```
+$ engram project tree --counts
+▣ nextcloud
+  ▫ nextcloud-00  12 obs · 1/3 tasks · 4 evidence
+  ▫ nextcloud-01  3 obs · 0/1 tasks · 0 evidence
+▪ engram
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--counts` | Include observations, tasks and evidence per project |
+| `--json` | JSON envelope; `result.nodes[]` carries `slug`, `parent_slug`, `depth`, `children`, `kind` and, with `--counts`, `counts` |
+
+The glyph is the project's `kind`. With no `<root>`, the envelope's `project` is empty: a walk spanning every project has no single one to report.
+
+### `set-parent <slug>`
+
+Moves one project in the tree. Exactly one of `--to` and `--root` is required.
+
+```bash
+engram project set-parent nextcloud-00 --to nextcloud
+engram project set-parent nextcloud-00 --root
+```
+
+A move that would close a cycle fails with `project_cycle`; one that would push the subtree past three levels fails with `project_depth_exceeded`.
+
+### `tree suggest` / `tree apply` / `tree doctor`
+
+`tree suggest` proposes a parent for each group of cards that reads as numbered instances of one product, folding the separator each slug happens to use so `nextcloud_00` and `nextcloud-02` land in the same family. **It never writes.**
+
+```
+$ engram project tree suggest
+PARENT     EXISTS  CHILDREN                                  REASON
+nextcloud  no      nextcloud-00, nextcloud_01, nextcloud-02  shared_prefix
+
+nothing was changed; run: engram project tree apply --from-suggest
+```
+
+`tree apply --from-suggest` carries out what the suggestion proposes, asking first unless `--yes` (or `--json`) is given. A parent with no card is created as an `umbrella`, and the report says which ones it had to invent. One refused move never abandons the rest: each is reported under its own code in `result.conflicts[]`.
+
+```bash
+engram project tree apply --from-suggest --yes --json
+```
+
+`tree doctor` reports every card whose parent pointer or depth does not hold up — an orphan left by a retired umbrella, a cycle, a depth that disagrees with the chain. `--fix` detaches each of them to the top of the tree, which is the only repair it makes: where a broken card belongs is a question about intent.
+
+```bash
+engram project tree doctor --json
+engram project tree doctor --fix
+```
+
+### `alias list|add|rm`
+
+An alias is a name that resolves to a project without anything being stored under it. Resolution order is fixed: a real project is never redirected, a declared alias beats a coincidence of spelling.
+
+```bash
+engram project alias add nextcloud_00 --to nextcloud-00
+engram project alias list nextcloud-00
+engram project alias rm nextcloud_00
+```
+
+```
+$ engram project alias add nextcloud_00 --to nextcloud-00
+nextcloud_00 now resolves to nextcloud-00 (via alias)
+
+$ engram project alias list nextcloud-00
+ALIAS         PROJECT       SOURCE  UPDATED
+nextcloud_00  nextcloud-00  manual  2026-09-14 10:02:11
+```
+
+`alias list` with no slug lists every alias. `--source` is one of `git_remote`, `dir`, `env`, `manual` (the default), `normalizer`.
+
+`add` always prints what the name now resolves to, which is how you see an alias that is shadowed: a name that is itself a live project resolves `via card`, because a real project is never redirected.
+
+A name that already holds memories of its own cannot become an alias — redirecting it would leave those memories reachable under a name the resolver no longer returns. The refusal is `alias_owns_rows` and it names the command that does the job properly:
+
+```
+$ engram project alias add nextcloud --to nextcloud-00
+engram: "nextcloud" holds 412 observation(s) of its own and cannot become an alias of "nextcloud-00"; merge the projects instead
+  hint: run: engram projects merge nextcloud nextcloud-00
+```
+
+### `graph check [<slug>]`
+
+Compares the graph the card points at against `HEAD` and stamps the verdict on the card. Unlike `graph sync`, it reads no `graph.json`: it asks which files changed since `graph_commit` and counts only the ones the graph covers.
+
+```
+$ engram project nextcloud graph check --repo-dir ~/Projects/clarodrive
+graph:   fresh (docs_only)
+changed: 0 file(s) the graph covers
+head:    7a79ef43…
+checked: 2026-09-14 10:04:52
+```
+
+`reason` is one of `no_graph`, `code_changed`, `docs_only` or `graph_commit_unreachable`. A documentation-only change is **not** stale: the graph still describes the code, only its provenance is behind `HEAD`.
+
+| Flag | Effect |
+| --- | --- |
+| `--repo-dir <dir>` | Repository to compare against (default: the detected project path, else cwd) |
+| `--json` | JSON envelope |
 
 ### `graph sync`
 
@@ -212,6 +356,177 @@ ID  TASK        KIND  SIZE  JIRA  CAPTURED             PATH                     
 ```
 
 Flags: `--attached-jira` (use `--attached-jira=false` to list what is still unattached), `--kind`, `--limit`, `--offset`, `--json`.
+
+### `evidence scan <task>`
+
+Walks the task's folder in the knowledge vault and registers what it holds as evidence — one category, or all eleven. **It is a dry run by default**, and the dry run is a real one: the same walk, the same hashes, the same decisions, and not one write.
+
+The vault root is resolved from `ENGRAM_VAULT_ROOT`, or from the project card's `knowledge_hub_path`. The task's folder is looked up by its recorded `vault_path`, then `<project>/<TICKET>-<slug>`, then `<project>/<slug>`, and finally any folder whose name leads with the ticket — which is what makes the command usable before anything has been imported.
+
+```
+$ export ENGRAM_VAULT_ROOT=~/.clarodrive
+$ engram project nextcloud evidence scan CDBS-10336
+planned: 11 new · 0 already known · 0 skipped · 2.4 MiB
+folder:  /Users/me/.clarodrive/nextcloud/CDBS-10336-hardening-autologin
+runs:    benchmarks/baseline-run1.json
+         import them with: engram project bench import <task> <run.json>
+nothing was written; re-run with --apply
+```
+
+```bash
+engram project nextcloud evidence scan CDBS-10336 --category evidences --apply --json
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--category X` | One of `analysis`, `plans`, `runbooks`, `reports`, `patches`, `evidences`, `evidences-qa`, `benchmarks`, `scripts`, `assets`, `exports`; default: all eleven |
+| `--apply` | Register what the scan finds |
+| `--max-bytes N` | Size beyond which a file is recorded but not hashed (default 64 MiB) |
+| `--json` | JSON envelope |
+
+Registration is idempotent by `(task, sha256)`: the same bytes found under a new name update the row's path and category instead of duplicating it, which is why a second scan reports `0 new · N already known`.
+
+Every path is resolved through every symlink and compared against the restricted roots by containment, so a symlink planted inside the vault cannot smuggle a restricted tree into the store. Such an entry is reported in `skipped[]` with reason `restricted` and is never opened.
+
+### `bench add|list|import`
+
+A benchmark is the number a change was argued with. Each measurement is a row, one per metric is the baseline, and the comparison is a read.
+
+```bash
+engram project nextcloud bench add CDBS-10336 \
+  --name lookup --metric lookup.p95 --unit ms --value 1512 \
+  --baseline --captured-at 2026-08-20T10:00:00Z
+engram project nextcloud bench add CDBS-10336 \
+  --name lookup --metric lookup.p95 --unit ms --value 756 \
+  --captured-at 2026-08-21T10:00:00Z
+```
+
+```
+$ engram project nextcloud bench list CDBS-10336
+METRIC      VALUE  UNIT  BASELINE  Δ               RUN     CAPTURED
+lookup.p95  756    ms    1512      -50.00% better  lookup  2026-08-21T10:00:00Z
+lookup.p95  1512   ms    * self    -               lookup  2026-08-20T10:00:00Z
+
+2 of 2
+```
+
+The sign of Δ is read against the metric's own direction, so a number that improved reads as an improvement whichever way its unit points. Units are `ms`, `s`, `count`, `bytes`, `kib`, `mib`, `pct`, `ops`, `rps`, `usd`, `score`; `--direction lower|higher` overrides what the unit implies.
+
+`bench add` flags: `--name`, `--metric`, `--unit`, `--value` (all required), `--baseline`, `--direction`, `--run-path`, `--config-stamp`, `--captured-at`, `--notes`, `--json`.
+
+A measurement is keyed by `(task, name, metric, captured-at)`. Writing the same value under that key again is a retry: it exits zero, prints `already recorded` and reports `created:false` with `duplicate:true`, so a script that re-runs is not punished for it. A *different* value under the same key is never overwritten — that one fails with `duplicate_benchmark` and a non-zero exit, carrying the row it collided with, because the alternative is losing a number in silence. Capture it under its own `--captured-at`.
+`bench list` flags: `--metric`, `--include-children`, `--limit`, `--offset`, `--json`. With no `<task>` it lists the project.
+
+`bench import` reads a run file into measurements. A file carrying the `engram.benchmark.v1` marker is read directly; anything else is the harness's own output and needs a JSON Pointer map — passed with `--map`, or found as `benchmark_map.json` beside the run. Without one it fails with `not_engram_benchmark_v1`, because nothing guesses metrics out of a shape it does not recognise. It is a dry run until `--apply`.
+
+```bash
+engram project nextcloud bench import CDBS-10336 \
+  ~/.clarodrive/nextcloud/CDBS-10336-hardening-autologin/benchmarks/baseline-run1.json --apply
+engram project nextcloud bench import CDBS-10336 \
+  ~/.clarodrive/nextcloud/CDBS-10336-hardening-autologin/benchmarks/harness-run.json \
+  --map ~/.clarodrive/nextcloud/CDBS-10336-hardening-autologin/benchmarks/benchmark_map.json --apply
+```
+
+The `engram.benchmark.v1` shape:
+
+```json
+{
+  "engram_benchmark": "v1",
+  "task": "CDBS-10336",
+  "name": "lookup-timeout",
+  "captured_at": "2026-08-20T10:00:00Z",
+  "config_stamp": "pond-02 / cache off",
+  "baseline": true,
+  "notes": "corrida base",
+  "metrics": [{ "metric": "lookup.p95", "unit": "ms", "value": 1512 }]
+}
+```
+
+And the map that reads a foreign one, as `benchmark_map.json`:
+
+```json
+[
+  { "metric": "warm.resolve", "unit": "count", "pointer": "/scenarios/warm/total/ops/resolve" },
+  { "metric": "cold.wallClockMs", "unit": "ms", "pointer": "/wallClockMs" }
+]
+```
+
+Every pointer must resolve to a number: a map that no longer matches its harness fails with `pointer_unresolved` rather than importing a shorter list than the user wrote.
+
+### `import-vault [<root>]`
+
+Reads a whole knowledge tree — `<root>/<project>/<task>/<category>/` — into projects, tasks, evidence and benchmarks. **Dry run by default.**
+
+A task folder is one holding a `README.md`, which is what separates the tasks from the `Runbooks/` tree and everything else a vault root keeps beside them. Folders prefixed with `_` or `.` are not tasks; only `_arquitectura` can be asked for, with `--include-arch`, and it comes in as a `spike`.
+
+```
+$ engram project import-vault ~/.clarodrive
+ACTION  PROJECT    TASK                              KIND       STATE
+create  nextcloud  CDBS-10336 hardening-autologin    bugfix     done
+create  nextcloud  CDBS-10555 lookup-timeout         incident   pending
+create  nextcloud  split-filesharing                 refactor   unverified
+
+root:       /Users/me/.clarodrive
+projects:   nextcloud
+evidence:   14 new · 0 known · 0 skipped
+benchmarks: 3 new · 0 known · 1 skipped
+nothing was written; re-run with --apply
+```
+
+```bash
+engram project import-vault ~/.clarodrive --project nextcloud --apply --json
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--project X` | Import one project folder only |
+| `--apply` | Write the plan |
+| `--no-states` | Leave task states as the store records them |
+| `--include-arch` | Import `_arquitectura` as a `spike` |
+| `--max-bytes N` | Size beyond which a file is recorded but not hashed |
+| `--json` | JSON envelope |
+
+States come from the `## Mapa de tareas` section of the vault's root README, falling back to the task README's own `**Estado:**` line: `Cerrado (fecha)` → `done`, `Con pendientes` → `pending`, `Histórico` → `archived`, `Sin confirmar` → `unverified`. The state is read from the start of the cell, so a row that qualifies it — `Con pendientes — falta la QA`, `Sin confirmar cuál corre hoy` — still maps; a cell opening with none of the four leaves the state untouched. With `--no-states` the section is not required; without it, a README carrying none fails with `vault_readme_unparsed`.
+
+The section runs until the next heading at its own level, and may be split into one subheading and one table per project:
+
+```markdown
+## Mapa de tareas
+
+### `nextcloud/` — ingeniería de la plataforma
+
+| Tarea | Qué resuelve | Estado | Archivos |
+|---|---|---|---|
+| [CDBS-10449 — migración de usuario](./nextcloud/CDBS-10449-migracion-usuario/README.md) | Migra un usuario entre instancias. | Cerrado (2026-06-22) | 195 |
+```
+
+A row is matched to a task folder by **the path its link points at** — `<project>/<task>` — never by its text, which is prose a person edits. The link text supplies the title, with any `TICKET — ` prefix dropped since the folder already carries the ticket. Lookup tables further down the file link to the same folders and are not part of the map.
+
+The import is idempotent, and only in one direction: the title, the summary, the folder and the kind the folder name suggests are written **once, at creation**, so re-running never undoes a correction somebody made in the store. State is the exception, and `--no-states` is how you refuse even that. A second run over an unchanged tree therefore reports every task as `skip` and zero new rows.
+
+### `search <query>`
+
+One query across observations, tasks, evidence, runbooks, project cards and benchmarks, capped per kind so one loud kind cannot fill a result set six kinds are meant to share.
+
+```
+$ engram project search timeout --project nextcloud --subtree
+KIND         REF          PROJECT    TITLE                             UPDATED
+observation  obs-1a2b3c   nextcloud  El lookup agota su timeout        2026-09-05 16:13:31
+task         CDBS-10555   nextcloud  Timeout de lookup en el estanque  2026-09-06 09:41:02
+
+observation: 4
+task: 1
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--project X` | Scope to one project (default: the resolved project) |
+| `--subtree` | Widen `--project` to the project and everything under it |
+| `--kind K` | Repeatable: `observation`, `task`, `evidence`, `runbook`, `card`, `benchmark` |
+| `--per-kind N` | Hits per kind, 1–25 (default 5) |
+| `--json` | JSON envelope; `result.totals` carries how many there were before the cap |
+
+A query shorter than two characters is refused with `query_too_short`: one character matches most of a workspace, which is a listing with extra steps rather than a search result.
 
 ### `runbooks sync`
 
@@ -326,11 +641,110 @@ earlier it points at a document no checkout has, which is exactly what
 | `--allow-unpinned` | Repair case: the observation was unpinned after the document merged |
 | `--allow-any-type` | Repair case: give an existing document its backlink even when the observation's type would not have started a promotion |
 
+## `engram theme` — the palettes the TUI renders with
+
+`engram theme` is a top-level command, not a subcommand of `engram project`: a palette belongs to the interface, not to a project. Its `--json` therefore prints the result object directly, with no `{project, project_source, project_path, result}` envelope around it; errors keep the same `{"error", "code", …}` shape every other command uses.
+
+Themes live in SQLite rather than in a configuration file, because everything else the interface remembers does. The palettes the binary ships are seeded into the `themes` table on every read, idempotently: a row still marked `builtin` takes the palette a new build carries, and one somebody has edited is left exactly as it is.
+
+```
+$ engram theme list
+
+   THEME             VARIANT  SOURCE   PROBLEMS
+   catppuccin-mocha  dark     builtin  -
+   elephant          dark     builtin  3
+*  kanagawa          dark     builtin  6
+```
+
+The `PROBLEMS` column is what `Palette.Validate` found. A theme is listed whether or not it is legible — the picker draws a broken one in `Danger` rather than hiding it, and so does this.
+
+```
+$ engram theme show kanagawa
+theme:   kanagawa (dark · builtin)
+
+    ROLE       HEX      ON BASE   ON SURFACE
+▓▓  base       #1f1f28  1.00:1    1.16:1
+▓▓  surface    #2a2a37  1.16:1    1.00:1
+▓▓  overlay    #54546d  2.23:1 !  1.93:1 !
+▓▓  text       #dcd7ba  11.26:1   9.75:1
+▓▓  subtext    #727169  3.33:1 !  2.88:1 !
+▓▓  primary    #7e9cd8  5.94:1    5.14:1
+…
+
+    LOGO ROW  HEX
+▓▓  0         #957fb8
+…
+
+problem: subtext on base: contrast 3.33:1, want >= 4.5:1
+problem: overlay on base: contrast 2.23:1, want >= 3.0:1
+```
+
+The block at the start of each row is a truecolor swatch painted in the role's own colour, and a ratio under the bar the role answers to is marked with `!` — 4.5:1 for the ten text roles (WCAG 1.4.3), 3:1 for `overlay`, which is a border and not text (WCAG 1.4.11).
+
+| Subcommand | What it does |
+| --- | --- |
+| `list` | Every theme, its variant, where its palette came from, and which one is active |
+| `show <name>` | The thirteen roles with swatches, the five-stop logo gradient, and the contrast matrix |
+| `use <name>` | Writes `tui.theme` in `settings`. A name nothing answers to exits 1 and lists the ones that do |
+| `import <file.json>` | Adds a theme from a document. `[--name N]` stores it under another name; `[--force]` stores a palette that fails validation |
+| `export <name>` | Writes the document to stdout, or to `[--out <path>]` |
+| `reset <name>` | Puts a builtin back the way this build ships it; a theme this build does not ship is removed instead |
+
+```bash
+engram theme use kanagawa
+engram theme export kanagawa --out kanagawa.json
+engram theme import kanagawa.json --name kanagawa-mine --force
+engram theme reset kanagawa
+```
+
+### `theme.json`
+
+```json
+{
+  "name": "koi-pond",
+  "variant": "dark",
+  "palette": {
+    "base": "#0d1b21",
+    "surface": "#16272f",
+    "overlay": "#57808c",
+    "text": "#e6edef",
+    "subtext": "#9fb6bd",
+    "primary": "#ff9e5e",
+    "secondary": "#f4a8c0",
+    "accent": "#ecc369",
+    "highlight": "#7fe0d4",
+    "success": "#96cf7f",
+    "warning": "#e9b949",
+    "danger": "#f4787f",
+    "info": "#74bde0"
+  },
+  "logo_gradient": ["#e6edef", "#ecc369", "#ff9e5e", "#f4787f", "#7fe0d4"]
+}
+```
+
+`name` is kebab-case, up to 32 characters. `variant` is `dark` or `light`, defaulting to `dark`. All thirteen roles must be present, each as a lowercase `#rrggbb` literal, and the gradient is exactly five stops.
+
+Two checks are kept apart on purpose. **Shape** — the name, the variant, all thirteen roles, five stops — is what `import` refuses outright: a file that fails it is not a theme. **Taste** — legibility and duplication — is what `--force` overrides, because a palette somebody chose with their eyes open is theirs to choose. Validation reports every problem at once rather than the first: told one at a time, a person fixing a hand-written theme edits, re-imports, and is told the next one.
+
+The rules are: the ten text roles clear 4.5:1 against both `base` and `surface`; `overlay` clears 3:1 against `base`; no two roles render as the same hex.
+
+A palette can also be edited in place, which is the reason it is stored as a JSON document rather than as columns:
+
+```bash
+sqlite3 ~/.engram/engram.db \
+  "UPDATE themes SET palette = json_set(palette, '\$.palette.primary', '#ff8a3d'),
+                     source = 'sql', updated_at = datetime('now')
+   WHERE name = 'koi-pond';"
+```
+
+Marking the row `source = 'sql'` is what protects the edit from the next upgrade's reseed. `engram theme reset koi-pond` undoes it.
+
 ## Relationship to the other surfaces
 
 | Surface | Use it when | Subcommands |
 | --- | --- | --- |
 | CLI `engram project …` | Shell, hooks, scripts, and anything that wants aligned columns or `--json` | All (including `promote list` / `promote stamp`) |
+| CLI `engram theme …` | Choosing, inspecting and exchanging palettes | `list`, `show`, `use`, `import`, `export`, `reset` |
 | MCP `--tools=projects` | An agent inside a session | `card`, `upsert`, `graph sync`, `tasks …`, `evidence …`, `runbooks …`, `context` |
 | HTTP `/projects/{slug}/…` | Another service reading the same data | `card`, `upsert`, `graph sync`, `tasks …`, `evidence …`, `runbooks …`, `context` |
 

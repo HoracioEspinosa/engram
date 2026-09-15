@@ -63,9 +63,9 @@ type DashboardAuditRow struct {
 // InsertAuditEntry synchronously inserts one audit log row.
 // On DB error the error is returned to the caller; do NOT suppress it.
 // The caller is responsible for logging at WARN and deciding HTTP response.
-// JW5: Metadata field is included in the INSERT via json.Marshal so that
-// future-proofing data is not silently dropped.
-// N5: nil or empty Metadata map is stored as NULL in the DB (not as "{}").
+// The Metadata field is included in the INSERT via json.Marshal so that
+// future-proofing data is not silently dropped. A nil or empty Metadata map
+// is stored as NULL in the DB (not as "{}").
 func (cs *CloudStore) InsertAuditEntry(ctx context.Context, entry AuditEntry) error {
 	if cs == nil || cs.db == nil {
 		return fmt.Errorf("cloudstore: InsertAuditEntry: not initialized")

@@ -140,7 +140,15 @@ Full details on session lifecycle, topic keys, and memory hygiene → [docs/ARCH
 
 With `any`, a memory can match one or more query tokens instead of requiring all of them. This is useful when you remember related keywords but not the exact wording stored in Engram.
 
-## MCP Tools (20)
+## MCP Tools
+
+Engram registers 39 tools across four composable profiles: `agent` (18 — what the memory
+protocols call during a coding session), `admin` (4 — manual curation for the TUI and
+dashboards), `projects` (10 — project cards, tasks, evidence, runbooks, the context pack)
+and `workspace` (7 new tools — project tree, vault scanners, benchmarks, global search —
+plus 3 re-exported from `projects`). Profiles compose: `--tools=agent,projects` loads 28,
+and the recommended `--tools=agent,projects,workspace` loads 35 (the overlap counted once).
+Omitting `--tools` registers all 39.
 
 | Category               | Tools                                                                                                            |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -149,9 +157,15 @@ With `any`, a memory can match one or more query tokens instead of requiring all
 | **Session Lifecycle**  | `mem_session_start`, `mem_session_end`, `mem_session_summary`                                                    |
 | **Conflict Surfacing** | `mem_judge`, `mem_compare`                                                                                       |
 | **Lifecycle Review**   | `mem_review`                                                                                                      |
+| **Pinning**            | `mem_pin`, `mem_unpin`                                                                                           |
 | **Utilities**          | `mem_save_prompt`, `mem_stats`, `mem_capture_passive`, `mem_merge_projects`, `mem_current_project`, `mem_doctor` |
 
-Full tool reference with parameters → [DOCS.md#mcp-tools-20-tools](DOCS.md#mcp-tools-20-tools)
+The `projects` and `workspace` tools — project cards, tasks, evidence, the runbook index,
+benchmarks, the project tree and global workspace search — are documented in
+[DOCS.md — Tool profiles](DOCS.md#tool-profiles) and
+[DOCS.md — Workspace Tools](DOCS.md#workspace-tools-profile-workspace).
+
+Full tool reference with parameters → [DOCS.md#mcp-tools](DOCS.md#mcp-tools)
 
 ## Terminal UI
 
@@ -159,21 +173,23 @@ Full tool reference with parameters → [DOCS.md#mcp-tools-20-tools](DOCS.md#mcp
 engram tui
 ```
 
-A project workspace, not just a memory browser: a project selector and per-project dashboard, plus
-five tabs — Memory, Tasks, Evidence, Runbooks, Cloud — over the same SQLite store.
+A project workspace, not just a memory browser: eight tabs — Home, Memory, Tasks, Evidence,
+Benchmarks, Runbooks, Graph, Settings — over the same SQLite store.
 
 <p align="center">
-  <img src="assets/tui-s2-project-dashboard.png" alt="TUI Project Dashboard" width="400" />
-  <img src="assets/tui-s3-tasks-list.png" alt="TUI Tasks List" width="400" />
+  <img src="docs/tui/img/home-koi-pond.png" alt="TUI Home tab" width="400" />
+  <img src="docs/tui/img/tasks-detail-koi-pond.png" alt="TUI task detail" width="400" />
 </p>
 
-**Navigation**: `1`–`5` jump to a tab, `Tab`/`Shift+Tab` cycle them, `0` returns to the Dashboard,
-`p` opens the project selector, `j/k` move, `Enter` drills in, `c` copies to clipboard (OSC 52),
-`/` searches, `?` shows the current screen's keys, `Esc`/`q` go back. Three themes —
-`catppuccin-mocha` (default), `kanagawa`, `elephant` — via `--theme`, `ENGRAM_TUI_THEME`, or
-`tui.theme` in `~/.engram/config.json`.
+**Navigation**: `0`–`7` jump to a tab, `Tab`/`Shift+Tab` cycle them, `ctrl+p` opens the project
+tree, `ctrl+k` the workspace search palette, `ctrl+t` the theme picker, `j/k` move, `Enter` drills
+in, `c` copies to clipboard (OSC 52), `r` refreshes, `?` shows the current screen's keys, `Esc`/`q`
+go back, `ctrl+c` quits. The mouse is on by default: click a tab, scroll the list under the
+pointer, `shift`+drag to select text. Seven themes — `koi-pond` (default), `koi-day`, `showa`,
+`ogon`, `catppuccin-mocha`, `kanagawa`, `elephant` — via `--theme`, `ENGRAM_TUI_THEME`,
+`engram theme use`, or `tui.theme` in `~/.engram/config.json`.
 
-Full walkthrough, every screen, and the two things that aren't obvious the first time → [docs/TUI.md](docs/TUI.md)
+Every tab, the full keymap, theming and icon modes → [docs/TUI.md](docs/TUI.md)
 
 ## Git Sync
 
@@ -420,6 +436,7 @@ Full environment variable reference → [DOCS.md#environment-variables](DOCS.md#
 | [Agent Setup](docs/AGENT-SETUP.md)            | Per-agent configuration + Memory Protocol                              |
 | [Codebase Guide](docs/CODEBASE-GUIDE.md)      | Guide to the repository structure, flows, and implementation landmarks |
 | [Architecture](docs/ARCHITECTURE.md)          | How it works + MCP tools + project structure                           |
+| [Dev Environment](docs/DEV-ENVIRONMENT.md)    | The isolated Docker stack, `make` targets, and the `scripts/dev/` scripts |
 | [engram-projects CLI](docs/ENGRAM-PROJECTS-CLI.md) | `engram project …`: cards, tasks, evidence, runbooks, code graph, context packs |
 | [Plugins](docs/PLUGINS.md)                    | OpenCode & Claude Code plugin details                                  |
 | [Comparison](docs/COMPARISON.md)              | Why Engram vs claude-mem                                               |

@@ -482,9 +482,9 @@ func auditTimeValue(t time.Time) string {
 
 // buildAuditListURL constructs the /dashboard/admin/audit-log/list URL with
 // active filter query params embedded. Used to forward deep-link filters into
-// the initial HTMX hx-get attribute so that reloading the shell preserves filters.
-// JW2 fix: deep-linking /dashboard/admin/audit-log?contributor=alice must
-// propagate contributor=alice into the initial partial load.
+// the initial HTMX hx-get attribute so that reloading the shell preserves filters:
+// deep-linking /dashboard/admin/audit-log?contributor=alice must propagate
+// contributor=alice into the initial partial load.
 func buildAuditListURL(filter cloudstore.AuditFilter) string {
 	q := url.Values{}
 	if c := strings.TrimSpace(filter.Contributor); c != "" {

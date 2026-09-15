@@ -194,10 +194,48 @@ func TestTaskLink_UnknownTask(t *testing.T) {
 	}
 }
 
+// TestTaskLink_ShortGraphCommitIsTyped pins the report for an abbreviated SHA.
+// The column takes exactly 40 characters, and the tool used to answer "linked"
+// while the reference the caller asked for was silently dropped.
+func TestTaskLink_ShortGraphCommitIsTyped(t *testing.T) {
+	s := newMCPTestStore(t)
+	cfg := MCPConfig{DefaultProject: "nextcloud"}
+	callProjectTool(t, handleTaskUpsert(s, cfg), map[string]any{"jira_key": "PROJ-1", "title": "t", "kind": "bugfix"})
+
+	if err := s.CreateSession("s1", "nextcloud", ""); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	obsID, err := s.AddObservation(store.AddObservationParams{
+		SessionID: "s1", Type: "manual", Title: "t", Content: "c", Project: "nextcloud"})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	res := callProjectTool(t, handleTaskLink(s, cfg), map[string]any{
+		"task": "PROJ-1", "observation_id": float64(obsID),
+		"graph_ref": "pkg/lookup.Resolve", "graph_commit": "1111111",
+	})
+	if !res.IsError || callResultJSON(t, res)["code"] != "graph_commit_invalid" {
+		t.Fatalf("expected graph_commit_invalid, got %v", callResultJSON(t, res))
+	}
+
+	ok := callProjectTool(t, handleTaskLink(s, cfg), map[string]any{
+		"task": "PROJ-1", "observation_id": float64(obsID),
+		"graph_ref": "pkg/lookup.Resolve", "graph_commit": "1111111111111111111111111111111111111111",
+	})
+	if ok.IsError {
+		t.Fatalf("a full sha must be accepted: %v", callResultJSON(t, ok))
+	}
+	result := callResultJSON(t, ok)["result"].(map[string]any)
+	if int(result["refs_added"].(float64)) != 1 {
+		t.Fatalf("refs_added = %v, want the graph reference written", result)
+	}
+}
+
 // ─── mem_evidence_add / mem_evidence_list ────────────────────────────────────
 
-// TestEvidenceAdd_RejectsDirBasenameGuess ties the ADR-057 write-decider rule
-// to the evidence-capture tool named in that decision: mem_evidence_add must
+// TestEvidenceAdd_RejectsDirBasenameGuess ties the write-decider rule
+// to the evidence-capture tool: mem_evidence_add must
 // not attach evidence to a project name guessed from the current directory's
 // basename. It has no project argument at all (project field intentionally
 // not read — auto-detect only), so a plain non-git temp directory with no
@@ -516,5 +554,31 @@ func TestTaskLink_KnowledgeRefShapeRule(t *testing.T) {
 	})
 	if res.IsError {
 		t.Fatalf("unexpected error: %v", callResultJSON(t, res))
+	}
+}
+
+// TestReadToolsAcceptCardOnlyProject covers the window between mem_project_upsert
+// and the first observation: the card is the project's only row, and a read tool
+// given that project by name has to serve it rather than call it unknown.
+func TestReadToolsAcceptCardOnlyProject(t *testing.T) {
+	t.Chdir(t.TempDir())
+	s := newMCPTestStore(t)
+	cfg := MCPConfig{DefaultProject: "koi-garden"}
+
+	upsert := callProjectTool(t, handleProjectUpsert(s, cfg), map[string]any{"project": "koi-garden"})
+	if upsert.IsError {
+		t.Fatalf("mem_project_upsert: %v", callResultJSON(t, upsert))
+	}
+	if exists, err := s.ProjectExists("koi-garden"); err != nil || exists {
+		t.Fatalf("ProjectExists = %v, %v; want false, nil so the card is the only backing row", exists, err)
+	}
+
+	list := callProjectTool(t, handleTaskList(s, cfg), map[string]any{"project": "koi-garden"})
+	if list.IsError {
+		t.Fatalf("mem_task_list on a card-only project: %v", callResultJSON(t, list))
+	}
+	body := callResultJSON(t, list)
+	if got := body["project"]; got != "koi-garden" {
+		t.Fatalf("project = %v; want koi-garden", got)
 	}
 }

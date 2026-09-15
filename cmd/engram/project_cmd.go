@@ -1,5 +1,5 @@
-// engram-projects CLI (RFC rfc-engram-projects.md §7.1): `engram project
-// <slug> …` groups the per-project operations — card, upsert, graph sync,
+// engram-projects CLI: `engram project <slug> …` groups the per-project
+// operations — card, upsert, graph sync,
 // tasks, evidence, runbooks and context — over the exact same store and
 // internal/project calls the `projects` MCP profile uses, so the CLI, the
 // MCP tools and the HTTP API cannot drift apart.
@@ -43,19 +43,24 @@ var projTTYWriter = func() (io.WriteCloser, bool) {
 // ─── Enumerations (mirror internal/mcp/projects_tools.go) ────────────────────
 
 var (
-	projTaskKindEnum            = []string{"feature", "bugfix", "refactor", "incident", "migration", "spike"}
-	projTaskStateEnum           = []string{"open", "analysis", "in_progress", "review", "verified", "done", "blocked", "cancelled"}
-	projTaskListStateEnum       = append([]string{"active"}, projTaskStateEnum...)
-	projJiraStatusCategoryEnum  = []string{"new", "indeterminate", "done"}
-	projTaskLinkRoleEnum        = []string{"context", "decision", "root_cause", "evidence", "summary"}
-	projEvidenceKindEnum        = []string{"png", "gif", "mp4", "json", "log", "txt"}
-	projRunbookCategoryEnum     = []string{"auth", "database", "queue", "network", "performance", "data-integrity", "registration"}
-	projRunbookPatternEnum      = []string{"missing-files", "auth-access", "file-save-failure", "sync-upload", "registration-subscription", "other"}
-	projMatchModeEnum           = []string{"all", "any"}
-	projContextPackSectionEnum  = []string{"header", "card", "pointers", "pinned", "observations", "evidence", "runbooks", "refs", "footer"}
-	projContextPackFormatEnum   = []string{"markdown", "json"}
-	projReservedProjectSlugSet  = map[string]bool{"migrate": true, "current": true}
-	projSubcommands             = map[string]bool{"card": true, "upsert": true, "graph": true, "tasks": true, "evidence": true, "runbooks": true, "context": true, "promote": true}
+	projTaskKindEnum           = []string{"feature", "bugfix", "refactor", "incident", "migration", "spike"}
+	projTaskStateEnum          = []string{"open", "analysis", "in_progress", "review", "verified", "done", "blocked", "cancelled"}
+	projTaskListStateEnum      = append([]string{"active"}, projTaskStateEnum...)
+	projJiraStatusCategoryEnum = []string{"new", "indeterminate", "done"}
+	projTaskLinkRoleEnum       = []string{"context", "decision", "root_cause", "evidence", "summary"}
+	projEvidenceKindEnum       = []string{"png", "gif", "mp4", "json", "log", "txt"}
+	projRunbookCategoryEnum    = []string{"auth", "database", "queue", "network", "performance", "data-integrity", "registration"}
+	projRunbookPatternEnum     = []string{"missing-files", "auth-access", "file-save-failure", "sync-upload", "registration-subscription", "other"}
+	projMatchModeEnum          = []string{"all", "any"}
+	projContextPackSectionEnum = []string{"header", "card", "pointers", "pinned", "observations", "evidence", "runbooks", "refs", "footer"}
+	projContextPackFormatEnum  = []string{"markdown", "json"}
+	projReservedProjectSlugSet = map[string]bool{"migrate": true, "current": true}
+	projSubcommands            = map[string]bool{
+		"card": true, "upsert": true, "graph": true, "tasks": true, "evidence": true,
+		"runbooks": true, "context": true, "promote": true,
+		"tree": true, "set-parent": true, "alias": true, "bench": true,
+		"import-vault": true, "search": true,
+	}
 	projDefaultEvidenceDirEnv   = "CD_EVIDENCE_DIR"
 	projDefaultEvidenceRelative = filepath.Join(".clarodrive", "evidence")
 )
@@ -161,7 +166,7 @@ func projResolveScope(explicit string) (projScope, error) {
 	// This resolver backs writing subcommands (project_upsert, task_upsert,
 	// evidence_add, ...) as well as read ones, over the same store calls the
 	// `projects` MCP profile uses. A directory-name guess must not be
-	// accepted as the cwd-detected scope for either: ADR-057 §3 treats it as
+	// accepted as the cwd-detected scope for either: it is treated as
 	// unresolved rather than as a usable, if uncertain, project.
 	if projectpkg.IsGuessedSource(det.Source) {
 		return projScope{}, fmt.Errorf("project is not resolvable from %q: only a directory-name guess was found; pass an explicit slug or set ENGRAM_PROJECT", det.Path)
@@ -519,6 +524,18 @@ func cmdProject(cfg store.Config) {
 		cmdProjectContext(cfg, slug, rest)
 	case "promote":
 		cmdProjectPromote(cfg, slug, rest)
+	case "tree":
+		cmdProjectTree(cfg, slug, rest)
+	case "set-parent":
+		cmdProjectSetParent(cfg, slug, rest)
+	case "alias":
+		cmdProjectAlias(cfg, slug, rest)
+	case "bench":
+		cmdProjectBench(cfg, slug, rest)
+	case "import-vault":
+		cmdProjectImportVault(cfg, slug, rest)
+	case "search":
+		cmdProjectSearch(cfg, slug, rest)
 	case "help", "--help", "-h":
 		printProjectUsage()
 	default:
@@ -540,9 +557,21 @@ Subcommands:
   upsert                      Create or update the project card
                                 [--display-name] [--repo-url] [--default-branch]
                                 [--jira-project] [--jira-component] [--knowledge-hub]
-                                [--owner] [--graph-path]
+                                [--owner] [--graph-path] [--parent <slug>|--root]
+                                [--kind] [--description] [--icon] [--color]
+                                [--tag T] [--alias A]
+  tree [<root>]               Walk the project tree in preorder [--counts]
+  tree suggest                Propose a parent for each family of instances
+  tree apply --from-suggest   Carry out what tree suggest proposes [--yes]
+  tree doctor                 Report broken parent pointers and depths [--fix]
+  set-parent <slug>           Move a project in the tree --to <parent> | --root
+  alias list [<slug>]         Aliases that redirect a name onto a project
+  alias add <alias> --to S    Point a name at a project [--source manual]
+  alias rm <alias>            Retire an alias
   graph sync                  Stamp graph_commit/graph_built_at/graph_summary
                                 [--repo-dir <dir>] [--graph-path <rel>]
+  graph check [<slug>]        Compare the graph against HEAD and stamp the verdict
+                                [--repo-dir <dir>]
   tasks list                  List tasks with Jira-mirror freshness
                                 [--state] [--kind] [--jira] [--q] [--limit]
                                 [--offset] [--stale-after 24h]
@@ -562,6 +591,22 @@ Subcommands:
                                 [--confluence-url]
   evidence list [<task>]      List evidence for the project or one task
                                 [--attached-jira] [--kind] [--limit] [--offset]
+  evidence scan <task>        Register what the task's vault folder holds
+                                [--category X] [--apply] [--max-bytes N]
+  bench add <task>            Record one measurement
+                                --name N --metric M --unit U --value V
+                                [--baseline] [--direction] [--run-path]
+                                [--config-stamp] [--captured-at] [--notes]
+  bench list [<task>]         Measurements next to their baseline
+                                [--metric] [--include-children] [--limit] [--offset]
+  bench import <task> <run>   Read a run file into measurements
+                                [--map map.json] [--baseline] [--apply]
+  import-vault [<root>]       Read <root>/<project>/<task>/ into the store
+                                [--project X] [--apply] [--no-states]
+                                [--include-arch] [--max-bytes N]
+  search <query>              Search observations, tasks, evidence, runbooks,
+                                cards and benchmarks at once
+                                [--project X] [--subtree] [--kind K] [--per-kind N]
   runbooks sync               Rebuild the runbook index
                                 (--vault-dir <dir> | --entries-file <file.json>)
                                 [--prune-missing]
@@ -579,6 +624,13 @@ Subcommands:
 
 Examples:
   engram project acme-sync card --graph-summary
+  engram project tree --counts
+  engram project set-parent acme-sync-eu --to acme-sync
+  engram project alias add acme_sync --to acme-sync
+  engram project acme-sync evidence scan ACME-101 --category evidences
+  engram project acme-sync bench list ACME-101 --metric lookup.p95
+  engram project import-vault ~/.clarodrive --project acme-sync
+  engram project search timeout --subtree --json
   engram project acme-sync graph sync --repo-dir .
   engram project acme-sync tasks list --state active --stale-after 24h
   engram project acme-sync context ACME-101 --max-chars 6000 --copy

@@ -1,0 +1,4 @@
+[
+  { "metric": "warm.resolve", "unit": "count", "pointer": "/scenarios/warm/total/ops/resolve" },
+  { "metric": "cold.wallClockMs", "unit": "ms", "pointer": "/wallClockMs" }
+]

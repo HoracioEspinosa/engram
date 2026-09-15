@@ -12,7 +12,99 @@ import (
 // anything else, so this pragma is reserved exclusively for this
 // extension and is safe to read from outside the store package (see
 // ProjectsSchemaStatus).
-const ProjectsSchemaVersion = 2
+//
+// Version 3 adds the workspace shape on top of version 2: the project
+// hierarchy, project aliases, vault-aware tasks, categorised evidence and
+// task-scoped benchmarks. The stamp is a diagnostic label, not a precondition:
+// which steps still have to run is decided by the migration ledger, one row per
+// step, so a database that stops halfway resumes exactly where it stopped.
+const ProjectsSchemaVersion = 3
+
+// projectsMigrationIDs lists the ledger ids of the engram-projects steps that
+// take a version-2 database to version 3, in the order they must run.
+const (
+	// projCardsHierarchyID adds the parent/kind/appearance columns to
+	// project_cards, plus the three local columns that record the last graph
+	// staleness check.
+	projCardsHierarchyID = "proj-0001-cards-hierarchy"
+	// projAliasesID adds the table that lets one project answer to more than
+	// one name without any historical row being renamed.
+	projAliasesID = "proj-0002-project-aliases"
+	// projTasksRebuildID reshapes tasks around the vault: a slug of its own, a
+	// summary, a note for what is left, the folder it lives in, a parent task,
+	// and the three states the vault README already uses.
+	projTasksRebuildID = "proj-0003-tasks-rebuild"
+	// projEvidenceRebuildID gives evidence the category the vault files it
+	// under and widens kind to the file types people actually capture.
+	projEvidenceRebuildID = "proj-0004-evidence-rebuild"
+	// projBenchmarksID adds the measurements a task was justified by, so a
+	// number that argued for a change is kept next to the change.
+	projBenchmarksID = "proj-0005-benchmarks"
+	// projCardsFTSID indexes the cards themselves, so one search can reach a
+	// project by its name or description instead of only reaching what is
+	// filed under it.
+	projCardsFTSID = "proj-0006-cards-fts"
+	// projThemesID holds the palettes the interface is drawn with, so a theme
+	// can be edited and kept rather than recompiled.
+	projThemesID = "proj-0007-themes"
+	// projSettingsID holds what the interface remembers between runs. It is
+	// the source of truth for those, above config.json.
+	projSettingsID = "proj-0008-settings"
+)
+
+// projectsHierarchyDDL is the proj-0001-cards-hierarchy step. It is written as
+// ALTER TABLE rather than folded into projectsSchemaDDL because an existing
+// database must gain the columns without its rows being rewritten: a card is
+// the anchor of every task, evidence row and runbook, and a rebuild here would
+// cost a full-file backup for nine columns that all have a default.
+//
+// The CHECK on icon and color is spelled as a pair of GLOBs rather than one,
+// because GLOB's `*` matches any run of characters rather than repeating the
+// class before it. `name GLOB '[a-z]*'` fixes the first character and
+// `name NOT GLOB '*[^a-z0-9-]*'` rejects every character outside the set, which
+// together say what a single regular expression would.
+const projectsHierarchyDDL = `
+ALTER TABLE project_cards ADD COLUMN parent_slug TEXT
+    REFERENCES project_cards(slug) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE project_cards ADD COLUMN depth INTEGER NOT NULL DEFAULT 0
+    CHECK (depth BETWEEN 0 AND 3);
+ALTER TABLE project_cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'repo'
+    CHECK (kind IN ('umbrella','repo','instance','service','dataset','knowledge'));
+ALTER TABLE project_cards ADD COLUMN description TEXT
+    CHECK (description IS NULL OR length(description) <= 1000);
+ALTER TABLE project_cards ADD COLUMN icon TEXT
+    CHECK (icon IS NULL OR (icon GLOB '[a-z]*' AND icon NOT GLOB '*[^a-z0-9-]*'));
+ALTER TABLE project_cards ADD COLUMN color TEXT
+    CHECK (color IS NULL
+           OR color GLOB '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
+           OR (color GLOB '[a-z]*' AND color NOT GLOB '*[^a-z0-9-]*'));
+ALTER TABLE project_cards ADD COLUMN tags TEXT
+    CHECK (tags IS NULL OR (json_valid(tags) AND json_type(tags) = 'array'));
+ALTER TABLE project_cards ADD COLUMN graph_stale_reason TEXT;
+ALTER TABLE project_cards ADD COLUMN graph_changed_files INTEGER;
+ALTER TABLE project_cards ADD COLUMN graph_checked_at TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_project_cards_parent ON project_cards(parent_slug, slug);
+CREATE INDEX IF NOT EXISTS idx_project_cards_kind   ON project_cards(kind, updated_at DESC);
+
+-- Safety net for a parent written by raw SQL. The real cycle check lives in
+-- SetProjectParent: SQLite has no WITH RECURSIVE inside a trigger, so a trigger
+-- can only see one level and would let a longer cycle through.
+CREATE TRIGGER IF NOT EXISTS project_cards_depth_ck
+BEFORE UPDATE OF parent_slug, depth ON project_cards
+BEGIN
+    SELECT RAISE(ABORT, 'project_cards: a card cannot be its own parent')
+    WHERE new.parent_slug IS NOT NULL AND new.parent_slug = new.slug;
+
+    SELECT RAISE(ABORT, 'project_cards: a card without a parent is at depth 0')
+    WHERE new.parent_slug IS NULL AND new.depth <> 0;
+
+    SELECT RAISE(ABORT, 'project_cards: depth must be the parent depth plus one')
+    WHERE new.parent_slug IS NOT NULL
+      AND new.depth <> (SELECT parent.depth + 1 FROM project_cards parent
+                        WHERE parent.slug = new.parent_slug);
+END;
+`
 
 // projectsSchemaTriggers lists every FTS5 sync trigger created by
 // projectsSchemaDDL. migrateProjects verifies each one exists after
@@ -21,6 +113,8 @@ const ProjectsSchemaVersion = 2
 var projectsSchemaTriggers = []string{
 	"tasks_fts_insert", "tasks_fts_delete", "tasks_fts_update",
 	"runbook_fts_insert", "runbook_fts_delete", "runbook_fts_update",
+	"evidence_fts_insert", "evidence_fts_delete", "evidence_fts_update",
+	"project_cards_fts_insert", "project_cards_fts_delete", "project_cards_fts_update",
 }
 
 // projectsSchemaDDL creates the engram-projects extension schema: the five
@@ -255,6 +349,10 @@ func (s *Store) migrateProjects() error {
 		return fmt.Errorf("engram-projects: apply schema: %w", err)
 	}
 
+	if err := s.migrateProjectsToV3(); err != nil {
+		return err
+	}
+
 	for _, trigger := range projectsSchemaTriggers {
 		var name string
 		err := s.db.QueryRow(
@@ -280,11 +378,368 @@ func (s *Store) migrateProjects() error {
 	return nil
 }
 
+// migrateProjectsToV3 applies the steps that take the version-2 schema to
+// version 3. Each one is guarded by the migration ledger, so a fresh database
+// (which projectsSchemaDDL just created in its version-2 shape) and an existing
+// one both walk the same path exactly once.
+func (s *Store) migrateProjectsToV3() error {
+	// A step that rewrites a table goes through s.rebuild, which copies the
+	// whole file first: the old table is gone by the time anything downstream
+	// can fail, so without the copy there would be nothing to go back to.
+	steps := []struct {
+		id      string
+		ddl     string
+		rebuild bool
+	}{
+		{id: projCardsHierarchyID, ddl: projectsHierarchyDDL},
+		{id: projAliasesID, ddl: projectAliasesDDL},
+		{id: projTasksRebuildID, ddl: tasksRebuildDDL, rebuild: true},
+		{id: projEvidenceRebuildID, ddl: evidenceRebuildDDL, rebuild: true},
+		{id: projBenchmarksID, ddl: benchmarksDDL},
+		{id: projCardsFTSID, ddl: projectCardsFTSDDL},
+		{id: projThemesID, ddl: themesDDL},
+		{id: projSettingsID, ddl: settingsDDL},
+	}
+	for _, step := range steps {
+		ddl := step.ddl
+		var err error
+		if step.rebuild {
+			err = s.rebuild(step.id, func() error { return s.rebuildTable(ddl) })
+		} else {
+			err = s.once(step.id, func() error {
+				_, execErr := s.execHook(s.db, ddl)
+				return execErr
+			})
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// tasksRebuildDDL replaces tasks with its version-3 shape. A rebuild rather
+// than a column-by-column ALTER because three of the changes cannot be
+// expressed as additions: the state CHECK has to accept three more values, the
+// identity CHECK has to accept a slug where it used to demand a Jira key or an
+// SDD change, and closed_at has to be legal on an archived task.
+//
+// Everything the old table held is carried over verbatim. The new columns land
+// as NULL, which is what "we do not know yet" looks like for a task written
+// before the vault had a say in any of it.
+const tasksRebuildDDL = `
+CREATE TABLE tasks_rebuild (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    sync_id              TEXT    NOT NULL UNIQUE,
+    project              TEXT    NOT NULL REFERENCES project_cards(slug)
+                                 ON DELETE RESTRICT ON UPDATE CASCADE,
+    jira_key             TEXT    UNIQUE
+                         CHECK (jira_key IS NULL OR jira_key GLOB '[A-Z]*-[0-9]*'),
+    sdd_change           TEXT    CHECK (sdd_change IS NULL OR sdd_change = lower(sdd_change)),
+    slug                 TEXT    CHECK (slug IS NULL
+                                        OR (slug = lower(trim(slug)) AND length(slug) BETWEEN 1 AND 80)),
+    title                TEXT    NOT NULL CHECK (length(trim(title)) > 0),
+    summary              TEXT    CHECK (summary IS NULL OR length(summary) <= 1000),
+    pending_note         TEXT,
+    vault_path           TEXT    CHECK (vault_path IS NULL
+                                        OR (length(trim(vault_path)) > 0
+                                            AND vault_path NOT LIKE '/%'
+                                            AND vault_path NOT LIKE '~%'
+                                            AND vault_path NOT LIKE '%..%')),
+    kind                 TEXT    NOT NULL
+                         CHECK (kind IN ('feature','bugfix','refactor','incident','migration','spike')),
+    state                TEXT    NOT NULL DEFAULT 'open'
+                         CHECK (state IN ('open','analysis','in_progress','review','verified',
+                                          'done','blocked','cancelled','pending','archived','unverified')),
+    jira_status          TEXT,
+    jira_status_category TEXT    CHECK (jira_status_category IS NULL
+                                        OR jira_status_category IN ('new','indeterminate','done')),
+    state_synced_at      TEXT,
+    branch               TEXT,
+    pr_url               TEXT,
+    knowledge_ref        TEXT,
+    assignee             TEXT,
+    parent_task_id       INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+    parent_task_sync_id  TEXT,
+    created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+    closed_at            TEXT,
+    deleted_at           TEXT,
+    CHECK (closed_at IS NULL OR state IN ('done','cancelled','archived')),
+    CHECK (jira_key IS NOT NULL OR sdd_change IS NOT NULL OR slug IS NOT NULL),
+    CHECK (parent_task_id IS NULL OR parent_task_id <> id)
+);
+
+INSERT INTO tasks_rebuild
+    (id, sync_id, project, jira_key, sdd_change, slug, title, summary, pending_note, vault_path,
+     kind, state, jira_status, jira_status_category, state_synced_at, branch, pr_url,
+     knowledge_ref, assignee, parent_task_id, parent_task_sync_id,
+     created_at, updated_at, closed_at, deleted_at)
+SELECT id, sync_id, project, jira_key, sdd_change, NULL, title, NULL, NULL, NULL,
+       kind, state, jira_status, jira_status_category, state_synced_at, branch, pr_url,
+       knowledge_ref, assignee, NULL, NULL,
+       created_at, updated_at, closed_at, deleted_at
+FROM tasks;
+
+DROP TABLE tasks;
+ALTER TABLE tasks_rebuild RENAME TO tasks;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_project_state ON tasks(project, state, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_sdd_change    ON tasks(project, sdd_change);
+CREATE INDEX IF NOT EXISTS idx_tasks_deleted       ON tasks(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent        ON tasks(parent_task_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_project_slug
+    ON tasks(project, slug) WHERE slug IS NOT NULL AND deleted_at IS NULL;
+
+CREATE TRIGGER IF NOT EXISTS tasks_fts_insert AFTER INSERT ON tasks BEGIN
+    INSERT INTO tasks_fts(rowid, title, jira_key, sdd_change, branch, project)
+    VALUES (new.id, new.title, new.jira_key, new.sdd_change, new.branch, new.project);
+END;
+CREATE TRIGGER IF NOT EXISTS tasks_fts_delete AFTER DELETE ON tasks BEGIN
+    INSERT INTO tasks_fts(tasks_fts, rowid, title, jira_key, sdd_change, branch, project)
+    VALUES ('delete', old.id, old.title, old.jira_key, old.sdd_change, old.branch, old.project);
+END;
+CREATE TRIGGER IF NOT EXISTS tasks_fts_update AFTER UPDATE ON tasks BEGIN
+    INSERT INTO tasks_fts(tasks_fts, rowid, title, jira_key, sdd_change, branch, project)
+    VALUES ('delete', old.id, old.title, old.jira_key, old.sdd_change, old.branch, old.project);
+    INSERT INTO tasks_fts(rowid, title, jira_key, sdd_change, branch, project)
+    VALUES (new.id, new.title, new.jira_key, new.sdd_change, new.branch, new.project);
+END;
+
+INSERT INTO tasks_fts(tasks_fts) VALUES('rebuild');
+`
+
+// evidenceRebuildDDL replaces evidence with its version-3 shape.
+//
+// Two closed lists change at once. category did not exist, and the vault has
+// been filing captures under eleven of them all along — without the column, a
+// scan can register what it found but not where it belongs. And kind accepted
+// six file types, which is fewer than a capture session produces in an
+// afternoon: a .webp screenshot or a .har trace had to be logged as something
+// it is not, or not logged at all. `other` is the escape hatch, so an unusual
+// extension degrades to a truthful label instead of a wrong one.
+//
+// Existing rows take the default category. `evidences` is the right default
+// rather than a guess: it is the category the capture flow has always written
+// into, and inferring anything else from a path would be inventing history.
+const evidenceRebuildDDL = `
+CREATE TABLE evidence_rebuild (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    sync_id                 TEXT    NOT NULL UNIQUE,
+    project                 TEXT    NOT NULL REFERENCES project_cards(slug)
+                                    ON DELETE RESTRICT ON UPDATE CASCADE,
+    task_id                 INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    task_sync_id            TEXT    NOT NULL REFERENCES tasks(sync_id) ON DELETE CASCADE,
+    path                    TEXT    NOT NULL
+                            CHECK (length(trim(path)) > 0 AND path NOT LIKE '/%' AND path NOT LIKE '~%'),
+    sha256                  TEXT    NOT NULL
+                            CHECK (length(sha256) = 64 AND sha256 = lower(sha256)),
+    category                TEXT    NOT NULL DEFAULT 'evidences'
+                            CHECK (category IN ('analysis','plans','runbooks','reports','patches',
+                                                'evidences','evidences-qa','benchmarks','scripts',
+                                                'assets','exports')),
+    kind                    TEXT    NOT NULL
+                            CHECK (kind IN ('png','jpg','gif','webp','svg','mp4','webm','json','csv',
+                                            'log','txt','md','patch','diff','pdf','html','zip','har','other')),
+    proves                  TEXT    NOT NULL CHECK (length(trim(proves)) > 0),
+    config_stamp            TEXT,
+    captured_at             TEXT    NOT NULL,
+    attached_jira           INTEGER NOT NULL DEFAULT 0 CHECK (attached_jira IN (0, 1)),
+    attached_confluence_url TEXT,
+    size_bytes              INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0),
+    manifest_path           TEXT,
+    -- When the path and category last moved. A relocation is the one thing an
+    -- otherwise immutable row can report, and two replicas need a clock they
+    -- both hold to agree on which report is the later one.
+    location_set_at         TEXT,
+    created_at              TEXT    NOT NULL DEFAULT (datetime('now')),
+    deleted_at              TEXT,
+    UNIQUE (task_sync_id, sha256)
+);
+
+INSERT INTO evidence_rebuild
+    (id, sync_id, project, task_id, task_sync_id, path, sha256, category, kind, proves,
+     config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes,
+     manifest_path, location_set_at, created_at, deleted_at)
+SELECT id, sync_id, project, task_id, task_sync_id, path, sha256, 'evidences', kind, proves,
+       config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes,
+       manifest_path, created_at, created_at, deleted_at
+FROM evidence;
+
+DROP TABLE evidence;
+ALTER TABLE evidence_rebuild RENAME TO evidence;
+
+CREATE INDEX IF NOT EXISTS idx_evidence_task     ON evidence(task_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_evidence_project  ON evidence(project, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_evidence_category ON evidence(project, category, captured_at DESC);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS evidence_fts USING fts5(
+    path, proves, category, kind, project,
+    content='evidence', content_rowid='id'
+);
+CREATE TRIGGER IF NOT EXISTS evidence_fts_insert AFTER INSERT ON evidence BEGIN
+    INSERT INTO evidence_fts(rowid, path, proves, category, kind, project)
+    VALUES (new.id, new.path, new.proves, new.category, new.kind, new.project);
+END;
+CREATE TRIGGER IF NOT EXISTS evidence_fts_delete AFTER DELETE ON evidence BEGIN
+    INSERT INTO evidence_fts(evidence_fts, rowid, path, proves, category, kind, project)
+    VALUES ('delete', old.id, old.path, old.proves, old.category, old.kind, old.project);
+END;
+CREATE TRIGGER IF NOT EXISTS evidence_fts_update AFTER UPDATE ON evidence BEGIN
+    INSERT INTO evidence_fts(evidence_fts, rowid, path, proves, category, kind, project)
+    VALUES ('delete', old.id, old.path, old.proves, old.category, old.kind, old.project);
+    INSERT INTO evidence_fts(rowid, path, proves, category, kind, project)
+    VALUES (new.id, new.path, new.proves, new.category, new.kind, new.project);
+END;
+
+INSERT INTO evidence_fts(evidence_fts) VALUES('rebuild');
+`
+
+// projectAliasesDDL is the proj-0002-project-aliases step. An alias is a name
+// that resolves to a project, never a rename: nothing historical moves, so a
+// tool configured years ago against the old spelling keeps working while the
+// rows stay under the name they were written with.
+const projectAliasesDDL = `
+CREATE TABLE IF NOT EXISTS project_aliases (
+    alias      TEXT    PRIMARY KEY
+               CHECK (alias = lower(trim(alias)) AND length(alias) BETWEEN 1 AND 96),
+    sync_id    TEXT    NOT NULL UNIQUE,
+    slug       TEXT    NOT NULL REFERENCES project_cards(slug)
+                       ON DELETE CASCADE ON UPDATE CASCADE,
+    source     TEXT    NOT NULL
+               CHECK (source IN ('git_remote','dir','env','manual','normalizer')),
+    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    deleted_at TEXT,
+    CHECK (alias <> slug)
+);
+CREATE INDEX IF NOT EXISTS idx_project_aliases_slug ON project_aliases(slug);
+`
+
+// benchmarksDDL is the proj-0005-benchmarks step. A measurement is what
+// justified a change, and it was being kept as an attached file nobody could
+// query: the number, its unit and which run it came from all lived inside a
+// JSON blob. Here they are columns, so "is this better than before" is a
+// comparison rather than a reading exercise.
+//
+// A measurement is immutable — it was taken at a moment, from a run, and no
+// later run makes it untrue. The one thing that moves is which row is the
+// baseline, and idx_benchmarks_one_baseline makes the database enforce that
+// only one row per metric claims it.
+const benchmarksDDL = `
+CREATE TABLE IF NOT EXISTS benchmarks (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    sync_id         TEXT    NOT NULL UNIQUE,
+    project         TEXT    NOT NULL REFERENCES project_cards(slug)
+                            ON DELETE RESTRICT ON UPDATE CASCADE,
+    task_id         INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    task_sync_id    TEXT    NOT NULL REFERENCES tasks(sync_id) ON DELETE CASCADE,
+    name            TEXT    NOT NULL CHECK (length(trim(name)) > 0),
+    metric          TEXT    NOT NULL CHECK (length(trim(metric)) > 0),
+    unit            TEXT    NOT NULL
+                    CHECK (unit IN ('ms','s','count','bytes','kib','mib','pct','ops','rps','usd','score')),
+    direction       TEXT    NOT NULL DEFAULT 'lower' CHECK (direction IN ('lower','higher')),
+    value           REAL    NOT NULL,
+    baseline        INTEGER NOT NULL DEFAULT 0 CHECK (baseline IN (0, 1)),
+    baseline_set_at TEXT,
+    run_path        TEXT    CHECK (run_path IS NULL
+                                   OR (length(trim(run_path)) > 0
+                                       AND run_path NOT LIKE '/%'
+                                       AND run_path NOT LIKE '~%'
+                                       AND run_path NOT LIKE '%..%')),
+    sha256          TEXT    CHECK (sha256 IS NULL OR (length(sha256) = 64 AND sha256 = lower(sha256))),
+    config_stamp    TEXT,
+    captured_at     TEXT    NOT NULL,
+    notes           TEXT,
+    source          TEXT    NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','json')),
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    deleted_at      TEXT,
+    UNIQUE (task_sync_id, name, metric, captured_at),
+    CHECK (baseline = 0 OR baseline_set_at IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_task ON benchmarks(task_id, captured_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_benchmarks_one_baseline
+    ON benchmarks(task_sync_id, metric) WHERE baseline = 1 AND deleted_at IS NULL;
+`
+
+// projectCardsFTSDDL is the proj-0006-cards-fts step. Every other thing a
+// workspace holds was already searchable and the project itself was not, so a
+// search for a product's name found the notes about it and not the project it
+// names.
+//
+// The index is external-content over project_cards keyed by its implicit rowid:
+// the table's primary key is a text slug and it is not WITHOUT ROWID, so the
+// rowid is stable and is what FTS5 needs. A card is retired with deleted_at
+// rather than deleted, so its row stays in the index and the search filters it
+// out — the same rule every other read of project_cards follows.
+const projectCardsFTSDDL = `
+CREATE VIRTUAL TABLE IF NOT EXISTS project_cards_fts USING fts5(
+    slug, display_name, description, tags,
+    content='project_cards', content_rowid='rowid'
+);
+CREATE TRIGGER IF NOT EXISTS project_cards_fts_insert AFTER INSERT ON project_cards BEGIN
+    INSERT INTO project_cards_fts(rowid, slug, display_name, description, tags)
+    VALUES (new.rowid, new.slug, new.display_name, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS project_cards_fts_delete AFTER DELETE ON project_cards BEGIN
+    INSERT INTO project_cards_fts(project_cards_fts, rowid, slug, display_name, description, tags)
+    VALUES ('delete', old.rowid, old.slug, old.display_name, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS project_cards_fts_update AFTER UPDATE ON project_cards BEGIN
+    INSERT INTO project_cards_fts(project_cards_fts, rowid, slug, display_name, description, tags)
+    VALUES ('delete', old.rowid, old.slug, old.display_name, old.description, old.tags);
+    INSERT INTO project_cards_fts(rowid, slug, display_name, description, tags)
+    VALUES (new.rowid, new.slug, new.display_name, new.description, new.tags);
+END;
+
+INSERT INTO project_cards_fts(project_cards_fts) VALUES('rebuild');
+`
+
+// themesDDL is the proj-0007-themes step. A palette used to be a compiled
+// constant, which meant changing a colour meant a build. Here it is a row, and
+// the source column is what keeps a change: a builtin edited by hand becomes
+// 'sql' and the next seed skips it, so an upgrade stops overwriting the colour
+// somebody chose. It is local-only — nothing here syncs, because what the
+// screen looks like on this machine is not a fact about the work.
+const themesDDL = `
+CREATE TABLE IF NOT EXISTS themes (
+    name       TEXT    PRIMARY KEY
+               CHECK (name = lower(trim(name)) AND length(name) BETWEEN 1 AND 32),
+    variant    TEXT    NOT NULL DEFAULT 'dark' CHECK (variant IN ('dark','light')),
+    palette    TEXT    NOT NULL CHECK (json_valid(palette)),
+    builtin    INTEGER NOT NULL DEFAULT 0 CHECK (builtin IN (0,1)),
+    source     TEXT    NOT NULL DEFAULT 'builtin' CHECK (source IN ('builtin','json','sql')),
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+`
+
+// settingsDDL is the proj-0008-settings step. The interface had nowhere to
+// remember which project was open, which theme was chosen or how wide the last
+// window was, so it forgot on every start. These win over config.json: the
+// database is the source of truth, and the file stays a read-only legacy tier.
+const settingsDDL = `
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT    PRIMARY KEY
+               CHECK (key = lower(trim(key)) AND length(key) BETWEEN 1 AND 64),
+    value      TEXT    NOT NULL,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+`
+
 // projectsSchemaDropDDL removes every engram-projects object in dependency
 // order: FTS5 sync triggers first, then the FTS5 virtual tables, then the
 // contract and auxiliary tables (children before parents so foreign keys
 // never block the drop). No upstream table is touched.
 const projectsSchemaDropDDL = `
+DROP TRIGGER IF EXISTS project_cards_depth_ck;
+DROP TRIGGER IF EXISTS project_cards_fts_update;
+DROP TRIGGER IF EXISTS project_cards_fts_delete;
+DROP TRIGGER IF EXISTS project_cards_fts_insert;
+DROP TABLE IF EXISTS project_cards_fts;
+DROP TRIGGER IF EXISTS evidence_fts_update;
+DROP TRIGGER IF EXISTS evidence_fts_delete;
+DROP TRIGGER IF EXISTS evidence_fts_insert;
+DROP TABLE IF EXISTS evidence_fts;
 DROP TRIGGER IF EXISTS runbook_fts_update;
 DROP TRIGGER IF EXISTS runbook_fts_delete;
 DROP TRIGGER IF EXISTS runbook_fts_insert;
@@ -294,12 +749,16 @@ DROP TRIGGER IF EXISTS tasks_fts_insert;
 DROP TABLE IF EXISTS runbook_index_fts;
 DROP TABLE IF EXISTS tasks_fts;
 DROP TABLE IF EXISTS task_link_tombstones;
+DROP TABLE IF EXISTS project_aliases;
+DROP TABLE IF EXISTS benchmarks;
 DROP TABLE IF EXISTS observation_refs;
 DROP TABLE IF EXISTS task_observations;
 DROP TABLE IF EXISTS evidence;
 DROP TABLE IF EXISTS runbook_index;
 DROP TABLE IF EXISTS tasks;
 DROP TABLE IF EXISTS project_cards;
+DROP TABLE IF EXISTS themes;
+DROP TABLE IF EXISTS settings;
 `
 
 // DropProjectsSchema is the explicit rollback path for the engram-projects
@@ -312,6 +771,13 @@ DROP TABLE IF EXISTS project_cards;
 func (s *Store) DropProjectsSchema() error {
 	if _, err := s.execHook(s.db, projectsSchemaDropDDL); err != nil {
 		return fmt.Errorf("engram-projects: drop schema: %w", err)
+	}
+	// The ledger rows go with the tables they describe. Leaving them behind
+	// would tell the next migration that a step whose table no longer exists
+	// has already run, and the schema would come back in its version-2 shape
+	// with none of the columns the code expects.
+	if _, err := s.execHook(s.db, `DELETE FROM schema_migrations WHERE id LIKE 'proj-%'`); err != nil {
+		return fmt.Errorf("engram-projects: clear migration ledger: %w", err)
 	}
 	if _, err := s.execHook(s.db, "PRAGMA user_version = 0"); err != nil {
 		return fmt.Errorf("engram-projects: reset user_version: %w", err)
@@ -332,6 +798,10 @@ type ProjectsSchemaStatus struct {
 	Evidence         int  `json:"evidence"`
 	RunbookIndex     int  `json:"runbook_index"`
 	TaskObservations int  `json:"task_observations"`
+	ProjectAliases   int  `json:"project_aliases"`
+	Benchmarks       int  `json:"benchmarks"`
+	Themes           int  `json:"themes"`
+	Settings         int  `json:"settings"`
 }
 
 // ProjectsSchemaStatus reads the current state of the engram-projects
@@ -368,6 +838,10 @@ func (s *Store) ProjectsSchemaStatus() (ProjectsSchemaStatus, error) {
 		{"evidence", &status.Evidence},
 		{"runbook_index", &status.RunbookIndex},
 		{"task_observations", &status.TaskObservations},
+		{"project_aliases", &status.ProjectAliases},
+		{"benchmarks", &status.Benchmarks},
+		{"themes", &status.Themes},
+		{"settings", &status.Settings},
 	}
 	for _, c := range counts {
 		if err := s.db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", c.table)).Scan(c.dest); err != nil {

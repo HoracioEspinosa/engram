@@ -5,8 +5,7 @@ package runbooks
 // shared.VisibleItems with the constants below, or the cursor drifts out of
 // the rendered window.
 const (
-	// runbookItemLines is the height of one index row (rfc-tui.md §5's S8
-	// wireframe: one line per runbook).
+	// runbookItemLines is the height of one index row: one line per runbook.
 	runbookItemLines = 1
 
 	// minVisibleItems is the floor applied when the terminal is too short
@@ -14,7 +13,36 @@ const (
 	minVisibleItems = 3
 
 	// indexChrome and viewChrome are what each screen spends on its header,
-	// help footer and any banner above the list/body.
-	indexChrome = 5
-	viewChrome  = 8
+	// any banner above the list/body, and the frame's own rows: the tab bar
+	// above and the one-line status bar below.
+	indexChrome = 4
+	viewChrome  = 7
+
+	// pageSize is how many rows the page keys move by. store.ListRunbooks
+	// defaults to 50 when Limit is unset, so paging by the same number keeps
+	// one "page" meaning the same thing whether or not a limit was ever set.
+	pageSize = 50
+)
+
+// Caps and fixed costs of the index row, in terminal cells. What a column
+// actually gets is solved from the screen's width — see runbookColumns.
+const (
+	runbookIDCells       = 8
+	runbookProjectCells  = 12
+	runbookCategoryCells = 14
+	runbookPatternCells  = 12
+	runbookAgeCells      = 7
+
+	// runbookRowFixed is what a row spends outside its solved columns: the
+	// cursor marker.
+	runbookRowFixed = 2
+	// symptomsLabelCells is what the preview's "symptoms: " label spends.
+	symptomsLabelCells = 12
+
+	// bodyMargin is what the app frame spends either side of a tab's body,
+	// minBodyWidth the narrowest body worth laying out, and
+	// defaultBodyWidth what a screen with no size yet assumes.
+	bodyMargin       = 4
+	minBodyWidth     = 24
+	defaultBodyWidth = 80
 )

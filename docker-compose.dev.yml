@@ -1,0 +1,158 @@
+# Isolated validation stack for koi-workspace changes.
+#
+# Disposable by design: named volumes start empty, nothing mounts a host path
+# under ~/.engram (see docker/dev/Dockerfile), and the only published port is
+# bound to the host's own loopback address, so nothing here is reachable from
+# another machine.
+#
+# Usage (from the repository root):
+#   docker compose -f docker-compose.dev.yml up -d --build          # engram-dev only
+#   docker compose -f docker-compose.dev.yml exec engram-dev engram doctor --json
+#   docker compose -f docker-compose.dev.yml --profile cloud up -d --build
+#   docker compose -f docker-compose.dev.yml --profile shots run --rm vhs tapes/home-koi-pond.tape
+#   docker compose -f docker-compose.dev.yml config                 # validate + inspect
+#   docker compose -f docker-compose.dev.yml down -v                # drop every volume
+
+name: engram-dev
+
+services:
+  engram-dev:
+    build:
+      context: .
+      dockerfile: docker/dev/Dockerfile
+      args:
+        ENGRAM_VERSION: ${ENGRAM_DEV_VERSION:-dev}
+    image: engram-dev:latest
+    container_name: engram-dev
+    environment:
+      ENGRAM_DATA_DIR: /data
+      ENGRAM_VAULT_ROOT: /vault
+      CD_EVIDENCE_DIR: /vault/evidence
+      ENGRAM_PORT: "7437"
+      # Bind every interface inside the container so the published port below
+      # has something to forward to. The container's network namespace is the
+      # boundary here; the host-side bind is what limits reach.
+      ENGRAM_HOST: 0.0.0.0
+      ENGRAM_TUI_THEME: ${ENGRAM_TUI_THEME:-}
+      ENGRAM_PROJECTS_SYNC: ${ENGRAM_PROJECTS_SYNC:-0}
+      TERM: xterm-256color
+    volumes:
+      - engram-dev-data:/data
+      - ./docker/dev/fixtures/vault:/vault:ro
+      - ./docker/dev/out:/out
+    healthcheck:
+      # Still probed over the container's own loopback: a 0.0.0.0 bind answers
+      # there too, and keeping the probe local means it reports on the process
+      # rather than on Docker's port forwarding.
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:7437/health"]
+      interval: 5s
+      timeout: 3s
+      start_period: 5s
+      retries: 6
+    stop_grace_period: 5s
+    # The binary honours ENGRAM_HOST, so the api is reachable from the host on
+    # 127.0.0.1:17437 only. The host-side address is pinned deliberately: a
+    # bare "17437:7437" would publish on every host interface. Port 17437
+    # rather than 7437 so a dev stack never collides with the engram serve the
+    # developer already runs. `docker exec engram-dev` still works for CLI
+    # checks, doctor and MCP smoke tests.
+    ports:
+      - "127.0.0.1:17437:7437"
+
+  # --- profile: cloud -------------------------------------------------------
+  # Reproduces the isolation pattern of docker-compose.beta.yml on its own
+  # ports/names/volume so it never collides with a beta or production stack.
+  postgres-dev:
+    image: postgres:16-alpine
+    container_name: engram-dev-postgres
+    profiles: ["cloud"]
+    environment:
+      POSTGRES_USER: engram_dev
+      POSTGRES_PASSWORD: dev_only_pw
+      POSTGRES_DB: engram_dev
+    ports:
+      - "127.0.0.1:25433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engram_dev -d engram_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - engram-dev-pg:/var/lib/postgresql/data
+
+  cloud-dev:
+    build:
+      context: .
+      dockerfile: docker/dev/Dockerfile
+      args:
+        ENGRAM_VERSION: ${ENGRAM_DEV_VERSION:-dev}
+    image: engram-dev:latest
+    container_name: engram-dev-cloud
+    profiles: ["cloud"]
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    environment:
+      ENGRAM_DATABASE_URL: postgres://engram_dev:dev_only_pw@postgres-dev:5432/engram_dev?sslmode=disable
+      # Local-only, >= 32 chars, distinct from cloud.DefaultJWTSecret.
+      # validateCloudServeAuthConfig() requires a non-default secret as soon as
+      # ENGRAM_CLOUD_TOKEN is set together with a project allowlist.
+      ENGRAM_JWT_SECRET: engram-dev-workspace-local-only-jwt-secret-not-for-prod
+      # The dev cloud runs authenticated rather than under
+      # ENGRAM_CLOUD_INSECURE_NO_AUTH=1. The insecure mode does serve the sync
+      # routes — newCloudRuntime leaves the principal-project authorizer out
+      # when there is no authenticator to mint principals, so the allowlist
+      # alone scopes the request — but a token keeps this stack rehearsing the
+      # authenticated path the product actually ships. Local-only and never a
+      # real secret; every client in scripts/dev/ presents the same value.
+      ENGRAM_CLOUD_TOKEN: ${ENGRAM_DEV_CLOUD_TOKEN:-engram-dev-workspace-local-only-sync-token}
+      ENGRAM_CLOUD_ALLOWED_PROJECTS: koi-garden,koi-garden-pond-01,koi-garden-pond-02,tsukimi-bridge
+      ENGRAM_CLOUD_HOST: 0.0.0.0
+      ENGRAM_PORT: "28081"
+    ports:
+      - "127.0.0.1:28081:28081"
+    command: ["cloud", "serve"]
+
+  # --- profile: shots ---------------------------------------------------
+  # Optional PNG/GIF capture via VHS. tmux inside engram-dev (captured by
+  # scripts/dev/tui-shots.sh) is the primary evidence path; this is a
+  # secondary, opt-in renderer for docs/tui/img.
+  vhs:
+    image: ghcr.io/charmbracelet/vhs:v0.10.0
+    container_name: engram-dev-vhs
+    profiles: ["shots"]
+    working_dir: /work
+    volumes:
+      - ./docs/tui/tapes:/work/tapes:ro
+      - ./docker/dev/out/tui:/work/out
+      - engram-dev-bin:/work/bin:ro
+      - engram-dev-data:/data
+      - ./docker/dev/fixtures/vault:/vault:ro
+    environment:
+      ENGRAM_DATA_DIR: /data
+      ENGRAM_VAULT_ROOT: /vault
+      PATH: /work/bin:/usr/local/bin:/usr/bin:/bin
+    entrypoint: ["vhs"]
+
+volumes:
+  # Pinned with an explicit `name:` so the literal Docker volume name is
+  # always engram-dev-*, regardless of which directory the repo is checked
+  # out into (compose would otherwise prefix keys with the project name).
+  engram-dev-data:
+    name: engram-dev-data
+  engram-dev-pg:
+    name: engram-dev-pg
+  # Populated by scripts/dev/up.sh after the image builds, so the `shots`
+  # profile can exec the freshly built binary without a Go toolchain.
+  engram-dev-bin:
+    name: engram-dev-bin
+  # Consumed by scripts/dev/test.sh and bench.sh, which run golang:1.25.10
+  # directly via `docker run` outside this compose file's services. Declared
+  # here as documentation of intent only: `docker compose config` drops any
+  # top-level volume no service mounts (verified), so compose itself never
+  # creates or removes these two — `docker run -v` auto-creates them on
+  # first use, and down.sh must `docker volume rm` them explicitly.
+  engram-dev-gomod:
+    name: engram-dev-gomod
+  engram-dev-gobuild:
+    name: engram-dev-gobuild

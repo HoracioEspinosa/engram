@@ -11,3 +11,8 @@ bin/
 .DS_Store
 node_modules/
 graphify-out/
+
+# Mounted at runtime by docker-compose.dev.yml, never copied into the image:
+# shipping them would invalidate every build layer whenever a fixture changes.
+docker/dev/out/
+docker/dev/fixtures/

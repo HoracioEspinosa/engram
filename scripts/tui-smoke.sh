@@ -75,7 +75,7 @@ echo
 #
 # The stderr log exists because capture-pane's scrollback is NOT enough on
 # its own: cmd/engram/main.go prints its "unknown theme" warning to stderr
-# BEFORE tea.EnterAltScreen switches the terminal to the alternate screen
+# BEFORE the program switches the terminal to the alternate screen
 # buffer, and once that switch happens, `tmux capture-pane -S -200` reads
 # from the alternate buffer's own (now-fresh) history — the warning, which
 # lived in the *normal* buffer an instant earlier, is gone from view even
@@ -279,7 +279,7 @@ run_case \
 
 # Case 4: --theme <unknown> falls back to the default with a warning.
 # The warning (cmd/engram/main.go's "engram: unknown theme %q, falling back
-# to %s") prints to stderr before tea.EnterAltScreen switches the terminal
+# to %s") prints to stderr before the program switches the terminal
 # over — wait_for_evidence's own comment above has the full account of why
 # that made this case fail against the real binary on the first run, and
 # why stderr is duplicated to a file instead of relying on tmux's

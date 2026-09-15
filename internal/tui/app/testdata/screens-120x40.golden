@@ -1,766 +1,288 @@
 ═══ dashboard-loading ═══
-                                                                        
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud     
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-  ┌────────────────────┐                                                
-  │                    │                                                
-  │  Loading stats...  │                                                
-  │                    │                                                
-  └────────────────────┘                                                
-                                                                        
-    Actions                                                             
-                                                                        
-   ▸ Search memories                                                    
-      Recent observations                                               
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-                                                                        
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ dashboard ═══
-                                                                        
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud     
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-  ┌───────────────────────────┐                                         
-  │                           │                                         
-  │        12   sessions      │                                         
-  │       348   observations  │                                         
-  │        57   prompts       │                                         
-  │         6   projects      │                                         
-  │                           │                                         
-  └───────────────────────────┘                                         
-                                                                        
-    Projects                                                            
-                                                                        
-    • engram                                                            
-    • clarodrive                                                        
-    • middleware                                                        
-    • portal                                                            
-    • lookup                                                            
-      ...and 1 more projects                                            
-                                                                        
-    Actions                                                             
-                                                                        
-      Search memories                                                   
-   ▸ Recent observations                                                
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-                                                                        
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ dashboard-update-available ═══
-                                                                        
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud     
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-   Update available: 1.20.1 -> 1.21.0                                   
-                                                                        
-  ┌───────────────────────────┐                                         
-  │                           │                                         
-  │        12   sessions      │                                         
-  │       348   observations  │                                         
-  │        57   prompts       │                                         
-  │         6   projects      │                                         
-  │                           │                                         
-  └───────────────────────────┘                                         
-                                                                        
-    Projects                                                            
-                                                                        
-    • engram                                                            
-    • clarodrive                                                        
-    • middleware                                                        
-    • portal                                                            
-    • lookup                                                            
-      ...and 1 more projects                                            
-                                                                        
-    Actions                                                             
-                                                                        
-   ▸ Search memories                                                    
-      Recent observations                                               
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-                                                                        
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ dashboard-update-failed ═══
-                                                                        
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud     
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-   Could not check for updates: GitHub took too long to respond.        
-                                                                        
-  ┌───────────────────────────┐                                         
-  │                           │                                         
-  │        12   sessions      │                                         
-  │       348   observations  │                                         
-  │        57   prompts       │                                         
-  │         6   projects      │                                         
-  │                           │                                         
-  └───────────────────────────┘                                         
-                                                                        
-    Projects                                                            
-                                                                        
-    • engram                                                            
-    • clarodrive                                                        
-    • middleware                                                        
-    • portal                                                            
-    • lookup                                                            
-      ...and 1 more projects                                            
-                                                                        
-    Actions                                                             
-                                                                        
-   ▸ Search memories                                                    
-      Recent observations                                               
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-                                                                        
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ dashboard-with-error ═══
-                                                                        
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud     
-                                                                        
-  ╔══════════════════════════════════════════════════════════════════╗  
-  ║  🐘 SYSTEM ONLINE                                  MEM: OK 100%  ║  
-  ║                                                                  ║  
-  ║  ███████ ███    ██  ██████  ██████   █████  ███    ███           ║  
-  ║  ██      ████   ██ ██       ██   ██ ██   ██ ████  ████           ║  
-  ║  █████   ██ ██  ██ ██   ███ ██████  ███████ ██ ████ ██           ║  
-  ║  ██      ██  ██ ██ ██    ██ ██   ██ ██   ██ ██  ██  ██           ║  
-  ║  ███████ ██   ████  ██████  ██   ██ ██   ██ ██      ██           ║  
-  ║                                                                  ║  
-  ║  > engram 1.20.1-golden — An elephant never forgets              ║  
-  ╚══════════════════════════════════════════════════════════════════╝  
-                                                                        
-                                                                        
-  ┌───────────────────────────┐                                         
-  │                           │                                         
-  │        12   sessions      │                                         
-  │       348   observations  │                                         
-  │        57   prompts       │                                         
-  │         6   projects      │                                         
-  │                           │                                         
-  └───────────────────────────┘                                         
-                                                                        
-    Projects                                                            
-                                                                        
-    • engram                                                            
-    • clarodrive                                                        
-    • middleware                                                        
-    • portal                                                            
-    • lookup                                                            
-      ...and 1 more projects                                            
-                                                                        
-    Actions                                                             
-                                                                        
-   ▸ Search memories                                                    
-      Recent observations                                               
-      Browse sessions                                                   
-      Setup agent plugin                                                
-      Cloud sync settings                                               
-      Quit                                                              
-                                                                        
-                                                                        
-    j/k navigate • enter select • s search • q quit                     
-   Error: database is locked                                            
-                                                                        
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ search-empty-input ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Search Memories                                                  
-                                                                     
-  ─────────────────                                                  
-                                                                     
-                                                                     
-  ┌──────────────────────────────────────────────────────────────┐   
-  │ > Search memories...                                         │   
-  └──────────────────────────────────────────────────────────────┘   
-                                                                     
-                                                                     
-                                                                     
-    Type a query and press enter • esc go back                       
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ search-typed-query ═══
-                                                                       
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud    
-                                                                       
-    Search Memories                                                    
-                                                                       
-  ─────────────────                                                    
-                                                                       
-                                                                       
-  ┌─────────────────────────────────────────────────────────────────┐  
-  │ > wal mode                                                      │  
-  └─────────────────────────────────────────────────────────────────┘  
-                                                                       
-                                                                       
-                                                                       
-    Type a query and press enter • esc go back                         
-                                                                       
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ search-results ═══
                                                                                                                         
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                     
-                                                                                                                        
-    Search: "wal" — 4 results                                                                                           
-                                                                                                                        
-  ───────────────────────────                                                                                           
-                                                                                                                        
-    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                             
-      SQLite WAL keeps readers unblocked while the MCP server writes.                                                   
-  ▸ #102   [bugfix      ] [needs_review]  Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                       
-    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                
-      Header line carries id, type and badges; preview carries content.                                                 
-    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                   
-      Rendered bytes must survive a package move untouched.                                                             
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
                                                                                                                         
                                                                                                                         
-    j/k navigate • enter detail • c copy • t timeline • L link to task • / search • esc back                            
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
                                                                                                                         
 ═══ search-results-scrolled ═══
-                                                                                                                         
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
-                                                                                                                         
-    Search: "wal" — 4 results                                                                                            
-                                                                                                                         
-  ───────────────────────────                                                                                            
-                                                                                                                         
-    #102   [bugfix      ] [needs_review]   Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                        
-    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                 
-      Header line carries id, type and badges; preview carries content.                                                  
-  ▸ #104   [note        ]  Golden files are the refactor oracle  2026-01-16 08:00:00                                     
-      Rendered bytes must survive a package move untouched.                                                              
-                                                                                                                         
-                                                                                                                         
-    j/k navigate • enter detail • c copy • t timeline • L link to task • / search • esc back                             
-                                                                                                                         
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ search-results-empty ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Search: "no-such-thing" — 0 results                              
-                                                                     
-  ─────────────────────────────────────                              
-                                                                     
-                                                                     
-    No memories found. Try a different query.                        
-                                                                     
-                                                                     
-    / new search • esc back                                          
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ recent ═══
-                                                                                                                         
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
-                                                                                                                         
-    Recent Observations — 4 total                                                                                        
-                                                                                                                         
-  ───────────────────────────────                                                                                        
-                                                                                                                         
-    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                              
-      SQLite WAL keeps readers unblocked while the MCP server writes.                                                    
-    #102   [bugfix      ] [needs_review]   Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                        
-  ▸ #103   [pattern     ] [pinned]  Two-line list item  clarodrive  2026-01-15 11:45:00                                  
-      Header line carries id, type and badges; preview carries content.                                                  
-    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                    
-      Rendered bytes must survive a package move untouched.                                                              
-                                                                                                                         
-                                                                                                                         
-    j/k navigate • enter detail • c copy • t timeline • L link to task • esc back                                        
-                                                                                                                         
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ recent-empty ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Recent Observations — 0 total                                    
-                                                                     
-  ───────────────────────────────                                    
-                                                                     
-                                                                     
-    No observations yet.                                             
-                                                                     
-                                                                     
-    esc back                                                         
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ recent-copy-feedback ═══
-                                                                                                                         
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                      
-                                                                                                                         
-    Recent Observations — 4 total                                                                                        
-                                                                                                                         
-  ───────────────────────────────                                                                                        
-                                                                                                                         
-  ▸ #101   [decision    ]  Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                               
-      SQLite WAL keeps readers unblocked while the MCP server writes.                                                    
-    #102   [bugfix      ] [needs_review]   Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                        
-    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                 
-      Header line carries id, type and badges; preview carries content.                                                  
-    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                    
-      Rendered bytes must survive a package move untouched.                                                              
-                                                                                                                         
-                                                                                                                         
-    j/k navigate • enter detail • c copy • t timeline • L link to task • esc back                                        
-   ✓ Copied!                                                                                                             
-                                                                                                                         
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ observation-detail-loading ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Observation Detail                                               
-                                                                     
-  ────────────────────                                               
-                                                                     
-                                                                     
-    Loading...                                                       
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ observation-detail ═══
-                                                                                                                      
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                   
-                                                                                                                      
-    Observation #102                                                                                                  
-                                                                                                                      
-  ──────────────────                                                                                                  
-                                                                                                                      
-          Type:  bugfix                                                                                               
-         Title:  Session delete refused when observations remain                                                      
-       Session:  session-alpha                                                                                        
-       Created:  2026-01-15 10:05:00                                                                                  
-         State:  needs_review                                                                                         
-        Pinned:  false                                                                                                
-        Review:  2026-03-01                                                                                           
-          Tool:  Bash                                                                                                 
-       Project:  engram                                                                                               
-                                                                                                                      
-                                                                                                                      
-    Content                                                                                                           
-                                                                                                                      
-    Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan observations cannot   
-    appear. Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan observations  
-    cannot appear. Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan        
-    observations cannot appear.                                                                                       
-                                                                                                                      
-                                                                                                                      
-    j/k scroll • c copy • t timeline • L link to task • esc back                                                      
-                                                                                                                      
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ observation-detail-scrolled ═══
-                                                                                                                      
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                   
-                                                                                                                      
-    Observation #102                                                                                                  
-                                                                                                                      
-  ──────────────────                                                                                                  
-                                                                                                                      
-          Type:  bugfix                                                                                               
-         Title:  Session delete refused when observations remain                                                      
-       Session:  session-alpha                                                                                        
-       Created:  2026-01-15 10:05:00                                                                                  
-         State:  needs_review                                                                                         
-        Pinned:  false                                                                                                
-        Review:  2026-03-01                                                                                           
-       Project:  engram                                                                                               
-                                                                                                                      
-                                                                                                                      
-    Content                                                                                                           
-                                                                                                                      
-    Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan observations cannot   
-    appear. Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan observations  
-    cannot appear. Guard the delete path so orphan observations cannot appear. Guard the delete path so orphan        
-    observations cannot appear.                                                                                       
-                                                                                                                      
-                                                                                                                      
-    j/k scroll • c copy • t timeline • L link to task • esc back                                                      
-                                                                                                                      
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ timeline-loading ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Timeline                                                         
-                                                                     
-  ──────────                                                         
-                                                                     
-                                                                     
-    Loading...                                                       
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ timeline ═══
-                                                                                    
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                 
-                                                                                    
-    Timeline — Observation #102 (3 total in session)                                
-                                                                                    
-  ──────────────────────────────────────────────────                                
-                                                                                    
-         Session:  session-alpha       Project:  engram                             
-                                                                                    
-                                                                                    
-    Before                                                                          
-                                                                                    
-    │ #101  [decision    ]    Adopt WAL mode for the local store                    
-    │                                                                               
-  ┌──────────────────────────────────────────────────────────────────────────────┐  
-  │   #102 [bugfix]  Session delete refused when observations remain             │  
-  │     Guard the delete path so orphan observations cannot appear in the store. │  
-  └──────────────────────────────────────────────────────────────────────────────┘  
-    │                                                                               
-                                                                                    
-    After                                                                           
-                                                                                    
-    │ #103  [pattern     ]    Two-line list item                                    
-                                                                                    
-                                                                                    
-    j/k scroll • esc back                                                           
-                                                                                    
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ sessions ═══
-                                                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                  
-                                                                                                     
-    Sessions — 4 total                                                                               
-                                                                                                     
-  ────────────────────                                                                               
-                                                                                                     
-    engram                2026-01-15 09:00:00         8 obs    Refactored the TUI into tab packages  
-  ▸ clarodrive            2026-01-16 07:40:00         3 obs                                          
-    middleware            2026-01-17 12:15:00        11 obs    Traced the recovery lookup            
-    portal                2026-01-18 16:20:00         1 obs                                          
-                                                                                                     
-                                                                                                     
-    j/k navigate • enter view session • d delete • esc back                                          
-                                                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ sessions-empty ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Sessions — 0 total                                               
-                                                                     
-  ────────────────────                                               
-                                                                     
-                                                                     
-    No sessions yet.                                                 
-                                                                     
-                                                                     
-    esc back                                                         
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ sessions-delete-prompt ═══
-                                                                                      
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                   
-                                                                                      
-    Sessions — 4 total                                                                
-                                                                                      
-  ────────────────────                                                                
-                                                                                      
-                                                                                      
-                                                                                      
-    Confirm Session Delete                                                            
-                                                                                      
-                                                                                      
-      Delete session "session-beta" from project "clarodrive"?                        
-    Sessions with observations cannot be deleted; Engram will refuse unsafe deletes.  
-                                                                                      
-                                                                                      
-    [y] Delete  [n] Cancel  [esc] Cancel                                              
-                                                                                      
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ sessions-deleting ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Sessions — 4 total                                               
-                                                                     
-  ────────────────────                                               
-                                                                     
-                                                                     
-                                                                     
-    Deleting Session                                                 
-                                                                     
-                                                                     
-      Deleting session "session-beta"...                             
-                                                                     
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ session-detail ═══
                                                                                                                         
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud                                                     
-                                                                                                                        
-    Session: engram — 2026-01-15 09:00:00                                                                               
-                                                                                                                        
-  ───────────────────────────────────────                                                                               
-                                                                                                                        
-         Summary:  Refactored the TUI into tab packages                                                                 
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
                                                                                                                         
                                                                                                                         
-    Observations (4)                                                                                                    
-                                                                                                                        
-    #101   [decision    ]   Adopt WAL mode for the local store  engram  2026-01-15 09:30:00                             
-      SQLite WAL keeps readers unblocked while the MCP server writes.                                                   
-  ▸ #102   [bugfix      ] [needs_review]  Session delete refused when observations remain  engram  2026-01-15 10:05:00  
-      Guard the delete path so orphan observations cannot appear.                                                       
-    #103   [pattern     ] [pinned]   Two-line list item  clarodrive  2026-01-15 11:45:00                                
-      Header line carries id, type and badges; preview carries content.                                                 
-    #104   [note        ]   Golden files are the refactor oracle  2026-01-16 08:00:00                                   
-      Rendered bytes must survive a package move untouched.                                                             
-                                                                                                                        
-                                                                                                                        
-    j/k navigate • enter detail • c copy • t timeline • esc back                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
                                                                                                                         
 ═══ session-detail-empty ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Session: clarodrive — 2026-01-16 07:40:00                        
-                                                                     
-  ───────────────────────────────────────────                        
-                                                                     
-                                                                     
-    Observations (0)                                                 
-                                                                     
-                                                                     
-    No observations in this session.                                 
-                                                                     
-                                                                     
-    esc back                                                         
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ session-detail-not-found ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Session Detail                                                   
-                                                                     
-  ────────────────                                                   
-                                                                     
-                                                                     
-    Session not found.                                               
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ setup-select ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Setup — Install Agent Plugin                                     
-                                                                     
-  ──────────────────────────────                                     
-                                                                     
-                                                                     
-    Select an agent to set up                                        
-                                                                     
-                                                                     
-   ▸ Claude Code                                                     
-          Install to:  /Users/dev/.claude/plugins                    
-                                                                     
-      OpenCode                                                       
-          Install to:  /Users/dev/.config/opencode/plugins           
-                                                                     
-                                                                     
-                                                                     
-    j/k navigate • enter install • esc back                          
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ setup-installing-opencode ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Setup — Install Agent Plugin                                     
-                                                                     
-  ──────────────────────────────                                     
-                                                                     
-                                                                     
-    ⣾  Installing opencode plugin...                                 
-                                                                     
-    Copying plugin file to plugins directory                         
-                                                                     
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ setup-installing-claude-code ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Setup — Install Agent Plugin                                     
-                                                                     
-  ──────────────────────────────                                     
-                                                                     
-                                                                     
-    ⣾  Installing claude-code plugin...                              
-                                                                     
-    Running claude plugin marketplace add + install                  
-                                                                     
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ setup-allowlist-prompt ═══
-                                                                          
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud       
-                                                                          
-    Setup — Install Agent Plugin                                          
-                                                                          
-  ──────────────────────────────                                          
-                                                                          
-                                                                          
-    ✓ Installed claude-code plugin                                        
-                                                                          
-                                                                          
-    Permissions Allowlist                                                 
-                                                                          
-                                                                          
-      Add engram tools to ~/.claude/settings.json allowlist?              
-    This prevents Claude Code from asking permission on every tool call.  
-                                                                          
-                                                                          
-    [y] Yes  [n] No                                                       
-                                                                          
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ setup-done-opencode ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Setup — Install Agent Plugin                                     
-                                                                     
-  ──────────────────────────────                                     
-                                                                     
-    ✓ Installed opencode plugin (2 files)                            
-        Location:  /Users/dev/.config/opencode/plugins               
-                                                                     
-                                                                     
-    Next Steps                                                       
-                                                                     
-    1. Restart OpenCode                                              
-    2. Plugin is auto-loaded from ~/.config/opencode/plugins/        
-    3. Make sure 'engram' is in your MCP config (opencode.json)      
-                                                                     
-                                                                     
-    enter/esc back to dashboard                                      
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ setup-done-claude-allowlisted ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Setup — Install Agent Plugin                                     
-                                                                     
-  ──────────────────────────────                                     
-                                                                     
-    ✓ Installed claude-code plugin                                   
-        Location:  claude plugin system                              
-                                                                     
-                                                                     
-    Next Steps                                                       
-                                                                     
-    ✓   Engram tools added to allowlist                              
-    1. Restart Claude Code — the plugin is active immediately        
-    2. Verify with: claude plugin list                               
-                                                                     
-                                                                     
-    enter/esc back to dashboard                                      
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ setup-done-claude-allowlist-error ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Setup — Install Agent Plugin                                     
-                                                                     
-  ──────────────────────────────                                     
-                                                                     
-    ✓ Installed claude-code plugin                                   
-        Location:  claude plugin system                              
-                                                                     
-                                                                     
-    Next Steps                                                       
-                                                                     
-    ✗   Allowlist update failed: permission denied                   
-      Add manually to permissions.allow in ~/.claude/settings.json   
-    1. Restart Claude Code — the plugin is active immediately        
-    2. Verify with: claude plugin list                               
-                                                                     
-                                                                     
-    enter/esc back to dashboard                                      
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
 ═══ setup-failed ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-    Setup — Install Agent Plugin                                     
-                                                                     
-  ──────────────────────────────                                     
-                                                                     
-     ✗ Installation failed: network unreachable                      
-                                                                     
-                                                                     
-                                                                     
-    enter/esc back to dashboard                                      
-                                                                     
-═══ cloud-settings ═══
-                                                                     
-  0 Dashboard  1 Memory  2 Tasks  3 Evidence  4 Runbooks  [5 Cloud]  
-                                                                     
-    Cloud sync settings                                              
-                                                                     
-  ─────────────────────                                              
-                                                                     
-                                                                     
-      Configure server                                               
-      View status                                                    
-   ▸ Enroll projects                                                 
-      Back                                                           
-                                                                     
-                                                                     
-    j/k navigate • enter select • esc/q back                         
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        
+═══ settings ═══
+                                                                                                                        
+  ⌂0 Home  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  [⌘7 Settings]                        
+                                                                                                                        
+    Settings                                                                                                            
+                                                                                                                        
+  ──────────                                                                                                            
+                                                                                                                        
+      theme            koi-pond                                                                                         
+      icons            unicode                                                                                          
+  ›  vault root       · not configured                                                                                  
+      evidence dir     ~/.clarodrive/evidence  ▲ missing                                                                
+      cloud            sync configuration                                                                               
+      doctor           no settings store bound                                                                          
+  j/k navigate • g/G top/bottom • enter change • esc/q back                                                   koi-pond  
+                                                                                                                        
 ═══ unknown-screen ═══
-                                                                     
-  0 Dashboard  [1 Memory]  2 Tasks  3 Evidence  4 Runbooks  5 Cloud  
-                                                                     
-  Unknown screen                                                     
-                                                                     
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+  j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
+                                                                                                                        

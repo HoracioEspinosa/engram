@@ -13,8 +13,7 @@ import (
 
 // jiraBaseURL is the Jira Cloud browse base used to build task links. It is
 // read from the environment so a deployment is not tied to one Jira tenant:
-// set ENGRAM_JIRA_BASE_URL to your own instance. See RFC
-// rfc-engram-projects.md §5.10.
+// set ENGRAM_JIRA_BASE_URL to your own instance.
 var jiraBaseURL = jiraBaseURLFromEnv()
 
 func jiraBaseURLFromEnv() string {
@@ -31,8 +30,8 @@ func jiraBaseURLFromEnv() string {
 // JiraBaseURL returns the configured Jira Cloud browse base URL, trailing
 // slash included. It is exported so every caller that needs to build a
 // task's Jira link — the context pack above and the TUI Tasks tab's "open
-// Jira" action (rfc-tui.md §3.1 S3/S4) — reads ENGRAM_JIRA_BASE_URL the same
-// way instead of each parsing the environment variable on its own.
+// Jira" action — reads ENGRAM_JIRA_BASE_URL the same way instead of each
+// parsing the environment variable on its own.
 func JiraBaseURL() string {
 	return jiraBaseURL
 }
@@ -60,16 +59,21 @@ func DefaultContextPackOptions() ContextPackOptions {
 }
 
 // canonicalSections is the fixed rendering order (RFC §5.10 table).
-var canonicalSections = []string{"header", "card", "pointers", "pinned", "observations", "evidence", "runbooks", "refs", "footer"}
+var canonicalSections = []string{"header", "card", "hierarchy", "pointers", "pinned", "observations", "evidence", "benchmarks", "runbooks", "refs", "footer"}
 
+// sectionBudgetPct is each section's share of MaxChars. The shares add up to
+// one, so a pack that fills every section fills the budget exactly once.
 var sectionBudgetPct = map[string]float64{
-	"header": 0.04, "card": 0.05, "pointers": 0.06, "pinned": 0.15, "observations": 0.40,
-	"evidence": 0.08, "runbooks": 0.10, "refs": 0.07, "footer": 0.05,
+	"header": 0.04, "card": 0.05, "hierarchy": 0.04, "pointers": 0.06, "pinned": 0.13,
+	"observations": 0.36, "evidence": 0.07, "benchmarks": 0.06, "runbooks": 0.08,
+	"refs": 0.06, "footer": 0.05,
 }
 
 // droppableInReverseOrder is the section removal order applied when the
-// composed pack still exceeds MaxChars after per-section truncation.
-var droppableInReverseOrder = []string{"refs", "runbooks", "evidence", "pinned"}
+// composed pack still exceeds MaxChars after per-section truncation. The
+// order is least useful first: a reader who has to lose something loses the
+// references before the numbers, and the numbers before the work itself.
+var droppableInReverseOrder = []string{"refs", "benchmarks", "runbooks", "evidence", "hierarchy", "pinned"}
 
 // ContextPack is BuildContextPack's structured result (format=json).
 type ContextPack struct {
@@ -81,6 +85,8 @@ type ContextPack struct {
 	Evidence     []map[string]any    `json:"evidence,omitempty"`
 	Runbooks     []map[string]any    `json:"runbooks,omitempty"`
 	Refs         map[string][]string `json:"refs,omitempty"`
+	Benchmarks   []map[string]any    `json:"benchmarks,omitempty"`
+	Hierarchy    map[string]any      `json:"hierarchy,omitempty"`
 	Truncated    bool                `json:"truncated"`
 	Chars        int                 `json:"chars"`
 }
@@ -189,6 +195,34 @@ func BuildContextPack(s *store.Store, project, taskRef string, opts ContextPackO
 			"slug": card.Slug, "repo_url": card.RepoURL, "default_branch": card.DefaultBranch,
 			"owner": card.Owner, "jira_project": card.JiraProject, "jira_component": card.JiraComponent,
 		}
+	}
+
+	// ─── 2b. hierarchy ──────────────────────────────────────────────────
+	// Where the project sits decides what "this project" even covers: a pond
+	// read without its garden is read without half its context.
+	if want["hierarchy"] && hasCard {
+		hierarchy := map[string]any{"project": card.Slug, "depth": card.Depth}
+		var b strings.Builder
+		b.WriteString("**Jerarquía**\n")
+		if card.ParentSlug != nil {
+			hierarchy["parent"] = *card.ParentSlug
+			fmt.Fprintf(&b, "- padre: %s\n", *card.ParentSlug)
+		}
+		var children []string
+		if nodes, treeErr := s.ProjectTree(card.Slug, false); treeErr == nil {
+			for _, node := range nodes {
+				if node.ParentSlug != nil && *node.ParentSlug == card.Slug {
+					children = append(children, node.Slug)
+				}
+			}
+		}
+		hierarchy["children"] = children
+		if len(children) > 0 {
+			fmt.Fprintf(&b, "- hijos: %s\n", strings.Join(children, ", "))
+		}
+		fmt.Fprintf(&b, "- profundidad: %d\n", card.Depth)
+		pack.Hierarchy = hierarchy
+		blocks["hierarchy"] = fit("hierarchy", strings.TrimRight(b.String(), "\n"))
 	}
 
 	// ─── 3. pointers ────────────────────────────────────────────────────
@@ -397,6 +431,38 @@ func BuildContextPack(s *store.Store, project, taskRef string, opts ContextPackO
 		}
 	}
 
+	// ─── 8b. benchmarks ─────────────────────────────────────────────────
+	// A task that measured something is a task whose next reader needs the
+	// number, not the prose about the number.
+	if want["benchmarks"] {
+		page, benchErr := s.ListBenchmarks(store.BenchmarkListFilter{Task: task.SyncID, Limit: 5})
+		if benchErr == nil && len(page.Items) > 0 {
+			var b strings.Builder
+			fmt.Fprintf(&b, "**Mediciones (%d)**\n", page.Total)
+			for _, m := range page.Items {
+				fmt.Fprintf(&b, "- %s · %s: %g %s", m.Name, m.Metric, m.Value, m.Unit)
+				if m.Baseline {
+					b.WriteString(" · baseline")
+				} else if m.DeltaPct != nil {
+					fmt.Fprintf(&b, " · %+.2f%% vs baseline", *m.DeltaPct)
+				}
+				b.WriteString("\n")
+				entry := map[string]any{
+					"name": m.Name, "metric": m.Metric, "unit": m.Unit, "direction": m.Direction,
+					"value": m.Value, "baseline": m.Baseline, "captured_at": m.CapturedAt,
+				}
+				if m.BaselineValue != nil {
+					entry["baseline_value"] = *m.BaselineValue
+				}
+				if m.DeltaPct != nil {
+					entry["delta_pct"] = *m.DeltaPct
+				}
+				pack.Benchmarks = append(pack.Benchmarks, entry)
+			}
+			blocks["benchmarks"] = fit("benchmarks", strings.TrimRight(b.String(), "\n"))
+		}
+	}
+
 	// ─── 9. footer ──────────────────────────────────────────────────────
 	if want["footer"] {
 		blocks["footer"] = fit("footer", fmt.Sprintf(
@@ -450,9 +516,8 @@ func taskKey(t store.Task) string {
 
 // TaskKey is taskKey exported: the same jira_key -> sdd_change -> sync_id
 // precedence used to label a task everywhere else — the context pack's own
-// header above, and the TUI's Task detail and context-pack-to-file paths
-// (rfc-tui.md §3.1 S4/S5) — so the two never drift into naming a task
-// differently.
+// header above, and the TUI's Task detail and context-pack-to-file paths —
+// so the two never drift into naming a task differently.
 func TaskKey(t store.Task) string {
 	return taskKey(t)
 }

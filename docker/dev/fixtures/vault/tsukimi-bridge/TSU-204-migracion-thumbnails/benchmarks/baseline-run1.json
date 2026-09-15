@@ -1,0 +1,13 @@
+{
+  "engram_benchmark": "v1",
+  "task": "TSU-204",
+  "name": "thumbnail-generation",
+  "captured_at": "2026-09-05T11:30:00Z",
+  "config_stamp": "pond-01 / batch=100",
+  "baseline": true,
+  "notes": "primer lote migrado al pipeline de tsukimi-bridge, antes de investigar RB-004",
+  "metrics": [
+    { "metric": "thumbnail.batch_ms", "unit": "ms", "value": 8420 },
+    { "metric": "thumbnail.corrupt_count", "unit": "count", "value": 4 }
+  ]
+}

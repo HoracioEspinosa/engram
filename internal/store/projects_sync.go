@@ -1,5 +1,4 @@
-// Package store: engram-projects cloud replication (RFC rfc-engram-projects.md
-// section 10).
+// Package store: engram-projects cloud replication.
 //
 // This file owns both halves of the project-scoped mutation journal for the
 // five engram-projects entities:
@@ -31,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -45,8 +45,8 @@ import (
 // classification rule.
 var ErrProjectsFKMissing = fmt.Errorf("%w: engram-projects referenced row missing", ErrRelationFKMissing)
 
-// projectsSyncEnvVar gates the enqueue half only. ADR-025 fixes the rollout
-// order as cloud image first, then binaries, then this flag: a mutation for an
+// projectsSyncEnvVar gates the enqueue half only. The rollout order is fixed
+// as cloud image first, then binaries, then this flag: a mutation for an
 // entity the other replicas do not understand yet would halt their pull, so
 // nothing is enqueued until the operator says every binary is current.
 //
@@ -55,7 +55,7 @@ var ErrProjectsFKMissing = fmt.Errorf("%w: engram-projects referenced row missin
 const projectsSyncEnvVar = "ENGRAM_PROJECTS_SYNC"
 
 // ProjectsSyncEnabled reports whether engram-projects rows are replicated.
-// Default is off (ADR-025).
+// Default is off.
 func ProjectsSyncEnabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(projectsSyncEnvVar))) {
 	case "1", "true", "yes", "on":
@@ -65,25 +65,27 @@ func ProjectsSyncEnabled() bool {
 	}
 }
 
-// ProjectsSyncEntities lists the five entities RFC section 10.2 replicates, in
-// the order a replica should apply them when it has a free choice: parents
-// before the rows that reference them.
+// ProjectsSyncEntities lists the engram-projects entities RFC section 10.2
+// replicates, in the order a replica should apply them when it has a free
+// choice: parents before the rows that reference them.
 func ProjectsSyncEntities() []string {
 	return []string{
 		SyncEntityProjectCard,
+		SyncEntityProjectAlias,
 		SyncEntityTask,
 		SyncEntityEvidence,
+		SyncEntityBenchmark,
 		SyncEntityTaskLink,
 		SyncEntityObservationRef,
 	}
 }
 
-// isProjectsEntity reports whether entity is one of the five engram-projects
+// isProjectsEntity reports whether entity is one of the engram-projects
 // entities.
 func isProjectsEntity(entity string) bool {
 	switch strings.TrimSpace(entity) {
-	case SyncEntityProjectCard, SyncEntityTask, SyncEntityEvidence,
-		SyncEntityTaskLink, SyncEntityObservationRef:
+	case SyncEntityProjectCard, SyncEntityProjectAlias, SyncEntityTask, SyncEntityEvidence,
+		SyncEntityBenchmark, SyncEntityTaskLink, SyncEntityObservationRef:
 		return true
 	default:
 		return false
@@ -134,6 +136,18 @@ type syncProjectCardPayload struct {
 	UpdatedAt        string  `json:"updated_at"`
 	DeletedAt        *string `json:"deleted_at,omitempty"`
 	Project          string  `json:"project"`
+
+	// The hierarchy and appearance travel with the card. The three staleness
+	// columns deliberately do not: they answer "is the graph in this checkout
+	// current", and a replica that shipped its own answer would be overwriting
+	// a fact about a working copy it has never seen.
+	ParentSlug  *string `json:"parent_slug,omitempty"`
+	Depth       int     `json:"depth"`
+	Kind        string  `json:"kind,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Icon        *string `json:"icon,omitempty"`
+	Color       *string `json:"color,omitempty"`
+	Tags        *string `json:"tags,omitempty"`
 }
 
 type syncTaskPayload struct {
@@ -155,6 +169,15 @@ type syncTaskPayload struct {
 	UpdatedAt          string  `json:"updated_at"`
 	ClosedAt           *string `json:"closed_at,omitempty"`
 	DeletedAt          *string `json:"deleted_at,omitempty"`
+
+	// The vault fields a person edits, under the same clock as the title.
+	// The parent travels as a sync_id only: the local row id means nothing on
+	// another machine.
+	Slug             *string `json:"slug,omitempty"`
+	Summary          *string `json:"summary,omitempty"`
+	PendingNote      *string `json:"pending_note,omitempty"`
+	VaultPath        *string `json:"vault_path,omitempty"`
+	ParentTaskSyncID *string `json:"parent_task_sync_id,omitempty"`
 }
 
 type syncEvidencePayload struct {
@@ -163,6 +186,7 @@ type syncEvidencePayload struct {
 	TaskSyncID            string  `json:"task_sync_id"`
 	Path                  string  `json:"path"`
 	SHA256                string  `json:"sha256"`
+	Category              string  `json:"category,omitempty"`
 	Kind                  string  `json:"kind"`
 	Proves                string  `json:"proves"`
 	ConfigStamp           *string `json:"config_stamp,omitempty"`
@@ -173,11 +197,17 @@ type syncEvidencePayload struct {
 	ManifestPath          *string `json:"manifest_path,omitempty"`
 	CreatedAt             string  `json:"created_at"`
 	DeletedAt             *string `json:"deleted_at,omitempty"`
-	// OccurredAt is the clock for the two mutable fields of an otherwise
+	// OccurredAt is the clock for the two mutable flags of an otherwise
 	// immutable row (attached_jira, attached_confluence_url). It lives in the
 	// payload rather than in sync_mutations.occurred_at because a replayed
 	// deferred row loses the journal metadata but keeps the payload.
 	OccurredAt string `json:"occurred_at"`
+	// LocationSetAt is the clock of the location group, and it is a column
+	// rather than a stamp taken at enqueue time: comparing an incoming report
+	// against a local side that has no clock of its own makes the last
+	// delivery win, and two replicas that received the same two reports in
+	// different orders would stop agreeing.
+	LocationSetAt *string `json:"location_set_at,omitempty"`
 }
 
 type syncTaskLinkPayload struct {
@@ -196,6 +226,38 @@ type syncObservationRefPayload struct {
 	GraphCommit       *string `json:"graph_commit,omitempty"`
 	CreatedAt         string  `json:"created_at"`
 	Project           string  `json:"project"`
+}
+
+type syncProjectAliasPayload struct {
+	Alias     string  `json:"alias"`
+	SyncID    string  `json:"sync_id"`
+	Slug      string  `json:"slug"`
+	Source    string  `json:"source"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
+	DeletedAt *string `json:"deleted_at,omitempty"`
+	Project   string  `json:"project"`
+}
+
+type syncBenchmarkPayload struct {
+	SyncID        string  `json:"sync_id"`
+	Project       string  `json:"project"`
+	TaskSyncID    string  `json:"task_sync_id"`
+	Name          string  `json:"name"`
+	Metric        string  `json:"metric"`
+	Unit          string  `json:"unit"`
+	Direction     string  `json:"direction"`
+	Value         float64 `json:"value"`
+	Baseline      bool    `json:"baseline"`
+	BaselineSetAt *string `json:"baseline_set_at,omitempty"`
+	RunPath       *string `json:"run_path,omitempty"`
+	SHA256        *string `json:"sha256,omitempty"`
+	ConfigStamp   *string `json:"config_stamp,omitempty"`
+	CapturedAt    string  `json:"captured_at"`
+	Notes         *string `json:"notes,omitempty"`
+	Source        string  `json:"source"`
+	CreatedAt     string  `json:"created_at"`
+	DeletedAt     *string `json:"deleted_at,omitempty"`
 }
 
 // ProjectsEntityKey returns the portable entity_key for a projects payload,
@@ -233,6 +295,19 @@ func ProjectsEntityKey(entity string, payload []byte) (string, error) {
 			return "", err
 		}
 		return observationRefKey(body.ObservationSyncID, body.RefKind, body.Ref), nil
+	case SyncEntityProjectAlias:
+		var body syncProjectAliasPayload
+		if err := decodeSyncPayload(payload, &body); err != nil {
+			return "", err
+		}
+		// The alias is the primary key, so it is also the portable identity.
+		return strings.TrimSpace(body.Alias), nil
+	case SyncEntityBenchmark:
+		var body syncBenchmarkPayload
+		if err := decodeSyncPayload(payload, &body); err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(body.SyncID), nil
 	default:
 		return "", fmt.Errorf("unsupported engram-projects entity %q", entity)
 	}
@@ -358,7 +433,28 @@ func earliestTimestamp(a, b *string) *string {
 func cardDescriptiveDigest(c syncProjectCardPayload) string {
 	return groupDigest(c.SyncID, c.DisplayName, ptrOrEmpty(c.RepoURL), c.DefaultBranch, c.JiraProject,
 		ptrOrEmpty(c.JiraComponent), ptrOrEmpty(c.KnowledgeHubPath), c.GraphPath, ptrOrEmpty(c.Owner),
-		ptrOrEmpty(c.DeletedAt))
+		ptrOrEmpty(c.DeletedAt), ptrOrEmpty(c.ParentSlug), strconv.Itoa(c.Depth), c.Kind,
+		ptrOrEmpty(c.Description), ptrOrEmpty(c.Icon), ptrOrEmpty(c.Color), ptrOrEmpty(c.Tags))
+}
+
+// aliasDigest hashes the fields of an alias that the updated_at clock governs.
+func aliasDigest(a syncProjectAliasPayload) string {
+	return groupDigest(a.SyncID, a.Alias, a.Slug, a.Source, ptrOrEmpty(a.DeletedAt))
+}
+
+// benchmarkBaselineDigest hashes the one group of a benchmark that can move.
+func benchmarkBaselineDigest(b syncBenchmarkPayload) string {
+	baseline := "0"
+	if b.Baseline {
+		baseline = "1"
+	}
+	return groupDigest(b.SyncID, baseline, ptrOrEmpty(b.BaselineSetAt))
+}
+
+// evidenceLocationDigest hashes where an evidence file lives. Everything else
+// about the row is immutable, so this is the only group with a tie to break.
+func evidenceLocationDigest(e syncEvidencePayload) string {
+	return groupDigest(e.SyncID, e.Path, e.Category)
 }
 
 // cardGraphDigest hashes the code-graph group, used only to separate two
@@ -371,7 +467,9 @@ func cardGraphDigest(c syncProjectCardPayload) string {
 // updated_at clock governs.
 func taskDescriptiveDigest(t syncTaskPayload) string {
 	return groupDigest(t.Project, ptrOrEmpty(t.JiraKey), ptrOrEmpty(t.SDDChange), t.Title, t.Kind,
-		ptrOrEmpty(t.Branch), ptrOrEmpty(t.PRUrl), ptrOrEmpty(t.KnowledgeRef), ptrOrEmpty(t.Assignee))
+		ptrOrEmpty(t.Branch), ptrOrEmpty(t.PRUrl), ptrOrEmpty(t.KnowledgeRef), ptrOrEmpty(t.Assignee),
+		ptrOrEmpty(t.Slug), ptrOrEmpty(t.Summary), ptrOrEmpty(t.PendingNote), ptrOrEmpty(t.VaultPath),
+		ptrOrEmpty(t.ParentTaskSyncID))
 }
 
 // taskMirrorDigest hashes the two fields copied verbatim from Jira.
@@ -441,18 +539,41 @@ func (s *Store) enqueueProjectsMutationTx(tx *sql.Tx, entity, entityKey string, 
 	if deleted {
 		op = SyncOpDelete
 	}
+	// An unacked mutation for this same row is an older snapshot of it, and
+	// this journal carries snapshots rather than deltas, so it holds nothing
+	// the new one lacks. Keeping it is worse than redundant: two writes to one
+	// row in the same second carry the same updated_at, the receiver breaks
+	// that tie by hashing the payload (RFC section 10.3), and which of the two
+	// states survives replication then depends on a digest rather than on
+	// which write came last. Superseding it leaves at most one pending
+	// snapshot per row.
+	//
+	// An acked mutation is never touched: it has already left this machine, and
+	// deleting it would rewrite what a peer was told.
+	if _, err := s.execHook(tx, `
+		DELETE FROM sync_mutations
+		WHERE target_key = ? AND entity = ? AND entity_key = ? AND source = ? AND acked_at IS NULL`,
+		DefaultSyncTargetKey, entity, entityKey, SyncSourceLocal,
+	); err != nil {
+		return fmt.Errorf("engram-projects: supersede the pending mutation of %s %s: %w", entity, entityKey, err)
+	}
 	return s.enqueueSyncMutationTx(tx, entity, entityKey, op, payload)
 }
 
+// projectCardSyncSelect is the replicated projection of a card. It stops short
+// of graph_stale_reason, graph_changed_files and graph_checked_at on purpose:
+// those three describe this checkout, so shipping them would let one machine's
+// answer overwrite another's.
 const projectCardSyncSelect = `slug, sync_id, display_name, repo_url, default_branch, jira_project,
 	jira_component, knowledge_hub_path, graph_path, graph_commit, graph_built_at, graph_summary,
-	owner, created_at, updated_at, deleted_at`
+	owner, created_at, updated_at, deleted_at, parent_slug, depth, kind, description, icon, color, tags`
 
 func scanProjectCardSyncPayload(row interface{ Scan(dest ...any) error }) (syncProjectCardPayload, error) {
 	var p syncProjectCardPayload
 	err := row.Scan(&p.Slug, &p.SyncID, &p.DisplayName, &p.RepoURL, &p.DefaultBranch, &p.JiraProject,
 		&p.JiraComponent, &p.KnowledgeHubPath, &p.GraphPath, &p.GraphCommit, &p.GraphBuiltAt,
-		&p.GraphSummary, &p.Owner, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt)
+		&p.GraphSummary, &p.Owner, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt, &p.ParentSlug, &p.Depth,
+		&p.Kind, &p.Description, &p.Icon, &p.Color, &p.Tags)
 	if err != nil {
 		return p, err
 	}
@@ -478,13 +599,15 @@ func (s *Store) enqueueProjectCardTx(tx *sql.Tx, slug string) error {
 
 const taskSyncSelect = `sync_id, project, jira_key, sdd_change, title, kind, state, jira_status,
 	jira_status_category, state_synced_at, branch, pr_url, knowledge_ref, assignee,
-	created_at, updated_at, closed_at, deleted_at`
+	created_at, updated_at, closed_at, deleted_at, slug, summary, pending_note, vault_path,
+	parent_task_sync_id`
 
 func scanTaskSyncPayload(row interface{ Scan(dest ...any) error }) (syncTaskPayload, error) {
 	var p syncTaskPayload
 	err := row.Scan(&p.SyncID, &p.Project, &p.JiraKey, &p.SDDChange, &p.Title, &p.Kind, &p.State,
 		&p.JiraStatus, &p.JiraStatusCategory, &p.StateSyncedAt, &p.Branch, &p.PRUrl, &p.KnowledgeRef,
-		&p.Assignee, &p.CreatedAt, &p.UpdatedAt, &p.ClosedAt, &p.DeletedAt)
+		&p.Assignee, &p.CreatedAt, &p.UpdatedAt, &p.ClosedAt, &p.DeletedAt, &p.Slug, &p.Summary,
+		&p.PendingNote, &p.VaultPath, &p.ParentTaskSyncID)
 	return p, err
 }
 
@@ -500,15 +623,16 @@ func (s *Store) enqueueTaskTx(tx *sql.Tx, id int64) error {
 	return s.enqueueProjectsMutationTx(tx, SyncEntityTask, payload.SyncID, payload.DeletedAt != nil, payload)
 }
 
-const evidenceSyncSelect = `sync_id, project, task_sync_id, path, sha256, kind, proves, config_stamp,
-	captured_at, attached_jira, attached_confluence_url, size_bytes, manifest_path, created_at, deleted_at`
+const evidenceSyncSelect = `sync_id, project, task_sync_id, path, sha256, category, kind, proves,
+	config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes, manifest_path,
+	location_set_at, created_at, deleted_at`
 
 func scanEvidenceSyncPayload(row interface{ Scan(dest ...any) error }) (syncEvidencePayload, error) {
 	var p syncEvidencePayload
 	var attachedJira int
-	err := row.Scan(&p.SyncID, &p.Project, &p.TaskSyncID, &p.Path, &p.SHA256, &p.Kind, &p.Proves,
-		&p.ConfigStamp, &p.CapturedAt, &attachedJira, &p.AttachedConfluenceURL, &p.SizeBytes,
-		&p.ManifestPath, &p.CreatedAt, &p.DeletedAt)
+	err := row.Scan(&p.SyncID, &p.Project, &p.TaskSyncID, &p.Path, &p.SHA256, &p.Category, &p.Kind,
+		&p.Proves, &p.ConfigStamp, &p.CapturedAt, &attachedJira, &p.AttachedConfluenceURL, &p.SizeBytes,
+		&p.ManifestPath, &p.LocationSetAt, &p.CreatedAt, &p.DeletedAt)
 	p.AttachedJira = attachedJira == 1
 	return p, err
 }
@@ -524,6 +648,55 @@ func (s *Store) enqueueEvidenceTx(tx *sql.Tx, id int64) error {
 	}
 	payload.OccurredAt = s.nowUTC()
 	return s.enqueueProjectsMutationTx(tx, SyncEntityEvidence, payload.SyncID, payload.DeletedAt != nil, payload)
+}
+
+const projectAliasSyncSelect = `alias, sync_id, slug, source, created_at, updated_at, deleted_at`
+
+// enqueueProjectAliasTx journals an alias inside the transaction that wrote it.
+// An alias is the only thing that says a name still in use out there means a
+// project here, so a replica that never received it would report that name
+// unknown.
+func (s *Store) enqueueProjectAliasTx(tx *sql.Tx, alias string) error {
+	if !ProjectsSyncEnabled() {
+		return nil
+	}
+	var payload syncProjectAliasPayload
+	if err := tx.QueryRow(
+		`SELECT `+projectAliasSyncSelect+` FROM project_aliases WHERE alias = ?`, alias,
+	).Scan(&payload.Alias, &payload.SyncID, &payload.Slug, &payload.Source,
+		&payload.CreatedAt, &payload.UpdatedAt, &payload.DeletedAt); err != nil {
+		return fmt.Errorf("engram-projects: read alias for sync: %w", err)
+	}
+	payload.Project = payload.Slug
+	return s.enqueueProjectsMutationTx(tx, SyncEntityProjectAlias, payload.Alias,
+		payload.DeletedAt != nil, payload)
+}
+
+const benchmarkSyncSelect = `sync_id, project, task_sync_id, name, metric, unit, direction, value,
+	baseline, baseline_set_at, run_path, sha256, config_stamp, captured_at, notes, source,
+	created_at, deleted_at`
+
+func scanBenchmarkSyncPayload(row interface{ Scan(dest ...any) error }) (syncBenchmarkPayload, error) {
+	var p syncBenchmarkPayload
+	var baseline int
+	err := row.Scan(&p.SyncID, &p.Project, &p.TaskSyncID, &p.Name, &p.Metric, &p.Unit, &p.Direction,
+		&p.Value, &baseline, &p.BaselineSetAt, &p.RunPath, &p.SHA256, &p.ConfigStamp, &p.CapturedAt,
+		&p.Notes, &p.Source, &p.CreatedAt, &p.DeletedAt)
+	p.Baseline = baseline == 1
+	return p, err
+}
+
+func (s *Store) enqueueBenchmarkTx(tx *sql.Tx, syncID string) error {
+	if !ProjectsSyncEnabled() {
+		return nil
+	}
+	payload, err := scanBenchmarkSyncPayload(
+		tx.QueryRow(`SELECT `+benchmarkSyncSelect+` FROM benchmarks WHERE sync_id = ?`, syncID))
+	if err != nil {
+		return fmt.Errorf("engram-projects: read benchmark for sync: %w", err)
+	}
+	return s.enqueueProjectsMutationTx(tx, SyncEntityBenchmark, payload.SyncID,
+		payload.DeletedAt != nil, payload)
 }
 
 func (s *Store) enqueueTaskLinkTx(tx *sql.Tx, project, taskSyncID, observationSyncID string) error {
@@ -585,6 +758,10 @@ func (s *Store) applyProjectsMutationTx(tx *sql.Tx, mutation SyncMutation) error
 		return s.applyTaskLinkMutationTx(tx, mutation, payload)
 	case SyncEntityObservationRef:
 		return s.applyObservationRefMutationTx(tx, mutation, payload)
+	case SyncEntityProjectAlias:
+		return s.applyProjectAliasMutationTx(tx, mutation, payload)
+	case SyncEntityBenchmark:
+		return s.applyBenchmarkMutationTx(tx, mutation, payload)
 	default:
 		return fmt.Errorf("unknown engram-projects entity %q", mutation.Entity)
 	}
@@ -634,8 +811,8 @@ func (s *Store) clearDeferredTx(tx *sql.Tx, entityKey, payload string) error {
 // group (graph_commit, graph_built_at, graph_summary) only ever moves forward
 // on graph_built_at. Keeping them apart is what stops a stale descriptive
 // update from dragging a newer graph stamp backwards — the card would then
-// claim facts about a commit it no longer points at, which is exactly what
-// ADR-026 forbids.
+// claim facts about a commit it no longer points at, which must never
+// happen.
 func (s *Store) applyProjectCardMutationTx(tx *sql.Tx, mutation SyncMutation, payload []byte) error {
 	var incoming syncProjectCardPayload
 	if err := decodeSyncPayload(payload, &incoming); err != nil {
@@ -677,23 +854,39 @@ func (s *Store) applyProjectCardMutationTx(tx *sql.Tx, mutation SyncMutation, pa
 		incoming.GraphPath = "graphify-out/graph.json"
 	}
 
+	if strings.TrimSpace(incoming.Kind) == "" {
+		incoming.Kind = "repo"
+	}
+	incoming.ParentSlug = trimPtr(incoming.ParentSlug)
+
 	local, err := scanProjectCardSyncPayload(
 		tx.QueryRow(`SELECT `+projectCardSyncSelect+` FROM project_cards WHERE slug = ?`, incoming.Slug))
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
+		parentSlug, depth, hierarchyErr := s.resolveReplicatedParentTx(tx, incoming.Slug, incoming.ParentSlug)
+		if hierarchyErr != nil {
+			return hierarchyErr
+		}
 		if _, err := s.execHook(tx, `
 			INSERT INTO project_cards
 				(slug, sync_id, display_name, repo_url, default_branch, jira_project, jira_component,
 				 knowledge_hub_path, graph_path, graph_commit, graph_built_at, graph_summary, owner,
-				 created_at, updated_at, deleted_at)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				 created_at, updated_at, deleted_at, parent_slug, depth, kind, description, icon, color, tags)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			incoming.Slug, incoming.SyncID, incoming.DisplayName, nullableStr(incoming.RepoURL),
 			incoming.DefaultBranch, incoming.JiraProject, nullableStr(incoming.JiraComponent),
 			nullableStr(incoming.KnowledgeHubPath), incoming.GraphPath, nullableStr(incoming.GraphCommit),
 			nullableStr(incoming.GraphBuiltAt), nullableStr(incoming.GraphSummary), nullableStr(incoming.Owner),
 			incoming.CreatedAt, incoming.UpdatedAt, nullableStr(incoming.DeletedAt),
+			nullableStr(parentSlug), depth, incoming.Kind, nullableStr(incoming.Description),
+			nullableStr(incoming.Icon), nullableStr(incoming.Color), nullableStr(incoming.Tags),
 		); err != nil {
 			return fmt.Errorf("engram-projects: insert replicated project card: %w", err)
+		}
+		if parentSlug == nil && incoming.ParentSlug != nil {
+			if err := s.recordCardHierarchyCycleTx(tx, incoming); err != nil {
+				return err
+			}
 		}
 		return s.clearDeferredTx(tx, incoming.SyncID, mutation.Payload)
 	case err != nil:
@@ -714,7 +907,25 @@ func (s *Store) applyProjectCardMutationTx(tx *sql.Tx, mutation SyncMutation, pa
 		merged.Owner = incoming.Owner
 		merged.UpdatedAt = incoming.UpdatedAt
 		merged.DeletedAt = incoming.DeletedAt
+		merged.ParentSlug = incoming.ParentSlug
+		merged.Kind = incoming.Kind
+		merged.Description = incoming.Description
+		merged.Icon = incoming.Icon
+		merged.Color = incoming.Color
+		merged.Tags = incoming.Tags
 	}
+
+	// The parent is checked against this replica's tree, not the sender's:
+	// two cards reparented on two machines can be individually legal and
+	// together form a loop, and the replica that ends up holding both is the
+	// only one that can see it.
+	parentSlug, depth, hierarchyErr := s.resolveReplicatedParentTx(tx, merged.Slug, merged.ParentSlug)
+	if hierarchyErr != nil {
+		return hierarchyErr
+	}
+	brokeHierarchy := parentSlug == nil && merged.ParentSlug != nil
+	merged.ParentSlug = parentSlug
+	merged.Depth = depth
 	// created_at is the earliest known creation, never a later replica's guess.
 	if timestampLess(incoming.CreatedAt, merged.CreatedAt) {
 		merged.CreatedAt = incoming.CreatedAt
@@ -735,17 +946,97 @@ func (s *Store) applyProjectCardMutationTx(tx *sql.Tx, mutation SyncMutation, pa
 			sync_id = ?, display_name = ?, repo_url = ?, default_branch = ?, jira_project = ?,
 			jira_component = ?, knowledge_hub_path = ?, graph_path = ?, graph_commit = ?,
 			graph_built_at = ?, graph_summary = ?, owner = ?, created_at = ?, updated_at = ?,
-			deleted_at = ?
+			deleted_at = ?, parent_slug = ?, depth = ?, kind = ?, description = ?, icon = ?,
+			color = ?, tags = ?
 		WHERE slug = ?`,
 		merged.SyncID, merged.DisplayName, nullableStr(merged.RepoURL), merged.DefaultBranch,
 		merged.JiraProject, nullableStr(merged.JiraComponent), nullableStr(merged.KnowledgeHubPath),
 		merged.GraphPath, nullableStr(merged.GraphCommit), nullableStr(merged.GraphBuiltAt),
 		nullableStr(merged.GraphSummary), nullableStr(merged.Owner), merged.CreatedAt,
-		merged.UpdatedAt, nullableStr(merged.DeletedAt), merged.Slug,
+		merged.UpdatedAt, nullableStr(merged.DeletedAt), nullableStr(merged.ParentSlug), merged.Depth,
+		merged.Kind, nullableStr(merged.Description), nullableStr(merged.Icon),
+		nullableStr(merged.Color), nullableStr(merged.Tags), merged.Slug,
 	); err != nil {
 		return fmt.Errorf("engram-projects: update replicated project card: %w", err)
 	}
+	if brokeHierarchy {
+		if err := s.recordCardHierarchyCycleTx(tx, incoming); err != nil {
+			return err
+		}
+	}
+	if err := s.rewriteSubtreeDepthTx(tx, merged.Slug, merged.Depth); err != nil {
+		return err
+	}
 	return s.clearDeferredTx(tx, incoming.SyncID, mutation.Payload)
+}
+
+// cardHierarchyCycleReason is the last_error recorded on the dead row of a card
+// whose replicated parent could not be honoured. `engram doctor` surfaces it;
+// the card stays usable at the top of the tree until somebody decides where it
+// really belongs.
+const cardHierarchyCycleReason = "project_hierarchy_cycle"
+
+// resolveReplicatedParentTx decides what parent a pulled card may actually
+// have here. It returns (nil, 0, nil) when the parent has to be dropped —
+// because it would close a loop or push the card past the depth limit — and
+// ErrProjectsFKMissing when the parent card simply has not arrived yet, which
+// is a wait rather than a verdict.
+//
+// Dropping the parent instead of refusing the card is the only convergent
+// option: the alternative leaves one replica holding a card the others have
+// and calling it invalid, which is exactly the divergence replication exists
+// to prevent.
+func (s *Store) resolveReplicatedParentTx(tx *sql.Tx, slug string, parent *string) (*string, int, error) {
+	if parent == nil {
+		return nil, 0, nil
+	}
+	if *parent == slug {
+		return nil, 0, nil
+	}
+	var parentDepth int
+	var above *string
+	err := tx.QueryRow(
+		`SELECT depth, parent_slug FROM project_cards WHERE slug = ?`, *parent,
+	).Scan(&parentDepth, &above)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, 0, fmt.Errorf("%w: project_card %s waits for parent %q", ErrProjectsFKMissing, slug, *parent)
+	}
+	if err != nil {
+		return nil, 0, fmt.Errorf("engram-projects: read replicated parent card: %w", err)
+	}
+	if cycleErr := s.ancestorsExclude(tx, above, slug); cycleErr != nil {
+		return nil, 0, nil
+	}
+	depth := parentDepth + 1
+	if depth > maxProjectDepth {
+		return nil, 0, nil
+	}
+	return parent, depth, nil
+}
+
+// recordCardHierarchyCycleTx parks the payload whose parent was dropped, so the
+// decision is visible rather than silent.
+func (s *Store) recordCardHierarchyCycleTx(tx *sql.Tx, card syncProjectCardPayload) error {
+	encoded, err := json.Marshal(card)
+	if err != nil {
+		return fmt.Errorf("engram-projects: encode card with a rejected parent: %w", err)
+	}
+	message := fmt.Sprintf("%s: parent %q was dropped from card %q",
+		cardHierarchyCycleReason, ptrOrEmpty(card.ParentSlug), card.Slug)
+	if _, err := s.execHook(tx, `
+		INSERT INTO sync_apply_deferred
+			(sync_id, entity, payload, apply_status, retry_count, first_seen_at, last_error, last_attempted_at)
+		VALUES (?, ?, ?, 'dead', 0, datetime('now'), ?, datetime('now'))
+		ON CONFLICT(sync_id) DO UPDATE SET
+			payload           = excluded.payload,
+			apply_status      = 'dead',
+			last_error        = excluded.last_error,
+			last_attempted_at = datetime('now')`,
+		card.SyncID, SyncEntityProjectCard, string(encoded), message,
+	); err != nil {
+		return fmt.Errorf("engram-projects: record project hierarchy cycle: %w", err)
+	}
+	return nil
 }
 
 // ─── task ────────────────────────────────────────────────────────────────────
@@ -822,21 +1113,51 @@ func (s *Store) applyTaskMutationTx(tx *sql.Tx, mutation SyncMutation, payload [
 	}
 
 	merged := mergeTaskPayloads(local, incoming)
+	parentTaskID, err := s.replicatedParentTaskIDTx(tx, merged.SyncID, merged.ParentTaskSyncID)
+	if err != nil {
+		return err
+	}
 	if _, err := s.execHook(tx, `
 		UPDATE tasks SET
 			project = ?, jira_key = ?, sdd_change = ?, title = ?, kind = ?, state = ?,
 			jira_status = ?, jira_status_category = ?, state_synced_at = ?, branch = ?, pr_url = ?,
-			knowledge_ref = ?, assignee = ?, created_at = ?, updated_at = ?, closed_at = ?, deleted_at = ?
+			knowledge_ref = ?, assignee = ?, created_at = ?, updated_at = ?, closed_at = ?, deleted_at = ?,
+			slug = ?, summary = ?, pending_note = ?, vault_path = ?, parent_task_id = ?,
+			parent_task_sync_id = ?
 		WHERE sync_id = ?`,
 		merged.Project, nullableStr(merged.JiraKey), nullableStr(merged.SDDChange), merged.Title,
 		merged.Kind, merged.State, nullableStr(merged.JiraStatus), nullableStr(merged.JiraStatusCategory),
 		nullableStr(merged.StateSyncedAt), nullableStr(merged.Branch), nullableStr(merged.PRUrl),
 		nullableStr(merged.KnowledgeRef), nullableStr(merged.Assignee), merged.CreatedAt,
-		merged.UpdatedAt, nullableStr(merged.ClosedAt), nullableStr(merged.DeletedAt), merged.SyncID,
+		merged.UpdatedAt, nullableStr(merged.ClosedAt), nullableStr(merged.DeletedAt),
+		nullableStr(merged.Slug), nullableStr(merged.Summary), nullableStr(merged.PendingNote),
+		nullableStr(merged.VaultPath), nullableInt64(parentTaskID), nullableStr(merged.ParentTaskSyncID),
+		merged.SyncID,
 	); err != nil {
 		return fmt.Errorf("engram-projects: update replicated task: %w", err)
 	}
 	return s.clearDeferredTx(tx, incoming.SyncID, mutation.Payload)
+}
+
+// replicatedParentTaskIDTx resolves the parent a payload names to a local row
+// id. A parent that has not arrived leaves the link recorded by sync_id alone:
+// the pair is what replicates, and the numeric id is a local convenience that
+// can be filled in when the parent turns up. A payload naming itself is
+// dropped rather than deferred — the CHECK would refuse it forever.
+func (s *Store) replicatedParentTaskIDTx(tx *sql.Tx, syncID string, parentSyncID *string) (*int64, error) {
+	parent := trimPtr(parentSyncID)
+	if parent == nil || *parent == strings.TrimSpace(syncID) {
+		return nil, nil
+	}
+	var id int64
+	err := tx.QueryRow(`SELECT id FROM tasks WHERE sync_id = ?`, *parent).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("engram-projects: resolve replicated parent task: %w", err)
+	}
+	return &id, nil
 }
 
 func (s *Store) insertReplicatedTaskTx(tx *sql.Tx, t syncTaskPayload) error {
@@ -845,15 +1166,25 @@ func (s *Store) insertReplicatedTaskTx(tx *sql.Tx, t syncTaskPayload) error {
 	// payload — otherwise the row a replica inserts differs from the row
 	// another replica reaches by merging.
 	t.ClosedAt = taskClosedAt(t)
+	if parent := trimPtr(t.ParentTaskSyncID); parent != nil && *parent == strings.TrimSpace(t.SyncID) {
+		t.ParentTaskSyncID = nil
+	}
+	parentTaskID, err := s.replicatedParentTaskIDTx(tx, t.SyncID, t.ParentTaskSyncID)
+	if err != nil {
+		return err
+	}
 	if _, err := s.execHook(tx, `
 		INSERT INTO tasks (sync_id, project, jira_key, sdd_change, title, kind, state, jira_status,
 			jira_status_category, state_synced_at, branch, pr_url, knowledge_ref, assignee,
-			created_at, updated_at, closed_at, deleted_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			created_at, updated_at, closed_at, deleted_at, slug, summary, pending_note, vault_path,
+			parent_task_id, parent_task_sync_id)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.SyncID, t.Project, nullableStr(t.JiraKey), nullableStr(t.SDDChange), t.Title, t.Kind, t.State,
 		nullableStr(t.JiraStatus), nullableStr(t.JiraStatusCategory), nullableStr(t.StateSyncedAt),
 		nullableStr(t.Branch), nullableStr(t.PRUrl), nullableStr(t.KnowledgeRef), nullableStr(t.Assignee),
 		t.CreatedAt, t.UpdatedAt, nullableStr(t.ClosedAt), nullableStr(t.DeletedAt),
+		nullableStr(t.Slug), nullableStr(t.Summary), nullableStr(t.PendingNote), nullableStr(t.VaultPath),
+		nullableInt64(parentTaskID), nullableStr(t.ParentTaskSyncID),
 	); err != nil {
 		return fmt.Errorf("engram-projects: insert replicated task: %w", err)
 	}
@@ -881,6 +1212,14 @@ func mergeTaskPayloads(local, incoming syncTaskPayload) syncTaskPayload {
 		merged.KnowledgeRef = incoming.KnowledgeRef
 		merged.Assignee = incoming.Assignee
 		merged.UpdatedAt = incoming.UpdatedAt
+		merged.Slug = incoming.Slug
+		merged.Summary = incoming.Summary
+		merged.PendingNote = incoming.PendingNote
+		merged.VaultPath = incoming.VaultPath
+		merged.ParentTaskSyncID = incoming.ParentTaskSyncID
+	}
+	if parent := trimPtr(merged.ParentTaskSyncID); parent != nil && *parent == strings.TrimSpace(merged.SyncID) {
+		merged.ParentTaskSyncID = nil
 	}
 
 	localMirror := ptrOrEmpty(trimPtr(local.StateSyncedAt))
@@ -1028,6 +1367,10 @@ func (s *Store) applyEvidenceMutationTx(tx *sql.Tx, mutation SyncMutation, paylo
 		return fmt.Errorf("engram-projects: resolve evidence task: %w", err)
 	}
 
+	if strings.TrimSpace(incoming.Category) == "" {
+		incoming.Category = DefaultEvidenceCategory
+	}
+
 	local, err := scanEvidenceSyncPayload(
 		tx.QueryRow(`SELECT `+evidenceSyncSelect+` FROM evidence WHERE sync_id = ?`, incoming.SyncID))
 	switch {
@@ -1037,14 +1380,15 @@ func (s *Store) applyEvidenceMutationTx(tx *sql.Tx, mutation SyncMutation, paylo
 			attachedJira = 1
 		}
 		if _, err := s.execHook(tx, `
-			INSERT INTO evidence (sync_id, project, task_id, task_sync_id, path, sha256, kind, proves,
+			INSERT INTO evidence (sync_id, project, task_id, task_sync_id, path, sha256, category, kind, proves,
 				config_stamp, captured_at, attached_jira, attached_confluence_url, size_bytes,
-				manifest_path, created_at, deleted_at)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				manifest_path, location_set_at, created_at, deleted_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			incoming.SyncID, incoming.Project, taskID, incoming.TaskSyncID, incoming.Path, incoming.SHA256,
-			incoming.Kind, incoming.Proves, nullableStr(incoming.ConfigStamp), incoming.CapturedAt,
-			attachedJira, nullableStr(incoming.AttachedConfluenceURL), nullableInt64(incoming.SizeBytes),
-			nullableStr(incoming.ManifestPath), incoming.CreatedAt, nullableStr(incoming.DeletedAt),
+			incoming.Category, incoming.Kind, incoming.Proves, nullableStr(incoming.ConfigStamp),
+			incoming.CapturedAt, attachedJira, nullableStr(incoming.AttachedConfluenceURL),
+			nullableInt64(incoming.SizeBytes), nullableStr(incoming.ManifestPath),
+			evidenceLocationClock(incoming), incoming.CreatedAt, nullableStr(incoming.DeletedAt),
 		); err != nil {
 			return fmt.Errorf("engram-projects: insert replicated evidence: %w", err)
 		}
@@ -1072,14 +1416,41 @@ func (s *Store) applyEvidenceMutationTx(tx *sql.Tx, mutation SyncMutation, paylo
 	}
 	deletedAt := earliestTimestamp(local.DeletedAt, incoming.DeletedAt)
 
+	// Where the file lives is the one group of an evidence row that moves.
+	// A rescan that finds the same bytes under a new path or a new category is
+	// reporting a move, not a second capture, and the later report wins.
+	if strings.TrimSpace(local.Category) == "" {
+		local.Category = DefaultEvidenceCategory
+	}
+	path, category := local.Path, local.Category
+	locationSetAt := local.LocationSetAt
+	if incomingWinsLWW(ptrOrEmpty(local.LocationSetAt), evidenceLocationClock(incoming),
+		evidenceLocationDigest(local), evidenceLocationDigest(incoming)) {
+		path, category = incoming.Path, incoming.Category
+		clock := evidenceLocationClock(incoming)
+		locationSetAt = &clock
+	}
+
 	if _, err := s.execHook(tx, `
-		UPDATE evidence SET attached_jira = ?, attached_confluence_url = ?, deleted_at = ?
+		UPDATE evidence SET attached_jira = ?, attached_confluence_url = ?, deleted_at = ?,
+			path = ?, category = ?, location_set_at = ?
 		WHERE sync_id = ?`,
-		attachedJira, nullableStr(confluenceURL), nullableStr(deletedAt), incoming.SyncID,
+		attachedJira, nullableStr(confluenceURL), nullableStr(deletedAt), path, category,
+		nullableStr(trimPtr(locationSetAt)), incoming.SyncID,
 	); err != nil {
 		return fmt.Errorf("engram-projects: update replicated evidence: %w", err)
 	}
 	return s.clearDeferredTx(tx, incoming.SyncID, mutation.Payload)
+}
+
+// evidenceLocationClock is the timestamp a payload claims for where the file
+// lives, falling back to when the row was created for a sender that predates
+// the column.
+func evidenceLocationClock(e syncEvidencePayload) string {
+	if set := trimPtr(e.LocationSetAt); set != nil {
+		return *set
+	}
+	return strings.TrimSpace(e.CreatedAt)
 }
 
 // ─── task_link ───────────────────────────────────────────────────────────────
@@ -1262,6 +1633,244 @@ func (s *Store) applyObservationRefMutationTx(tx *sql.Tx, mutation SyncMutation,
 		observationRefKey(incoming.ObservationSyncID, incoming.RefKind, incoming.Ref), mutation.Payload)
 }
 
+// ─── project_alias ───────────────────────────────────────────────────────────
+
+// applyProjectAliasMutationTx keeps project_aliases as an LWW-element-set on
+// updated_at, with deletion monotone: once any replica has retired an alias,
+// none of them brings it back, and two replicas that saw different retirement
+// times settle on the earlier one.
+//
+// An alias whose target card has not arrived is deferred rather than dropped.
+// The foreign key would refuse it, and an alias that quietly disappears is a
+// name that starts reporting unknown on one machine and resolving on another.
+func (s *Store) applyProjectAliasMutationTx(tx *sql.Tx, mutation SyncMutation, payload []byte) error {
+	var incoming syncProjectAliasPayload
+	if err := decodeSyncPayload(payload, &incoming); err != nil {
+		return fmt.Errorf("%w: decode project_alias payload: %v", ErrApplyDead, err)
+	}
+	incoming.Alias = strings.TrimSpace(incoming.Alias)
+	incoming.SyncID = strings.TrimSpace(incoming.SyncID)
+	incoming.Slug = strings.TrimSpace(incoming.Slug)
+	if incoming.Project == "" {
+		incoming.Project = incoming.Slug
+	}
+	if incoming.Alias == "" || incoming.SyncID == "" || incoming.Slug == "" {
+		return fmt.Errorf("%w: project_alias payload requires alias, sync_id and slug", ErrApplyDead)
+	}
+	if incoming.Alias == incoming.Slug {
+		return fmt.Errorf("%w: project_alias %q cannot point at itself", ErrApplyDead, incoming.Alias)
+	}
+	if strings.TrimSpace(incoming.Source) == "" {
+		incoming.Source = "manual"
+	}
+	if err := checkPayloadProject(mutation, incoming.Project); err != nil {
+		return err
+	}
+
+	var cardExists int
+	err := tx.QueryRow(`SELECT 1 FROM project_cards WHERE slug = ?`, incoming.Slug).Scan(&cardExists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: project_alias %s waits for project card %q",
+			ErrProjectsFKMissing, incoming.Alias, incoming.Slug)
+	}
+	if err != nil {
+		return fmt.Errorf("engram-projects: check project card for alias: %w", err)
+	}
+
+	var local syncProjectAliasPayload
+	err = tx.QueryRow(
+		`SELECT `+projectAliasSyncSelect+` FROM project_aliases WHERE alias = ?`, incoming.Alias,
+	).Scan(&local.Alias, &local.SyncID, &local.Slug, &local.Source, &local.CreatedAt,
+		&local.UpdatedAt, &local.DeletedAt)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if _, err := s.execHook(tx, `
+			INSERT INTO project_aliases (alias, sync_id, slug, source, created_at, updated_at, deleted_at)
+			VALUES (?,?,?,?,?,?,?)`,
+			incoming.Alias, incoming.SyncID, incoming.Slug, incoming.Source,
+			incoming.CreatedAt, incoming.UpdatedAt, nullableStr(trimPtr(incoming.DeletedAt)),
+		); err != nil {
+			return fmt.Errorf("engram-projects: insert replicated project alias: %w", err)
+		}
+		return s.clearDeferredTx(tx, incoming.Alias, mutation.Payload)
+	case err != nil:
+		return fmt.Errorf("engram-projects: read local project alias: %w", err)
+	}
+
+	merged := local
+	if incomingWinsLWW(local.UpdatedAt, incoming.UpdatedAt, aliasDigest(local), aliasDigest(incoming)) {
+		merged.SyncID = incoming.SyncID
+		merged.Slug = incoming.Slug
+		merged.Source = incoming.Source
+		merged.UpdatedAt = incoming.UpdatedAt
+	}
+	merged.DeletedAt = earliestTimestamp(local.DeletedAt, incoming.DeletedAt)
+	if timestampLess(incoming.CreatedAt, merged.CreatedAt) {
+		merged.CreatedAt = incoming.CreatedAt
+	}
+
+	if _, err := s.execHook(tx, `
+		UPDATE project_aliases SET sync_id = ?, slug = ?, source = ?, created_at = ?, updated_at = ?,
+			deleted_at = ?
+		WHERE alias = ?`,
+		merged.SyncID, merged.Slug, merged.Source, merged.CreatedAt, merged.UpdatedAt,
+		nullableStr(merged.DeletedAt), merged.Alias,
+	); err != nil {
+		return fmt.Errorf("engram-projects: update replicated project alias: %w", err)
+	}
+	return s.clearDeferredTx(tx, incoming.Alias, mutation.Payload)
+}
+
+// ─── benchmark ───────────────────────────────────────────────────────────────
+
+// applyBenchmarkMutationTx treats a measurement as immutable: it was taken at a
+// moment, from a run, and no later delivery makes it a different number. Only
+// two things still move — which row of a metric is the baseline, and whether
+// the row was deleted.
+//
+// The baseline is decided before the row is written rather than reconciled
+// afterwards, because the partial unique index refuses the intermediate state
+// where two rows of one metric both claim it. Both replicas compare the same
+// two (baseline_set_at, sync_id) pairs, so both reach the same verdict whatever
+// order the two measurements arrived in.
+func (s *Store) applyBenchmarkMutationTx(tx *sql.Tx, mutation SyncMutation, payload []byte) error {
+	var incoming syncBenchmarkPayload
+	if err := decodeSyncPayload(payload, &incoming); err != nil {
+		return fmt.Errorf("%w: decode benchmark payload: %v", ErrApplyDead, err)
+	}
+	incoming.SyncID = strings.TrimSpace(incoming.SyncID)
+	incoming.Project = strings.TrimSpace(incoming.Project)
+	incoming.TaskSyncID = strings.TrimSpace(incoming.TaskSyncID)
+	incoming.Name = strings.TrimSpace(incoming.Name)
+	incoming.Metric = strings.TrimSpace(incoming.Metric)
+	incoming.Unit = strings.TrimSpace(incoming.Unit)
+	if incoming.SyncID == "" || incoming.TaskSyncID == "" || incoming.Name == "" || incoming.Metric == "" {
+		return fmt.Errorf("%w: benchmark payload requires sync_id, task_sync_id, name and metric", ErrApplyDead)
+	}
+	direction, ok := resolveBenchmarkDirection(incoming.Unit, incoming.Direction)
+	if !ok {
+		return fmt.Errorf("%w: benchmark unit %q is not one this store accepts", ErrApplyDead, incoming.Unit)
+	}
+	incoming.Direction = direction
+	if strings.TrimSpace(incoming.Source) == "" {
+		incoming.Source = "manual"
+	}
+	if strings.TrimSpace(incoming.CapturedAt) == "" {
+		return fmt.Errorf("%w: benchmark payload requires captured_at", ErrApplyDead)
+	}
+	if incoming.Baseline && trimPtr(incoming.BaselineSetAt) == nil {
+		return fmt.Errorf("%w: a benchmark baseline must say when it became one", ErrApplyDead)
+	}
+	if err := checkPayloadProject(mutation, incoming.Project); err != nil {
+		return err
+	}
+
+	var taskID int64
+	err := tx.QueryRow(`SELECT id FROM tasks WHERE sync_id = ?`, incoming.TaskSyncID).Scan(&taskID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: benchmark %s waits for task %s", ErrProjectsFKMissing, incoming.SyncID, incoming.TaskSyncID)
+	}
+	if err != nil {
+		return fmt.Errorf("engram-projects: resolve benchmark task: %w", err)
+	}
+
+	local, err := scanBenchmarkSyncPayload(
+		tx.QueryRow(`SELECT `+benchmarkSyncSelect+` FROM benchmarks WHERE sync_id = ?`, incoming.SyncID))
+	known := err == nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("engram-projects: read local benchmark: %w", err)
+	}
+
+	baseline, baselineSetAt := incoming.Baseline, trimPtr(incoming.BaselineSetAt)
+	if known && !incomingWinsLWW(ptrOrEmpty(local.BaselineSetAt), ptrOrEmpty(incoming.BaselineSetAt),
+		benchmarkBaselineDigest(local), benchmarkBaselineDigest(incoming)) {
+		baseline, baselineSetAt = local.Baseline, trimPtr(local.BaselineSetAt)
+	}
+	if baseline {
+		kept, err := s.settleBenchmarkBaselineTx(tx, incoming.SyncID, incoming.TaskSyncID,
+			incoming.Metric, ptrOrEmpty(baselineSetAt))
+		if err != nil {
+			return err
+		}
+		if !kept {
+			baseline, baselineSetAt = false, nil
+		}
+	}
+	baselineFlag := 0
+	if baseline {
+		baselineFlag = 1
+	}
+
+	if !known {
+		if _, err := s.execHook(tx, `
+			INSERT INTO benchmarks (sync_id, project, task_id, task_sync_id, name, metric, unit,
+				direction, value, baseline, baseline_set_at, run_path, sha256, config_stamp,
+				captured_at, notes, source, created_at, deleted_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			incoming.SyncID, incoming.Project, taskID, incoming.TaskSyncID, incoming.Name,
+			incoming.Metric, incoming.Unit, incoming.Direction, incoming.Value, baselineFlag,
+			nullableStr(baselineSetAt), nullableStr(trimPtr(incoming.RunPath)),
+			nullableStr(trimPtr(incoming.SHA256)), nullableStr(trimPtr(incoming.ConfigStamp)),
+			incoming.CapturedAt, nullableStr(trimPtr(incoming.Notes)), incoming.Source,
+			incoming.CreatedAt, nullableStr(trimPtr(incoming.DeletedAt)),
+		); err != nil {
+			return fmt.Errorf("engram-projects: insert replicated benchmark: %w", err)
+		}
+		return s.clearDeferredTx(tx, incoming.SyncID, mutation.Payload)
+	}
+
+	if _, err := s.execHook(tx, `
+		UPDATE benchmarks SET baseline = ?, baseline_set_at = ?, deleted_at = ? WHERE sync_id = ?`,
+		baselineFlag, nullableStr(baselineSetAt),
+		nullableStr(earliestTimestamp(local.DeletedAt, incoming.DeletedAt)), incoming.SyncID,
+	); err != nil {
+		return fmt.Errorf("engram-projects: update replicated benchmark: %w", err)
+	}
+	return s.clearDeferredTx(tx, incoming.SyncID, mutation.Payload)
+}
+
+// settleBenchmarkBaselineTx decides whether syncID may hold the baseline of a
+// metric, demoting the incumbent when it may. The comparison is on
+// (baseline_set_at, sync_id), which both replicas hold for both rows.
+func (s *Store) settleBenchmarkBaselineTx(tx *sql.Tx, syncID, taskSyncID, metric, setAt string) (bool, error) {
+	var holderSyncID string
+	var holderSetAt sql.NullString
+	err := tx.QueryRow(
+		`SELECT sync_id, baseline_set_at FROM benchmarks
+		 WHERE task_sync_id = ? AND metric = ? AND baseline = 1 AND deleted_at IS NULL AND sync_id <> ?`,
+		taskSyncID, metric, syncID,
+	).Scan(&holderSyncID, &holderSetAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("engram-projects: read replicated baseline: %w", err)
+	}
+
+	if !benchmarkBaselineWinner(setAt, syncID, holderSetAt.String, holderSyncID) {
+		return false, nil
+	}
+	if _, err := s.execHook(tx,
+		`UPDATE benchmarks SET baseline = 0, baseline_set_at = NULL WHERE sync_id = ?`, holderSyncID,
+	); err != nil {
+		return false, fmt.Errorf("engram-projects: demote replicated baseline: %w", err)
+	}
+	return true, nil
+}
+
+// benchmarkBaselineWinner reports whether candidate A owns the baseline: the
+// later stamp wins, ties broken by the greater sync_id. Total and deterministic,
+// so both replicas break the tie the same way.
+func benchmarkBaselineWinner(setAtA, syncA, setAtB, syncB string) bool {
+	if timestampLess(setAtB, setAtA) {
+		return true
+	}
+	if timestampLess(setAtA, setAtB) {
+		return false
+	}
+	return strings.TrimSpace(syncA) > strings.TrimSpace(syncB)
+}
+
 // ─── Parking ─────────────────────────────────────────────────────────────────
 
 // parkProjectsMutationTx writes a failed engram-projects mutation to
@@ -1338,11 +1947,17 @@ func (s *Store) ProjectsSyncStatus(project string) (ProjectsSyncStatus, error) {
 	status := ProjectsSyncStatus{Enabled: ProjectsSyncEnabled()}
 	project, _ = NormalizeProject(strings.TrimSpace(project))
 
+	entities := ProjectsSyncEntities()
+	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(entities)), ", ")
+	entityArgs := make([]any, 0, len(entities))
+	for _, entity := range entities {
+		entityArgs = append(entityArgs, entity)
+	}
+
 	pending := map[string]int{}
 	pendingQuery := `SELECT entity, COUNT(*) FROM sync_mutations
-	                 WHERE acked_at IS NULL AND entity IN (?, ?, ?, ?, ?)`
-	args := []any{SyncEntityProjectCard, SyncEntityTask, SyncEntityEvidence,
-		SyncEntityTaskLink, SyncEntityObservationRef}
+	                 WHERE acked_at IS NULL AND entity IN (` + placeholders + `)`
+	args := append([]any{}, entityArgs...)
 	if project != "" {
 		pendingQuery += ` AND project = ?`
 		args = append(args, project)
@@ -1370,10 +1985,8 @@ func (s *Store) ProjectsSyncStatus(project string) (ProjectsSyncStatus, error) {
 	parked := map[string]parkedCount{}
 	deferredRows, err := s.db.Query(`
 		SELECT entity, apply_status, COUNT(*) FROM sync_apply_deferred
-		WHERE entity IN (?, ?, ?, ?, ?) AND apply_status IN ('deferred', 'dead')
-		GROUP BY entity, apply_status`,
-		SyncEntityProjectCard, SyncEntityTask, SyncEntityEvidence,
-		SyncEntityTaskLink, SyncEntityObservationRef)
+		WHERE entity IN (`+placeholders+`) AND apply_status IN ('deferred', 'dead')
+		GROUP BY entity, apply_status`, entityArgs...)
 	if err != nil {
 		return status, fmt.Errorf("engram-projects: count deferred mutations: %w", err)
 	}

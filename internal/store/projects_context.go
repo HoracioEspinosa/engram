@@ -1,6 +1,9 @@
 package store
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // TaskObservationDetail is one row of a task's linked observations, as
 // needed by internal/project.BuildContextPack (RFC §5.10, section 5).
@@ -93,10 +96,86 @@ func (s *Store) ObservationsByTopicKeyPrefix(project, prefix string, limit int) 
 
 // ObservationRefRow is one observation_refs row, grouped by ref_kind for the
 // context pack's `refs` section.
+//
+// ObservationID and ObservationSyncID say which observation the reference hangs
+// off. They are filled by the project-scoped listing, where a row on its own
+// would be unattributable; ObservationRefsFor is already asked per observation,
+// so it leaves them at zero and the fields drop out of its envelope.
 type ObservationRefRow struct {
-	RefKind     string `json:"ref_kind"`
-	Ref         string `json:"ref"`
-	GraphCommit string `json:"graph_commit,omitempty"`
+	RefKind           string `json:"ref_kind"`
+	Ref               string `json:"ref"`
+	GraphCommit       string `json:"graph_commit,omitempty"`
+	ObservationID     int64  `json:"observation_id,omitempty"`
+	ObservationSyncID string `json:"observation_sync_id,omitempty"`
+}
+
+// ListObservationRefs pages through the references a project's observations
+// carry, newest first, optionally narrowed to one ref_kind.
+//
+// observation_refs is keyed by observation_sync_id and knows nothing about
+// projects, so the join against observations is the only thing that can answer
+// "which of this project's observations point at the graph?". The project is
+// compared folded to lower case, like every other project filter here, because
+// rows written before project names were lowercased are still in the table.
+func (s *Store) ListObservationRefs(project, kind string, limit, offset int) (Page[ObservationRefRow], error) {
+	limit = clampPageLimit(limit, defaultObservationRefsLimit, maxObservationRefsLimit)
+	if offset < 0 {
+		offset = 0
+	}
+
+	args := []any{strings.ToLower(strings.TrimSpace(project))}
+	kindFilter := ""
+	if k := strings.TrimSpace(kind); k != "" {
+		kindFilter = " AND r.ref_kind = ?"
+		args = append(args, k)
+	}
+	args = append(args, limit, offset)
+
+	rows, err := s.readDB().Query(`
+		SELECT r.ref_kind, r.ref, r.graph_commit, o.id, o.sync_id, COUNT(*) OVER() AS total
+		FROM observation_refs r
+		JOIN observations o ON o.sync_id = r.observation_sync_id
+		WHERE lower(o.project) = ? AND o.deleted_at IS NULL`+kindFilter+`
+		ORDER BY r.created_at DESC, r.id DESC
+		LIMIT ? OFFSET ?`, args...)
+	if err != nil {
+		return Page[ObservationRefRow]{}, fmt.Errorf("engram-projects: list observation refs: %w", err)
+	}
+	defer rows.Close()
+
+	page := Page[ObservationRefRow]{Items: []ObservationRefRow{}, Limit: limit, Offset: offset}
+	for rows.Next() {
+		var r ObservationRefRow
+		var graphCommit *string
+		if err := rows.Scan(&r.RefKind, &r.Ref, &graphCommit, &r.ObservationID, &r.ObservationSyncID, &page.Total); err != nil {
+			return Page[ObservationRefRow]{}, fmt.Errorf("engram-projects: scan observation ref: %w", err)
+		}
+		if graphCommit != nil {
+			r.GraphCommit = *graphCommit
+		}
+		page.Items = append(page.Items, r)
+	}
+	if err := rows.Err(); err != nil {
+		return Page[ObservationRefRow]{}, fmt.Errorf("engram-projects: list observation refs: %w", err)
+	}
+	return page, nil
+}
+
+const (
+	defaultObservationRefsLimit = 50
+	maxObservationRefsLimit     = 500
+)
+
+// clampPageLimit keeps a caller's page size inside what a listing will serve,
+// taking the default when nothing was asked for.
+func clampPageLimit(limit, def, max int) int {
+	if limit <= 0 {
+		return def
+	}
+	if limit > max {
+		return max
+	}
+	return limit
 }
 
 // ObservationRefsFor returns every observation_refs row for the given

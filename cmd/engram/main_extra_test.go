@@ -120,6 +120,8 @@ func captureOutputAndRecover(t *testing.T, fn func()) (stdout string, stderr str
 	if err != nil {
 		t.Fatalf("read stderr: %v", err)
 	}
+	_ = outR.Close()
+	_ = errR.Close()
 
 	return string(outBytes), string(errBytes), recovered
 }
@@ -341,7 +343,7 @@ func TestCmdServeAutosyncLifecycleGating(t *testing.T) {
 	})
 
 	t.Run("cloud autosync env with token and server starts successfully", func(t *testing.T) {
-		// REQ-210: inverted test — with valid config, serve starts WITHOUT fatal.
+		// Inverted test — with valid config, serve starts WITHOUT fatal.
 		cfg := testConfig(t)
 		t.Setenv("ENGRAM_CLOUD_AUTOSYNC", "1")
 		t.Setenv("ENGRAM_CLOUD_TOKEN", "test-token")
@@ -360,7 +362,7 @@ func TestCmdServeAutosyncLifecycleGating(t *testing.T) {
 }
 
 func TestAutosyncEnvAbsent(t *testing.T) {
-	// REQ-210: ENGRAM_CLOUD_AUTOSYNC not set → autosync does not start.
+	// ENGRAM_CLOUD_AUTOSYNC not set → autosync does not start.
 	stubRuntimeHooks(t)
 	stubExitWithPanic(t)
 	cfg := testConfig(t)
@@ -376,7 +378,7 @@ func TestAutosyncEnvAbsent(t *testing.T) {
 }
 
 func TestAutosyncEnvNotOne(t *testing.T) {
-	// REQ-210: ENGRAM_CLOUD_AUTOSYNC=true (not "1") → autosync does not start.
+	// ENGRAM_CLOUD_AUTOSYNC=true (not "1") → autosync does not start.
 	stubRuntimeHooks(t)
 	stubExitWithPanic(t)
 	cfg := testConfig(t)
@@ -392,7 +394,7 @@ func TestAutosyncEnvNotOne(t *testing.T) {
 }
 
 func TestAutosyncGatingTokenMissing(t *testing.T) {
-	// REQ-211: token missing → skip autosync with error log, serve continues.
+	// Token missing → skip autosync with error log, serve continues.
 	stubRuntimeHooks(t)
 	stubExitWithPanic(t)
 	cfg := testConfig(t)
@@ -408,7 +410,7 @@ func TestAutosyncGatingTokenMissing(t *testing.T) {
 }
 
 func TestAutosyncGatingServerMissing(t *testing.T) {
-	// REQ-211: server URL missing → skip autosync with error log, serve continues.
+	// Server URL missing → skip autosync with error log, serve continues.
 	stubRuntimeHooks(t)
 	stubExitWithPanic(t)
 	cfg := testConfig(t)
@@ -424,7 +426,7 @@ func TestAutosyncGatingServerMissing(t *testing.T) {
 }
 
 func TestAutosyncGatingBothPresent(t *testing.T) {
-	// REQ-211: both token and server set → tryStartAutosync returns non-nil manager.
+	// Both token and server set → tryStartAutosync returns non-nil manager.
 	stubRuntimeHooks(t)
 	stubExitWithPanic(t)
 	cfg := testConfig(t)
@@ -440,7 +442,7 @@ func TestAutosyncGatingBothPresent(t *testing.T) {
 }
 
 func TestCmdServeStartsWithoutAutosync(t *testing.T) {
-	// REQ-211: serve must start successfully even without autosync.
+	// Serve must start successfully even without autosync.
 	stubRuntimeHooks(t)
 	stubExitWithPanic(t)
 	cfg := testConfig(t)
@@ -553,18 +555,16 @@ func TestCmdMCPAndTUIBranches(t *testing.T) {
 	}
 }
 
-// TestCmdTUIResolvesProjectPrecedence pins rfc-tui.md §9.1's "Semántica de
-// --project": engram tui --project <slug> reuses the existing precedence
+// TestCmdTUIResolvesProjectPrecedence pins the TUI's --project semantics:
+// engram tui --project <slug> reuses the existing precedence
 // (explicit flag, then ENGRAM_PROJECT, then cwd detection). Before this
 // fix, cmdTUI never read os.Args at all — `engram tui --project nextcloud`
-// silently opened the workspace with no project, never the Dashboard, which
-// is exactly the closing criterion roadmap task T-10.02 fixes.
+// silently opened the workspace with no project, never the Dashboard.
 //
 // The cwd-detection case mocks detectProjectFull with a git-backed source
-// (SourceGitRoot), not the bare detectProject wrapper: per ADR-057 §3, cwd
-// detection only counts as resoluble when it is backed by a fact, and a
-// mock that could never come from the real detector would not exercise
-// that distinction.
+// (SourceGitRoot), not the bare detectProject wrapper: cwd detection only
+// counts as resoluble when it is backed by a fact, and a mock that could
+// never come from the real detector would not exercise that distinction.
 func TestCmdTUIResolvesProjectPrecedence(t *testing.T) {
 	cfg := testConfig(t)
 	stubRuntimeHooks(t)
@@ -615,17 +615,18 @@ func TestCmdTUIResolvesProjectPrecedence(t *testing.T) {
 	}
 }
 
-// TestCmdTUILeavesProjectEmptyWhenNothingResolves pins the other half of
-// rfc-tui.md §9.1: "sin proyecto resoluble se abre S1" needs an empty
+// TestCmdTUILeavesProjectEmptyWhenNothingResolves pins the other half of the
+// TUI's --project semantics: an unresolvable project needs an empty
 // project, not a guess, once the flag, the env var and cwd detection all
-// come up empty.
+// come up empty — the workspace then opens on its no-project home instead
+// of a Dashboard.
 //
 // Both subtests mock detectProjectFull, not the bare detectProject wrapper:
 // project.DetectProject never returns "" (it falls back to a directory-name
 // guess, and "unknown" as a last resort), so a mock returning "" described a
-// case the real detector can never produce and never exercised rfc-tui.md
-// §9.1's Selector fallback end to end. "guess only" is the realistic shape
-// of "nothing resolves" — ADR-057 §3 is what makes it count as unresolved
+// case the real detector can never produce and never exercised the TUI's
+// project-selector fallback end to end. "guess only" is the realistic shape
+// of "nothing resolves" — a guess is what makes it count as unresolved
 // here; ambiguous is the other real case (DetectProjectFull.Error != nil).
 func TestCmdTUILeavesProjectEmptyWhenNothingResolves(t *testing.T) {
 	cases := []struct {
@@ -679,15 +680,14 @@ func TestCmdTUILeavesProjectEmptyWhenNothingResolves(t *testing.T) {
 	}
 }
 
-// TestCmdTUIResolvesThemePrecedence pins rfc-tui.md §8.2's precedence chain
-// for the TUI's theme — flag, then ENGRAM_TUI_THEME, then tui.theme in
-// <data-dir>/config.json, then catppuccin-mocha — the same shape
+// TestCmdTUIResolvesThemePrecedence pins the precedence chain for the TUI's
+// theme — flag, then ENGRAM_TUI_THEME, then tui.theme in
+// <data-dir>/config.json, then theme.DefaultThemeName — the same shape
 // TestCmdTUIResolvesProjectPrecedence already pins for --project.
 //
-// --theme, ENGRAM_TUI_THEME and tui.theme did not exist before this task
-// (T-10.06), so unlike TestNoTwoDistinctRolesShareAColour in
-// internal/tui/theme, there is no pre-existing bug this test reproduces —
-// it was written alongside the implementation it pins.
+// The default tier is named rather than spelled: which palette ships as the
+// default is the theme package's decision, and a literal here would turn
+// changing it into a failure in a package that has no opinion on the matter.
 func TestCmdTUIResolvesThemePrecedence(t *testing.T) {
 	cfg := testConfig(t)
 	stubRuntimeHooks(t)
@@ -700,14 +700,14 @@ func TestCmdTUIResolvesThemePrecedence(t *testing.T) {
 		configFile string // "" = no config.json written for this case
 		want       string
 	}{
-		{name: "nothing set falls back to the default", args: []string{"engram", "tui"}, want: "catppuccin-mocha"},
+		{name: "nothing set falls back to the default", args: []string{"engram", "tui"}, want: theme.DefaultThemeName},
 		{name: "explicit flag wins with no env or config", args: []string{"engram", "tui", "--theme", "kanagawa"}, want: "kanagawa"},
 		{name: "equals form is accepted", args: []string{"engram", "tui", "--theme=elephant"}, want: "elephant"},
 		{name: "ENGRAM_TUI_THEME is used without a flag", args: []string{"engram", "tui"}, env: "kanagawa", want: "kanagawa"},
 		{name: "an explicit flag overrides ENGRAM_TUI_THEME", args: []string{"engram", "tui", "--theme", "elephant"}, env: "kanagawa", want: "elephant"},
 		{name: "tui.theme in config.json is used without a flag or env", args: []string{"engram", "tui"}, configFile: `{"tui":{"theme":"kanagawa"}}`, want: "kanagawa"},
 		{name: "ENGRAM_TUI_THEME overrides tui.theme", args: []string{"engram", "tui"}, env: "elephant", configFile: `{"tui":{"theme":"kanagawa"}}`, want: "elephant"},
-		{name: "an unknown --theme falls back to the default, not to a lower tier", args: []string{"engram", "tui", "--theme", "not-a-real-theme"}, env: "kanagawa", want: "catppuccin-mocha"},
+		{name: "an unknown --theme falls back to the default, not to a lower tier", args: []string{"engram", "tui", "--theme", "not-a-real-theme"}, env: "kanagawa", want: theme.DefaultThemeName},
 	}
 
 	for _, tc := range tests {
@@ -746,12 +746,10 @@ func TestCmdTUIResolvesThemePrecedence(t *testing.T) {
 	}
 }
 
-// TestCmdTUIWarnsOnAnUnknownTheme pins rfc-tui.md §10.1's smoke test line:
-// "engram tui --theme desconocido cae al default con aviso" — falling back
-// silently is not enough, cmdTUI must also print a warning naming the
-// rejected value. Before this change cmdTUI called theme.Resolve directly
-// with no warning at all; this reproduced that gap for real (see this
-// task's report for the literal failure).
+// TestCmdTUIWarnsOnAnUnknownTheme pins the rule that falling back silently
+// is not enough: cmdTUI must also print a warning naming the rejected
+// value. Before this change cmdTUI called theme.Resolve directly with no
+// warning at all.
 func TestCmdTUIWarnsOnAnUnknownTheme(t *testing.T) {
 	cfg := testConfig(t)
 	stubRuntimeHooks(t)
@@ -2982,7 +2980,7 @@ func TestCmdSyncAdditionalBranches(t *testing.T) {
 		}
 
 		// workDir has no git repo; export is the one sync path that consumes
-		// project (ADR-057 §3), so an explicit --project is required to reach
+		// project, so an explicit --project is required to reach
 		// the manifest-parsing code this subtest actually exercises.
 		withArgs(t, "engram", "sync", "--project", "export-parse-error-project")
 		_, stderr, recovered := captureOutputAndRecover(t, func() { cmdSync(cfg) })

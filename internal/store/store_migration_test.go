@@ -448,8 +448,8 @@ func TestMigrate_DoesNotTouchFTS5OrSyncMutations(t *testing.T) {
 		t.Fatalf("memory_relations not found after migrate: %v (expected red until Phase B)", err)
 	}
 
-	// 6. memory_relations must NOT be in sync_mutations (REQ-009).
-	// This is a forward-looking assertion; passes trivially until Phase C adds SaveRelation.
+	// 6. memory_relations must NOT be in sync_mutations.
+	// This is a forward-looking assertion; passes trivially until SaveRelation exists.
 	var relInSync int
 	if err := s.db.QueryRow(
 		`SELECT COUNT(*) FROM sync_mutations WHERE entity = 'memory_relation'`,
@@ -457,7 +457,7 @@ func TestMigrate_DoesNotTouchFTS5OrSyncMutations(t *testing.T) {
 		t.Fatalf("query sync_mutations for memory_relation entity: %v", err)
 	}
 	if relInSync != 0 {
-		t.Errorf("sync_mutations contains %d memory_relation rows, want 0 (REQ-009)", relInSync)
+		t.Errorf("sync_mutations contains %d memory_relation rows, want 0", relInSync)
 	}
 
 	// 7. memory_relations columns must match the design DDL.
