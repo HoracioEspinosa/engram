@@ -140,6 +140,20 @@ const (
 	IconStale
 	IconGodNode
 
+	// Typography. The marks that punctuate a line rather than stand for a
+	// thing: the bullet between two hints, the dot between two fields of
+	// metadata, the dash before a subtitle, the delta of a benchmark column
+	// and the two arrows a key label names. They are here for the same
+	// reason every other glyph is — under IconModeASCII the terminal cannot
+	// draw them, and a separator that arrives as a replacement character is
+	// as unreadable as a state marker that does.
+	IconHintSeparator
+	IconMetaSeparator
+	IconEmDash
+	IconDelta
+	IconArrowUp
+	IconArrowDown
+
 	// IconUnknown is what every vocabulary lookup falls back to. It is a
 	// visible mark on purpose: a value this build has never heard of — a row
 	// written by a newer one — should read as "something is here that I
@@ -256,8 +270,43 @@ var catalog = [iconCount]glyphs{
 	IconStale:        {"stale", "", "▲", "!"},               // nf-cod-warning
 	IconGodNode:      {"god-node", "", "★", "*"},            // nf-cod-star_full
 
+	// The typographic marks keep their Unicode spelling under nerd: they are
+	// punctuation, not icons a patched font redraws, and swapping them for a
+	// private-use codepoint would only make them font-dependent for nothing.
+	IconHintSeparator: {"hint-separator", "\u2022", "\u2022", "*"},
+	IconMetaSeparator: {"meta-separator", "\u00b7", "\u00b7", "-"},
+	IconEmDash:        {"em-dash", "\u2014", "\u2014", "-"},
+	IconDelta:         {"delta", "\u0394", "\u0394", "d"},
+	IconArrowUp:       {"arrow-up", "\u2191", "\u2191", "^"},
+	IconArrowDown:     {"arrow-down", "\u2193", "\u2193", "v"},
+
 	IconUnknown: {"unknown", "", "·", "."}, // nf-cod-dash
 }
+
+// Ellipsis is the mark that says text was cut.
+//
+// It is a constant rather than a catalogue entry, and it is the one mark this
+// package spells the same way in all three modes. Two things read it and
+// neither has a mode to read it with: shared.Truncate, a pure width helper
+// reached from the column solver and from paths that carry no style set, pays
+// for the marker out of the same budget it caps the text at; and the golden
+// structural lint recognises a truncated field by this exact rune. Making the
+// spelling depend on the terminal would push a style set through the column
+// solver, and make a frozen screen's lint depend on the environment that drew
+// it, to replace a mark every UTF-8 terminal already draws in one cell.
+const Ellipsis = "…"
+
+// Separator is the mark that joins two fields of metadata on one line, with
+// the blanks around it the caller would otherwise have to remember.
+func (s Set) Separator() string { return " " + s.Glyph(IconMetaSeparator) + " " }
+
+// HintSeparator is the mark that joins two hints in a footer or in the status
+// bar, blanks included.
+func (s Set) HintSeparator() string { return " " + s.Glyph(IconHintSeparator) + " " }
+
+// Dash is the mark that separates a heading from what qualifies it, blanks
+// included.
+func (s Set) Dash() string { return " " + s.Glyph(IconEmDash) + " " }
 
 // Set draws one mode's spelling of the catalogue.
 //

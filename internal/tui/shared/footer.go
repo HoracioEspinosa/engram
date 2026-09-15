@@ -9,9 +9,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// hintSeparator joins the hints of a footer.
-const hintSeparator = " • "
-
 // hintIndent aligns the footer with the two-space gutter every list row uses.
 const hintIndent = "  "
 
@@ -39,11 +36,12 @@ func HintsFrom(st theme.Styles, bindings []key.Binding, budget int) string {
 		return ""
 	}
 
-	line := hintIndent + strings.Join(hints, hintSeparator)
+	separator := st.Icons.HintSeparator()
+	line := hintIndent + strings.Join(hints, separator)
 	if budget > 0 && ansi.StringWidth(line) > budget {
 		for len(hints) > 1 {
 			hints = hints[:len(hints)-1]
-			line = hintIndent + strings.Join(hints, hintSeparator) + hintSeparator + "…"
+			line = hintIndent + strings.Join(hints, separator) + separator + theme.Ellipsis
 			if ansi.StringWidth(line) <= budget {
 				break
 			}
@@ -59,7 +57,11 @@ func HintsFrom(st theme.Styles, bindings []key.Binding, budget int) string {
 // PlainHintsFrom is HintsFrom's unstyled, unbudgeted half: the hints joined
 // into one line, for a caller that does its own width arithmetic. The status
 // bar needs the text before it can decide how much of it fits.
-func PlainHintsFrom(bindings []key.Binding) string {
+//
+// It still takes the style set, because the separator between two hints is a
+// glyph like any other and the terminal that cannot draw the rest cannot draw
+// this one either.
+func PlainHintsFrom(st theme.Styles, bindings []key.Binding) string {
 	hints := make([]string, 0, len(bindings))
 	for _, b := range bindings {
 		h := b.Help()
@@ -68,5 +70,5 @@ func PlainHintsFrom(bindings []key.Binding) string {
 		}
 		hints = append(hints, h.Key+" "+h.Desc)
 	}
-	return strings.Join(hints, hintSeparator)
+	return strings.Join(hints, st.Icons.HintSeparator())
 }

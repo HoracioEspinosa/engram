@@ -153,7 +153,7 @@ func (m Model) activeTaskSegment() (shared.Segment, bool) {
 // hintsSegment carries whatever the active screen declares in Help(). It is
 // the same derivation the footer used, moved into the bar.
 func (m Model) hintsSegment() (shared.Segment, bool) {
-	hints := shared.PlainHintsFrom(m.activeScreenHelp())
+	hints := shared.PlainHintsFrom(m.styles, m.activeScreenHelp())
 	if hints == "" {
 		return shared.Segment{}, false
 	}

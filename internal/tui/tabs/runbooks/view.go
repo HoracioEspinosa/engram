@@ -42,9 +42,10 @@ func (m Model) viewIndex() string {
 	if m.All {
 		scope = "all projects"
 	}
-	header := fmt.Sprintf("  Runbooks (%s · a toggle)", scope)
+	sep := m.styles.Icons.Separator()
+	header := fmt.Sprintf("  Runbooks (%s%sa toggle)", scope, sep)
 	if m.Query != "" {
-		header += fmt.Sprintf(" · search: %q", m.Query)
+		header += fmt.Sprintf("%ssearch: %q", sep, m.Query)
 	}
 	b.WriteString(m.styles.SectionHeading.Render(header))
 	b.WriteString("\n")
@@ -144,14 +145,15 @@ func (m Model) viewRunbookPreview(item store.RunbookIndexRow) string {
 	if item.LastExecAt != nil {
 		lastExec = shared.LocalTime(*item.LastExecAt)
 	}
-	meta := fmt.Sprintf("%s · status %s · exec_count %d · last_exec %s\nvault %s",
-		item.ID, item.Status, item.ExecCount, lastExec, item.VaultPath)
+	sep := m.styles.Icons.Separator()
+	meta := fmt.Sprintf("%s%sstatus %s%sexec_count %d%slast_exec %s\nvault %s",
+		item.ID, sep, item.Status, sep, item.ExecCount, sep, lastExec, item.VaultPath)
 	b.WriteString(m.styles.StatCard.Render(meta))
 	b.WriteString("\n")
 
 	if len(item.Symptoms) > 0 {
 		b.WriteString(m.styles.DetailContent.Render(
-			"symptoms: " + shared.Truncate(strings.Join(item.Symptoms, " · "), m.bodyWidth()-symptomsLabelCells)))
+			"symptoms: " + shared.Truncate(strings.Join(item.Symptoms, sep), m.bodyWidth()-symptomsLabelCells)))
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -166,7 +168,7 @@ func (m Model) viewMarkdown() string {
 	item := *m.Selected
 	var b strings.Builder
 
-	title := m.styles.Title.Render(fmt.Sprintf("%s — %s", item.ID, item.Title))
+	title := m.styles.Title.Render(fmt.Sprintf("%s%s%s", item.ID, m.styles.Icons.Dash(), item.Title))
 	if item.Stale {
 		age := "stale"
 		if item.AgeDays != nil {
@@ -177,9 +179,10 @@ func (m Model) viewMarkdown() string {
 	b.WriteString(title)
 	b.WriteString("\n")
 
-	meta := fmt.Sprintf("service %s · severity %s · category %s · pattern %s\nlast_verified %s · automation_level %s · status %s",
-		item.Project, m.orDash(item.Severity), item.Category, m.orDash(item.Pattern),
-		orDefault(item.LastVerified, "never"), m.orDash(item.AutomationLevel), item.Status)
+	sep := m.styles.Icons.Separator()
+	meta := fmt.Sprintf("service %s%sseverity %s%scategory %s%spattern %s\nlast_verified %s%sautomation_level %s%sstatus %s",
+		item.Project, sep, m.orDash(item.Severity), sep, item.Category, sep, m.orDash(item.Pattern),
+		orDefault(item.LastVerified, "never"), sep, m.orDash(item.AutomationLevel), sep, item.Status)
 	b.WriteString(m.styles.DetailContent.Render(meta))
 	b.WriteString("\n\n")
 
@@ -187,12 +190,12 @@ func (m Model) viewMarkdown() string {
 	case !m.FileExists:
 		if root, ok := shared.VaultRoot(); ok {
 			b.WriteString(m.styles.NoResults.Render(fmt.Sprintf(
-				"  %s is not cloned locally under %s — clone cd-knowledge-mcp there to read this runbook's body.",
-				item.VaultPath, root)))
+				"  %s is not cloned locally under %s%sclone cd-knowledge-mcp there to read this runbook's body.",
+				item.VaultPath, root, m.styles.Icons.Dash())))
 		} else {
 			b.WriteString(m.styles.Error.Render(fmt.Sprintf(
-				"  %s is not set — export it to your local checkout of cd-knowledge-mcp before reading a runbook's body.",
-				shared.VaultRootEnv)))
+				"  %s is not set%sexport it to your local checkout of cd-knowledge-mcp before reading a runbook's body.",
+				shared.VaultRootEnv, m.styles.Icons.Dash())))
 		}
 		b.WriteString("\n")
 	default:

@@ -42,8 +42,9 @@ func (m Model) viewList() string {
 	var b strings.Builder
 
 	b.WriteString(m.styles.SectionHeading.Render(fmt.Sprintf(
-		"  Tasks (%d shown · state: %s · kind: %s)",
-		len(m.Items), filterLabel(m.Filter.State, "active"), filterLabel(m.Filter.Kind, "all"))))
+		"  Tasks (%d shown%sstate: %s%skind: %s)",
+		len(m.Items), m.styles.Icons.Separator(), filterLabel(m.Filter.State, "active"),
+		m.styles.Icons.Separator(), filterLabel(m.Filter.Kind, "all"))))
 	b.WriteString("\n")
 
 	switch {
@@ -162,8 +163,9 @@ func (m Model) viewTaskRow(item store.TaskListItem, selected bool, widths []int)
 	if item.PRUrl != nil {
 		prStatus = "PR linked"
 	}
-	second := fmt.Sprintf("%s · %s · %d obs · %d evidence · updated %s",
-		branch, prStatus, item.Observations, item.Evidence, shared.LocalTime(item.UpdatedAt))
+	sep := m.styles.Icons.Separator()
+	second := fmt.Sprintf("%s%s%s%s%d obs%s%d evidence%supdated %s",
+		branch, sep, prStatus, sep, item.Observations, sep, item.Evidence, sep, shared.LocalTime(item.UpdatedAt))
 	line2 := "    " + m.styles.Timestamp.Render(shared.Truncate(second, width(widths)-4)) + "\n"
 
 	return line1 + line2
@@ -188,7 +190,7 @@ func (m Model) viewDetail() string {
 	t := m.Detail.Task
 	var b strings.Builder
 
-	b.WriteString(m.styles.Title.Render(fmt.Sprintf("%s — %s", data.TaskKey(t), t.Title)))
+	b.WriteString(m.styles.Title.Render(fmt.Sprintf("%s%s%s", data.TaskKey(t), m.styles.Icons.Dash(), t.Title)))
 	b.WriteString("\n")
 
 	detail := func(label, value string) string {
@@ -216,7 +218,7 @@ func (m Model) viewDetail() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(m.styles.SectionHeading.Render(fmt.Sprintf("  observations (%d) — enter opens it in Memory", len(m.Detail.Observations))))
+	b.WriteString(m.styles.SectionHeading.Render(fmt.Sprintf("  observations (%d)%senter opens it in Memory", len(m.Detail.Observations), m.styles.Icons.Dash())))
 	b.WriteString("\n")
 	if len(m.Detail.Observations) == 0 {
 		b.WriteString(m.styles.NoResults.Render("  No linked observations."))
@@ -250,7 +252,7 @@ func (m Model) viewDetail() string {
 		}
 	}
 
-	b.WriteString(m.styles.SectionHeading.Render(fmt.Sprintf("  evidence (%d) — e opens the Evidence tab", len(m.Detail.Evidence))))
+	b.WriteString(m.styles.SectionHeading.Render(fmt.Sprintf("  evidence (%d)%se opens the Evidence tab", len(m.Detail.Evidence), m.styles.Icons.Dash())))
 	b.WriteString("\n")
 	if len(m.Detail.Evidence) == 0 {
 		b.WriteString(m.styles.NoResults.Render("  No evidence captured yet."))
@@ -279,7 +281,7 @@ func (m Model) viewDetail() string {
 
 func (m Model) viewStatePicker() string {
 	var b strings.Builder
-	b.WriteString(m.styles.SectionHeading.Render("  change state (enter confirm · esc cancel)"))
+	b.WriteString(m.styles.SectionHeading.Render("  change state (enter confirm" + m.styles.Icons.Separator() + "esc cancel)"))
 	b.WriteString("\n")
 	b.WriteString(shared.Menu(m.styles, stateOptions, m.StateCursor))
 	return b.String()
@@ -300,10 +302,10 @@ func (m Model) viewContextPack() string {
 	}
 	var b strings.Builder
 
-	b.WriteString(m.styles.Title.Render(fmt.Sprintf("Context pack — %s", data.TaskKey(m.Detail.Task))))
+	b.WriteString(m.styles.Title.Render(fmt.Sprintf("Context pack%s%s", m.styles.Icons.Dash(), data.TaskKey(m.Detail.Task))))
 	b.WriteString("  ")
 	b.WriteString(m.styles.Timestamp.Render(fmt.Sprintf(
-		"%d chars est. · built %s", len([]rune(m.ContextPack)), m.ContextPackBuilt.Format("15:04:05"))))
+		"%d chars est.%sbuilt %s", len([]rune(m.ContextPack)), m.styles.Icons.Separator(), m.ContextPackBuilt.Format("15:04:05"))))
 	b.WriteString("\n\n")
 
 	lines := strings.Split(m.ContextPack, "\n")

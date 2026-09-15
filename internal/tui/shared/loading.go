@@ -21,7 +21,7 @@ func Loading(st theme.Styles, sp spinner.Model, what string) string {
 		// the animation is the only part it lacks.
 		mark = st.Icons.Glyph(theme.IconRefresh)
 	}
-	return st.NoResults.Render(mark + " loading " + what + "…")
+	return st.NoResults.Render(mark + " loading " + what + theme.Ellipsis)
 }
 
 // Viewport renders content through bubbles/viewport at a given scroll

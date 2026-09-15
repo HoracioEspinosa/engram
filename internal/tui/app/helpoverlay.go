@@ -35,7 +35,7 @@ func (m Model) activeScreenHelp() []key.Binding {
 		return themePickerHelp()
 	}
 	if m.palette.open {
-		return paletteHelp()
+		return paletteHelp(m.styles.Icons)
 	}
 	if m.tree.open {
 		return treeHelp()

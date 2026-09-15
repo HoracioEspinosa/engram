@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/HoracioEspinosa/engram/internal/timeutil"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 )
 
 // dateLayout is the display form of a review deadline: the day, without a
@@ -52,5 +53,5 @@ func FormatReviewDate(value string) string {
 // and never ends mid-character or mid-escape.
 func Truncate(s string, max int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
-	return ansi.Truncate(s, max, "…")
+	return ansi.Truncate(s, max, theme.Ellipsis)
 }

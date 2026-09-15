@@ -69,7 +69,7 @@ func (m Model) columns() []table.Column {
 		return []table.Column{
 			{Title: "metric", Width: metricCells},
 			{Title: "latest", Width: latestCells},
-			{Title: "Δ", Width: deltaCells},
+			{Title: m.styles.Icons.Glyph(theme.IconDelta), Width: deltaCells},
 		}
 	}
 	return []table.Column{
@@ -77,7 +77,7 @@ func (m Model) columns() []table.Column {
 		{Title: "unit", Width: unitCells},
 		{Title: "baseline", Width: baselineCells},
 		{Title: "latest", Width: latestCells},
-		{Title: "Δ", Width: deltaCells},
+		{Title: m.styles.Icons.Glyph(theme.IconDelta), Width: deltaCells},
 	}
 }
 
@@ -199,7 +199,7 @@ func (m Model) heading() string {
 	if m.Filter.Metric != "" {
 		parts = append(parts, "metric: "+m.Filter.Metric)
 	}
-	return strings.Join(parts, " · ") + ")"
+	return strings.Join(parts, m.styles.Icons.Separator()) + ")"
 }
 
 // viewFilterLine draws the prompt while it is collecting a filter.

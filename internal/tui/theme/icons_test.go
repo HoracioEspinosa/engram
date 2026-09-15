@@ -57,10 +57,17 @@ func TestEveryGlyphIsOneCellWide(t *testing.T) {
 
 // TestNerdCodepointsAreInPrivateUseRanges proves the nerd column really is
 // patched-font territory and not an ordinary character that happens to look
-// right: every nerd spelling has to be a single rune from one of the private
-// use areas a Nerd Font patches its icons into. A stray BMP character here
-// would render on an unpatched font and quietly make "nerd" indistinguishable
-// from "unicode".
+// right: every nerd spelling that differs from the unicode one has to be a
+// single rune from one of the private use areas a Nerd Font patches its icons
+// into. A stray BMP character there would render on an unpatched font and
+// quietly make "nerd" indistinguishable from "unicode".
+//
+// An entry whose two columns are identical is the deliberate opposite case:
+// the typographic marks are punctuation rather than icons, no patched font
+// redraws them, and giving them a private use codepoint would make an ordinary
+// bullet depend on a font being installed. Those are exempt by being equal,
+// which is a statement the catalogue makes in the open rather than a list this
+// test would have to be kept in step with.
 func TestNerdCodepointsAreInPrivateUseRanges(t *testing.T) {
 	for icon := Icon(0); icon < iconCount; icon++ {
 		glyph := catalog[icon].nerd
@@ -70,9 +77,37 @@ func TestNerdCodepointsAreInPrivateUseRanges(t *testing.T) {
 				catalog[icon].name, len(runes))
 			continue
 		}
+		if glyph == catalog[icon].unicode {
+			continue
+		}
 		if !inPrivateUse(runes[0]) {
 			t.Errorf("icon %s uses U+%04X, which is outside every private use area",
 				catalog[icon].name, runes[0])
+		}
+	}
+}
+
+// TestPunctuationKeepsOneSpellingAcrossFonts pins the exemption above to the
+// six marks it was written for, so that a state or tab icon cannot quietly
+// acquire it by having its nerd column copied from its unicode one.
+func TestPunctuationKeepsOneSpellingAcrossFonts(t *testing.T) {
+	punctuation := map[Icon]bool{
+		IconHintSeparator: true,
+		IconMetaSeparator: true,
+		IconEmDash:        true,
+		IconDelta:         true,
+		IconArrowUp:       true,
+		IconArrowDown:     true,
+	}
+	for icon := Icon(0); icon < iconCount; icon++ {
+		same := catalog[icon].nerd == catalog[icon].unicode
+		if same && !punctuation[icon] {
+			t.Errorf("icon %s draws the same glyph under nerd and unicode; either give it a "+
+				"patched codepoint or declare it punctuation here", catalog[icon].name)
+		}
+		if !same && punctuation[icon] {
+			t.Errorf("icon %s is declared punctuation but spells its nerd glyph differently",
+				catalog[icon].name)
 		}
 	}
 }

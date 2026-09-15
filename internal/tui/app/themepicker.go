@@ -387,7 +387,7 @@ func (d themeItemDelegate) Render(w io.Writer, m list.Model, index int, listItem
 
 	detail := item.variant
 	if item.source != "" && item.source != "builtin" {
-		detail += " · " + item.source
+		detail += d.styles.Icons.Separator() + item.source
 	}
 	if item.problem != "" {
 		detail = item.problem

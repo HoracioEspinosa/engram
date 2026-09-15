@@ -38,9 +38,10 @@ func (m Model) View() string {
 func (m Model) viewList() string {
 	var b strings.Builder
 
+	sep := m.styles.Icons.Separator()
 	b.WriteString(m.styles.SectionHeading.Render(fmt.Sprintf(
-		"  Evidence (%d shown · task: %s · %s)",
-		len(m.Items), taskFilterLabel(m.Items, m.Filter), attachedFilterLabel(m.Filter))))
+		"  Evidence (%d shown%stask: %s%s%s)",
+		len(m.Items), sep, taskFilterLabel(m.Items, m.Filter), sep, attachedFilterLabel(m.Filter))))
 	b.WriteString("\n")
 
 	if len(m.Items) == 0 {

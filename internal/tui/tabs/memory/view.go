@@ -19,7 +19,7 @@ import (
 // and the glyph vocabulary that decorates it — this view decides only what the
 // tagline says.
 func (m Model) renderLogo(version string) string {
-	return m.styles.RenderWordmark("engram "+version+" — An elephant never forgets") + "\n"
+	return m.styles.RenderWordmark("engram "+version+m.styles.Icons.Dash()+"An elephant never forgets") + "\n"
 }
 
 // ─── View (screen router) ────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ func (m Model) viewSearchResults() string {
 	var b strings.Builder
 
 	resultCount := len(m.SearchResults)
-	header := fmt.Sprintf("  Search: %q — %d result", m.SearchQuery, m.SearchTotal)
+	header := fmt.Sprintf("  Search: %q%s%d result", m.SearchQuery, m.styles.Icons.Dash(), m.SearchTotal)
 	if m.SearchTotal != 1 {
 		header += "s"
 	}
@@ -212,7 +212,7 @@ func (m Model) viewObservationPane(o *store.Observation) string {
 	var b strings.Builder
 	b.WriteString(m.styles.Title.Render(o.Title))
 	b.WriteString("\n")
-	b.WriteString(m.styles.Timestamp.Render(o.Type + " · " + shared.LocalTime(o.CreatedAt)))
+	b.WriteString(m.styles.Timestamp.Render(o.Type + m.styles.Icons.Separator() + shared.LocalTime(o.CreatedAt)))
 	b.WriteString("\n\n")
 	b.WriteString(m.styles.DetailContent.Render(o.Content))
 	return b.String()
@@ -224,7 +224,7 @@ func (m Model) viewRecent() string {
 	var b strings.Builder
 
 	count := len(m.RecentObservations)
-	header := fmt.Sprintf("  Recent Observations — %d total", m.RecentTotal)
+	header := fmt.Sprintf("  Recent Observations%s%d total", m.styles.Icons.Dash(), m.RecentTotal)
 	b.WriteString(m.styles.Header.Render(header))
 	b.WriteString("\n")
 
@@ -372,7 +372,7 @@ func (m Model) viewTimeline() string {
 	}
 
 	tl := m.Timeline
-	header := fmt.Sprintf("  Timeline — Observation #%d (%d total in session)", tl.Focus.ID, tl.TotalInRange)
+	header := fmt.Sprintf("  Timeline%sObservation #%d (%d total in session)", m.styles.Icons.Dash(), tl.Focus.ID, tl.TotalInRange)
 	b.WriteString(m.styles.Header.Render(header))
 	b.WriteString("\n")
 
@@ -426,7 +426,7 @@ func (m Model) viewSessions() string {
 	var b strings.Builder
 
 	count := len(m.Sessions)
-	header := fmt.Sprintf("  Sessions — %d total", count)
+	header := fmt.Sprintf("  Sessions%s%d total", m.styles.Icons.Dash(), count)
 	b.WriteString(m.styles.Header.Render(header))
 	b.WriteString("\n")
 
@@ -516,7 +516,7 @@ func (m Model) viewSessionDetail() string {
 	}
 
 	sess := m.Sessions[m.SelectedSessionIdx]
-	header := fmt.Sprintf("  Session: %s — %s", sess.Project, shared.LocalTime(sess.StartedAt))
+	header := fmt.Sprintf("  Session: %s%s%s", sess.Project, m.styles.Icons.Dash(), shared.LocalTime(sess.StartedAt))
 	b.WriteString(m.styles.Header.Render(header))
 	b.WriteString("\n")
 
@@ -561,7 +561,7 @@ func (m Model) viewSessionDetail() string {
 func (m Model) viewSetup() string {
 	var b strings.Builder
 
-	b.WriteString(m.styles.Header.Render("  Setup — Install Agent Plugin"))
+	b.WriteString(m.styles.Header.Render("  Setup" + m.styles.Icons.Dash() + "Install Agent Plugin"))
 	b.WriteString("\n")
 
 	// Show spinner while installing
@@ -641,7 +641,7 @@ func (m Model) viewSetup() string {
 					b.WriteString(m.styles.DetailContent.Render("  Add manually to permissions.allow in ~/.claude/settings.json"))
 					b.WriteString("\n")
 				}
-				b.WriteString(m.styles.DetailContent.Render("1. Restart Claude Code — the plugin is active immediately"))
+				b.WriteString(m.styles.DetailContent.Render("1. Restart Claude Code" + m.styles.Icons.Dash() + "the plugin is active immediately"))
 				b.WriteString("\n")
 				b.WriteString(m.styles.DetailContent.Render("2. Verify with: claude plugin list"))
 				b.WriteString("\n")
@@ -702,7 +702,7 @@ func (m Model) renderObservationListItem(index int, id int64, obsType, title, co
 // (ADR-051 §4).
 func (m Model) viewLinkPicker() string {
 	var b strings.Builder
-	b.WriteString(m.styles.SectionHeading.Render("  link to task (enter select · esc cancel)"))
+	b.WriteString(m.styles.SectionHeading.Render("  link to task (enter select" + m.styles.Icons.Separator() + "esc cancel)"))
 	b.WriteString("\n")
 
 	if m.LinkQuery.Focused() {

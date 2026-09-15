@@ -43,7 +43,6 @@ var paletteKeys = struct {
 }{
 	Move: key.NewBinding(
 		key.WithKeys("up", "down", "ctrl+n", "ctrl+p"),
-		key.WithHelp("↑/↓", "move"),
 	),
 	Group: key.NewBinding(
 		key.WithKeys("tab"),
@@ -59,8 +58,13 @@ var paletteKeys = struct {
 	),
 }
 
-func paletteHelp() []key.Binding {
-	return []key.Binding{paletteKeys.Move, paletteKeys.Group, paletteKeys.Open, paletteKeys.Close}
+// paletteHelp is built rather than declared because the label of the move
+// binding names the two arrow keys with their own glyphs, and which glyphs
+// those are is the icon set's answer, not this file's.
+func paletteHelp(icons theme.Set) []key.Binding {
+	move := paletteKeys.Move
+	move.SetHelp(icons.Glyph(theme.IconArrowUp)+"/"+icons.Glyph(theme.IconArrowDown), "move")
+	return []key.Binding{move, paletteKeys.Group, paletteKeys.Open, paletteKeys.Close}
 }
 
 // paletteKind is one of the six things a workspace search can find, in the
@@ -607,7 +611,7 @@ func (m Model) viewPalette() string {
 		b.WriteString("\n")
 	}
 
-	hints := shared.HintsFrom(m.styles, paletteHelp(), m.treeWidth())
+	hints := shared.HintsFrom(m.styles, paletteHelp(m.styles.Icons), m.treeWidth())
 
 	switch {
 	case len([]rune(query)) < paletteMinQuery:
@@ -615,7 +619,7 @@ func (m Model) viewPalette() string {
 		b.WriteString("\n")
 		b.WriteString(m.viewPaletteHistory())
 	case m.palette.pending:
-		b.WriteString(m.styles.Timestamp.Render("  searching…"))
+		b.WriteString(m.styles.Timestamp.Render("  searching" + theme.Ellipsis))
 		b.WriteString("\n")
 	case len(m.palette.rows) == 0:
 		b.WriteString(m.styles.NoResults.Render("Nothing matches " + query + "."))
