@@ -74,9 +74,19 @@ func (m Model) viewTabBar() string {
 	active := m.activeTabBarDigit()
 	compact := m.width > 0 && m.width < tabBarBreakpoint
 
+	// The ascii vocabulary spells a tab's icon as that tab's digit, because a
+	// terminal that cannot draw a glyph still has a number to recognise the
+	// tab by. Next to the digit the slot already carries that reads "00 Home",
+	// a number nobody can type, so in that vocabulary the digit is the whole
+	// of the slot's mark.
+	ascii := m.styles.Icons.Mode() == theme.IconModeASCII
+
 	parts := make([]string, 0, len(tabBarEntries))
 	for _, e := range tabBarEntries {
 		text := m.styles.Icons.Glyph(e.icon) + e.digit
+		if ascii {
+			text = e.digit
+		}
 		if !compact {
 			text += " " + m.tabBarLabel(e)
 		}

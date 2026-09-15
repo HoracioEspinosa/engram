@@ -165,3 +165,53 @@ func TestAnUnimplementedSlotKeepsItsDeclaredLabel(t *testing.T) {
 		t.Fatalf("a slot with no tab behind it should still name its destination, got:\n%s", m.View())
 	}
 }
+
+// TestEveryTabSlotSpellsItsDigitOnceUnderAsciiIcons: a slot carries one digit,
+// its own, whatever vocabulary the bar is drawn in.
+//
+// The ascii vocabulary spells each tab's icon as that tab's digit, because a
+// terminal that cannot draw a glyph still has a number to recognise the tab
+// by. Drawn next to the digit the slot already carries, that reads "00 Home"
+// and "11 Memory" — a doubled number nobody can type, and a bar the golden
+// lint reads as two slots that have run together.
+func TestEveryTabSlotSpellsItsDigitOnceUnderAsciiIcons(t *testing.T) {
+	for _, width := range []int{80, 120} {
+		m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+		m.tree.open = false
+		m, _ = step(t, m, tea.WindowSizeMsg{Width: width, Height: 40})
+		m = m.WithIcons(theme.IconModeASCII)
+
+		row := strings.TrimSpace(ansi.Strip(m.viewTabBar()))
+		spans := SlotSpans(row)
+		if len(spans) != len(tabBarEntries) {
+			t.Fatalf("%d columns: the ascii bar parses as %d slots, want %d:\n%s",
+				width, len(spans), len(tabBarEntries), row)
+		}
+		for i, span := range spans {
+			text := strings.TrimSpace(frozenCells(row, span))
+			digit, digits := slotDigit(text)
+			if digits != 1 || digit != i {
+				t.Fatalf("%d columns: ascii slot %d reads %q, want its own digit and no other:\n%s",
+					width, i, text, row)
+			}
+		}
+	}
+}
+
+// TestTheAsciiBarStillReadsAsLabelledSlotsAboveTheBreakpoint: dropping the
+// duplicate digit must not drop the label with it — a wide terminal in the
+// ascii vocabulary still names its tabs.
+func TestTheAsciiBarStillReadsAsLabelledSlotsAboveTheBreakpoint(t *testing.T) {
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	m.active = tabs.Tasks
+	m.tree.open = false
+	m, _ = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = m.WithIcons(theme.IconModeASCII)
+
+	row := ansi.Strip(m.viewTabBar())
+	for _, want := range []string{"0 Home", "1 Memory", "[2 Tasks]", "7 Settings"} {
+		if !strings.Contains(row, want) {
+			t.Fatalf("the ascii bar does not read %q:\n%s", want, row)
+		}
+	}
+}
