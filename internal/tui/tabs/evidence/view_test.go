@@ -10,7 +10,7 @@ import (
 )
 
 // TestViewRendersEveryScreenWithoutPanicking is a smoke test, not a golden
-// file (teatest goldens are T-10.07's): it only pins that each screen, in
+// file (the teatest suite owns those): it only pins that each screen, in
 // its loading/empty/populated states, renders to a string instead of
 // panicking on a nil Selected or an empty slice.
 func TestViewRendersEveryScreenWithoutPanicking(t *testing.T) {

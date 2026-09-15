@@ -1,8 +1,8 @@
-// Package e2e is T-10.07's own golden suite: teatest drives the TUI
-// workspace through github.com/charmbracelet/bubbletea's real Program (a
-// real event loop, real tea.Cmd goroutines, real tea.KeyMsg values), one
-// screen per rfc-tui.md §5's S1-S11, at the same two geometries
-// internal/tui/app/golden_test.go already freezes S10/S11 at.
+// Package e2e is the workspace's end-to-end golden suite: teatest drives the
+// TUI through github.com/charmbracelet/bubbletea's real Program (a real event
+// loop, real tea.Cmd goroutines, real tea.KeyMsg values), one scene per
+// screen, at the same two geometries internal/tui/app/golden_test.go already
+// freezes the Memory and Settings tabs at.
 //
 // It lives in its own package, a sibling of app/tabs/theme/data/shared
 // rather than inside internal/tui/app, for one purely mechanical reason:
@@ -18,7 +18,7 @@
 // flag.CommandLine, so the two golden mechanisms' -update flags never
 // collide, and each remains driveable with its own `go test ./internal/tui/... -update`.
 //
-// See this task's report for the fuller "coexist vs replace" reasoning:
+// The two mechanisms coexist rather than replace each other:
 // golden_test.go's direct field-assignment scenes stay the only mechanism
 // for the Memory tab's many fine-grained sub-states (loading, empty,
 // scrolled, error, ...) that would be expensive to reach one real key press
@@ -67,8 +67,7 @@ var updateGolden = flag.Bool("e2e-update", false, "update this package's .golden
 // frame.
 const e2eVersion = "1.20.1-golden"
 
-// goldenSize is one terminal geometry rfc-tui.md §10.1 requires golden
-// coverage at.
+// goldenSize is one terminal geometry the suite freezes every scene at.
 type goldenSize struct {
 	name          string
 	width, height int
@@ -91,7 +90,7 @@ type teatestStep struct {
 }
 
 // teatestScreen describes how to drive the real program from a fresh
-// app.New(...) to one of rfc-tui.md's S1-S11.
+// app.New(...) to one of the workspace's screens.
 type teatestScreen struct {
 	name           string
 	initialProject string
@@ -109,16 +108,15 @@ func keyRune(r string) tea.KeyMsg {
 
 var teatestEnterKey = tea.KeyMsg{Type: tea.KeyEnter}
 
-// teatestScreens lists all eleven rfc-tui.md screens in RFC order. Marker
-// strings come from teatestFixtures below; each is picked to appear in
+// teatestScreens lists every scene this suite freezes, in tab-bar order.
+// Marker strings come from teatestFixtures below; each is picked to appear in
 // exactly one screen's state, so a wait can never be satisfied by a frame
 // left over from the screen before it.
 func teatestScreens() []teatestScreen {
 	return []teatestScreen{
 		{
 			name: "project-tree",
-			// No project: app.New opens straight on the project tree
-			// (rfc-tui.md §9.1: "sin proyecto resoluble se abre S1"), and
+			// No project: app.New opens straight on the project tree, and
 			// Init loads the forest without any key needed — no ctrl+p step
 			// to reach it, unlike every other screen here.
 			initialWaitFor: "Acme Corp",
@@ -295,14 +293,11 @@ func teatestScreens() []teatestScreen {
 func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook, tree *data.FakeProjectTree, graph *data.FakeGraph, bench *data.FakeBenchmark, search *data.FakeSearch, themes *data.FakeTheme) {
 	t.Helper()
 	seedVaultFixture(t)
-	// Evidence's detail screen (S7) renders an absolute filesystem path
+	// The evidence detail screen renders an absolute filesystem path
 	// (shared.EvidenceRoot() joined with the row's own relative path). Left
 	// at its default ${CD_EVIDENCE_DIR:-~/.clarodrive/evidence}, that path
-	// carries the machine's real $HOME into the golden file — a source of
-	// non-determinism this task's brief specifically asked to hunt for
-	// (widths, map order, relative dates), found by generating the golden
-	// once, noticing the running user's home directory baked into it, and
-	// pinning the variable here instead.
+	// carries the machine's real $HOME into the golden file, so the variable
+	// is pinned here instead.
 	t.Setenv(shared.EvidenceDirEnv, "/fixtures/evidence")
 
 	jiraKey := "ACME-1"
@@ -467,8 +462,8 @@ func float64Ptr(v float64) *float64 { return &v }
 // seedVaultFixture points ENGRAM_VAULT_ROOT at a temp directory holding
 // RB-900's body, the same fixture pattern
 // runbooks/update_test.go's TestEnterOpensTheMarkdownViewAndRendersAnExistingFile
-// uses, so S9's golden shows real rendered Markdown instead of the "not
-// cloned locally" instruction.
+// uses, so the runbook Markdown view's golden shows real rendered Markdown
+// instead of the "not cloned locally" instruction.
 func seedVaultFixture(t *testing.T) {
 	t.Helper()
 	// A fixed directory, not t.TempDir(): the Settings scene prints the
@@ -612,23 +607,20 @@ func normalizeVaultRoot(s string) string {
 	return strings.ReplaceAll(s, root, "/fixtures/vault")
 }
 
-// contextPackBuiltAtPattern matches S5's "built HH:MM:SS" stamp
+// contextPackBuiltAtPattern matches the context pack's "built HH:MM:SS" stamp
 // (tabs/tasks/view.go's own "%d chars est. · built %s" line).
 var contextPackBuiltAtPattern = regexp.MustCompile(`built \d{2}:\d{2}:\d{2}`)
 
-// normalizeContextPackBuiltAt masks S5's context-pack "built at" clock
+// normalizeContextPackBuiltAt masks the context pack's "built at" clock
 // reading. tabs/tasks/update.go sets Model.ContextPackBuilt from time.Now()
 // with no injectable clock (unlike the fixture-driven CreatedAt/UpdatedAt
-// timestamps every other screen shows) — driving S5 through the real Update
-// loop, as this suite does, bakes the wall-clock second into the frame, so
-// two otherwise-identical runs a second apart fail byte-for-byte (confirmed:
-// running this suite right after -e2e-update failed on exactly this line).
-// This is a real non-determinism this task's brief asked to hunt for
-// (\"fechas relativas\"), found in production code (tabs/tasks/update.go:107)
-// rather than in a fixture; masking it here — the same kind of fix
-// golden_test.go's own ENGRAM_TIMEZONE=UTC applies to Memory's relative
-// dates — avoids reaching into tasks.Model to add a seam nobody asked for
-// in this task.
+// timestamps every other screen shows) — driving the context pack through the
+// real Update loop, as this suite does, bakes the wall-clock second into the
+// frame, so two otherwise-identical runs a second apart fail byte-for-byte.
+// The non-determinism lives in production code rather than in a fixture, and
+// masking it here — the same kind of fix golden_test.go's own
+// ENGRAM_TIMEZONE=UTC applies to Memory's relative dates — avoids reaching
+// into tasks.Model to add a seam nothing else needs.
 func normalizeContextPackBuiltAt(s string) string {
 	return contextPackBuiltAtPattern.ReplaceAllString(s, "built 00:00:00")
 }
@@ -637,8 +629,8 @@ func teatestGoldenPath(size goldenSize) string {
 	return filepath.Join("testdata", "screens-"+size.name+".golden")
 }
 
-// TestTeatestGoldenScreens is this task's own golden suite: S1-S11 at
-// 120x40 and 80x24, driven through the real bubbletea Program.
+// TestTeatestGoldenScreens freezes every scene at 120x40 and 80x24, driven
+// through the real bubbletea Program.
 // Regenerate with: go test ./internal/tui/e2e/... -run TestTeatestGoldenScreens -e2e-update
 func TestTeatestGoldenScreens(t *testing.T) {
 	for _, size := range goldenSizes {

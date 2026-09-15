@@ -333,9 +333,9 @@ func renderScene(t *testing.T, scene goldenScene, size goldenSize) string {
 	t.Helper()
 
 	m := New(nil, nil, nil, nil, nil, goldenVersion, theme.Default(), "")
-	// New now opens the project tree without a resolvable project (T-10.02);
-	// every scene here is a tab screen (Memory's own sub-screens, or Settings),
-	// so that is set explicitly rather than relied on as New's default.
+	// New opens the project tree when no project resolves; every scene here
+	// is a tab screen (Memory's own sub-screens, or Settings), so that is set
+	// explicitly rather than relied on as a default.
 	m.tree.open = false
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: size.width, Height: size.height})
 	m = sized.(Model)

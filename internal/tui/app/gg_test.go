@@ -20,10 +20,10 @@ func threeTreeNodes() []data.ProjectNode {
 	}
 }
 
-// TestGAndCapitalGJumpToTheEndsOfTheProjectTree pins rfc-tui.md §7.1's
-// "g/G van al inicio y al fin de cada lista", applied to the ctrl+p tree —
-// the root's own overlay, not a tabs.Tab, so this is not covered by any
-// per-tab Help/CapturingText test.
+// TestGAndCapitalGJumpToTheEndsOfTheProjectTree pins that "g" and "G" go to
+// the start and the end of a list, applied to the ctrl+p tree — the root's
+// own overlay, not a tabs.Tab, so this is not covered by any per-tab
+// Help/CapturingText test.
 func TestGAndCapitalGJumpToTheEndsOfTheProjectTree(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m = m.WithProjectTree(&data.FakeProjectTree{Tree: threeTreeNodes()})

@@ -18,10 +18,10 @@ import (
 type Model = app.Model
 
 // New creates the TUI bound to the given store. project, when non-empty,
-// opens the workspace straight on that project's Dashboard instead of the
-// Memory tab; pass "" when none was resolved (rfc-tui.md §9.1's
-// "Semántica de --project": explicit flag, then ENGRAM_PROJECT, then cwd
-// detection — that precedence is cmd/engram's job, not this facade's).
+// opens the workspace straight on that project's Home tab instead of the
+// Memory tab; pass "" when none was resolved. Deciding which project that is —
+// the explicit flag, then ENGRAM_PROJECT, then detection from the working
+// directory — is cmd/engram's job, not this facade's.
 // palette is the resolved theme — --theme, then ENGRAM_TUI_THEME, then
 // settings['tui.theme'], then config.json, then the default — and resolving it
 // is likewise cmd/engram's job (theme.Selection.Resolve), not this facade's;

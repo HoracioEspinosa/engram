@@ -18,9 +18,9 @@ func threeObservations() []store.Observation {
 func gKey() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")} }
 func GKey() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")} }
 
-// TestGAndCapitalGOnSearchResults pins rfc-tui.md §7.1's "g/G van al inicio
-// y al fin de cada lista", applied to S10's search results — the same job
-// they already did on Tasks/Runbooks/Evidence's lists before this task.
+// TestGAndCapitalGOnSearchResults pins the rule that g/G go to the start and
+// the end of every list, applied to the Memory tab's search results — the
+// same job they do on the Tasks, Runbooks and Evidence lists.
 func TestGAndCapitalGOnSearchResults(t *testing.T) {
 	m := New(nil, "")
 	m.Screen = ScreenSearchResults
@@ -45,8 +45,8 @@ func TestGAndCapitalGOnSearchResults(t *testing.T) {
 	}
 }
 
-// TestGAndCapitalGOnRecentObservations mirrors the same pin for S10's
-// "recent observations" list.
+// TestGAndCapitalGOnRecentObservations mirrors the same pin for the Memory
+// tab's "recent observations" list.
 func TestGAndCapitalGOnRecentObservations(t *testing.T) {
 	m := New(nil, "")
 	m.Screen = ScreenRecent
@@ -66,7 +66,8 @@ func TestGAndCapitalGOnRecentObservations(t *testing.T) {
 	}
 }
 
-// TestGAndCapitalGOnSessions mirrors the same pin for S10's session list.
+// TestGAndCapitalGOnSessions mirrors the same pin for the Memory tab's
+// session list.
 func TestGAndCapitalGOnSessions(t *testing.T) {
 	m := New(nil, "")
 	m.Screen = ScreenSessions

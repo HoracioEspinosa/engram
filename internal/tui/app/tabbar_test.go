@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// TestTabBarShowsFullLabelsAtOrAboveTheBreakpoint pins §6.9's bar: at 100
+// TestTabBarShowsFullLabelsAtOrAboveTheBreakpoint pins the bar: at 100
 // columns or wider every slot shows its glyph, its digit and its label, and
 // the active one is bracketed.
 func TestTabBarShowsFullLabelsAtOrAboveTheBreakpoint(t *testing.T) {
@@ -120,8 +120,8 @@ func TestTabBarSurvivesTheProjectTreeOverlay(t *testing.T) {
 }
 
 // TestTabBarLabelsComeFromTitleNotTheEntryTable proves the bar's per-tab
-// labels are read from each tab's own Title() (rfc-tui.md §4.3: "label shown
-// in the tab bar") rather than from tabBarEntries' hand-written label field.
+// labels are read from each tab's own Title() rather than from
+// tabBarEntries' hand-written label field.
 // It corrupts every entry's label and checks the render never shows the
 // corruption for a tab this build implements: if the bar ever again renders
 // straight from tabBarEntries.label instead of calling Title(), this test

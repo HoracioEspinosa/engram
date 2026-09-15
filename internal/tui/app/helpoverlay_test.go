@@ -13,8 +13,8 @@ import (
 
 func questionMark() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")} }
 
-// TestQuestionMarkOpensTheHelpOverlay pins rfc-tui.md §7.1: "?" opens the
-// help overlay from a tab screen.
+// TestQuestionMarkOpensTheHelpOverlay pins that "?" opens the help overlay
+// from a tab screen.
 func TestQuestionMarkOpensTheHelpOverlay(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	// No project was resolved, so New opens the project tree over the
@@ -31,15 +31,15 @@ func TestQuestionMarkOpensTheHelpOverlay(t *testing.T) {
 	}
 }
 
-// TestHelpOverlayContentTracksTheActiveScreen pins rfc-tui.md §7.1: "?" abre
-// la ayuda en cada pantalla y lista los atajos que **esa** pantalla
-// declara, no una lista fija" — Tasks' list and Evidence's list advertise
-// different keys, so the overlay must differ between them.
+// TestHelpOverlayContentTracksTheActiveScreen pins that "?" opens help on
+// every screen and lists the shortcuts that screen declares, never a fixed
+// list — Tasks' list and Evidence's list advertise different keys, so the
+// overlay must differ between them.
 func TestHelpOverlayContentTracksTheActiveScreen(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Tasks
-	// New now opens the project tree without a resolvable project (T-10.02);
-	// this case's premise is being on a tab already.
+	// New opens the project tree when no project resolves; this case's
+	// premise is being on a tab already.
 	m.tree.open = false
 	m, _ = step(t, m, questionMark())
 	tasksHelp := m.View()
@@ -60,8 +60,8 @@ func TestHelpOverlayContentTracksTheActiveScreen(t *testing.T) {
 }
 
 // TestHelpOverlayIncludesTheGlobalBindings pins that the overlay shows the
-// chrome-level keys (rfc-tui.md §7.1) alongside whatever the screen adds,
-// not just the screen's own.
+// chrome-level keys alongside whatever the screen adds, not just the
+// screen's own.
 func TestHelpOverlayIncludesTheGlobalBindings(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	// No project was resolved, so New opens the project tree over the
@@ -141,8 +141,7 @@ func TestOtherKeysAreSwallowedWhileHelpIsShowing(t *testing.T) {
 }
 
 // TestCtrlCStillQuitsWhileHelpIsShowing pins that Ctrl+C is the one key that
-// is never suspended, matching rfc-tui.md §7.1's textinput rule applied to
-// the overlay too.
+// is never suspended: the textinput rule applies to the overlay too.
 func TestCtrlCStillQuitsWhileHelpIsShowing(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m, _ = step(t, m, questionMark())
@@ -152,15 +151,15 @@ func TestCtrlCStillQuitsWhileHelpIsShowing(t *testing.T) {
 	}
 }
 
-// TestHelpIsSuspendedWhileCapturingText pins rfc-tui.md §7.1's textinput
-// suspension rule for "?" too: typing a literal "?" into a focused search
-// box must not pop the overlay.
+// TestHelpIsSuspendedWhileCapturingText pins the textinput suspension rule
+// for "?" too: typing a literal "?" into a focused search box must not pop
+// the overlay.
 func TestHelpIsSuspendedWhileCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Tasks
-	// New now opens the project tree without a resolvable project (T-10.02);
-	// this case's premise is being on the Tasks tab already, so that is set
-	// explicitly rather than relied on as New's default.
+	// New opens the project tree when no project resolves; this case's
+	// premise is being on the Tasks tab already, so that is set explicitly
+	// rather than relied on as a default.
 	m.tree.open = false
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
@@ -174,8 +173,8 @@ func TestHelpIsSuspendedWhileCapturingText(t *testing.T) {
 	}
 }
 
-// TestHelpOverlayOpensFromTheDashboard pins that "?" is not tab-only:
-// rfc-tui.md §5's S2 footer advertises it too.
+// TestHelpOverlayOpensFromTheDashboard pins that "?" is not tab-only: the
+// Home tab's footer advertises it too.
 func TestHelpOverlayOpensFromTheDashboard(t *testing.T) {
 	dash := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	dash.project = "nextcloud"

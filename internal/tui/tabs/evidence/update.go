@@ -141,7 +141,7 @@ func repeatKey(m Model, n int, handle func(Model, string) (tabs.Tab, tea.Cmd), k
 	return m, tea.Batch(cmds...)
 }
 
-// ─── List (S6) ───────────────────────────────────────────────────────────────
+// ─── List ────────────────────────────────────────────────────────────────────
 
 func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 	visible := shared.VisibleItems(m.Height, listChrome, evidenceItemLines, minVisibleItems)
@@ -216,11 +216,12 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 	return m, nil
 }
 
-// toggleTaskFilter is S6's "t" key (rfc-tui.md §7.2): with no task filter
-// active, it scopes the list to the task under the cursor; with one active
-// — set here or inherited from S4's "e" deep link — it clears it back to
-// "all". A cursor with nothing under it (an empty list) leaves the filter
-// untouched rather than clearing a filter the user did not ask to drop.
+// toggleTaskFilter is the list's "t" key: with no task filter active, it
+// scopes the list to the task under the cursor; with one active — set here
+// or inherited from the task detail screen's "e" deep link — it clears it
+// back to "all". A cursor with nothing under it (an empty list) leaves the
+// filter untouched rather than clearing a filter the user did not ask to
+// drop.
 func (m Model) toggleTaskFilter() (tabs.Tab, tea.Cmd) {
 	if m.Filter.TaskID != 0 {
 		m.Filter.TaskID = 0
@@ -235,8 +236,8 @@ func (m Model) toggleTaskFilter() (tabs.Tab, tea.Cmd) {
 	return m, loadEvidence(m.reader, m.project, m.Filter)
 }
 
-// toggleAttachedFilter is S6's "a" key: a binary toggle between "all" and
-// "attached to Jira only" (rfc-tui.md §7.2: "a alternar solo adjuntos").
+// toggleAttachedFilter is the list's "a" key: a binary toggle between "all"
+// and "attached to Jira only".
 func (m Model) toggleAttachedFilter() (tabs.Tab, tea.Cmd) {
 	if m.Filter.AttachedJira != nil {
 		m.Filter.AttachedJira = nil
@@ -250,8 +251,7 @@ func (m Model) toggleAttachedFilter() (tabs.Tab, tea.Cmd) {
 
 // openEvidenceFile opens item's captured file with the system viewer,
 // falling back to reporting the path when the OS has no registered handler
-// (rfc-tui.md §9.3, the same degradation tabs/tasks/update.go's openJira
-// documents for "o").
+// — the same degradation tabs/tasks/update.go's openJira documents for "o".
 func (m Model) openEvidenceFile(item store.EvidenceListItem) (tabs.Tab, tea.Cmd) {
 	path := absolutePath(item.Path)
 	if err := openFile(path); err != nil {
@@ -260,7 +260,7 @@ func (m Model) openEvidenceFile(item store.EvidenceListItem) (tabs.Tab, tea.Cmd)
 	return m, nil
 }
 
-// ─── Detail (S7) ─────────────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────────────────────
 
 func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 	if m.Selected == nil {
@@ -276,7 +276,7 @@ func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 	case "o":
 		return m.openEvidenceFile(item)
 	case "c":
-		// rfc-tui.md §7.2: S7 overrides the global "c" (path) to copy
+		// The detail screen overrides the global "c" (path) to copy
 		// sha256 instead — "p" takes over the path copy below.
 		return m, shared.Copy(item.SHA256)
 	case "p":
@@ -295,8 +295,8 @@ func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 }
 
 // openManifestFile opens item's sibling manifest.json with the system
-// viewer (rfc-tui.md §3.1 S7's "m"). Most captures have none yet — every one
-// of clarodrive's 10 registered evidence rows does not, see manifest.go's
+// viewer, the detail screen's "m" key. Most captures have none yet — every
+// one of clarodrive's 10 registered evidence rows does not, see manifest.go's
 // doc comment — so this reports that plainly instead of launching a viewer
 // on a path that was never there.
 func (m Model) openManifestFile(item store.EvidenceListItem) (tabs.Tab, tea.Cmd) {

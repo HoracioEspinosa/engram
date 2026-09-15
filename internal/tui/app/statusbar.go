@@ -10,8 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// Status bar priorities, lowest first. They are the give-ground order §6.9
-// fixes: the hints go first because a screen advertises them and the "?"
+// Status bar priorities, lowest first. They are the order in which segments
+// give ground: the hints go first because a screen advertises them and the "?"
 // overlay repeats them; the theme name is decoration; the breadcrumb sheds
 // its parents but keeps the project; the active task is the one thing the
 // user is working on; and the sync state never gives, because a workspace

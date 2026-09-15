@@ -33,7 +33,7 @@ func (m Model) View() string {
 	return content
 }
 
-// ─── Index (S8) ──────────────────────────────────────────────────────────────
+// ─── Index ───────────────────────────────────────────────────────────────────
 
 func (m Model) viewIndex() string {
 	var b strings.Builder
@@ -135,8 +135,8 @@ func (m Model) viewRunbookRow(item store.RunbookIndexRow, selected bool, widths 
 	return strings.TrimRight(row, " ") + "\n"
 }
 
-// viewRunbookPreview renders the strip rfc-tui.md §5's S8 wireframe shows
-// under the cursor: the fields the table's columns had no room for.
+// viewRunbookPreview renders the strip the index shows under the cursor:
+// the fields the table's columns had no room for.
 func (m Model) viewRunbookPreview(item store.RunbookIndexRow) string {
 	var b strings.Builder
 	b.WriteString("\n")
@@ -159,7 +159,7 @@ func (m Model) viewRunbookPreview(item store.RunbookIndexRow) string {
 	return b.String()
 }
 
-// ─── Markdown view (S9) ──────────────────────────────────────────────────────
+// ─── Markdown view ───────────────────────────────────────────────────────────
 
 func (m Model) viewMarkdown() string {
 	if m.Selected == nil {

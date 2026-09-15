@@ -14,9 +14,8 @@ import (
 )
 
 // hubResolvedMsg carries openHub's result: the absolute path to open in
-// $EDITOR, already resolved against shared.VaultRoot() (rfc-tui.md §9.4's
-// "o abre el hub del servicio... en $EDITOR"), or the reason there is
-// nothing to open.
+// $EDITOR, already resolved against shared.VaultRoot() — "o" opens the
+// service's hub — or the reason there is nothing to open.
 type hubResolvedMsg struct {
 	path string // "" means the project has no knowledge_hub_path configured
 	err  error
@@ -199,7 +198,7 @@ func repeatKey(m Model, n int, handle func(Model, string) (tabs.Tab, tea.Cmd), k
 	return m, tea.Batch(cmds...)
 }
 
-// ─── Index (S8) ──────────────────────────────────────────────────────────────
+// ─── Index ───────────────────────────────────────────────────────────────────
 
 func (m Model) handleIndexKeys(key string) (tabs.Tab, tea.Cmd) {
 	visible := shared.VisibleItems(m.Height, indexChrome, runbookItemLines, minVisibleItems)
@@ -312,7 +311,7 @@ func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 	return m, cmd
 }
 
-// ─── Markdown view (S9) ──────────────────────────────────────────────────────
+// ─── Markdown view ───────────────────────────────────────────────────────────
 
 func (m Model) handleViewKeys(key string) (tabs.Tab, tea.Cmd) {
 	if m.Selected == nil {

@@ -51,8 +51,8 @@ func pageFrom[T any](p store.Page[T]) Page[T] {
 }
 
 // EvidencePage is a page of evidence with the total size, in bytes, of every
-// item the filter matched — not only the page (rfc-tui.md §9.2's Evidence
-// tab footer, "12 items · 4.3 MiB").
+// item the filter matched — not only the page (the Evidence tab's footer,
+// "12 items · 4.3 MiB").
 type EvidencePage struct {
 	Page[store.EvidenceListItem]
 	TotalBytes int64
@@ -72,18 +72,16 @@ type ProjectHealth struct {
 	Sync store.ProjectSyncSummary `json:"sync"`
 }
 
-// ProjectReader is the surface that the Selector and Dashboard screens need:
-// the project list, individual cards, health counters, and the four blocks
-// of data that make up the Dashboard (recent tasks, stale runbooks, latest
-// evidence).
+// ProjectReader is the surface that the project tree and the Home tab need:
+// the project list, individual cards, health counters, and the blocks of data
+// that make up Home (recent tasks, stale runbooks, latest evidence).
 //
-// A project's recent benchmarks — Home's fifth block — are not a fifth
+// A project's recent benchmarks — Home's remaining block — are not a fourth
 // method here: BenchmarkReader.ListBenchmarks(slug, BenchmarkFilter{Limit:
 // n}) already answers the same question, and ProjectReader's method set is
 // load-bearing for internal/tui/app and internal/tui/tabs, which implement
-// it (and hand-roll test doubles against it) today. Growing it would ask
-// every one of those, in a package this change does not touch, to grow a
-// method too.
+// it (and hand-roll test doubles against it). Growing it would ask every one
+// of those to grow a method too.
 type ProjectReader interface {
 	// ListCards returns every project card for the selector's list.
 	ListCards() ([]store.ProjectCardListItem, error)
@@ -101,9 +99,9 @@ type ProjectReader interface {
 	LatestEvidence(slug string, limit int) ([]store.EvidenceListItem, error)
 }
 
-// ProjectNode is one card in a project-tree walk (rfc-tui.md §9.2's project
-// tree overlay, ctrl+p): the card's own identity, where it sits in the tree,
-// and its children when the walk built them.
+// ProjectNode is one card in a project-tree walk (the project tree overlay,
+// ctrl+p): the card's own identity, where it sits in the tree, and its
+// children when the walk built them.
 //
 // Aliases is populated by ProjectNode (the single-card method) but left nil
 // by ProjectTreeReader.ProjectTree's bulk result: internal/store has no
@@ -147,9 +145,9 @@ type ProjectTreeReader interface {
 	ResolveAlias(raw string) (string, error)
 }
 
-// TaskDetail is the aggregate the Tasks tab's detail screen needs (S4): the
-// task row plus its linked observations (task_observations, root_cause
-// first) and its evidence.
+// TaskDetail is the aggregate the task detail screen needs: the task row plus
+// its linked observations (task_observations, root_cause first) and its
+// evidence.
 type TaskDetail struct {
 	Task         store.Task
 	Observations []store.TaskObservationDetail
@@ -157,15 +155,14 @@ type TaskDetail struct {
 	Benchmarks   []Benchmark
 }
 
-// TaskReader is the surface the Tasks tab needs: the filtered/searched list
-// (S3), one task's aggregate detail (S4), the two writes ADR-028 allows from
-// the TUI — the local `state` mirror and linking an observation — and the
-// context pack (S5).
+// TaskReader is the surface the Tasks tab needs: the filtered/searched list,
+// one task's aggregate detail, the only two writes the TUI makes — the local
+// `state` mirror and linking an observation — and the context pack.
 //
 // ListTasks folds search into the same call rather than exposing a second
 // SearchTasks method: store.TaskListFilter.Query already runs against
-// tasks_fts (rfc-tui.md §9.2's "S3 search" query), so a second method would
-// just be a thinner duplicate of this one.
+// tasks_fts, so a second method would just be a thinner duplicate of this
+// one.
 type TaskReader interface {
 	// ListTasks lists tasks for a project applying f (state, kind, query,
 	// limit, offset), most recently updated first.
@@ -173,7 +170,7 @@ type TaskReader interface {
 	// Task returns one task's aggregate detail by id.
 	Task(id int64) (TaskDetail, error)
 	// UpdateState sets a task's local state mirror. Jira remains the source
-	// of truth (ADR-028): this never talks to Jira.
+	// of truth: the TUI never talks to Jira.
 	UpdateState(id int64, state string) error
 	// LinkObservation links an existing observation to a task by id.
 	LinkObservation(taskID, observationID int64) error
@@ -187,7 +184,7 @@ type TaskReader interface {
 // its own interface rather than folded into TaskReader: TaskReader's method
 // set is load-bearing for internal/tui/app and internal/tui/tabs, which
 // implement it (and hand-roll test doubles against it) today, so this
-// package's own aditivo rule holds here too — an existing data.* interface
+// package's own additive rule holds here too — an existing data.* interface
 // keeps its method set, new capability arrives through a new one.
 type TaskPageReader interface {
 	// ListTasksPage is ListTasks with the page's own total size alongside
@@ -215,15 +212,15 @@ type TaskSource interface {
 }
 
 // EvidenceReader is the surface the Evidence tab needs: the project's
-// evidence list, optionally filtered by task and/or attached status (S6).
-// S7's detail adds nothing the store must be queried for beyond what a list
-// row already carries — manifest.json's positive/negative control pair is
-// read from disk, not from SQLite — so unlike TaskReader there is no second
-// "get one" method here: the Evidence tab keeps the row it already loaded.
+// evidence list, optionally filtered by task and/or attached status. The
+// evidence detail screen adds nothing the store must be queried for beyond
+// what a list row already carries — manifest.json's positive/negative control
+// pair is read from disk, not from SQLite — so unlike TaskReader there is no
+// second "get one" method here: the Evidence tab keeps the row it already
+// loaded.
 type EvidenceReader interface {
 	// ListEvidence lists project's evidence applying f (task, attached-jira
-	// and kind filters), most recently captured first (rfc-tui.md §9.2's
-	// "S6 Evidence list" query).
+	// and kind filters), most recently captured first.
 	ListEvidence(project string, f store.EvidenceListFilter) ([]store.EvidenceListItem, error)
 }
 
@@ -249,8 +246,8 @@ type EvidenceSource interface {
 }
 
 // RunbookReader is the surface the Runbooks tab needs: the browsable index
-// scoped to a project or every project (S8's "a" toggle), and the same
-// shape ranked by symptoms (S8's "/" search).
+// scoped to a project or every project (the index's "a" toggle), and the same
+// shape ranked by symptoms (its "/" search).
 //
 // ListRunbooks and SearchRunbooks share the RunbookIndexRow shape on
 // purpose — the Runbooks tab renders both in the exact same table, so a
@@ -265,11 +262,11 @@ type EvidenceSource interface {
 // reads manifest.json directly against shared.EvidenceRoot().
 type RunbookReader interface {
 	// ListRunbooks lists the runbook index, scoped to project unless all is
-	// true, most-stale-first (rfc-tui.md §9.2's "S8 Runbooks index" query).
+	// true, most-stale-first.
 	ListRunbooks(project string, all bool) ([]store.RunbookIndexRow, error)
 	// SearchRunbooks searches the index by title and symptoms via
 	// runbook_index_fts, scoped to project unless all is true, ranked by
-	// BM25 (rfc-tui.md §9.2's "S8 search by symptoms" query).
+	// BM25.
 	SearchRunbooks(project string, all bool, query string, limit int) ([]store.RunbookIndexRow, error)
 }
 
@@ -354,17 +351,16 @@ type MemorySource interface {
 }
 
 // ProjectScope narrows a workspace-wide read to one project, optionally
-// widened to its subtree — the Memory tab's "a" three-state toggle
-// (rfc-tui.md §9.2: this project / subtree / everything). An empty Project
-// means everything, matching every scoped method's unscoped sibling.
+// widened to its subtree — the Memory tab's "a" three-state toggle: this
+// project / subtree / everything. An empty Project means everything,
+// matching every scoped method's unscoped sibling.
 type ProjectScope struct {
 	Project string
 	Subtree bool
 }
 
 // Benchmark is one measurement next to the baseline of its own metric, with
-// the two readings the Benchmarks tab's Δ column needs already computed
-// (rfc-tui.md §9.2's "S9 Benchmarks" table).
+// the two readings the Benchmarks tab's Δ column needs already computed.
 //
 // It wraps store.BenchmarkDelta rather than aliasing it: Delta and Improved
 // are TUI-side readings of the store's own numbers (BaselineValue, DeltaPct,
@@ -401,8 +397,8 @@ func (b Benchmark) Improved() *bool {
 type BenchmarkFilter = store.BenchmarkListFilter
 
 // BenchmarkReader is the surface the Benchmarks tab needs: the project's
-// measurements (S9's table), one task's history, and one metric's series
-// across a project (S9's "enter" metric-history view).
+// measurements, one task's history, and one metric's series across a project
+// (the "enter" metric-history view).
 type BenchmarkReader interface {
 	// ListBenchmarks lists measurements for project (or, via f.Task, one
 	// task within it), newest first, each next to the baseline of its own
@@ -422,8 +418,8 @@ type BenchmarkReader interface {
 
 // GraphState is one project's code-graph summary as the card holds it: the
 // commit and counts SyncGraph last persisted, and the staleness verdict the
-// store computed for them (rfc-tui.md §9.2's "S10 Graph" tab; graph_summary,
-// graph_stale_reason and friends on project_cards).
+// store computed for them (graph_summary, graph_stale_reason and friends on
+// project_cards).
 //
 // StaleReason is the literal store.StampGraphStaleness persisted —
 // "" (fresh), "no_graph", "code_changed", "docs_only" or
@@ -464,8 +460,8 @@ type GraphReader interface {
 	ObservationRefs(project string, limit, offset int) (Page[ObservationRef], error)
 }
 
-// GraphSyncer runs the graph sync algorithm (RFC §8.3) for a project — the
-// same work `engram project <slug> graph sync` and mem_graph_sync do — and
+// GraphSyncer runs the graph sync algorithm for a project — the same work
+// `engram project <slug> graph sync` and mem_graph_sync do — and
 // is kept apart from GraphReader because "s" (sync) is the Graph tab's one
 // write among a screen of reads, the same split ProjectReader/TaskReader's
 // UpdateState draws.
@@ -479,13 +475,12 @@ type GraphSyncer interface {
 // failed validation — empty for a valid theme.
 //
 // Full palette validation (13 roles present, hex shape, contrast ratios) is
-// internal/tui/theme's job (theme/validate.go, not built yet as of this
-// package); this only catches what the store's own json_valid CHECK
-// constraint does not: a palette with no color roles in it at all. A theme
-// this flags still loads — the picker renders it in Danger and a caller
-// falls back to koi-pond, exactly as an internal/tui/theme-validated palette
-// would (rfc-tui.md §9.2's theme picker) — Invalid is surfaced, not enforced,
-// here.
+// internal/tui/theme's job, in theme/validate.go; this only catches what the
+// store's own json_valid CHECK constraint does not: a palette with no color
+// roles in it at all. A theme this flags still loads — the picker renders it
+// in Danger and a caller falls back to koi-pond, exactly as an
+// internal/tui/theme-validated palette would — Invalid is surfaced, not
+// enforced, here.
 type ThemeRecord struct {
 	store.ThemeRecord
 	Invalid string
@@ -518,9 +513,9 @@ type ThemeWriter interface {
 	ResetTheme(name string, palette json.RawMessage) error
 }
 
-// SettingsReader is the surface Ajustes (and everything that resolves a
-// `settings.*` value ahead of config.json — rfc-tui.md §9.2's theme/icon/
-// mouse precedence) reads from.
+// SettingsReader is the surface Settings (and everything that resolves a
+// `settings.*` value ahead of config.json — the theme, icon and mouse
+// precedence) reads from.
 type SettingsReader interface {
 	// Setting reads one setting. The boolean separates "set to the empty
 	// string" from "never set".
@@ -530,7 +525,7 @@ type SettingsReader interface {
 	Settings(prefix string) (map[string]string, error)
 }
 
-// SettingsWriter is the surface Ajustes writes a remembered choice through.
+// SettingsWriter is the surface Settings writes a remembered choice through.
 type SettingsWriter interface {
 	// SetSetting writes one setting, replacing whatever it held.
 	SetSetting(key, value string) error

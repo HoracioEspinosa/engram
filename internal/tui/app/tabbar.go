@@ -7,15 +7,15 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 )
 
-// tabBarBreakpoint is the width rfc-tui.md §5 fixes for the persistent tab
-// bar: below it a slot shows its glyph and its digit and nothing else. At or
-// above it, every slot shows its label too.
+// tabBarBreakpoint is the width the persistent tab bar switches on: below it
+// a slot shows its glyph and its digit and nothing else. At or above it,
+// every slot shows its label too.
 const tabBarBreakpoint = 100
 
 // tabSlotGap is what separates one bar slot from the next.
 const tabSlotGap = "  "
 
-// tabBarEntry names one slot of the bar, in the fixed order §6.9 draws it.
+// tabBarEntry names one slot of the bar, in the fixed order the bar draws.
 type tabBarEntry struct {
 	digit string
 	label string
@@ -26,14 +26,13 @@ type tabBarEntry struct {
 // tabBarEntries is the bar's content. It never changes at runtime — unlike
 // registered in model.go, which only lists the tabs this build implements,
 // this always shows all eight slots: a build with a tab missing still owns a
-// digit for it (§6.9 fixes "0"…"7" to specific tabs, not to whichever ones
-// happen to be wired up).
+// digit for it, because "0"…"7" are bound to specific tabs, not to whichever
+// ones happen to be wired up.
 //
 // label is a fallback, not the label a registered tab actually shows:
-// tabBarLabel prefers tabs.Tab.Title() (rfc-tui.md §4.3: "label shown in the
-// tab bar") whenever this build has that tab wired up, so Title() stays the
-// one place a tab's name is spelled. label only surfaces for a tab this build
-// does not register at all.
+// tabBarLabel prefers tabs.Tab.Title() whenever this build has that tab wired
+// up, so Title() stays the one place a tab's name is spelled. label only
+// surfaces for a tab this build does not register at all.
 var tabBarEntries = []tabBarEntry{
 	{digit: "0", label: "Home", icon: theme.IconTabHome, tab: tabs.Home},
 	{digit: "1", label: "Memory", icon: theme.IconTabMemory, tab: tabs.Memory},

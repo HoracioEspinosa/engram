@@ -9,7 +9,7 @@ import (
 )
 
 // View draws the application frame around the active tab's body. The
-// persistent tab bar (rfc-tui.md §5, §7) sits above every one of them.
+// persistent tab bar sits above every one of them.
 //
 // The status bar belongs to the frame, not to the tab: its hints are rendered
 // here from whatever the active tab declares in Help(), so a tab names its
@@ -156,9 +156,9 @@ const defaultOverlayRows = 24 - overlayFrameRows
 // the list, the detail, the tab the user pressed "?" on — and left them
 // navigating back by memory.
 //
-// The panel is framed in Overlay and never filled: §6.9's rule for a
-// translucent terminal is that a panel is delimited by its border, so the
-// cells Composite replaces carry the panel's own content and nothing else.
+// The panel is framed in Overlay and never filled: on a translucent terminal
+// a panel is delimited by its border, so the cells Composite replaces carry
+// the panel's own content and nothing else.
 func (m Model) compose(body, panel string) string {
 	framed := m.styles.Panel.Render(panel)
 

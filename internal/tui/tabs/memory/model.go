@@ -162,13 +162,11 @@ type Model struct {
 	SearchTotal  int
 	SearchOffset int
 
-	// Link to task (rfc-tui.md §7.2's "L", the only addition rfc-tui.md §5
-	// lists for the memory screens): a task-search overlay available from
-	// Search Results, Recent and Observation Detail. Selecting a result
-	// writes the task_observations row mem_task_link writes over MCP today,
-	// then navigates to that task's detail (rfc-tui.md §7.3's
-	// "MEM -->|L link| TD"). It renders through shared.Menu, the same
-	// component the Tasks tab's state picker uses (ADR-051 §4).
+	// Link to task: the "L" overlay, a task search available from Search
+	// Results, Recent and Observation Detail. Selecting a result writes the
+	// task_observations row mem_task_link writes over MCP, then navigates to
+	// that task's detail. It renders through shared.Menu, the same list
+	// component the Tasks tab's state picker uses.
 	Linking     bool
 	LinkObsID   int64
 	LinkQuery   textinput.Model
@@ -261,7 +259,7 @@ func (m Model) WithUpdateChecker(check UpdateChecker) Model {
 // WithStyles returns a copy of m painted with styles instead of the default
 // theme.New built it with — app.New calls this once, right after New, so
 // the tab renders under the same resolved palette as the workspace chrome
-// around it (rfc-tui.md §8.2's --theme / ENGRAM_TUI_THEME / tui.theme). The
+// around it (--theme / ENGRAM_TUI_THEME / tui.theme). The
 // spinner's own style is re-derived too: New bakes styles.Spinner into it at
 // construction time, so leaving it alone here would strand the spinner on
 // the palette New saw instead of the one the workspace resolved.
@@ -334,7 +332,7 @@ func (m Model) Refresh() tea.Cmd {
 
 // OpenObservation returns the command that loads id's detail. It is what the
 // root drives when another tab asks to deep-link into an observation
-// (rfc-tui.md §3.1 S4: Enter on a task's linked observation opens it here) —
+// (Enter on a task's linked observation in the task detail opens it here) —
 // the same command loadObservationDetail already issues on the "enter" key
 // from every list screen, exposed so a message from outside this package can
 // trigger it too.
@@ -344,7 +342,7 @@ func (m Model) OpenObservation(id int64) tea.Cmd {
 
 // SearchFor returns the command that runs query and lands on the search
 // results screen once it comes back — it is what the root drives when
-// another tab asks Memory to open pre-searched (rfc-tui.md §3.1 S8/S9's "t":
+// another tab asks Memory to open pre-searched (the Runbooks tab's "t" key:
 // executions recorded against a runbook live at topic_key
 // "runbook/RB-NNN/exec/<task-key>", so searching "runbook/RB-NNN" surfaces
 // them). It issues the exact same searchMemories command the "/" key does
@@ -441,7 +439,7 @@ var installAgentFn = setup.Install
 var addClaudeCodeAllowlistFn = setup.AddClaudeCodeAllowlist
 
 // searchTasksForLink returns the command that lists project's tasks
-// matching query, for the "L" picker (rfc-tui.md §5).
+// matching query, for the "L" picker.
 func searchTasksForLink(r data.TaskReader, project, query string) tea.Cmd {
 	return func() tea.Msg {
 		results, err := r.ListTasks(project, store.TaskListFilter{Query: query, Limit: 20})

@@ -696,10 +696,9 @@ func (m Model) renderObservationListItem(index int, id int64, obsType, title, co
 
 // ─── Link to Task (L) ────────────────────────────────────────────────────────
 
-// viewLinkPicker renders the "L" overlay (rfc-tui.md §5): the task search
-// box while a query is being typed, or the shared.Menu list of matches once
-// one has run — the same list component the Tasks tab's state picker uses
-// (ADR-051 §4).
+// viewLinkPicker renders the "L" overlay: the task search box while a query
+// is being typed, or the shared.Menu list of matches once one has run — the
+// same list component the Tasks tab's state picker uses.
 func (m Model) viewLinkPicker() string {
 	var b strings.Builder
 	b.WriteString(m.styles.SectionHeading.Render("  link to task (enter select" + m.styles.Icons.Separator() + "esc cancel)"))

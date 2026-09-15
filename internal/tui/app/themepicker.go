@@ -191,7 +191,7 @@ func (m Model) updateThemePicker(msg tea.KeyMsg) (bool, Model, tea.Cmd) {
 			return false, m, nil
 		}
 		// A focused text input owns the keyboard, the same rule the tabs
-		// play by (rfc-tui.md §7.1).
+		// play by.
 		if tab := m.tab(m.active); tab != nil && tab.CapturingText() {
 			return false, m, nil
 		}

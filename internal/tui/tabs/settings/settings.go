@@ -1,10 +1,9 @@
 // Package settings is the Settings tab: everything the workspace remembers
 // about itself, in one place.
 //
-// It absorbed the Cloud tab. Sync configuration was a tab of its own holding
-// four menu items, which cost a slot in the bar and left "where do I change
-// things" with two answers. It is a row here now, and the tab it used to be
-// is gone.
+// Sync configuration lives here as one row rather than as a tab of its own:
+// four menu items do not earn a slot in the bar, and two places to change
+// things leave "where do I change this" with two answers.
 package settings
 
 import (
@@ -27,7 +26,7 @@ import (
 const IconSettingKey = "tui.icons"
 
 // Screen is the tab's own screen enum: the settings list, or the sync
-// sub-screen the Cloud tab used to be.
+// sub-screen reached from it.
 type Screen int
 
 const (
@@ -75,11 +74,11 @@ func (iconModeSavedMsg) TabOwner() tabs.ID { return tabs.Settings }
 var errNoSettingsStore = errors.New("no settings store is bound to this workspace")
 
 // iconModes is the cycle "enter" walks on the Icons row, in the order
-// §6.9 declares them.
+// the icon set declares them.
 var iconModes = []theme.IconMode{theme.IconModeUnicode, theme.IconModeNerd, theme.IconModeASCII}
 
-// cloudItems are the sync entry points the Cloud tab used to list, kept in
-// its order so the screen a reader knew is the screen they find.
+// cloudItems are the sync entry points, in the order the sync screen lists
+// them.
 var cloudItems = []string{
 	"Configure server",
 	"View status",

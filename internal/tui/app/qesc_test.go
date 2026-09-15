@@ -9,14 +9,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// TestQAndEscGoHomeFromEveryTabsRootScreen pins rfc-tui.md §7.1's
-// generalization of "q"/"Esc": "en la raíz de una pestaña vuelve al
-// Dashboard". This is a regression pin, not new behaviour this task adds —
-// Tasks, Evidence, Runbooks and Settings already route their root screen's
-// "esc"/"q" through tabs.Home() (measured by reading each tab's update.go
-// before writing this test; see this task's report), so none of these cases
-// had a red phase against unmodified code. What is being pinned is that
-// restructuring updateActive around CapturingText did not disturb it.
+// TestQAndEscGoHomeFromEveryTabsRootScreen pins the generalized "q"/"Esc":
+// on a tab's root screen either key returns to Home. Tasks, Evidence,
+// Runbooks and Settings each route their root screen's "esc"/"q" through
+// tabs.Home(), and this holds that contract against changes to how
+// updateActive dispatches around CapturingText.
 func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -38,10 +35,9 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 			m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 			m.project = "nextcloud"
 			m.active = tc.active
-			// New now opens the project tree without a resolvable project
-			// (T-10.02); this case's premise is being on tc.active's root
-			// screen already, so that is set explicitly rather than relied
-			// on as New's default.
+			// New opens the project tree when no project resolves; this
+			// case's premise is being on tc.active's root screen already,
+			// so that is set explicitly rather than relied on as a default.
 			m.tree.open = false
 
 			var msg tea.KeyMsg
@@ -77,13 +73,10 @@ func TestQDoesNotQuitFromAnOverlay(t *testing.T) {
 }
 
 // TestMemorysOwnDashboardQuitsDirectlyNotHome documents a deliberate
-// exception rather than a bug: Memory's internal ScreenDashboard predates
-// the project workspace and lists "Quit" as its own sixth menu item (S10,
-// existente/referencia per rfc-tui.md §5) — "q" there is that menu
-// shortcut, not the chrome's generalized "back one level". Left unchanged:
-// Memory is out of this task's scope (T-10.01/T-10.02 own it), and folding
-// it into tabs.Home() would repurpose a menu action nothing in this task's
-// brief asked to touch. See this task's report.
+// exception rather than a bug: the Memory tab's own ScreenDashboard lists
+// "Quit" as its sixth menu item, so "q" there is that menu shortcut and not
+// the chrome's generalized "back one level". Folding it into tabs.Home()
+// would repurpose a menu action the chrome does not own.
 func TestMemorysOwnDashboardQuitsDirectlyNotHome(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"

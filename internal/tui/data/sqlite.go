@@ -541,8 +541,8 @@ func (r sqliteTask) LinkObservation(taskID, observationID int64) error {
 // ContextPack resolves the task by id to find its project, then delegates to
 // internal/project.BuildContextPack — the same function mem_context_pack
 // calls — addressing the task by its numeric id ("#<id>", ResolveTaskRef's
-// local-id form) so the rendered pack always reflects the exact row S4 has
-// on screen.
+// local-id form) so the rendered pack always reflects the exact row the task
+// detail screen has on screen.
 func (r sqliteTask) ContextPack(taskID int64) (string, error) {
 	if r.store == nil {
 		return "", ErrStoreUnavailable
@@ -722,8 +722,7 @@ func (r sqliteRunbook) SearchRunbooks(project string, all bool, query string, li
 
 // TaskKey returns the label a task is identified by everywhere in the TUI.
 // The store owns the precedence; data re-exports it so every tab stays on the
-// dependency rule in rfc-tui.md §4.1: a tab imports only data, theme and
-// shared.
+// dependency rule: a tab imports only data, theme and shared.
 func TaskKey(t store.Task) string {
 	return t.Key()
 }
@@ -778,8 +777,8 @@ func (r sqliteProjectTree) ProjectTree() ([]ProjectNode, error) {
 	}
 	// One store call: includeCounts=true batches the counters internally
 	// (store.ProjectCardCountsBatch, one grouped query per counted table),
-	// so this is the "ProjectTree con counts en lote" the reader is
-	// specified to cost at most two store calls for.
+	// so this is the batched "tree with counts" read the reader is specified
+	// to cost at most two store calls for.
 	flat, err := r.store.ProjectTree("", true)
 	if err != nil {
 		return nil, err
@@ -1230,14 +1229,14 @@ type sqliteSettings struct {
 	store *store.Store
 }
 
-// NewSettingsReader wraps an engram store as Ajustes's settings reader.
+// NewSettingsReader wraps an engram store as the Settings tab's settings reader.
 //
 // A nil store yields a reader whose queries report ErrStoreUnavailable.
 func NewSettingsReader(s *store.Store) SettingsReader {
 	return sqliteSettings{store: s}
 }
 
-// NewSettingsWriter wraps an engram store as Ajustes's settings writer.
+// NewSettingsWriter wraps an engram store as the Settings tab's settings writer.
 //
 // A nil store yields a writer whose calls report ErrStoreUnavailable.
 func NewSettingsWriter(s *store.Store) SettingsWriter {

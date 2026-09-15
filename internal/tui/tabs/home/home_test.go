@@ -144,7 +144,7 @@ func TestEveryBlockRendersWhatItRead(t *testing.T) {
 	}
 }
 
-// TestTheStalenessReasonIsPrintedLiterally pins §6.9's rule: the TUI renders
+// TestTheStalenessReasonIsPrintedLiterally pins the rule: the TUI renders
 // the store's verdict and never forms its own, so a reason this build has
 // never heard of still reaches the reader.
 func TestTheStalenessReasonIsPrintedLiterally(t *testing.T) {
@@ -447,7 +447,7 @@ func TestTheBreadcrumbIsTheChainTheRootHandedDown(t *testing.T) {
 	}
 }
 
-// TestAProjectColourFollowsThePaletteOrThePinnedHex pins §6.9's rule for
+// TestAProjectColourFollowsThePaletteOrThePinnedHex pins the rule for
 // project_cards.color: a role token tracks the active theme, an #rrggbb
 // triple is honoured as the user pinned it.
 func TestAProjectColourFollowsThePaletteOrThePinnedHex(t *testing.T) {

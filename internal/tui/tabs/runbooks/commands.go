@@ -9,8 +9,7 @@ import (
 )
 
 // loadRunbookIndex returns the command that lists project's runbook index,
-// or every project's when all is true (rfc-tui.md §9.2's "S8 Runbooks
-// index" query and §3.1's "a" toggle).
+// or every project's when the "a" toggle has set all to true.
 //
 // It asks for the page rather than the bare slice: the store counts the
 // whole match in the same round trip, which is what the footer reports and
@@ -23,8 +22,8 @@ func loadRunbookIndex(r data.RunbookSource, project string, all bool, f data.Run
 }
 
 // searchRunbooks returns the command that ranks the index by query over
-// runbook_index_fts (rfc-tui.md §9.2's "S8 search by symptoms" query),
-// scoped the same way loadRunbookIndex is.
+// runbook_index_fts — the search-by-symptoms path — scoped the same way
+// loadRunbookIndex is.
 //
 // A ranked search has no page of its own: SearchRunbooks takes a limit and
 // no offset, so the total is the hit count it returned and the page keys
@@ -39,7 +38,7 @@ func searchRunbooks(r data.RunbookSource, project string, all bool, query string
 }
 
 // loadMarkdown returns the command that reads item's Markdown file and
-// renders it with glamour (S9, rfc-tui.md §9.4). width is captured at call
+// renders it with glamour for the Markdown view. width is captured at call
 // time (the tab's current Width) so the render wraps to the terminal the
 // request was issued from; palette is the tab's active theme.Palette, so the
 // rendered Markdown matches whatever --theme / ENGRAM_TUI_THEME / tui.theme

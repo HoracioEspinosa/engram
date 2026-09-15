@@ -1,7 +1,7 @@
 // Package tasks is the Tasks workspace tab: the task list, a task's detail,
-// and the context pack it can build from there (rfc-tui.md §3.1 S3-S5).
+// and the context pack it can build from there.
 //
-// It is an isolated Elm sub-model, shaped like tabs/memory and tabs/cloud:
+// It is an isolated Elm sub-model, shaped like the other workspace tabs:
 //   - screen constants are a local iota; the root does not know them
 //   - one Model struct holds all of the tab's state
 //   - vim keys (j/k) navigate, PrevScreen-style back-navigation walks up
@@ -27,8 +27,8 @@ import (
 
 // ─── Screens ─────────────────────────────────────────────────────────────────
 
-// Screen is the Tasks tab's own screen enum (rfc-tui.md §3.1: S3 list, S4
-// detail, S5 context pack). Not exported to the root, same as memory.Screen.
+// Screen is the Tasks tab's own screen enum: list, detail, context pack. Not
+// exported to the root, same as memory.Screen.
 type Screen int
 
 const (
@@ -39,16 +39,18 @@ const (
 
 // stateOptions lists every value the tasks.state CHECK constraint accepts
 // (internal/store/projects_schema.go), in the order the inline state-change
-// picker (S4, key "s") offers them. Built from the internal/tasks constants
+// picker on the task detail screen, key "s", offers them. Built from the
+// internal/tasks constants
 // so the picker can never drift from the schema it writes against.
 var stateOptions = append(append([]string{}, tasksdomain.ActiveStates...), tasksdomain.StateDone, tasksdomain.StateCancelled)
 
 // kindOptions is the fixed set of task kinds the tasks.kind CHECK constraint
-// accepts; "" means no kind filter (rfc-tui.md §3.1 S3's "k filtro kind").
+// accepts; "" means no kind filter, which is what the Tasks list's "K" key
+// cycles back to.
 var kindOptions = []string{"", "feature", "bugfix", "refactor", "incident", "migration", "spike"}
 
-// pageSize is how many tasks the page keys move by. rfc-tui.md §9.2's list
-// query never fixes a page size; store.TaskListFilter defaults to 20 when
+// pageSize is how many tasks the page keys move by. The list query fixes no
+// page size of its own; store.TaskListFilter defaults to 20 when
 // Limit is unset, so paging by the same number keeps one "page" meaning the
 // same thing whether or not the user ever presses a page key.
 const pageSize = 20
@@ -110,7 +112,7 @@ type Model struct {
 	// Below it there is only the master, and "l" leaves the focus there.
 	Focus shared.Pane
 
-	// List (S3).
+	// List screen.
 	Items  []store.TaskListItem
 	Cursor int
 	Scroll int
@@ -123,7 +125,7 @@ type Model struct {
 	Searching   bool
 	SearchInput textinput.Model
 
-	// Detail (S4).
+	// Detail screen.
 	Detail        *data.TaskDetail
 	DetailCursor  int
 	DetailScroll  int
@@ -132,7 +134,7 @@ type Model struct {
 	Linking       bool
 	LinkInput     textinput.Model
 
-	// Context pack (S5).
+	// Context pack screen.
 	ContextPack       string
 	ContextPackBuilt  time.Time
 	ContextPackScroll int
@@ -168,7 +170,7 @@ func New(r data.TaskSource) Model {
 // WithStyles returns a copy of m painted with styles instead of the default
 // theme.New built it with — app.New calls this once, right after New, so
 // the tab renders under the same resolved palette as the workspace chrome
-// around it (rfc-tui.md §8.2's --theme / ENGRAM_TUI_THEME / tui.theme).
+// around it, whichever of --theme, ENGRAM_TUI_THEME or tui.theme resolved it.
 func (m Model) WithStyles(styles theme.Styles) Model {
 	m.styles = styles
 	return m
@@ -232,17 +234,17 @@ func (m Model) Init() tea.Cmd {
 }
 
 // OpenTask returns the command that loads id's detail. It is what the root
-// drives when another tab asks to deep-link into a task (rfc-tui.md §3.1
-// S7: Enter on an evidence file opens its task here) — the same command
+// drives when another tab asks to deep-link into a task (Enter on the
+// evidence detail screen opens that file's task here) — the same command
 // loadTaskDetail already issues on the "enter" key from the list screen,
 // exposed so a message from outside this package can trigger it too.
 func (m Model) OpenTask(id int64) tea.Cmd {
 	return loadTaskDetail(m.reader, id)
 }
 
-// Refresh reloads the data behind the current screen: the filtered list on
-// S3, the task (and its observations/evidence) on S4, or the context pack on
-// S5. The root calls it on "r" and whenever this tab becomes active.
+// Refresh reloads the data behind the current screen: the filtered list, the
+// task (and its observations/evidence) on the detail screen, or the context
+// pack. The root calls it on "r" and whenever this tab becomes active.
 func (m Model) Refresh() tea.Cmd {
 	switch m.Screen {
 	case ScreenDetail:

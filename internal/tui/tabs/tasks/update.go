@@ -199,7 +199,7 @@ func repeatKey(m Model, n int, handle func(Model, string) (tabs.Tab, tea.Cmd), k
 	return m, tea.Batch(cmds...)
 }
 
-// ─── List (S3) ───────────────────────────────────────────────────────────────
+// ─── List ────────────────────────────────────────────────────────────────────
 
 func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 	visible := shared.VisibleItems(m.Height, listChrome, taskItemLines, minVisibleItems)
@@ -275,14 +275,13 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 	return m, nil
 }
 
-// nextState cycles S3's state filter: the active-tasks default ("", which
-// store.TaskListFilter treats as "every state but done/cancelled" — see its
-// doc comment), then each concrete value in stateOptions, then back to "".
+// nextState cycles the list's state filter: the active-tasks default ("",
+// which store.TaskListFilter treats as "every state but done/cancelled" — see
+// its doc comment), then each concrete value in stateOptions, then back to "".
 // The store exposes no single value meaning "every state including done and
 // cancelled at once", so this filter's default is honestly labelled "active"
-// in the footer rather than the wireframe's "all" (rfc-tui.md §5 S3 also
-// shows "(7 open ...)" for that same default, which only an active-only
-// count explains).
+// in the footer rather than "all": the count beside it only ever covers the
+// open tasks.
 func nextState(current string) string {
 	if current == "" {
 		return stateOptions[0]
@@ -298,9 +297,9 @@ func nextState(current string) string {
 	return ""
 }
 
-// nextKind cycles S3's kind filter through kindOptions, wrapping back to ""
-// (every kind) — unlike state, "" genuinely means "no filter" here, since
-// store.ListTasks only applies a kind clause when f.Kind is non-empty.
+// nextKind cycles the list's kind filter through kindOptions, wrapping back
+// to "" (every kind) — unlike state, "" genuinely means "no filter" here,
+// since store.ListTasks only applies a kind clause when f.Kind is non-empty.
 func nextKind(current string) string {
 	for i, k := range kindOptions {
 		if k == current {
@@ -329,7 +328,7 @@ func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 	return m, cmd
 }
 
-// ─── Detail (S4) ─────────────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────────────────────
 
 func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 	if m.Detail == nil {
@@ -364,8 +363,8 @@ func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 			return m, tabs.NavigateToObservation(obsID)
 		}
 	case "e":
-		// rfc-tui.md §3.1: S4's "e" opens Evidence filtered to this task
-		// (S6's task_id filter), carried through tabs.NavigateMsg.TaskID.
+		// "e" opens the Evidence list filtered to this task, the task_id
+		// filter carried through tabs.NavigateMsg.TaskID.
 		return m, tabs.NavigateToTaskEvidence(task.ID)
 	case "x":
 		return m, loadContextPack(m.reader, task.ID)
@@ -410,8 +409,8 @@ func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 }
 
 // openJira opens the task's Jira issue, or records why it could not when the
-// task has no jira_key at all (an sdd-only task) or the OS has no registered
-// URL handler (rfc-tui.md §10.2: "open/xdg-open ausentes").
+// task has no jira_key at all (an sdd-only task) or the OS has neither `open`
+// nor `xdg-open` to hand the URL to.
 func (m Model) openJira(task store.Task) (tabs.Tab, tea.Cmd) {
 	if task.JiraKey == nil || strings.TrimSpace(*task.JiraKey) == "" {
 		m.ErrorMsg = "this task has no jira_key"
@@ -471,7 +470,7 @@ func (m Model) handleLinkInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 	return m, cmd
 }
 
-// ─── Context pack (S5) ───────────────────────────────────────────────────────
+// ─── Context pack ────────────────────────────────────────────────────────────
 
 func (m Model) handleContextPackKeys(key string) (tabs.Tab, tea.Cmd) {
 	switch key {

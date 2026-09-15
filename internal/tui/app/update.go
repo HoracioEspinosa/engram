@@ -33,10 +33,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return next, cmd
 		}
 		if m.showHelp {
-			// While the "?" overlay (rfc-tui.md §7.1) is open, every key but
-			// the three that close it is swallowed here, before it ever
-			// reaches updateActive: a "j" meant for reading help must not
-			// move a list's cursor on the screen underneath.
+			// While the "?" overlay is open, every key but the three that
+			// close it is swallowed here, before it ever reaches
+			// updateActive: a "j" meant for reading help must not move a
+			// list's cursor on the screen underneath.
 			switch msg.String() {
 			case "?", "esc", "q":
 				m.showHelp = false
@@ -122,26 +122,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // out.
 func (m Model) routeNavigate(msg tabs.NavigateMsg) (tea.Model, tea.Cmd) {
 	if msg.Target == tabs.Memory && msg.ObservationID != 0 {
-		// A deep-link into one observation (rfc-tui.md §3.1 S4's "Enter
-		// opens the observation in Memory"), not a plain tab switch: skip
-		// activate()'s generic tab.Refresh() and load that observation's
-		// detail directly instead.
+		// The task detail screen's "Enter" opens its observation in Memory.
+		// That is a deep link, not a plain tab switch: skip activate()'s
+		// generic tab.Refresh() and load that observation's detail directly
+		// instead.
 		return m.openTab(tabs.Memory, m.memory.OpenObservation(msg.ObservationID))
 	}
 	if msg.Target == tabs.Memory && msg.Query != "" {
-		// Runbooks' "t" (rfc-tui.md §3.1 S8/S9): open Memory pre-searched
-		// for this runbook's executions instead of landing on whatever
-		// screen Memory last showed.
+		// Runbooks' "t", from either the index or the Markdown view: open
+		// Memory pre-searched for this runbook's executions instead of
+		// landing on whatever screen Memory last showed.
 		return m.openTab(tabs.Memory, m.memory.SearchFor(msg.Query))
 	}
 	if msg.Target == tabs.Tasks && msg.TaskID != 0 {
-		// The mirror image, for S7's "Enter" on an evidence file: open
+		// The mirror image, for "Enter" on the evidence detail screen: open
 		// that file's task directly instead of landing on the list.
 		return m.openTab(tabs.Tasks, m.tasks.OpenTask(msg.TaskID))
 	}
 	if msg.Target == tabs.Evidence && msg.TaskID != 0 {
-		// S4's "e" key: filter Evidence to the task under view (S6's
-		// task_id filter) instead of showing every file in the project.
+		// The task detail screen's "e" key: filter the Evidence list by
+		// task_id to the task under view, instead of showing every file in
+		// the project.
 		return m.openTab(tabs.Evidence, m.evidence.OpenForTask(msg.TaskID))
 	}
 	if msg.Target == tabs.Benchmarks && msg.BenchmarkID != 0 {
@@ -173,8 +174,7 @@ func (m Model) deliver(id tabs.ID, msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// digitTabs maps rfc-tui.md §7.1's "0"…"7" to the tab each activates, in tab
-// bar order.
+// digitTabs maps "0"…"7" to the tab each activates, in tab bar order.
 var digitTabs = map[string]tabs.ID{
 	"0": tabs.Home,
 	"1": tabs.Memory,
@@ -190,10 +190,9 @@ var digitTabs = map[string]tabs.ID{
 func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, isKey := msg.(tea.KeyMsg); isKey {
 		// Every global key below is suspended while the active tab is
-		// capturing text (rfc-tui.md §7.1: "cuando un textinput tiene el
-		// foco, las teclas globales se suspenden salvo Ctrl+C y Esc" —
-		// Ctrl+C is handled in Update, before updateActive is ever called,
-		// and Esc is not one of these keys at all).
+		// capturing text: a focused textinput keeps every global key but
+		// Ctrl+C and Esc. Ctrl+C is handled in Update, before updateActive
+		// is ever called, and Esc is not one of these keys at all.
 		if tab := m.tab(m.active); tab == nil || !tab.CapturingText() {
 			if handled, model, cmd := m.matchGlobal(keyMsg); handled {
 				return model, cmd
@@ -264,10 +263,9 @@ func (m Model) refreshActiveScreen() tea.Cmd {
 }
 
 // activateRelative moves delta slots through registered, wrapping at either
-// end, and activates whatever tab lands there (rfc-tui.md §7.1's
-// "Tab / Shift+Tab | Pestaña siguiente / anterior"). delta is +1 for Tab, -1
-// for Shift+Tab; registered is never empty, so the modulo below always has a
-// tab to land on.
+// end, and activates whatever tab lands there: Tab goes to the next tab and
+// Shift+Tab to the previous one. delta is +1 for Tab, -1 for Shift+Tab;
+// registered is never empty, so the modulo below always has a tab to land on.
 func (m Model) activateRelative(delta int) (tea.Model, tea.Cmd) {
 	current := -1
 	for i, id := range registered {

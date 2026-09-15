@@ -78,8 +78,8 @@ func TestForegroundAndBackgroundStayReadable(t *testing.T) {
 	}
 }
 
-// distinctRoles are the "brand and state" roles rfc-tui.md §8.1 assigns one
-// meaning each. Highlight is deliberately excluded: it is allowed to
+// distinctRoles are the brand and state roles the palette gives one meaning
+// each. Highlight is deliberately excluded: it is allowed to
 // coincide with Success (elephant does, by design — see Palette.Highlight's
 // doc comment). LogoGradient reuses these colours on purpose and is not
 // part of this check either.
@@ -87,11 +87,8 @@ var distinctRoles = []string{"Primary", "Secondary", "Accent", "Success", "Warni
 
 // TestNoTwoDistinctRolesShareAColour catches a palette where two roles with
 // different meanings render identically — e.g. a section title the same
-// colour as an error message. This failed for real against this repo's own
-// code before this change: CatppuccinMocha() had Accent and Danger both at
-// "#f38ba8", and Highlight and Warning both at "#f9e2af" (titles
-// indistinguishable from errors, and type badges from stale warnings). See
-// this task's report for the exact `go test` output that reproduced it.
+// colour as an error message, or a type badge the same colour as a stale
+// warning.
 func TestNoTwoDistinctRolesShareAColour(t *testing.T) {
 	for _, name := range paletteNames() {
 		t.Run(name, func(t *testing.T) {

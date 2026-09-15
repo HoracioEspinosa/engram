@@ -36,7 +36,7 @@ func (m Model) View() string {
 	return content
 }
 
-// ─── List (S3) ───────────────────────────────────────────────────────────────
+// ─── List ────────────────────────────────────────────────────────────────────
 
 func (m Model) viewList() string {
 	var b strings.Builder
@@ -181,7 +181,7 @@ func width(widths []int) int {
 	return total
 }
 
-// ─── Detail (S4) ─────────────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────────────────────
 
 func (m Model) viewDetail() string {
 	if m.Detail == nil {
@@ -294,7 +294,7 @@ func orEmpty(v *string) string {
 	return *v
 }
 
-// ─── Context pack (S5) ───────────────────────────────────────────────────────
+// ─── Context pack ────────────────────────────────────────────────────────────
 
 func (m Model) viewContextPack() string {
 	if m.Detail == nil || m.ContextPack == "" {
@@ -331,7 +331,7 @@ func (m Model) viewContextPack() string {
 
 // bodyWidth is how many cells this tab's rows may occupy: the terminal less
 // what the app frame spends either side. A screen that has not received a
-// tea.WindowSizeMsg yet assumes the width the wireframes were drawn at.
+// tea.WindowSizeMsg yet falls back to defaultBodyWidth.
 func (m Model) bodyWidth() int {
 	if m.Width <= 0 {
 		return defaultBodyWidth

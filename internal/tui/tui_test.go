@@ -28,7 +28,7 @@ func TestNewSatisfiesTheBubbleteaModelContract(t *testing.T) {
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	out := sized.View()
 	if !strings.Contains(out, "space fold") {
-		t.Fatalf("without a resolvable project the TUI should open on the project tree (rfc-tui.md §9.1), got:\n%s", out)
+		t.Fatalf("without a resolvable project the TUI should open on the project tree, got:\n%s", out)
 	}
 
 	// The tree is composited over the workspace rather than replacing it, but
@@ -130,12 +130,9 @@ func TestNewWiresTheStoreIntoTheMemoryTab(t *testing.T) {
 	}
 }
 
-// TestNewOpensTheDashboardForAnExplicitProject pins rfc-tui.md §9.1's
-// "Semántica de --project": engram tui --project <slug> must open straight
-// on that project's Dashboard (S2) with its real counters, not on the Memory
-// tab or an empty Selector. Before this test, New took no project argument at
-// all, so `engram tui --project nextcloud` silently ignored the flag —
-// exactly the closing criterion roadmap task T-10.02 fixes.
+// TestNewOpensTheDashboardForAnExplicitProject pins the --project semantics:
+// engram tui --project <slug> opens straight on that project's Home tab with
+// its real counters, not on the Memory tab and not on the project tree.
 func TestNewOpensTheDashboardForAnExplicitProject(t *testing.T) {
 	s := newTestStore(t)
 	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: "clarodrive"}); err != nil {

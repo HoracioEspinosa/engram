@@ -145,11 +145,11 @@ func legibilityIssues(p Palette) []contrastIssue {
 	return issues
 }
 
-// knownContrastDebt lists (role, background) pairs that fail their bar today
-// under hues chosen elsewhere: elephant is the palette that shipped before
-// theming existed — theme.go's Elephant doc comment fixes its hues so "an
-// upgrade never surprises anyone" — and kanagawa's are rfc-tui.md §8.1's own
-// table, transcribed faithfully rather than adjusted here.
+// knownContrastDebt lists (role, background) pairs that fail their bar under
+// hues chosen elsewhere: elephant carries engram's original hardcoded colours
+// — theme.go's Elephant doc comment fixes them so "an upgrade never surprises
+// anyone" — and kanagawa's come from the upstream colour scheme, transcribed
+// faithfully rather than adjusted here.
 //
 // Every entry belongs to one of those two inherited palettes. The four koi
 // palettes are this workspace's own and carry none: a palette designed here
@@ -177,13 +177,12 @@ var knownContrastDebt = map[string]map[string]bool{
 	},
 }
 
-// TestRegisteredPalettesAreLegible is the contrast test rfc-tui.md T-10.06
-// asks for: every colour the registry exposes through --theme /
+// TestRegisteredPalettesAreLegible is the contrast bar the workspace holds
+// itself to: every colour the registry exposes through --theme /
 // ENGRAM_TUI_THEME / tui.theme must clear MinContrastRatio (WCAG 2.1 AA,
 // 4.5:1) for every semantic foreground role against both background planes,
-// except the pre-existing debt knownContrastDebt names and tracks. Any
-// other violation — including one in a role or palette not listed there —
-// fails the test.
+// except the debt knownContrastDebt names and tracks. Any other violation —
+// including one in a role or palette not listed there — fails the test.
 //
 // This test's own sensitivity is proven by
 // TestLegibilityIssuesCatchesAnIllegiblePalette below: a palette outside the

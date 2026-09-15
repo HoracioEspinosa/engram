@@ -127,9 +127,9 @@ func TestSpaceOnALeafFoldsNothing(t *testing.T) {
 	}
 }
 
-// TestFilteringAChildKeepsItsParentOnScreen is §6.9's rule for the tree
-// filter: a hit that is nested has to be reachable, so the path down to it
-// stays visible even though the parent itself matched nothing.
+// TestFilteringAChildKeepsItsParentOnScreen pins the tree filter's rule: a
+// hit that is nested has to be reachable, so the path down to it stays
+// visible even though the parent itself matched nothing.
 func TestFilteringAChildKeepsItsParentOnScreen(t *testing.T) {
 	m := loadedTree(t)
 	m.tree.filterInput.SetValue("api")

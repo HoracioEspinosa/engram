@@ -34,14 +34,11 @@ type Palette struct {
 
 	// Primary marks the focused element and the brand.
 	Primary lipgloss.Color
-	// Secondary titles sections and headings (rfc-tui.md §8.1's "secondary"
-	// token: "títulos de sección").
+	// Secondary titles sections and headings.
 	Secondary lipgloss.Color
-	// Accent tags classifications such as an observation type badge
-	// (rfc-tui.md §8.1's "accent" token: "badges de tipo").
+	// Accent tags classifications such as an observation type badge.
 	Accent lipgloss.Color
-	// Highlight marks a search match inline (rfc-tui.md §8.1's "highlight"
-	// token: "coincidencias de búsqueda"). On elephant it happens to equal
+	// Highlight marks a search match inline. On elephant it happens to equal
 	// Success, which is why it is excluded from
 	// TestNoTwoDistinctRolesShareAColour.
 	Highlight lipgloss.Color
@@ -57,12 +54,10 @@ type Palette struct {
 	LogoGradient [logoRows]lipgloss.Color
 }
 
-// Elephant is the palette engram shipped with before theming existed —
-// rfc-tui.md §8 found these thirteen hex values hardcoded in styles.go under
-// a comment claiming Catppuccin Mocha, when they are actually Rosé Pine. It
-// stays selectable as "elephant" so an upgrade never surprises anyone who
-// liked the original look; CatppuccinMocha, not this, is the default (ADR-028
-// §5, rfc-tui.md §8.2).
+// Elephant is engram's original hardcoded palette: thirteen hex values
+// labelled Catppuccin Mocha that are in fact Rosé Pine. It stays selectable
+// as "elephant" so an upgrade never surprises anyone who likes that look;
+// CatppuccinMocha, not this, is the default.
 func Elephant() Palette {
 	var (
 		base      = lipgloss.Color("#191724")
@@ -100,8 +95,7 @@ func Elephant() Palette {
 }
 
 // CatppuccinMocha is the Catppuccin Mocha colour scheme and the default
-// theme (ADR-028 §5, rfc-tui.md §8.2). Values are transcribed from
-// rfc-tui.md §8.1's table, itself the project's canonical Catppuccin Mocha
+// theme. Values are transcribed from the scheme's published
 // hex codes (https://catppuccin.com/palette — mocha: lavender #b4befe,
 // mauve #cba6f7, peach #fab387, teal #94e2d5, blue #89b4fa), not composed.
 func CatppuccinMocha() Palette {
@@ -140,9 +134,8 @@ func CatppuccinMocha() Palette {
 	}
 }
 
-// Kanagawa is the Kanagawa "wave" colour scheme rfc-tui.md §8.1 specifies as
-// the second selectable option. Values are transcribed from that table,
-// itself Kanagawa's published hex codes
+// Kanagawa is the Kanagawa "wave" colour scheme, selectable as "kanagawa".
+// Values are transcribed from Kanagawa's published hex codes
 // (https://github.com/rebelot/kanagawa.nvim — wave: crystalBlue #7e9cd8,
 // oniViolet #957fb8, springGreen #98bb6c, carpYellow #e6c384, samuraiRed
 // #e82424, springBlue #7fb4ca, surimiOrange #ffa066, waveAqua2 #7aa89f), not
@@ -225,8 +218,8 @@ type Styles struct {
 	Notice       lipgloss.Style
 	UpdateBanner lipgloss.Style
 
-	// TabBar is the persistent tab bar's container (rfc-tui.md §7's chrome);
-	// TabActive and TabInactive style, respectively, the tab under the
+	// TabBar is the persistent tab bar's container; TabActive and
+	// TabInactive style, respectively, the tab under the
 	// cursor and every other one, so the bar always paints with the active
 	// palette instead of a default one.
 	TabBar      lipgloss.Style

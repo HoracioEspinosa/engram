@@ -10,8 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// TestDigitKeysSwitchTabsAndRefresh pins §6.9's bar: each digit activates the
-// tab that owns that slot and triggers its Refresh(), from any other tab. The
+// TestDigitKeysSwitchTabsAndRefresh pins the tab bar: each digit activates
+// the tab that owns that slot and triggers its Refresh(), from any other tab. The
 // slots this build implements no tab for ("4", "6", "7") are covered by
 // TestDigitKeysForAnUnimplementedSlotStayPut.
 func TestDigitKeysSwitchTabsAndRefresh(t *testing.T) {
@@ -86,10 +86,9 @@ func TestADigitOutsideTheBarIsSwallowed(t *testing.T) {
 }
 
 // TestTabKeyAdvancesToTheNextRegisteredTab and
-// TestShiftTabGoesToThePreviousRegisteredTab pin rfc-tui.md §7.1's
-// "Tab / Shift+Tab | Pestaña siguiente / anterior", cycling through
-// registered (Home, Memory, Tasks, Evidence, Benchmarks, Runbooks,
-// Graph, Settings) and wrapping at
+// TestShiftTabGoesToThePreviousRegisteredTab pin Tab as the next tab and
+// Shift+Tab as the previous one, cycling through registered (Home, Memory,
+// Tasks, Evidence, Benchmarks, Runbooks, Graph, Settings) and wrapping at
 // either end.
 func TestTabKeyAdvancesToTheNextRegisteredTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
@@ -117,13 +116,12 @@ func TestShiftTabGoesToThePreviousRegisteredTab(t *testing.T) {
 	// Settings reads nothing, so there is no command to assert on here.
 }
 
-// TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText pins rfc-tui.md
-// §7.1: "cuando un textinput tiene el foco... las teclas globales se
-// suspenden". A digit typed into the Tasks search box must reach the input,
-// never switch tabs.
+// TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText pins that a
+// focused textinput suspends the global keys. A digit typed into the Tasks
+// search box must reach the input, never switch tabs.
 func TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.tree.open = false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // New opens the tree when no project resolves
 	m.active = tabs.Tasks
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
@@ -142,7 +140,7 @@ func TestDigitKeysAreSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 // value to type, but it must still not steal focus mid-search.
 func TestTabKeyIsSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.tree.open = false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // New opens the tree when no project resolves
 	m.active = tabs.Runbooks
 	m.runbooks.Searching = true
 	m.runbooks.SearchInput.Focus()
@@ -153,10 +151,9 @@ func TestTabKeyIsSuspendedWhileTheActiveTabIsCapturingText(t *testing.T) {
 	}
 }
 
-// TestDigitKeysDoNothingOnTheProjectTree pins that rfc-tui.md §7.3's
-// navigation diagram draws no edge from S1 through a digit: the overlay has
-// the keyboard while it is open, so digits are inert there instead of
-// switching to a tab nobody can see.
+// TestDigitKeysDoNothingOnTheProjectTree pins that no digit leads out of the
+// project tree: the overlay has the keyboard while it is open, so digits are
+// inert there instead of switching to a tab nobody can see.
 func TestDigitKeysDoNothingOnTheProjectTree(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.tree.open = true
@@ -170,16 +167,15 @@ func TestDigitKeysDoNothingOnTheProjectTree(t *testing.T) {
 	}
 }
 
-// The following five tests are the "no new key steals one a screen already
-// used" check rfc-tui.md's acceptance criterion asks for, one case per tab:
-// none of the five uses a digit locally (measured with `rg -n 'case "'
-// internal/tui/tabs/*/update.go` — see this task's report), so the digit
-// must always resolve to a tab switch and never leak into the active tab's
-// own handling.
+// The following five tests check that no global key steals one a screen
+// already uses, one case per tab: none of the five uses a digit locally
+// (measured with `rg -n 'case "' internal/tui/tabs/*/update.go`), so the
+// digit must always resolve to a tab switch and never leak into the active
+// tab's own handling.
 
 func TestDigitDoesNotLeakIntoMemorysOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.tree.open = false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // New opens the tree when no project resolves
 	m.active = tabs.Memory
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
@@ -190,7 +186,7 @@ func TestDigitDoesNotLeakIntoMemorysOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoTasksOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.tree.open = false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // New opens the tree when no project resolves
 	m.active = tabs.Tasks
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("5")})
@@ -201,7 +197,7 @@ func TestDigitDoesNotLeakIntoTasksOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoEvidencesOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.tree.open = false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // New opens the tree when no project resolves
 	m.active = tabs.Evidence
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
@@ -212,7 +208,7 @@ func TestDigitDoesNotLeakIntoEvidencesOwnHandling(t *testing.T) {
 
 func TestDigitDoesNotLeakIntoRunbooksOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.tree.open = false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // New opens the tree when no project resolves
 	m.active = tabs.Runbooks
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
@@ -221,9 +217,9 @@ func TestDigitDoesNotLeakIntoRunbooksOwnHandling(t *testing.T) {
 	}
 }
 
-func TestDigitDoesNotLeakIntoCloudsOwnHandling(t *testing.T) {
+func TestDigitDoesNotLeakIntoSettingsOwnHandling(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.tree.open = false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // New opens the tree when no project resolves
 	m.active = tabs.Settings
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
@@ -232,19 +228,14 @@ func TestDigitDoesNotLeakIntoCloudsOwnHandling(t *testing.T) {
 	}
 }
 
-// TestZeroAndPAreAlsoSuspendedWhileCapturingText pins a fix bundled with
-// this task rather than invented separately for it: "0" and "p" were
-// already global before this row (rfc-tui.md §7.1 predates it), but
-// updateActive matched them with no textinput guard at all — unlike "r",
-// which every tab's own Update already gates behind its own focus check
-// before this task. Restructuring that same switch to add "1"…"5" made
-// leaving "0"/"p" unguarded next to a guarded "2" indefensible, so both now
-// share the guard. See this task's report for the literal `go test` output
-// this reproduced before the fix.
+// TestZeroAndPAreAlsoSuspendedWhileCapturingText pins that the global "0"
+// and "p" share the textinput guard with every other digit: a focused search
+// box keeps them all, so neither a tab switch nor the project tree fires
+// while the user is typing.
 func TestZeroAndPAreAlsoSuspendedWhileCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
-	m.tree.open = false // T-10.02: New alone no longer guarantees this
+	m.tree.open = false // New opens the tree when no project resolves
 	m.active = tabs.Tasks
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()

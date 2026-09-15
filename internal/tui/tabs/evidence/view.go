@@ -33,7 +33,7 @@ func (m Model) View() string {
 	return content
 }
 
-// ─── List (S6) ───────────────────────────────────────────────────────────────
+// ─── List ────────────────────────────────────────────────────────────────────
 
 func (m Model) viewList() string {
 	var b strings.Builder
@@ -160,7 +160,7 @@ func (m Model) viewEvidenceRow(item store.EvidenceListItem, selected bool, width
 	return strings.TrimRight(row, " ") + "\n"
 }
 
-// ─── Detail (S7) ─────────────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────────────────────
 
 func (m Model) viewDetail() string {
 	if m.Selected == nil {
@@ -217,10 +217,10 @@ func (m Model) viewDetail() string {
 }
 
 // viewManifestSection renders whatever readManifestEntry found next to the
-// selected file (rfc-tui.md §9.3): the positive/negative control pair when a
-// manifest.json exists and names this file, a plain notice when it does not
-// exist yet (today's real evidence, see manifest.go), and the parse error
-// when it exists but is not valid JSON.
+// selected file: the positive/negative control pair when a manifest.json
+// exists and names this file, a plain notice when it does not exist yet
+// (today's real evidence, see manifest.go), and the parse error when it
+// exists but is not valid JSON.
 func (m Model) viewManifestSection() string {
 	if !m.ManifestChecked {
 		return ""
@@ -263,8 +263,8 @@ func orEmptyStr(v *string) string {
 	return *v
 }
 
-// formatBytes renders size_bytes the way the dashboard and S7's wireframe
-// do: a human count, or "unknown" when the capture never recorded one.
+// formatBytes renders size_bytes the way the dashboard does: a human count,
+// or "unknown" when the capture never recorded one.
 func formatBytes(v *int64) string {
 	if v == nil {
 		return "unknown"
@@ -294,7 +294,7 @@ func filepathBase(path string) string {
 
 // bodyWidth is how many cells this tab's rows may occupy: the terminal less
 // what the app frame spends either side. A screen that has not received a
-// tea.WindowSizeMsg yet assumes the width the wireframes were drawn at.
+// tea.WindowSizeMsg yet falls back to a conventional 80-column terminal.
 func (m Model) bodyWidth() int {
 	if m.Width <= 0 {
 		return defaultBodyWidth

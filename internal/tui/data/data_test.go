@@ -219,10 +219,9 @@ func boolp(v bool) *bool    { return &v }
 
 // seedProject populates slug with one active task, one evidence file attached
 // to it, and one runbook flagged for review — one row in each table the
-// Selector (S1) and Dashboard (S2) read counters from (rfc-tui.md §3.1),
-// so TestSQLiteProjectReaderCoversTheContract exercises every real query
-// those screens depend on, not just the ones with an existing store-level
-// test.
+// project tree and the Home tab read counters from, so
+// TestSQLiteProjectReaderCoversTheContract exercises every real query those
+// screens depend on, not just the ones with an existing store-level test.
 func seedProject(t *testing.T, s *store.Store, slug string) store.Task {
 	t.Helper()
 
@@ -376,8 +375,8 @@ func TestSQLiteProjectReaderWithoutAStoreReportsIt(t *testing.T) {
 // TestSQLiteTaskReaderCoversTheContract exercises every TaskReader method
 // against a real store: the seeded ACME-1 task (seedProject) already carries
 // one evidence file, so this only adds the observation link ListTasks and
-// Task alone cannot cover, then drives the two writes ADR-028 allows from the
-// TUI (UpdateState, LinkObservation) and the context pack (S5).
+// Task alone cannot cover, then drives the only two writes the TUI makes
+// (UpdateState, LinkObservation) and the context pack.
 func TestSQLiteTaskReaderCoversTheContract(t *testing.T) {
 	s := newTestStore(t)
 	const slug = "acme"
@@ -519,8 +518,8 @@ func TestFakeMemoryErrShortCircuitsEveryCall(t *testing.T) {
 // NewEvidenceReader against a real store instead of data.FakeEvidence, which
 // is what every Evidence Update test uses. seedProject's evidence.png is
 // enough for the plain list; a second task's evidence pins the task_id
-// filter rfc-tui.md §9.2's S6 query needs (`e.task_id = ?2`), the one no
-// existing store-level test covered before T-10.04.
+// filter the Evidence list's query needs (`e.task_id = ?2`), which no
+// store-level test covers.
 func TestSQLiteEvidenceReaderCoversTheContract(t *testing.T) {
 	s := newTestStore(t)
 	const slug = "acme"
@@ -748,11 +747,11 @@ func TestFakeRunbookErrShortCircuits(t *testing.T) {
 }
 
 // TestFakeProjectReturnsWhatItWasGiven is FakeProject's counterpart of
-// TestFakeMemoryReturnsWhatItWasGiven: nothing exercised FakeProject's own
-// methods before this task (the Selector and Dashboard Update tests all
-// build data.FakeProject directly and read the fields back, never through
-// the interface methods themselves), which is why the package's coverage
-// left every one of them at 0%.
+// TestFakeMemoryReturnsWhatItWasGiven: nothing else exercises FakeProject's
+// own methods (the project tree and Home Update tests all build
+// data.FakeProject directly and read the fields back, never through the
+// interface methods themselves), so without this case the package's coverage
+// leaves every one of them at 0%.
 func TestFakeProjectReturnsWhatItWasGiven(t *testing.T) {
 	card := store.ProjectCard{Slug: "acme", DisplayName: "Acme"}
 	health := ProjectHealth{ProjectCardCounts: store.ProjectCardCounts{Observations: 3}}
@@ -984,9 +983,9 @@ func TestJiraURLBuildsTheBrowseLink(t *testing.T) {
 // failing after ProjectCardCounts already succeeded, TaskObservationsForTask
 // or ListEvidence failing after GetTask already succeeded, LinkTaskObservation
 // failing after GetTask already succeeded): forcing only the second query in
-// a chain to fail would need a store double narrower than *store.Store, and
-// this task did not build one for four branches that already sit well clear
-// of the package's 80% target.
+// a chain to fail would need a store double narrower than *store.Store, which
+// is not worth building for four branches that already sit well clear of the
+// package's 80% target.
 func TestSQLiteProjectReaderHealthReportsAClosedStore(t *testing.T) {
 	s := newTestStore(t)
 	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: "acme"}); err != nil {

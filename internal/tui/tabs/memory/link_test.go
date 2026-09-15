@@ -20,9 +20,9 @@ func sampleLinkTasks() map[string][]store.TaskListItem {
 	}
 }
 
-// TestLKeyOpensLinkPickerFromObservationDetail pins rfc-tui.md §5's only
-// addition to the memory screens: "L" on Observation Detail opens the
-// shared task selector for the observation currently on screen.
+// TestLKeyOpensLinkPickerFromObservationDetail pins the "L" binding: on
+// Observation Detail it opens the shared task selector for the observation
+// currently on screen.
 func TestLKeyOpensLinkPickerFromObservationDetail(t *testing.T) {
 	m := New(nil, "").WithTasks(&data.FakeTask{}).WithProject("nextcloud")
 	m.Screen = ScreenObservationDetail
@@ -60,7 +60,7 @@ func TestLKeyIsANoOpOnObservationDetailWithoutAnObservation(t *testing.T) {
 }
 
 // TestLKeyOpensLinkPickerFromSearchResults pins the second of the three
-// screens rfc-tui.md §5 names: Search Results.
+// screens the picker opens from: Search Results.
 func TestLKeyOpensLinkPickerFromSearchResults(t *testing.T) {
 	m := New(nil, "").WithTasks(&data.FakeTask{}).WithProject("nextcloud")
 	m.Screen = ScreenSearchResults
@@ -148,10 +148,9 @@ func TestLinkQuerySubmitReportsAnError(t *testing.T) {
 }
 
 // TestLinkPickerEnterLinksTheObservationAndNavigatesToTheTask is the whole
-// round trip rfc-tui.md §5 describes: pick a task from the shared selector,
-// write the task_observations row (what mem_task_link does over MCP today),
-// and land on that task's detail — the MEM -->|L link| TD edge in §7.3's
-// navigation diagram.
+// round trip: pick a task from the shared selector, write the
+// task_observations row (what mem_task_link does over MCP), and land on that
+// task's detail.
 func TestLinkPickerEnterLinksTheObservationAndNavigatesToTheTask(t *testing.T) {
 	fake := &data.FakeTask{ItemsByProject: sampleLinkTasks()}
 	m := New(nil, "").WithTasks(fake).WithProject("nextcloud")
@@ -244,10 +243,10 @@ func TestLinkPickerEscCancelsFromTheResultsList(t *testing.T) {
 	}
 }
 
-// TestCapturingTextIncludesTheLinkPicker extends rfc-tui.md §7.1's
-// suspension rule to "L": while the picker is open — typing a query or
-// browsing its results — the root must not steal 0, p, a digit or Tab out
-// from under it, the same guard T-10.09 added for the search box.
+// TestCapturingTextIncludesTheLinkPicker extends the suspension rule to "L":
+// while the picker is open — typing a query or browsing its results — the
+// root must not steal 0, p, a digit or Tab out from under it, the same guard
+// the search box has.
 func TestCapturingTextIncludesTheLinkPicker(t *testing.T) {
 	m := New(nil, "").WithTasks(&data.FakeTask{})
 	m.Screen = ScreenObservationDetail
@@ -270,8 +269,8 @@ func TestCapturingTextIncludesTheLinkPicker(t *testing.T) {
 	}
 }
 
-// TestHelpAdvertisesTheLinkToTaskKey pins rfc-tui.md §5's S10 wireframe,
-// which lists "L link to task" alongside the screen's other keys. The root
+// TestHelpAdvertisesTheLinkToTaskKey pins that the Memory screens list
+// "L link to task" alongside their other keys. The root
 // renders the footer from this declaration, so declaring it is what puts it
 // on the always-on hint line as well as in the "?" overlay.
 func TestHelpAdvertisesTheLinkToTaskKey(t *testing.T) {

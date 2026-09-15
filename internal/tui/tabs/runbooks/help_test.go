@@ -6,9 +6,9 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 )
 
-// TestHelpVariesBetweenIndexAndView pins that the "?" overlay (rfc-tui.md
-// §7.1) tracks whichever screen is on display: S8's "a"/"/" filters and S9's
-// "e"/"o" editor/hub actions are not interchangeable.
+// TestHelpVariesBetweenIndexAndView pins that the "?" overlay tracks
+// whichever screen is on display: the index's "a"/"/" filters and the
+// Markdown view's "e"/"o" editor/hub actions are not interchangeable.
 func TestHelpVariesBetweenIndexAndView(t *testing.T) {
 	m := New(nil, nil)
 
@@ -38,9 +38,8 @@ func bindingKeys(bindings []key.Binding) string {
 	return s
 }
 
-// TestCapturingTextReflectsTheSearchBoxFocus pins rfc-tui.md §7.1's
-// suspension rule: the root must not steal a digit typed into the runbook
-// search box.
+// TestCapturingTextReflectsTheSearchBoxFocus pins the suspension rule: the
+// root must not steal a digit typed into the runbook search box.
 func TestCapturingTextReflectsTheSearchBoxFocus(t *testing.T) {
 	m := New(nil, nil)
 	if m.CapturingText() {

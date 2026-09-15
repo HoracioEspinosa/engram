@@ -449,7 +449,7 @@ func (m Model) updateProjectTree(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
 			return false, m, nil
 		}
 		// A focused text input owns the keyboard, the same rule the tabs play
-		// by (rfc-tui.md §7.1).
+		// by.
 		if tab := m.tab(m.active); tab != nil && tab.CapturingText() {
 			return false, m, nil
 		}

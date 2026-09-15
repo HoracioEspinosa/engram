@@ -38,8 +38,8 @@ func TestTitleIsEvidence(t *testing.T) {
 	}
 }
 
-// TestRefreshOnTheListReloadsTheFilteredList pins the "r" key's route on S6
-// and app.Model's "activate this tab" call: with no row selected, Refresh
+// TestRefreshOnTheListReloadsTheFilteredList pins the "r" key's route on the
+// list and app.Model's "activate this tab" call: with no row selected, Refresh
 // reloads the list under the current filter rather than trying a manifest
 // read it has nothing to target.
 func TestRefreshOnTheListReloadsTheFilteredList(t *testing.T) {
@@ -59,8 +59,8 @@ func TestRefreshOnTheListReloadsTheFilteredList(t *testing.T) {
 }
 
 // TestRefreshOnTheDetailReloadsTheSelectedRowsManifest pins the same "r" key
-// once a row is selected on S7 (rfc-tui.md §3.1): it must reload the
-// manifest for the row on screen, not the list behind it.
+// once a row is selected on the detail screen: it must reload the manifest
+// for the row on screen, not the list behind it.
 func TestRefreshOnTheDetailReloadsTheSelectedRowsManifest(t *testing.T) {
 	item := sampleItem(1, 9, "ACME-9", "ACME-9/a.png", false)
 	m := detailModel(t, item)
@@ -79,8 +79,8 @@ func TestRefreshOnTheDetailReloadsTheSelectedRowsManifest(t *testing.T) {
 }
 
 // TestOpenForTaskScopesTheListToTheGivenTaskAndReloads pins the deep link
-// rfc-tui.md §3.1 S4's "e" key drives via tabs.NavigateMsg.TaskID: the root
-// calls this instead of replaying whatever filter S6 had before.
+// the task detail screen's "e" key drives via tabs.NavigateMsg.TaskID: the
+// root calls this instead of replaying whatever filter the list was holding.
 func TestOpenForTaskScopesTheListToTheGivenTaskAndReloads(t *testing.T) {
 	fake := &data.FakeEvidence{ItemsByProject: map[string][]store.EvidenceListItem{
 		"acme": {

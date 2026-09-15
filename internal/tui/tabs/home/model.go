@@ -16,9 +16,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// blockLimit caps each of Home's lists. Five is what the S2 wireframe shows
-// for recent tasks, applied uniformly so one project with a long tail never
-// dwarfs the screen.
+// blockLimit caps each of Home's lists. Five rows per block, applied
+// uniformly, so one project with a long tail never dwarfs the screen.
 const blockLimit = 5
 
 // Model is the Home tab's state.

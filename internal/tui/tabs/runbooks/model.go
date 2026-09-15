@@ -1,6 +1,6 @@
 // Package runbooks is the Runbooks workspace tab: the project's (or every
-// project's) runbook index, and one runbook's Markdown rendered with glamour
-// (rfc-tui.md §3.1 S8-S9).
+// project's) runbook index, and one runbook's Markdown rendered with
+// glamour.
 //
 // It is an isolated Elm sub-model, shaped like tabs/tasks and tabs/evidence:
 //   - screen constants are a local iota; the root does not know them
@@ -9,8 +9,8 @@
 //
 // Data reaches the tab through data.RunbookReader, never through
 // *store.Store, and styling through theme.Styles. Editing a runbook is out
-// of scope for v1 (ADR-028 point 2): "e" opens the file in $EDITOR, the TUI
-// itself never writes to the vault.
+// of scope: "e" opens the file in $EDITOR, the TUI itself never writes to
+// the vault.
 package runbooks
 
 import (
@@ -26,8 +26,8 @@ import (
 
 // ─── Screens ─────────────────────────────────────────────────────────────────
 
-// Screen is the Runbooks tab's own screen enum (rfc-tui.md §3.1: S8 index, S9
-// Markdown view). Not exported to the root, same as evidence.Screen.
+// Screen is the Runbooks tab's own screen enum: the index and the Markdown
+// view. Not exported to the root, same as evidence.Screen.
 type Screen int
 
 const (
@@ -35,8 +35,8 @@ const (
 	ScreenView
 )
 
-// searchLimit caps SearchRunbooks results, matching rfc-tui.md §9.2's "S8
-// search by symptoms" query (`... LIMIT 50`).
+// searchLimit caps SearchRunbooks results: the search-by-symptoms query
+// stops at 50 rows.
 const searchLimit = 50
 
 // ─── messages (data loaded) ──────────────────────────────────────────────────
@@ -73,7 +73,7 @@ type markdownLoadedMsg struct {
 }
 
 // editorClosedMsg carries the outcome of execEditor's tea.ExecProcess once
-// $EDITOR exits (rfc-tui.md §9.4: "e abre el archivo en $EDITOR").
+// $EDITOR exits, opened by "e" on the runbook's own file.
 type editorClosedMsg struct {
 	err error
 }
@@ -95,7 +95,7 @@ type Model struct {
 	// Below it there is only the master, and "l" leaves the focus there.
 	Focus shared.Pane
 
-	// Index (S8).
+	// Index.
 	Items  []store.RunbookIndexRow
 	Cursor int
 	Scroll int
@@ -108,7 +108,7 @@ type Model struct {
 	Searching   bool
 	SearchInput textinput.Model
 
-	// Markdown view (S9).
+	// Markdown view.
 	Selected    *store.RunbookIndexRow
 	MarkdownRaw string
 	Rendered    string
@@ -123,7 +123,7 @@ type Model struct {
 
 // New creates the Runbooks tab bound to the given readers: reader for the
 // runbook index itself, projects for resolving the active project's
-// knowledge_hub_path ("o", rfc-tui.md §9.4). The tab starts with no project:
+// knowledge_hub_path (the "o" key). The tab starts with no project:
 // the root scopes it with WithProject once one is active, exactly as it
 // constructs evidence.Model — see app.Model.New and the selector's "enter"
 // key.
@@ -144,7 +144,7 @@ func New(reader data.RunbookSource, projects data.ProjectReader) Model {
 // WithStyles returns a copy of m painted with styles instead of the default
 // theme.New built it with — app.New calls this once, right after New, so
 // the tab renders under the same resolved palette as the workspace chrome
-// around it (rfc-tui.md §8.2's --theme / ENGRAM_TUI_THEME / tui.theme). It
+// around it (--theme / ENGRAM_TUI_THEME / tui.theme). It
 // also carries into the ansi.StyleConfig markdown.go builds for glamour, so
 // a Markdown-rendered runbook matches the palette its own index screen uses.
 func (m Model) WithStyles(styles theme.Styles) Model {
@@ -217,7 +217,8 @@ func (m Model) Init() tea.Cmd {
 }
 
 // Refresh reloads the data behind the current screen: the index or the
-// active search on S8, or the selected runbook's Markdown on S9. The root
+// active search on the index, or the selected runbook's Markdown in the
+// Markdown view. The root
 // calls it on "r" and whenever this tab becomes active.
 func (m Model) Refresh() tea.Cmd {
 	if m.Screen == ScreenView && m.Selected != nil {

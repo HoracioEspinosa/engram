@@ -70,7 +70,7 @@ func withHeight(m Model, h int) Model {
 	return m
 }
 
-// ─── List (S3) ───────────────────────────────────────────────────────────────
+// ─── List ────────────────────────────────────────────────────────────────────
 
 func TestNewStartsOnTheListScreenWithNoProject(t *testing.T) {
 	m := New(&data.FakeTask{})
@@ -98,8 +98,8 @@ func TestInitLoadsTasksWhenAProjectIsAlreadyActive(t *testing.T) {
 	}
 }
 
-// TestOpenTaskLoadsTheGivenTasksDetail pins rfc-tui.md §3.1 S7's "Enter" on
-// an evidence file: the root drives this the same way it drives
+// TestOpenTaskLoadsTheGivenTasksDetail pins "Enter" on an evidence file, from
+// the evidence detail screen: the root drives this the same way it drives
 // memory.Model.OpenObservation for the Memory deep link, so a message from
 // outside this package (tabs.NavigateMsg.TaskID) can open a task's detail
 // without the Tasks tab importing tabs/evidence.
@@ -348,7 +348,7 @@ func TestListEscGoesHome(t *testing.T) {
 	}
 }
 
-// ─── Detail (S4) ─────────────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────────────────────
 
 func TestDetailEnterOnAnObservationNavigatesToMemory(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
@@ -370,10 +370,10 @@ func TestDetailEnterOnAnObservationNavigatesToMemory(t *testing.T) {
 	}
 }
 
-// TestDetailEvidenceKeyNavigatesToEvidenceFilteredByTheTask pins T-10.04's
-// dependency: rfc-tui.md §3.1 S4's "e" must filter the Evidence tab down to
-// the task under view (S6's task_id filter), which needs TaskID on
-// tabs.NavigateMsg — until T-10.04 the key only switched tabs with no filter.
+// TestDetailEvidenceKeyNavigatesToEvidenceFilteredByTheTask pins that the
+// task detail screen's "e" filters the Evidence tab down to the task under
+// view rather than merely switching to it, which is what TaskID on
+// tabs.NavigateMsg carries.
 func TestDetailEvidenceKeyNavigatesToEvidenceFilteredByTheTask(t *testing.T) {
 	task := sampleTask(9, "ACME-9", "open")
 	m := New(&data.FakeTask{}).WithProject("acme")
@@ -646,7 +646,7 @@ func TestDetailEscReturnsToListAndReloadsIt(t *testing.T) {
 	}
 }
 
-// ─── Context pack (S5) ───────────────────────────────────────────────────────
+// ─── Context pack ────────────────────────────────────────────────────────────
 
 func TestContextPackLoadsAndRendersFromDetail(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
@@ -878,7 +878,7 @@ func TestContextPackLoadedSurfacesAnError(t *testing.T) {
 	}
 }
 
-// ─── Search input (S3 overlay) ────────────────────────────────────────────────
+// ─── Search input (list overlay) ─────────────────────────────────────────────
 
 func TestHandleSearchInputKeysEscBlursAndClearsTheQuery(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")
@@ -912,7 +912,7 @@ func TestHandleSearchInputKeysTypingUpdatesTheValue(t *testing.T) {
 	}
 }
 
-// ─── Link input (S4 overlay) ─────────────────────────────────────────────────
+// ─── Link input (detail overlay) ─────────────────────────────────────────────
 
 func TestHandleLinkInputKeysEscBlursAndClearsTheValue(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
@@ -971,7 +971,7 @@ func TestHandleLinkInputKeysEnterWithNoDetailClosesWithoutLinking(t *testing.T) 
 	}
 }
 
-// ─── State picker (S4 overlay) ────────────────────────────────────────────────
+// ─── State picker (detail overlay) ───────────────────────────────────────────
 
 func TestHandleStatePickerKeysUpClampsAtZero(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
@@ -1013,7 +1013,7 @@ func TestHandleStatePickerKeysEnterWithNoDetailClosesWithoutWriting(t *testing.T
 	}
 }
 
-// ─── Detail (S4) — remaining keys ─────────────────────────────────────────────
+// ─── Detail — remaining keys ─────────────────────────────────────────────────
 
 func TestDetailUKeyOpensThePR(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
@@ -1095,7 +1095,7 @@ func TestDetailRKeyReloadsTheTask(t *testing.T) {
 	}
 }
 
-// ─── Context pack (S5) — remaining keys ───────────────────────────────────────
+// ─── Context pack — remaining keys ───────────────────────────────────────────
 
 func TestHandleContextPackKeysScrolls(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")

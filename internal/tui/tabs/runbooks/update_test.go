@@ -63,7 +63,7 @@ func newModel(reader data.RunbookSource, projects data.ProjectReader) Model {
 	return New(reader, projects)
 }
 
-// ─── Index (S8) ──────────────────────────────────────────────────────────────
+// ─── Index ───────────────────────────────────────────────────────────────────
 
 func TestNewStartsOnTheIndexScreenWithNoProject(t *testing.T) {
 	m := newModel(&data.FakeRunbook{}, nil)
@@ -225,7 +225,7 @@ func TestSearchEscCancelsWithoutClearingTheActiveQuery(t *testing.T) {
 		t.Fatal("esc should cancel typing, not reload")
 	}
 	if m.Query != "preview" {
-		t.Fatalf("Query = %q, want the previously committed search left untouched", m.Query)
+		t.Fatalf("Query = %q, want the committed search left untouched", m.Query)
 	}
 	if m.SearchInput.Value() != "preview" {
 		t.Fatalf("SearchInput value = %q, want it reset to the active query", m.SearchInput.Value())
@@ -300,7 +300,7 @@ func TestErrorFromTheIndexLoadIsSurfaced(t *testing.T) {
 	}
 }
 
-// ─── Markdown view (S9) ──────────────────────────────────────────────────────
+// ─── Markdown view ───────────────────────────────────────────────────────────
 
 func TestEnterOpensTheMarkdownViewAndRendersAnExistingFile(t *testing.T) {
 	dir := t.TempDir()
@@ -364,8 +364,9 @@ func TestMarkdownViewReportsWhenTheFileIsNotClonedLocally(t *testing.T) {
 	}
 }
 
-// TestMarkdownViewReportsWhenVaultRootIsNotSet pins ADR-053 §6: with
-// ENGRAM_VAULT_ROOT unset, S9 must name the variable instead of concluding
+// TestMarkdownViewReportsWhenVaultRootIsNotSet pins the unconfigured-vault
+// rule: with ENGRAM_VAULT_ROOT unset, the Markdown view must name the
+// variable instead of concluding
 // "not cloned locally" — the same on-disk absence (FileExists false) as
 // TestMarkdownViewReportsWhenTheFileIsNotClonedLocally, but with a message
 // that reads differently because the two situations need different fixes.
@@ -446,8 +447,8 @@ func TestEditorKeyUsesTheInjectableExecEditor(t *testing.T) {
 	}
 }
 
-// TestEditorKeyReportsWhenVaultRootIsNotSet pins ADR-053 §6 on the "e" path:
-// with no checkout configured there is no path to hand $EDITOR, so it must
+// TestEditorKeyReportsWhenVaultRootIsNotSet pins the same rule on the "e"
+// path: with no checkout configured there is no path to hand $EDITOR, so it must
 // name the variable instead of either opening a bogus relative path or
 // invoking execEditor at all.
 func TestEditorKeyReportsWhenVaultRootIsNotSet(t *testing.T) {
@@ -528,7 +529,7 @@ func TestOKeyOpensTheHubViaTheInjectableExecEditor(t *testing.T) {
 	}
 }
 
-// TestOKeyReportsWhenVaultRootIsNotSet pins ADR-053 §6 on the "o" path: a
+// TestOKeyReportsWhenVaultRootIsNotSet pins the same rule on the "o" path: a
 // project with a knowledge_hub_path configured is not enough to open it
 // without a vault checkout to resolve that path against.
 func TestOKeyReportsWhenVaultRootIsNotSet(t *testing.T) {
@@ -578,8 +579,8 @@ func TestOKeyReportsWhenTheProjectHasNoHubConfigured(t *testing.T) {
 }
 
 // TestViewScrollKeysMoveAndClamp pins handleViewKeys' up/down/g/G branches,
-// none of which any test before this task drove: every existing S9 test
-// only exercised e/t/c/o/r/esc.
+// the ones the other Markdown-view tests leave alone: they only exercise
+// e/t/c/o/r/esc.
 func TestViewScrollKeysMoveAndClamp(t *testing.T) {
 	item := sampleRunbook("RB-003", "acme", "Preview endpoint slow", true)
 	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")
@@ -613,7 +614,7 @@ func TestViewScrollKeysMoveAndClamp(t *testing.T) {
 // TestReloadKeyInTheViewReloadsMarkdown pins handleViewKeys' "r" branch,
 // distinct from Refresh() (model_test.go's own
 // TestRefreshReloadsTheMarkdownOnTheView): this is the key press path, the
-// one a user on S9 actually presses.
+// one a user in the Markdown view actually presses.
 func TestReloadKeyInTheViewReloadsMarkdown(t *testing.T) {
 	item := sampleRunbook("RB-003", "acme", "Preview endpoint slow", true)
 	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")

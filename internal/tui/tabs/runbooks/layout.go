@@ -5,8 +5,7 @@ package runbooks
 // shared.VisibleItems with the constants below, or the cursor drifts out of
 // the rendered window.
 const (
-	// runbookItemLines is the height of one index row (rfc-tui.md §5's S8
-	// wireframe: one line per runbook).
+	// runbookItemLines is the height of one index row: one line per runbook.
 	runbookItemLines = 1
 
 	// minVisibleItems is the floor applied when the terminal is too short

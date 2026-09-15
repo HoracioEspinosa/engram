@@ -24,8 +24,8 @@ func (k rootHelpKeyMap) FullHelp() [][]key.Binding {
 
 // activeScreenHelp returns the bindings of whatever currently answers the
 // keyboard: the overlay holding it, in the order the overlays take it, and the
-// active tab's Help() when none is open (rfc-tui.md §7.1: "lista los atajos
-// que esa pantalla declara, no una lista fija").
+// active tab's Help() when none is open. The list is whatever that screen
+// declares, never a fixed one.
 //
 // An overlay is modal, so the hints under it name its keys and not the
 // screen's: the body stays visible behind the panel, and hints naming keys
@@ -46,15 +46,14 @@ func (m Model) activeScreenHelp() []key.Binding {
 	return nil
 }
 
-// viewHelpOverlay renders the "?" overlay (rfc-tui.md §7.1) with
-// bubbles/help: the chrome's own global bindings alongside whichever screen
-// is active's own, styled from the resolved palette rather than a default
-// one.
+// viewHelpOverlay renders the "?" overlay with bubbles/help: the chrome's own
+// global bindings alongside whichever screen is active's own, styled from the
+// resolved palette rather than a default one.
 func (m Model) viewHelpOverlay() string {
 	h := help.New()
 	h.ShowAll = true
-	// The overlay is composited over the body now, so it has to fit inside
-	// the frame that is still drawn around it.
+	// The overlay is composited over the body, so it has to fit inside the
+	// frame drawn around it.
 	if width := m.width - overlayChromeCells; width > 0 {
 		h.Width = width
 	}

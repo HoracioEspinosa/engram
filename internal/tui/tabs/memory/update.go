@@ -27,9 +27,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 
 	case tea.KeyMsg:
 		// The "L" link-to-task picker is a modal overlay independent of
-		// Screen (rfc-tui.md §7.1's textinput suspension rule extends to
-		// its whole lifetime, not just while its query box is focused —
-		// see CapturingText), so it is checked before the search input and
+		// Screen; it suspends the root's own key handling for its whole
+		// lifetime, not just while its query box is focused (see
+		// CapturingText), so it is checked before the search input and
 		// before the per-screen router.
 		if m.Linking {
 			return m.handleLinkingKeys(msg)
@@ -295,9 +295,9 @@ func (m Model) handleDashboardSelection() (tabs.Tab, tea.Cmd) {
 		m.SetupInstallingName = ""
 		return m, nil
 	case 4: // Cloud sync settings
-		// Cloud lives in its own tab; ask the root to activate it. The cursor
-		// is reset here so returning to the dashboard lands on the first item,
-		// exactly as leaving any other screen does.
+		// Cloud sync is configured from the Settings tab; ask the root to
+		// activate it. The cursor is reset here so returning to the dashboard
+		// lands on the first item, exactly as leaving any other screen does.
 		m.PrevScreen = ScreenDashboard
 		m.Cursor = 0
 		return m, tabs.Navigate(tabs.Settings)
@@ -748,7 +748,7 @@ func (m Model) handleSetupKeys(key string) (tabs.Tab, tea.Cmd) {
 
 // ─── Link to Task (L) ────────────────────────────────────────────────────────
 
-// startLinking opens the "L" picker (rfc-tui.md §5) for obsID: the
+// startLinking opens the "L" picker for obsID: the
 // observation the cursor was on, or the one Observation Detail is showing,
 // when the key was pressed.
 func (m Model) startLinking(obsID int64) (tabs.Tab, tea.Cmd) {

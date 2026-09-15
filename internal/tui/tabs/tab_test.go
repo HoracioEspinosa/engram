@@ -59,9 +59,9 @@ func TestNavigateEmitsNavigateMsg(t *testing.T) {
 }
 
 // TestNavigateToTaskEvidenceEmitsAnEvidenceTargetWithTheTaskID pins the
-// dependency T-10.03's S4 "e" key left declared: rfc-tui.md §3.1 S6 filters
-// by task_id when reached from a task's detail, which needs a field
-// NavigateMsg did not have (only ObservationID, for the Memory deep link).
+// dependency the task detail screen's "e" key declares: the Evidence list
+// filters by task_id when reached from a task's detail, which is what TaskID
+// carries — ObservationID only serves the Memory deep link.
 func TestNavigateToTaskEvidenceEmitsAnEvidenceTargetWithTheTaskID(t *testing.T) {
 	cmd := NavigateToTaskEvidence(42)
 	if cmd == nil {
@@ -80,9 +80,9 @@ func TestNavigateToTaskEvidenceEmitsAnEvidenceTargetWithTheTaskID(t *testing.T) 
 	}
 }
 
-// TestNavigateToTaskEmitsATasksTargetWithTheTaskID pins rfc-tui.md §3.1 S7's
-// "Enter" on an evidence file, which opens that file's task inside Tasks —
-// the mirror image of NavigateToTaskEvidence.
+// TestNavigateToTaskEmitsATasksTargetWithTheTaskID pins the evidence detail
+// screen's "Enter" on an evidence file, which opens that file's task inside
+// Tasks — the mirror image of NavigateToTaskEvidence.
 func TestNavigateToTaskEmitsATasksTargetWithTheTaskID(t *testing.T) {
 	cmd := NavigateToTask(7)
 	if cmd == nil {
@@ -101,9 +101,10 @@ func TestNavigateToTaskEmitsATasksTargetWithTheTaskID(t *testing.T) {
 	}
 }
 
-// TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery pins rfc-tui.md
-// §3.1 S8/S9's "t" key: it needs a field none of the above cover, since
-// ObservationID and TaskID both name an id, not a search string.
+// TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery pins the "t" key
+// on the Runbooks index and on the runbook Markdown view: it needs a field
+// none of the above cover, since ObservationID and TaskID both name an id,
+// not a search string.
 func TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery(t *testing.T) {
 	cmd := NavigateToMemorySearch("runbook/RB-003")
 	if cmd == nil {
@@ -122,11 +123,10 @@ func TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery(t *testing.T) {
 	}
 }
 
-// TestNavigateToObservationEmitsAMemoryTargetWithTheObservationID pins
-// rfc-tui.md §3.1 S4's "Enter" on a task's linked observation, the one
-// NavigateMsg constructor no test exercised: app/update.go's own NavigateMsg
-// branch for it is covered through app's tests, but the constructor itself,
-// in isolation, was not.
+// TestNavigateToObservationEmitsAMemoryTargetWithTheObservationID pins the
+// task detail screen's "Enter" on a task's linked observation. app/update.go's
+// NavigateMsg branch for it is covered through app's tests; this covers the
+// constructor on its own.
 func TestNavigateToObservationEmitsAMemoryTargetWithTheObservationID(t *testing.T) {
 	cmd := NavigateToObservation(101)
 	if cmd == nil {

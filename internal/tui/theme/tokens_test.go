@@ -2,10 +2,10 @@ package theme
 
 import "testing"
 
-// specTokenHex is the palette table every registered theme was specified
+// specTokenHex is the palette table every registered theme is specified
 // from, transcribed verbatim: one hex literal per semantic token, per
 // palette. The four koi rows come from the workspace's own palette design,
-// the three below them from rfc-tui.md §8.1.
+// the three below them from the colour schemes engram adopts as-is.
 //
 // It exists only so TestPaletteFieldsMatchSpecTokens can compare a Palette
 // field against the exact value the specification assigns its token, instead

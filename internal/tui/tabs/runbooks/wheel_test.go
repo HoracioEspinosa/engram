@@ -60,8 +60,8 @@ func TestTheWheelOverThePreviewPaneMovesNothing(t *testing.T) {
 	}
 }
 
-// TestTheWheelScrollsTheMarkdownBody: S9 is one long body, so it scrolls
-// wherever the pointer is.
+// TestTheWheelScrollsTheMarkdownBody: the Markdown view is one long body, so
+// it scrolls wherever the pointer is.
 func TestTheWheelScrollsTheMarkdownBody(t *testing.T) {
 	m := wheelModel(t, 160, 40)
 	m.Screen = ScreenView

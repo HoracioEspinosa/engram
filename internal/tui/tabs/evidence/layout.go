@@ -5,8 +5,8 @@ package evidence
 // shared.VisibleItems with the constants below, or the cursor drifts out of
 // the rendered window.
 const (
-	// evidenceItemLines is the height of one list row (rfc-tui.md §5's S6
-	// wireframe: one line per file, unlike Tasks' two-line rows).
+	// evidenceItemLines is the height of one list row: one line per file,
+	// unlike Tasks' two-line rows.
 	evidenceItemLines = 1
 
 	// minVisibleItems is the floor applied when the terminal is too short

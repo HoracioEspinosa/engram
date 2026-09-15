@@ -25,16 +25,16 @@ import (
 // tea.WindowSizeMsg (a markdown load raced ahead of the first resize).
 const defaultRenderWidth = 80
 
-// absoluteVaultPath resolves a runbook_index.vault_path — relative to
-// shared.VaultRoot(), per rfc-tui.md §9.1's documented contract — to a real
-// filesystem path. It mirrors tabs/evidence/model.go's absolutePath: reading
+// absoluteVaultPath resolves a runbook_index.vault_path, which the store
+// keeps relative to shared.VaultRoot(), to a real filesystem path. It
+// mirrors tabs/evidence/model.go's absolutePath: reading
 // a runbook's Markdown file is not part of data.RunbookReader (see its doc
 // comment), the same way tabs/evidence keeps manifest.json off
 // data.EvidenceReader — plain filesystem access with nothing to query the
 // store for belongs to the tab, not the reader.
 //
 // ok is false when ENGRAM_VAULT_ROOT is not configured, in which case path
-// is empty. There is no default to fall back to (ADR-053 §6): joining an
+// is empty. There is no default to fall back to: joining an
 // empty root would silently resolve against the process's working
 // directory, which is not the vault and would make readRunbookMarkdown read
 // the wrong file (or none) without saying why.
@@ -49,12 +49,12 @@ func absoluteVaultPath(vaultPath string) (path string, ok bool) {
 // readRunbookMarkdown reads vaultPath's file relative to shared.VaultRoot().
 //
 // Neither a missing file nor an unconfigured ENGRAM_VAULT_ROOT is reported
-// as err: a missing file is documented by rfc-tui.md §9.4 as the normal
-// state of a checkout of cd-knowledge-mcp that was never cloned locally, and
-// an unconfigured variable is a configuration gap S9 must name rather than
-// an I/O failure. Both come back through exists=false — the caller tells
-// them apart by calling shared.VaultRoot() itself, the same source of truth
-// this function consulted, which is exactly what lets S9 render the correct
+// as err: a missing file is the normal state of a cd-knowledge-mcp checkout
+// that was never cloned locally, and an unconfigured variable is a
+// configuration gap the Markdown view must name rather than an I/O failure.
+// Both come back through exists=false — the caller tells them apart by
+// calling shared.VaultRoot() itself, the same source of truth this function
+// consulted, which is exactly what lets the Markdown view render the correct
 // one of the two instructions instead of a raw I/O error.
 func readRunbookMarkdown(vaultPath string) (content string, exists bool, err error) {
 	abs, ok := absoluteVaultPath(vaultPath)
@@ -72,14 +72,12 @@ func readRunbookMarkdown(vaultPath string) (content string, exists bool, err err
 }
 
 // renderMarkdown converts source into the ANSI-styled text glamour produces,
-// wrapped to width (rfc-tui.md §9.4: "la vista Markdown... lo renderiza con
-// glamour"), styled from palette instead of glamour's own automatic
-// light/dark detection (rfc-tui.md §8.2: "El estilo de glamour se genera
-// desde la misma paleta... para que el Markdown de runbooks no rompa la
-// coherencia visual").
+// wrapped to width and styled from palette instead of glamour's own
+// automatic light/dark detection, so a rendered runbook keeps the visual
+// coherence of the rest of the workspace.
 //
 // Two determinism fixes make this call, together, actually colourless under
-// a non-terminal stdout — T-10.07's teatest golden files need that, the
+// a non-terminal stdout — the teatest golden files need that, the
 // same way golden_test.go's own comment documents lipgloss falling back to
 // the Ascii profile automatically when `go test` attaches no TTY:
 //
@@ -149,7 +147,7 @@ func renderMarkdown(source string, width int, palette theme.Palette) (string, er
 
 // glamourStyleConfig derives a glamour ansi.StyleConfig from palette,
 // starting from glamour's own DarkStyleConfig (for its prefixes, indents and
-// bullet/blockquote/table formatting, none of which rfc-tui.md §8 assigns a
+// bullet/blockquote/table formatting, none of which the theme assigns a
 // semantic token to) and overriding the colour fields the palette has an
 // opinion about — the code block's syntax scheme included.
 //
@@ -167,8 +165,8 @@ func renderMarkdown(source string, width int, palette theme.Palette) (string, er
 // attached free of escape sequences.
 //
 // This mapping — which glamour element gets which Palette field — is this
-// task's own composition; rfc-tui.md §8.2 says only that glamour.WithStyles
-// must be built "desde la misma paleta", not which element gets which role.
+// package's own composition: the rule it answers to is only that the style
+// be built from the same palette, not which element gets which role.
 func glamourStyleConfig(p theme.Palette, profile termenv.Profile) ansi.StyleConfig {
 	cfg := glamourstyles.DarkStyleConfig
 
@@ -244,7 +242,7 @@ func chromaStyleName(p theme.Palette) string {
 
 // chromaStyleEntries maps every token type glamour styles onto a palette role.
 //
-// Which role a token gets is this package's composition — rfc-tui.md §8.1
+// Which role a token gets is this package's composition — the palette
 // assigns no token to a keyword or a string literal — but it is not free
 // choice: a code block is drawn on Base with no panel under it, so every
 // colour here has to be one the palette already keeps legible against Base.

@@ -1,6 +1,6 @@
 // Package evidence is the Evidence workspace tab: the project's captured
 // evidence list and one file's detail, including whatever its sibling
-// manifest.json adds (rfc-tui.md §3.1 S6-S7).
+// manifest.json adds.
 //
 // It is an isolated Elm sub-model, shaped like tabs/tasks and tabs/memory:
 //   - screen constants are a local iota; the root does not know them
@@ -8,9 +8,9 @@
 //   - vim keys (j/k) navigate, esc/q walk back up
 //
 // Data reaches the tab through data.EvidenceReader, never through
-// *store.Store, and styling through theme.Styles. rfc-tui.md §3.2 puts
-// rendering evidence inline out of scope for v1: a file is opened with the
-// system viewer, never painted in the terminal (ADR-028 point 4).
+// *store.Store, and styling through theme.Styles. Rendering evidence inline
+// is out of scope: a file is opened with the system viewer, never painted in
+// the terminal.
 package evidence
 
 import (
@@ -27,8 +27,8 @@ import (
 
 // ─── Screens ─────────────────────────────────────────────────────────────────
 
-// Screen is the Evidence tab's own screen enum (rfc-tui.md §3.1: S6 list, S7
-// detail). Not exported to the root, same as tasks.Screen.
+// Screen is the Evidence tab's own screen enum: the list and one file's
+// detail. Not exported to the root, same as tasks.Screen.
 type Screen int
 
 const (
@@ -78,7 +78,7 @@ type Model struct {
 	// Below it there is only the master, and "l" leaves the focus there.
 	Focus shared.Pane
 
-	// List (S6).
+	// List.
 	Items  []store.EvidenceListItem
 	Cursor int
 	Scroll int
@@ -89,7 +89,7 @@ type Model struct {
 	TotalBytes int64
 	Filter     store.EvidenceListFilter
 
-	// Detail (S7).
+	// Detail.
 	Selected        *store.EvidenceListItem
 	Manifest        *ManifestEntry
 	ManifestExists  bool
@@ -117,7 +117,7 @@ func New(r data.EvidenceSource) Model {
 // WithStyles returns a copy of m painted with styles instead of the default
 // theme.New built it with — app.New calls this once, right after New, so
 // the tab renders under the same resolved palette as the workspace chrome
-// around it (rfc-tui.md §8.2's --theme / ENGRAM_TUI_THEME / tui.theme).
+// around it (--theme / ENGRAM_TUI_THEME / tui.theme).
 func (m Model) WithStyles(styles theme.Styles) Model {
 	m.styles = styles
 	return m
@@ -181,9 +181,9 @@ func (m Model) Init() tea.Cmd {
 	return loadEvidence(m.reader, m.project, m.Filter)
 }
 
-// Refresh reloads the data behind the current screen: the filtered list on
-// S6, or the selected row's manifest.json on S7. The root calls it on "r"
-// (from the list) and whenever this tab becomes active.
+// Refresh reloads the data behind the current screen: the filtered list, or
+// the selected row's manifest.json on the detail screen. The root calls it
+// on "r" (from the list) and whenever this tab becomes active.
 func (m Model) Refresh() tea.Cmd {
 	if m.Screen == ScreenDetail && m.Selected != nil {
 		return loadManifest(*m.Selected)
@@ -192,7 +192,7 @@ func (m Model) Refresh() tea.Cmd {
 }
 
 // OpenForTask scopes the evidence list to taskID and reloads it — the deep
-// link rfc-tui.md §3.1 S4's "e" key drives via tabs.NavigateMsg.TaskID. It
+// link the task detail screen's "e" key drives via tabs.NavigateMsg.TaskID. It
 // mirrors memory.Model.OpenObservation and tasks.Model.OpenTask: state
 // changes only once the load comes back through Update, not here.
 func (m Model) OpenForTask(taskID int64) tea.Cmd {

@@ -123,8 +123,8 @@ func TestWindowSizeReachesEveryTab(t *testing.T) {
 
 func TestKeysReachOnlyTheActiveTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the project tree without a resolvable project (T-10.02);
-	// this case's premise is being on the Cloud tab already.
+	// New opens the project tree when no project resolves; this case's
+	// premise is being on a tab already.
 	m.tree.open = false
 	m.active = tabs.Settings
 
@@ -138,9 +138,10 @@ func TestKeysReachOnlyTheActiveTab(t *testing.T) {
 	}
 }
 
-// TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector pins S7's own "p"
-// (copy path). The project selector lives on ctrl+p, so the letter belongs to
-// the screen on every screen, with no per-screen exception to remember.
+// TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector pins the evidence
+// detail screen's own "p" (copy path). The project tree lives on ctrl+p, so
+// the letter belongs to the screen on every screen, with no per-screen
+// exception to remember.
 func TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	// New opens the project tree without a resolvable project; this case's
@@ -154,7 +155,7 @@ func TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector(t *testing.T) {
 
 	m, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
 	if m.tree.open {
-		t.Fatal("S7's own \"p\" (copy path) must not be swallowed by the global project selector")
+		t.Fatal("the evidence detail screen's own \"p\" (copy path) must not be swallowed by the global project tree")
 	}
 	if cmd == nil {
 		t.Fatal("p on the evidence detail should copy the path")
@@ -196,10 +197,10 @@ func TestNavigateSwitchesTabsAndRefreshesTheTarget(t *testing.T) {
 	}
 }
 
-// TestNavigateToTasksSwitchesTabsAndRefreshesIt pins T-10.03's registration
-// of the Tasks tab: rfc-tui.md §3.1 S3's list must load like any other tab's
-// first screen once NavigateMsg targets it, the same contract
-// TestNavigateSwitchesTabsAndRefreshesTheTarget already pins for Cloud/Memory.
+// TestNavigateToTasksSwitchesTabsAndRefreshesIt pins the Tasks tab's
+// registration: its list loads like any other tab's first screen once
+// NavigateMsg targets it, the same contract
+// TestNavigateSwitchesTabsAndRefreshesTheTarget pins for Settings/Memory.
 func TestNavigateToTasksSwitchesTabsAndRefreshesIt(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
@@ -212,11 +213,10 @@ func TestNavigateToTasksSwitchesTabsAndRefreshesIt(t *testing.T) {
 	}
 }
 
-// TestNavigateToEvidenceSwitchesTabsAndRefreshesIt pins T-10.04's
-// registration of the Evidence tab: rfc-tui.md §3.1 S6's list must load like
-// any other tab's first screen once NavigateMsg targets it with no TaskID,
-// the same contract TestNavigateToTasksSwitchesTabsAndRefreshesIt pins for
-// Tasks.
+// TestNavigateToEvidenceSwitchesTabsAndRefreshesIt pins the Evidence tab's
+// registration: its list loads like any other tab's first screen once
+// NavigateMsg targets it with no TaskID, the same contract
+// TestNavigateToTasksSwitchesTabsAndRefreshesIt pins for Tasks.
 func TestNavigateToEvidenceSwitchesTabsAndRefreshesIt(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
@@ -229,11 +229,10 @@ func TestNavigateToEvidenceSwitchesTabsAndRefreshesIt(t *testing.T) {
 	}
 }
 
-// TestNavigateToRunbooksSwitchesTabsAndRefreshesIt pins T-10.05's
-// registration of the Runbooks tab: rfc-tui.md §3.1 S8's index must load
-// like any other tab's first screen once NavigateMsg targets it, the same
-// contract TestNavigateToEvidenceSwitchesTabsAndRefreshesIt pins for
-// Evidence.
+// TestNavigateToRunbooksSwitchesTabsAndRefreshesIt pins the Runbooks tab's
+// registration: its index loads like any other tab's first screen once
+// NavigateMsg targets it, the same contract
+// TestNavigateToEvidenceSwitchesTabsAndRefreshesIt pins for Evidence.
 func TestNavigateToRunbooksSwitchesTabsAndRefreshesIt(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
@@ -246,11 +245,12 @@ func TestNavigateToRunbooksSwitchesTabsAndRefreshesIt(t *testing.T) {
 	}
 }
 
-// TestNavigateToTaskEvidenceFiltersTheEvidenceTab pins rfc-tui.md §3.1 S4's
-// "e" key: unlike a plain tab switch, a TaskID on the NavigateMsg must reach
-// the Evidence tab's OpenForTask instead of activate()'s generic Refresh(),
-// the same special-casing TestNavigateSwitchesTabsAndRefreshesTheTarget's
-// ObservationID sibling gets for Memory.
+// TestNavigateToTaskEvidenceFiltersTheEvidenceTab pins the task detail
+// screen's "e" key: unlike a plain tab switch, a TaskID on the NavigateMsg
+// must reach the Evidence tab's OpenForTask instead of activate()'s generic
+// Refresh(), the same special-casing
+// TestNavigateSwitchesTabsAndRefreshesTheTarget's ObservationID sibling gets
+// for Memory.
 func TestNavigateToTaskEvidenceFiltersTheEvidenceTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
@@ -263,8 +263,8 @@ func TestNavigateToTaskEvidenceFiltersTheEvidenceTab(t *testing.T) {
 	}
 }
 
-// TestNavigateToTaskOpensTheTasksDetailDirectly pins rfc-tui.md §3.1 S7's
-// "Enter" on an evidence file: it must open that file's task detail inside
+// TestNavigateToTaskOpensTheTasksDetailDirectly pins the evidence detail
+// screen's "Enter" on a file: it must open that file's task detail inside
 // Tasks directly, not just switch to the Tasks tab's list.
 func TestNavigateToTaskOpensTheTasksDetailDirectly(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
@@ -280,8 +280,8 @@ func TestNavigateToTaskOpensTheTasksDetailDirectly(t *testing.T) {
 }
 
 func TestNavigateToAnUnimplementedTabIsANoOp(t *testing.T) {
-	// tabs.Tasks, tabs.Evidence and tabs.Runbooks moved out of this list once
-	// T-10.03, T-10.04 and T-10.05 registered them — see
+	// tabs.Tasks, tabs.Evidence and tabs.Runbooks are registered, so they are
+	// not in this list — see
 	// TestNavigateToTasksSwitchesTabsAndRefreshesIt,
 	// TestNavigateToEvidenceSwitchesTabsAndRefreshesIt and
 	// TestNavigateToRunbooksSwitchesTabsAndRefreshesIt above. tabs.ID(99) is
@@ -385,8 +385,8 @@ func assertFramedBody(t *testing.T, framed, body string) {
 
 func TestViewSurvivesAnUnregisteredActiveTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the project tree without a resolvable project (T-10.02);
-	// this case's premise is an unregistered tab being the one on screen.
+	// New opens the project tree when no project resolves; this case's
+	// premise is an unregistered tab being the one on screen.
 	m.tree.open = false
 	m.active = tabs.ID(99)
 
@@ -397,8 +397,8 @@ func TestViewSurvivesAnUnregisteredActiveTab(t *testing.T) {
 
 func TestUpdateWithAnUnregisteredActiveTabIsANoOp(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	// New now opens the project tree without a resolvable project (T-10.02);
-	// this case's premise is an unregistered tab being active on screen, so
+	// New opens the project tree when no project resolves; this case's
+	// premise is an unregistered tab being active on screen, so
 	// the key actually reaches updateActive's tab branch instead of
 	// trivially no-opping on the selector.
 	m.tree.open = false

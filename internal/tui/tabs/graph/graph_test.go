@@ -106,7 +106,7 @@ func TestTheSummaryShowsWhatTheStorePersisted(t *testing.T) {
 	}
 }
 
-// TestTheStalenessReasonIsPrintedLiterally pins §6.9's rule: the TUI renders
+// TestTheStalenessReasonIsPrintedLiterally pins the rule: the TUI renders
 // the store's verdict and never forms its own, so a reason this build has
 // never heard of still reaches the reader.
 func TestTheStalenessReasonIsPrintedLiterally(t *testing.T) {

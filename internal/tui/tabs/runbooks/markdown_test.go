@@ -15,19 +15,17 @@ import (
 	"github.com/muesli/termenv"
 )
 
-// TestRenderMarkdownIsColourlessUnderGoTest guards the determinism T-10.07's
+// TestRenderMarkdownIsColourlessUnderGoTest guards the determinism the
 // teatest golden files need: rendering must not emit ANSI escape sequences
 // when stdout is not a terminal, the same invariant
 // internal/tui/app/golden_test.go's renderNoANSI already holds every
 // lipgloss-styled screen to.
 //
-// This failed for real against this repo's code before this change:
-// glamour.NewTermRenderer hardcodes its ColorProfile to termenv.TrueColor
-// unless told otherwise — unlike lipgloss, it does not check whether stdout
-// is a terminal — so renderMarkdown(source, width), before it passed
-// glamour.WithColorProfile(lipgloss.ColorProfile()), emitted real ANSI
-// truecolor escapes even under `go test`. See this task's report for the
-// literal failure this reproduced.
+// The pin is not theoretical: glamour.NewTermRenderer hardcodes its
+// ColorProfile to termenv.TrueColor unless told otherwise — unlike lipgloss,
+// it does not check whether stdout is a terminal — so a renderMarkdown that
+// stops passing glamour.WithColorProfile(lipgloss.ColorProfile()) emits real
+// ANSI truecolor escapes even under `go test`.
 func TestRenderMarkdownIsColourlessUnderGoTest(t *testing.T) {
 	out, err := renderMarkdown("# Heading\n\nSome **bold** text and a [link](https://example.com).", 80, theme.CatppuccinMocha())
 	if err != nil {

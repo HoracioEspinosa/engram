@@ -277,7 +277,7 @@ func TestInstallAgentCommand(t *testing.T) {
 }
 
 // TestSearchForLandsOnSearchResultsRegardlessOfWhoAskedForIt pins the deep
-// link rfc-tui.md §3.1 S8/S9's "t" key needs: another tab (Runbooks) driving
+// link the Runbooks tab's "t" key needs: another tab (Runbooks) driving
 // a search through SearchFor must land on the exact same screen the "/" key
 // reaches from ScreenSearch, since searchResultsMsg's own handler — not
 // SearchFor — is what switches the screen.

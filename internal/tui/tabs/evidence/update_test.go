@@ -62,7 +62,7 @@ func withHeight(m Model, h int) Model {
 	return m
 }
 
-// ─── List (S6) ───────────────────────────────────────────────────────────────
+// ─── List ────────────────────────────────────────────────────────────────────
 
 func TestNewStartsOnTheListScreenWithNoProject(t *testing.T) {
 	m := New(&data.FakeEvidence{})
@@ -272,7 +272,7 @@ func TestEscFromTheListGoesHome(t *testing.T) {
 	}
 }
 
-// ─── Detail (S7) ─────────────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────────────────────
 
 func detailModel(t *testing.T, item store.EvidenceListItem) Model {
 	t.Helper()

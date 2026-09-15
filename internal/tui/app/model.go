@@ -70,9 +70,9 @@ type Model struct {
 	// root can do.
 	tree treeModel
 
-	// showHelp toggles the "?" overlay (rfc-tui.md §7.1). It is root state,
-	// not per-tab: closing it always returns to whatever screen was showing
-	// underneath, untouched.
+	// showHelp toggles the "?" overlay. It is root state, not per-tab:
+	// closing it always returns to whatever screen was showing underneath,
+	// untouched.
 	showHelp bool
 
 	// themePicker is the ctrl+t overlay. Like showHelp it is root state:
@@ -116,9 +116,8 @@ func New(mem data.MemorySource, projects data.ProjectReader, task data.TaskSourc
 	}
 	m = m.withStyles(styles)
 
-	// Without a resolvable project the workspace opens on the project tree
-	// (rfc-tui.md §9.1: "sin proyecto resoluble se abre S1"), composited over
-	// Home so closing it lands somewhere real.
+	// Without a resolvable project the workspace opens on the project tree,
+	// composited over Home so closing it lands somewhere real.
 	if initialProject == "" {
 		m.tree.open = true
 	}

@@ -30,7 +30,7 @@ const (
 	Runbooks
 	Graph
 	// Settings holds everything the workspace remembers about itself,
-	// including the sync configuration that used to be a tab of its own.
+	// including the sync configuration.
 	Settings
 )
 
@@ -81,29 +81,30 @@ type Tab interface {
 	// when the tab becomes active.
 	Refresh() tea.Cmd
 	// Help returns the key bindings the screen currently on display wants
-	// listed in the "?" overlay (rfc-tui.md §7.1): whichever internal screen
-	// is active, not a fixed per-tab list, so the overlay grows and shrinks
-	// with what is actually on screen.
+	// listed in the "?" overlay: whichever internal screen is active, not a
+	// fixed per-tab list, so the overlay grows and shrinks with what is
+	// actually on screen.
 	Help() []key.Binding
 	// CapturingText reports whether the tab currently has a text input
 	// focused (a search box, the Tasks "link observation" prompt, ...). While
 	// true, the root suspends every global key it would otherwise intercept
-	// before the tab sees it — 1..5, Tab/Shift+Tab, "?", p, P and 0 — except
-	// Ctrl+C, matching rfc-tui.md §7.1: "cuando un textinput tiene el foco,
-	// las teclas globales se suspenden salvo Ctrl+C y Esc."
+	// before the tab sees it — the tab digits, Tab/Shift+Tab, "?" and the rest
+	// of the chrome's bindings — so those characters reach the input instead.
+	// Quitting is the exception: it works from anywhere, and the root answers
+	// it before the active tab is offered the key at all.
 	CapturingText() bool
 }
 
 // Targeted is what a message implements when it belongs to exactly one tab.
 //
-// Everything used to be broadcast: a task list coming back woke Memory,
-// Evidence, Runbooks and Cloud as well, each type-switching over a message
-// it had no case for. That is five Update calls and five model copies for
-// one row of data, on every load, on every tab.
+// A broadcast wakes every tab: a task list coming back would reach Memory,
+// Evidence, Runbooks and Settings as well, each type-switching over a message
+// it has no case for. That is one Update call and one model copy per tab, for
+// one row of data, on every load.
 //
 // A message that names its owner is delivered to that tab alone. Only the
 // two kinds that genuinely concern everyone — the terminal's size and a
-// change of palette — are still broadcast.
+// change of palette — are broadcast.
 type Targeted interface {
 	// TabOwner is the tab this message was issued by and belongs to.
 	TabOwner() ID
@@ -114,15 +115,16 @@ type Targeted interface {
 //
 // ObservationID, TaskID and Query are the cross-tab context v1 needs, each
 // zero except for the one navigation it carries a deep link for:
-//   - ObservationID: rfc-tui.md §3.1 S4 has Enter on a task's linked
-//     observation open that observation's detail inside Memory.
-//   - TaskID: §3.1 S4's "e" opens Evidence filtered to the task under view
-//     (S6's task_id filter), and §3.1 S7's "Enter" opens that evidence
+//   - ObservationID: Enter on a task's linked observation, from the task
+//     detail screen, opens that observation's detail inside Memory.
+//   - TaskID: the task detail screen's "e" opens Evidence filtered to the task
+//     under view, and the evidence detail screen's "Enter" opens that evidence
 //     file's task inside Tasks — the same field serves both directions
 //     because Target already says which one applies.
-//   - Query: §3.1 S8/S9's "t" opens Memory pre-searched for
-//     "runbook/RB-NNN", the executions recorded against that runbook
-//     (D-09's `runbook/RB-NNN/exec/<task-key>` topic_key convention).
+//   - Query: "t" on the Runbooks index and on the runbook Markdown view opens
+//     Memory pre-searched for "runbook/RB-NNN", the executions recorded
+//     against that runbook under the `runbook/RB-NNN/exec/<task-key>`
+//     topic_key convention.
 //   - EvidenceID and BenchmarkID are the same idea for the two kinds the
 //     workspace search can land on directly: one file, one measurement.
 //   - Slug rescopes the workspace before the target opens. A search that
@@ -155,7 +157,8 @@ func NavigateToObservation(id int64) tea.Cmd {
 }
 
 // NavigateToTaskEvidence returns the command that asks the root to open the
-// Evidence tab filtered to taskID (rfc-tui.md §3.1 S4's "e" key).
+// Evidence tab filtered to taskID, which is what the task detail screen's "e"
+// key asks for.
 func NavigateToTaskEvidence(taskID int64) tea.Cmd {
 	return func() tea.Msg {
 		return NavigateMsg{Target: Evidence, TaskID: taskID}
@@ -163,7 +166,8 @@ func NavigateToTaskEvidence(taskID int64) tea.Cmd {
 }
 
 // NavigateToTask returns the command that asks the root to open taskID's
-// detail inside the Tasks tab (rfc-tui.md §3.1 S7's "Enter" key).
+// detail inside the Tasks tab, which is what "Enter" on the evidence detail
+// screen asks for.
 func NavigateToTask(taskID int64) tea.Cmd {
 	return func() tea.Msg {
 		return NavigateMsg{Target: Tasks, TaskID: taskID}
@@ -171,7 +175,8 @@ func NavigateToTask(taskID int64) tea.Cmd {
 }
 
 // NavigateToMemorySearch returns the command that asks the root to open
-// Memory pre-searched for query (rfc-tui.md §3.1 S8/S9's "t" key).
+// Memory pre-searched for query, which is what the "t" key on the Runbooks
+// index and on the runbook Markdown view asks for.
 func NavigateToMemorySearch(query string) tea.Cmd {
 	return func() tea.Msg {
 		return NavigateMsg{Target: Memory, Query: query}

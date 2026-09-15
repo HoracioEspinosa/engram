@@ -3,8 +3,8 @@ package app
 import "github.com/charmbracelet/bubbles/key"
 
 // globalKeyMap holds the bindings the root consumes before the active tab is
-// offered a key (rfc-tui.md §7.1). Every field but Quit is suspended while
-// the active tab reports CapturingText() — see updateActive.
+// offered a key. Every field but Quit is suspended while the active tab
+// reports CapturingText() — see updateActive.
 type globalKeyMap struct {
 	// Quit leaves the TUI from anywhere, including a focused text input.
 	Quit key.Binding
@@ -12,14 +12,15 @@ type globalKeyMap struct {
 	// modifier: "/" belongs to whichever screen has a search of its own, and
 	// the palette borrows that key only where nothing else claims it.
 	Search key.Binding
-	// ProjectSelector opens S1. It lives on a modifier because the letter
-	// keys belong to the screens: "p" is a page key in a paginated list and
-	// the copy-path action on Evidence's detail, and a global that moved
-	// between screens to make room was a rule nobody could remember.
+	// ProjectSelector opens the project tree. It lives on a modifier because
+	// the letter keys belong to the screens: "p" is a page key in a paginated
+	// list and the copy-path action on the evidence detail screen, and a
+	// global that moved between screens to make room was a rule nobody could
+	// remember.
 	ProjectSelector key.Binding
-	// SwitchTab activates any tab directly by its digit. Home is "0": it
-	// is a tab like the rest now, not a screen the root draws itself, so it
-	// needs no binding of its own.
+	// SwitchTab activates any tab directly by its digit. Home is "0": it is
+	// a tab like the rest, not a screen the root draws itself, so it needs
+	// no binding of its own.
 	SwitchTab key.Binding
 	// NextTab and PrevTab cycle registered, wrapping at either end.
 	NextTab key.Binding
@@ -30,8 +31,8 @@ type globalKeyMap struct {
 	// rest of the chrome's keys, because it works on every screen: the
 	// overlay owns what happens once it is open, not the key that opens it.
 	ThemePicker key.Binding
-	// Help toggles the "?" overlay (rfc-tui.md §7.1), built from
-	// globalHelpBindings plus the active screen's own Help().
+	// Help toggles the "?" overlay, built from globalHelpBindings plus the
+	// active screen's own Help().
 	Help key.Binding
 }
 
@@ -96,8 +97,8 @@ var nativeSelection = key.NewBinding(
 )
 
 // globalHelpBindings is what the "?" overlay shows for every screen,
-// regardless of which one is active — the chrome rfc-tui.md §7.1 owns, as
-// opposed to whatever the active screen's own Help() adds on top.
+// regardless of which one is active — the chrome the root owns, as opposed
+// to whatever the active screen's own Help() adds on top.
 func globalHelpBindings() []key.Binding {
 	return []key.Binding{
 		globalKeys.SwitchTab,

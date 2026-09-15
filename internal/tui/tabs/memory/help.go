@@ -2,8 +2,8 @@ package memory
 
 import "github.com/charmbracelet/bubbles/key"
 
-// Help lists whichever screen is on display's own bindings (rfc-tui.md
-// §7.2), the same ones each screen's view.go footer already prints. Memory
+// Help lists whichever screen is on display's own bindings, the same ones
+// each screen's view.go footer already prints. Memory
 // predates every other tab and keeps its own screen router (Screen, not a
 // shared one), so this switches on it directly rather than delegating.
 func (m Model) Help() []key.Binding {
@@ -102,8 +102,8 @@ func (m Model) Help() []key.Binding {
 }
 
 // CapturingText reports whether the search box is focused, or the "L"
-// link-to-task picker is open (rfc-tui.md §7.1's textinput suspension
-// rule): while true, digits and letters typed into either must reach the
+// link-to-task picker is open, either of which suspends the root's own key
+// handling: while true, digits and letters typed into either must reach the
 // tab, never the root's tab-switch keys. The picker counts for its whole
 // lifetime, not only while its own query box has focus — browsing its
 // results with j/k must not have "1" jump to the Tasks tab out from under
