@@ -810,7 +810,7 @@ func TestHandlerPushValidationErrorsExposeMachineActionableClasses(t *testing.T)
 
 	t.Run("invalid payload is repairable class", func(t *testing.T) {
 		srv := New(&fakeStore{}, fakeAuth{}, 0)
-		body := bytes.NewBufferString(`{"project":"proj-a","created_by":"tester","data":{"sessions":[{"id":"s-1"}]}}`)
+		body := bytes.NewBufferString(`{"project":"proj-a","created_by":"tester","data":{"sessions":[{"directory":"/tmp/s-1"}]}}`)
 		rec := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/sync/push", body))
 		if rec.Code != http.StatusBadRequest {
@@ -823,7 +823,7 @@ func TestHandlerPushValidationErrorsExposeMachineActionableClasses(t *testing.T)
 		if payload.ErrorCode != "upgrade_repairable_payload_invalid" {
 			t.Fatalf("expected upgrade_repairable_payload_invalid, got %q", payload.ErrorCode)
 		}
-		if !strings.Contains(payload.Error, "sessions[0].directory is required") {
+		if !strings.Contains(payload.Error, "sessions[0].id is required") {
 			t.Fatalf("expected detailed validation error, got %q", payload.Error)
 		}
 	})
@@ -1125,11 +1125,6 @@ func TestHandlerPushRejectsMutationUpsertsMissingRequiredFields(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "session upsert missing directory",
-			payload: `{"mutations":[{"entity":"session","entity_key":"s-1","op":"upsert","payload":"{\"id\":\"s-1\"}"}]}`,
-			wantErr: "session payload directory is required for upsert",
-		},
-		{
 			name:    "observation upsert missing title",
 			payload: `{"mutations":[{"entity":"observation","entity_key":"obs-1","op":"upsert","payload":"{\"sync_id\":\"obs-1\",\"session_id\":\"s-1\",\"type\":\"decision\",\"content\":\"c\",\"scope\":\"project\"}"}]}`,
 			wantErr: "observation payload title is required for upsert",
@@ -1166,11 +1161,6 @@ func TestHandlerPushRejectsDirectChunkArraysMissingRequiredFields(t *testing.T) 
 		wantErr string
 	}{
 		{
-			name:    "session missing directory",
-			payload: `{"sessions":[{"id":"s-1"}]}`,
-			wantErr: "sessions[0].directory is required",
-		},
-		{
 			name:    "observation missing sync_id",
 			payload: `{"sessions":[{"id":"s-1","directory":"/tmp/s-1"}],"observations":[{"session_id":"s-1","type":"decision","title":"t","content":"c","scope":"project"}]}`,
 			wantErr: "observations[0].sync_id is required",
@@ -1198,6 +1188,41 @@ func TestHandlerPushRejectsDirectChunkArraysMissingRequiredFields(t *testing.T) 
 			}
 			if len(st.chunks) != 0 {
 				t.Fatalf("expected no chunk writes for invalid direct chunk payload, got %d", len(st.chunks))
+			}
+		})
+	}
+}
+
+// TestHandlerPushAcceptsSessionsWithoutADirectory pins the other half of the
+// session contract: a directory is where a session was opened, and a session
+// saved against an explicit project was never opened anywhere. The local store
+// creates those legitimately, so rejecting them here turned one of them into a
+// 400 that took the entire project's push down with it.
+func TestHandlerPushAcceptsSessionsWithoutADirectory(t *testing.T) {
+	cases := []struct {
+		name    string
+		payload string
+	}{
+		{"direct chunk array", `{"sessions":[{"id":"manual-save-mailing","project":"proj-a"}]}`},
+		{
+			"session mutation",
+			`{"mutations":[{"entity":"session","entity_key":"manual-save-mailing","op":"upsert",` +
+				`"payload":"{\"id\":\"manual-save-mailing\"}"}]}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			st := &fakeStore{}
+			srv := New(st, fakeAuth{}, 0)
+			body := bytes.NewBufferString(`{"project":"proj-a","created_by":"tester","data":` + tc.payload + `}`)
+
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/sync/push", body))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+			}
+			if len(st.chunks) != 1 {
+				t.Fatalf("expected the chunk to be written, got %d", len(st.chunks))
 			}
 		})
 	}

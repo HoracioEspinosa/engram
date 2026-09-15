@@ -150,11 +150,11 @@ func TestCanonicalizeForProject_RejectsUnusableProjectsPayloads(t *testing.T) {
 			"must be set together",
 		},
 		{
-			"task with neither jira_key nor sdd_change",
+			"task with no identity at all",
 			store.SyncEntityTask, store.SyncOpUpsert,
 			`{"sync_id":"task-1","project":"nextcloud","title":"t","kind":"bugfix","state":"open",` +
 				`"created_at":"2026-01-01 10:00:00","updated_at":"2026-01-01 10:00:00"}`,
-			"jira_key or sdd_change",
+			"jira_key, sdd_change or slug",
 		},
 		{
 			"task link delete without a clock",
@@ -215,6 +215,22 @@ func TestCanonicalizeForProject_UpstreamEntitiesAreUntouched(t *testing.T) {
 	}
 	if got := payloadField(t, mutation, "directory"); got != "/tmp/sess-1" {
 		t.Fatalf("session directory was altered: %v", got)
+	}
+}
+
+// TestCanonicalizeForProject_AcceptsASessionWithoutADirectory pins the session
+// contract to what the local store actually writes. A directory says where a
+// session was opened; a session saved against an explicit project was never
+// opened anywhere, and the store creates those on purpose.
+func TestCanonicalizeForProject_AcceptsASessionWithoutADirectory(t *testing.T) {
+	raw := chunkWith(store.SyncEntitySession, "", store.SyncOpUpsert,
+		`{"id":"manual-save-mailing","project":"wrong","started_at":"2026-04-10T12:00:00Z"}`)
+	mutation := canonicalMutation(t, raw, "mailing")
+	if mutation.EntityKey != "manual-save-mailing" || mutation.Project != "mailing" {
+		t.Fatalf("unexpected canonicalized session: %+v", mutation)
+	}
+	if got := payloadField(t, mutation, "directory"); got != nil {
+		t.Fatalf("an absent directory must stay absent, got %v", got)
 	}
 }
 
@@ -360,6 +376,88 @@ func TestCanonicalizeForProject_RejectsAnUnusableWorkspacePayload(t *testing.T) 
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want one mentioning %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestCanonicalizeForProject_AcceptsASlugOnlyTask holds the codec to the same
+// identity rule the store's CHECK enforces — a task is identified by a Jira
+// key, an SDD change or a slug. The vault importer writes tasks that carry only
+// the third, and refusing one of those aborts the push of every other row in
+// the project, not just the task.
+func TestCanonicalizeForProject_AcceptsASlugOnlyTask(t *testing.T) {
+	payload := `{"sync_id":"task-slug-1","project":"wrong","title":"mantenimiento del fork",` +
+		`"kind":"spike","state":"open","slug":"mantenimiento-del-fork",` +
+		`"created_at":"2026-01-01 10:00:00","updated_at":"2026-01-01 10:00:00"}`
+	mutation := canonicalMutation(t, chunkWith(store.SyncEntityTask, "", store.SyncOpUpsert, payload), "nextcloud")
+	if mutation.EntityKey != "task-slug-1" {
+		t.Fatalf("entity_key = %q, want the task sync_id", mutation.EntityKey)
+	}
+	if got := payloadField(t, mutation, "slug"); got != "mantenimiento-del-fork" {
+		t.Fatalf("slug did not survive canonicalization: %v", got)
+	}
+	if got := payloadField(t, mutation, "jira_key"); got != nil {
+		t.Fatalf("an absent jira_key must stay absent, got %v", got)
+	}
+}
+
+// TestCanonicalizeForProject_TaskIdentityErrorNamesTheRow covers the other
+// half: a task carrying none of the three identities is still rejected, and the
+// error names the entity and the row so an operator can find it in a chunk of
+// hundreds.
+func TestCanonicalizeForProject_TaskIdentityErrorNamesTheRow(t *testing.T) {
+	payload := `{"sync_id":"task-anon","project":"nextcloud","title":"t","kind":"bugfix","state":"open",` +
+		`"created_at":"2026-01-01 10:00:00","updated_at":"2026-01-01 10:00:00"}`
+	_, err := CanonicalizeForProject(chunkWith(store.SyncEntityTask, "", store.SyncOpUpsert, payload), "nextcloud")
+	if err == nil {
+		t.Fatal("expected a task with no identity at all to be rejected")
+	}
+	for _, want := range []string{store.SyncEntityTask, "task-anon", "jira_key, sdd_change or slug"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+// TestCanonicalizeForProject_PayloadErrorsNameTheOffendingRow extends the same
+// promise to the entities whose identity is not a sync_id.
+func TestCanonicalizeForProject_PayloadErrorsNameTheOffendingRow(t *testing.T) {
+	cases := []struct {
+		name     string
+		entity   string
+		payload  string
+		wantRow  string
+		wantText string
+	}{
+		{
+			"evidence", store.SyncEntityEvidence,
+			evidenceJSON("/Users/someone/evidence/a.png", validSHA),
+			"evd-1", "must be relative",
+		},
+		{
+			"project alias", store.SyncEntityProjectAlias,
+			`{"alias":"koi_garden","sync_id":"alias-1","source":"manual","project":"wrong",` +
+				`"created_at":"2026-01-01 09:00:00","updated_at":"2026-01-01 09:00:00"}`,
+			"koi_garden", "slug is required",
+		},
+		{
+			"observation ref", store.SyncEntityObservationRef,
+			`{"observation_sync_id":"obs-77","ref_kind":"graph","ref":"Uploader::put",` +
+				`"created_at":"2026-01-05 10:00:00","project":"wrong"}`,
+			"obs-77", "graph_commit is required",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := CanonicalizeForProject(chunkWith(tc.entity, "", store.SyncOpUpsert, tc.payload), "nextcloud")
+			if err == nil {
+				t.Fatalf("expected %q to be rejected", tc.name)
+			}
+			for _, want := range []string{tc.entity, tc.wantRow, tc.wantText} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error %q does not mention %q", err, want)
+				}
 			}
 		})
 	}

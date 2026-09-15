@@ -164,3 +164,82 @@ func TestCloudChunkRoundTrip_FlagOffShipsNothing(t *testing.T) {
 		t.Fatalf("ENGRAM_PROJECTS_SYNC=0 must not replicate tasks, got %d", total)
 	}
 }
+
+// TestCloudChunkRoundTrip_ReplicatesASlugOnlyTask is the end-to-end half of the
+// identity rule: the vault importer writes tasks whose only identity is a slug,
+// and one of them used to abort the export of the whole project — card,
+// observations and evidence included — rather than just itself.
+func TestCloudChunkRoundTrip_ReplicatesASlugOnlyTask(t *testing.T) {
+	t.Setenv("ENGRAM_PROJECTS_SYNC", "1")
+
+	source := newTestStore(t)
+	if err := source.EnrollProject("nextcloud"); err != nil {
+		t.Fatalf("EnrollProject: %v", err)
+	}
+	if _, _, err := source.UpsertProjectCard(store.UpsertProjectCardParams{
+		Slug: "nextcloud", DisplayName: ptr("Nextcloud"),
+	}); err != nil {
+		t.Fatalf("UpsertProjectCard: %v", err)
+	}
+	keyed, err := source.UpsertTask(store.UpsertTaskParams{
+		Project: "nextcloud", JiraKey: ptr("PROJ-4405"),
+		Title: ptr("preview returns 503"), Kind: ptr("bugfix"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertTask (keyed): %v", err)
+	}
+	slugOnly, err := source.UpsertTask(store.UpsertTaskParams{
+		Project: "nextcloud", Slug: ptr("mantenimiento-del-fork"),
+		Title: ptr("mantenimiento del fork"), Kind: ptr("spike"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertTask (slug only): %v", err)
+	}
+	if slugOnly.Task.JiraKey != nil || slugOnly.Task.SDDChange != nil {
+		t.Fatalf("the fixture must carry a slug and nothing else: %+v", slugOnly.Task)
+	}
+
+	transport := newFakeCloudTransport()
+	exported, err := NewCloudWithTransport(source, transport, "nextcloud").Export("alice", "nextcloud")
+	if err != nil {
+		t.Fatalf("cloud export: %v", err)
+	}
+	if exported.IsEmpty || exported.MutationsExported == 0 {
+		t.Fatalf("a slug-only task must not empty the chunk: %+v", exported)
+	}
+
+	target := newTestStore(t)
+	if err := target.EnrollProject("nextcloud"); err != nil {
+		t.Fatalf("EnrollProject (target): %v", err)
+	}
+	if _, err := NewCloudWithTransport(target, transport, "nextcloud").Import(); err != nil {
+		t.Fatalf("cloud import: %v", err)
+	}
+
+	tasks, total, err := target.ListTasks("nextcloud", store.TaskListFilter{})
+	if err != nil {
+		t.Fatalf("ListTasks on the second replica: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("expected both tasks to replicate, got %d", total)
+	}
+	bySyncID := make(map[string]store.TaskListItem, len(tasks))
+	for _, item := range tasks {
+		bySyncID[item.SyncID] = item
+	}
+	replicated, ok := bySyncID[slugOnly.Task.SyncID]
+	if !ok {
+		t.Fatalf("the slug-only task did not replicate: %+v", tasks)
+	}
+	if replicated.Slug == nil || *replicated.Slug != "mantenimiento-del-fork" {
+		t.Fatalf("the slug did not travel with the task: %+v", replicated)
+	}
+	if replicated.JiraKey != nil {
+		t.Fatalf("replication invented a Jira key: %+v", replicated)
+	}
+	// The keyed task is asserted too: one unusable row used to take the rest of
+	// the project down with it, not only itself.
+	if _, ok := bySyncID[keyed.Task.SyncID]; !ok {
+		t.Fatalf("the keyed task did not replicate alongside it: %+v", tasks)
+	}
+}

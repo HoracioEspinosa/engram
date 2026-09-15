@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/HoracioEspinosa/engram/internal/cloud"
 	"github.com/HoracioEspinosa/engram/internal/cloud/cloudstore"
 	"github.com/HoracioEspinosa/engram/internal/store"
 )
@@ -157,11 +158,11 @@ func (s *Service) SetDashboardSessionTokens(tokens []string) {
 func (s *Service) SetAllowedProjects(projects []string) {
 	s.allowed = make(map[string]struct{})
 	s.allowedAll = false
+	if cloud.AllowsAllProjects(projects) {
+		s.allowedAll = true
+		return
+	}
 	for _, project := range projects {
-		if strings.TrimSpace(project) == "*" {
-			s.allowedAll = true
-			return
-		}
 		normalized, _ := store.NormalizeProject(project)
 		normalized = strings.TrimSpace(normalized)
 		if normalized == "" {
@@ -203,11 +204,11 @@ func (s *Service) EnrolledProjects() []string {
 func (a *ProjectScopeAuthorizer) SetAllowedProjects(projects []string) {
 	a.allowed = make(map[string]struct{})
 	a.allowedAll = false
+	if cloud.AllowsAllProjects(projects) {
+		a.allowedAll = true
+		return
+	}
 	for _, project := range projects {
-		if strings.TrimSpace(project) == "*" {
-			a.allowedAll = true
-			return
-		}
 		normalized, _ := store.NormalizeProject(project)
 		normalized = strings.TrimSpace(normalized)
 		if normalized == "" {

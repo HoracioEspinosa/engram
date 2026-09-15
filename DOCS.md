@@ -540,7 +540,7 @@ Inspect or replay the `sync_apply_deferred` queue.
 ### Cloud CLI (opt-in)
 
 - `engram cloud status` — show current cloud config state plus auth/sync readiness without mutating local state. When cloud is configured, also probes the local `engram serve` daemon at `127.0.0.1:7437` (respects `ENGRAM_PORT`) and prints a `Local daemon:` line (`running` / `not running` / `unreachable`) so you can detect a silently dead autosync. Exit code is unaffected; the line is informational
-- `engram cloud enroll <project>` — enroll one project for cloud replication
+- `engram cloud enroll <project> [--allow-empty]` — enroll one project for cloud replication. The name is matched case-insensitively against the observations, sessions, prompts and project card this machine holds; a name that matches nothing is refused with exit 1 and `reason_code: enroll_project_has_no_local_rows`, because enrolling a typo makes every later sync report "Nothing new to sync" and succeed. Pass `--allow-empty` on a fresh replica that is enrolling a project precisely in order to pull it
 - `engram cloud config --server <url>` — persist cloud server URL to `~/.engram/cloud.json`
 - `engram cloud serve` — run cloud backend API + dashboard (`/dashboard`) using Postgres config from env
 - `engram cloud upgrade doctor --project <project>` — deterministic read-only readiness diagnosis (`ready|blocked`, class/reason)
@@ -1714,7 +1714,7 @@ Note: when the cloud server returns 404 on mutation endpoints, the transport log
 
 ### Troubleshooting
 
-For a step-by-step recovery guide covering `chunk_id does not match payload content hash`, `session payload directory is required`, and the temporary missing-directory repair helper, see [Engram Cloud Troubleshooting](docs/engram-cloud/troubleshooting.md).
+For a step-by-step recovery guide covering `chunk_id does not match payload content hash`, missing observation payload fields, and the temporary repair helper, see [Engram Cloud Troubleshooting](docs/engram-cloud/troubleshooting.md).
 
 **`transport_failed` with `server_unsupported` in logs**: Older pre-mutation cloud server deployments may not implement `POST /sync/mutations/push` or `GET /sync/mutations/pull`, causing 404 responses from those endpoints. Deploy a server version that includes these routes before enabling `ENGRAM_CLOUD_AUTOSYNC=1`. Check logs for the line containing `server_unsupported`.
 

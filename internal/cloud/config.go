@@ -26,6 +26,25 @@ type Config struct {
 const DefaultJWTSecret = "engram-dev-jwt-secret-for-local-smoke-1234"
 const DefaultMaxPushBodyBytes int64 = 8 * 1024 * 1024
 
+// WildcardProject is the ENGRAM_CLOUD_ALLOWED_PROJECTS entry that means "every
+// project this deployment holds". It is never a project name: nothing is ever
+// stored, authorized or materialized under it.
+const WildcardProject = "*"
+
+// AllowsAllProjects reports whether an allowlist carries the wildcard. Every
+// consumer of AllowedProjects has to ask this before it iterates the list, or
+// it silently treats "*" as the name of one empty project — which is how
+// startup materialization came to be a no-op for every real project on a
+// deployment configured with the wildcard.
+func AllowsAllProjects(projects []string) bool {
+	for _, project := range projects {
+		if strings.TrimSpace(project) == WildcardProject {
+			return true
+		}
+	}
+	return false
+}
+
 func DefaultConfig() Config {
 	return Config{
 		DSN:              "postgres://engram:engram_dev@localhost:5433/engram_cloud?sslmode=disable",

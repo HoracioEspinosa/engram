@@ -593,6 +593,118 @@ func TestWriteChunkMaterializesRelationMutationIntoCloudMutations(t *testing.T) 
 	}
 }
 
+// TestWriteChunkMaterializesProjectEntitiesIntoCloudMutations covers the rest
+// of the entities that have no typed collection in the chunk. Sessions,
+// observations and prompts are materialized from their own arrays; everything
+// else travels only as a mutation, and only `relation` was being carried
+// across. A card, an alias, a task or a piece of evidence therefore landed in
+// cloud_chunks and never in cloud_mutations, so a replica that pulls — which
+// reads cloud_mutations — received none of them and acked the push anyway,
+// with no reason_code to show for it.
+func TestWriteChunkMaterializesProjectEntitiesIntoCloudMutations(t *testing.T) {
+	cs := openTestCloudStore(t)
+	ctx := context.Background()
+	project := uniqueCloudstoreTestProject("chunk-project-entities")
+	cleanupCloudstoreProject(t, cs, project)
+
+	cardPayload := `{\"slug\":\"` + project + `\",\"sync_id\":\"card-1\",\"display_name\":\"Card\",` +
+		`\"default_branch\":\"master\",\"jira_project\":\"PROJ\",\"graph_path\":\"graphify-out/graph.json\",` +
+		`\"created_at\":\"2026-04-29 10:00:00\",\"updated_at\":\"2026-04-29 10:00:00\"}`
+	taskPayload := `{\"sync_id\":\"task-1\",\"title\":\"t\",\"kind\":\"bugfix\",\"state\":\"open\",` +
+		`\"slug\":\"mantenimiento-del-fork\",\"created_at\":\"2026-04-29 10:00:00\",\"updated_at\":\"2026-04-29 10:00:00\"}`
+	aliasPayload := `{\"alias\":\"card_1\",\"sync_id\":\"card-1\",\"slug\":\"` + project + `\",` +
+		`\"source\":\"manual\",\"created_at\":\"2026-04-29 10:00:00\",\"updated_at\":\"2026-04-29 10:00:00\"}`
+
+	payload, err := chunkcodec.CanonicalizeForProject([]byte(`{
+		"mutations":[
+			{"entity":"project_card","entity_key":"card-1","op":"upsert","payload":"`+cardPayload+`"},
+			{"entity":"task","entity_key":"task-1","op":"upsert","payload":"`+taskPayload+`"},
+			{"entity":"project_alias","entity_key":"card_1","op":"upsert","payload":"`+aliasPayload+`"}
+		]
+	}`), project)
+	if err != nil {
+		t.Fatalf("canonicalize chunk: %v", err)
+	}
+	chunkID := chunkIDFromPayload(payload)
+
+	if err := cs.WriteChunk(ctx, project, chunkID, "tester", "2026-04-29T10:03:00Z", payload); err != nil {
+		t.Fatalf("WriteChunk: %v", err)
+	}
+
+	mutations, _, _, err := cs.ListMutationsSince(ctx, 0, 100, []string{project})
+	if err != nil {
+		t.Fatalf("ListMutationsSince: %v", err)
+	}
+	want := map[string]string{
+		store.SyncEntityProjectCard:  "card-1",
+		store.SyncEntityTask:         "task-1",
+		store.SyncEntityProjectAlias: "card_1",
+	}
+	found := make(map[string]int, len(want))
+	for _, m := range mutations {
+		if key, ok := want[m.Entity]; ok && m.EntityKey == key {
+			found[m.Entity]++
+			if m.Project != project || m.Op != store.SyncOpUpsert {
+				t.Fatalf("unexpected %s mutation: %+v", m.Entity, m)
+			}
+		}
+	}
+	for entity := range want {
+		if found[entity] == 0 {
+			t.Fatalf("%s never reached cloud_mutations, so no replica can pull it: %+v", entity, mutations)
+		}
+	}
+
+	// Replay stays idempotent, exactly as it does for relation.
+	if err := cs.WriteChunk(ctx, project, chunkID, "tester", "2026-04-29T10:03:00Z", payload); err != nil {
+		t.Fatalf("replay WriteChunk: %v", err)
+	}
+	after, _, _, err := cs.ListMutationsSince(ctx, 0, 100, []string{project})
+	if err != nil {
+		t.Fatalf("ListMutationsSince after replay: %v", err)
+	}
+	replayed := make(map[string]int, len(want))
+	for _, m := range after {
+		if key, ok := want[m.Entity]; ok && m.EntityKey == key {
+			replayed[m.Entity]++
+		}
+	}
+	for entity := range want {
+		if replayed[entity] != 1 {
+			t.Fatalf("expected exactly one %s row after replay, got %d", entity, replayed[entity])
+		}
+	}
+}
+
+// TestMaterializedChunkMutationsCoversEveryProjectsEntity keeps the rule
+// honest as entities are added: the store's own list of engram-projects
+// entities is the source of truth, not a second list copied into this package.
+func TestMaterializedChunkMutationsCoversEveryProjectsEntity(t *testing.T) {
+	chunk := engramsync.ChunkData{}
+	for _, entity := range store.ProjectsSyncEntities() {
+		chunk.Mutations = append(chunk.Mutations, store.SyncMutation{
+			Entity:    entity,
+			EntityKey: "key-" + entity,
+			Op:        store.SyncOpUpsert,
+			Payload:   `{"sync_id":"key-` + entity + `"}`,
+		})
+	}
+
+	entries, err := materializedChunkMutations("proj-a", chunk)
+	if err != nil {
+		t.Fatalf("materializedChunkMutations: %v", err)
+	}
+	materialized := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		materialized[entry.Entity] = struct{}{}
+	}
+	for _, entity := range store.ProjectsSyncEntities() {
+		if _, ok := materialized[entity]; !ok {
+			t.Fatalf("entity %q has no typed chunk collection and was not materialized either", entity)
+		}
+	}
+}
+
 func TestWriteChunkMaterializesMutationsAndIsReplayIdempotent(t *testing.T) {
 	cs := openTestCloudStore(t)
 	project := "test-chunk-materialize-" + strings.ReplaceAll(time.Now().UTC().Format("20060102150405.000000000"), ".", "-")
@@ -723,7 +835,11 @@ func TestBackfillMutationChunksSkipsInvalidLegacyMutationPayloads(t *testing.T) 
 	project := uniqueCloudstoreTestProject("mutation-backfill-invalid")
 	cleanupCloudstoreProject(t, cs, project)
 
-	insertLegacyCloudMutation(t, cs, project, store.SyncEntitySession, "manual-save-engram", store.SyncOpUpsert, `{"id":"manual-save-engram"}`)
+	// A session payload with no id at all: the canonicalizer cannot derive an
+	// entity key from it, so it has no identity to materialize under. (A
+	// session with no *directory* is valid and materializes like any other —
+	// see TestBackfillMutationChunksMaterializesSessionsWithoutADirectory.)
+	insertLegacyCloudMutation(t, cs, project, store.SyncEntitySession, "sess-nameless", store.SyncOpUpsert, `{"directory":"/work/nameless"}`)
 	insertLegacyCloudMutation(t, cs, project, store.SyncEntityObservation, "obs-valid", store.SyncOpUpsert, `{"sync_id":"obs-valid","session_id":"sess-valid","type":"decision","title":"Valid observation","content":"materialize this one","scope":"project","created_at":"2026-05-04T01:49:52Z"}`)
 
 	report, err := cs.BackfillMutationChunks(ctx, project, true)
@@ -742,10 +858,47 @@ func TestBackfillMutationChunksSkipsInvalidLegacyMutationPayloads(t *testing.T) 
 		t.Fatalf("decode repair chunk: %v", err)
 	}
 	if len(chunk.Sessions) != 0 {
-		t.Fatalf("invalid legacy session without directory must not be materialized, got %+v", chunk.Sessions)
+		t.Fatalf("a session with no id has no identity to materialize under, got %+v", chunk.Sessions)
 	}
 	if len(chunk.Observations) != 1 || chunk.Observations[0].SyncID != "obs-valid" {
 		t.Fatalf("expected valid observation to materialize, got %+v", chunk.Observations)
+	}
+}
+
+// TestBackfillMutationChunksMaterializesSessionsWithoutADirectory is the
+// counterpart: a session saved against an explicit project has no directory and
+// is perfectly deliverable, so the repair path must carry it rather than count
+// it as an invalid legacy payload.
+func TestBackfillMutationChunksMaterializesSessionsWithoutADirectory(t *testing.T) {
+	cs := openTestCloudStore(t)
+	ctx := context.Background()
+	project := uniqueCloudstoreTestProject("mutation-backfill-no-directory")
+	cleanupCloudstoreProject(t, cs, project)
+
+	insertLegacyCloudMutation(t, cs, project, store.SyncEntitySession, "manual-save-engram", store.SyncOpUpsert,
+		`{"id":"manual-save-engram"}`)
+
+	report, err := cs.BackfillMutationChunks(ctx, project, true)
+	if err != nil {
+		t.Fatalf("BackfillMutationChunks: %v", err)
+	}
+	if report.InvalidMutations != 0 {
+		t.Fatalf("a session with no directory is deliverable, not invalid: %+v", report)
+	}
+	if report.ChunksInserted != 1 {
+		t.Fatalf("expected the session to materialize into one chunk: %+v", report)
+	}
+
+	chunks := readCloudChunksForProject(t, cs, project)
+	if len(chunks) != 1 {
+		t.Fatalf("expected one repair chunk, got %d", len(chunks))
+	}
+	var chunk engramsync.ChunkData
+	if err := json.Unmarshal(chunks[0], &chunk); err != nil {
+		t.Fatalf("decode repair chunk: %v", err)
+	}
+	if len(chunk.Sessions) != 1 || chunk.Sessions[0].ID != "manual-save-engram" {
+		t.Fatalf("expected the directory-less session in the repair chunk, got %+v", chunk.Sessions)
 	}
 }
 
@@ -1204,5 +1357,43 @@ func TestSetDashboardAllowedProjectsInvalidatesCachedReadModel(t *testing.T) {
 	}
 	if loadCalls != 2 {
 		t.Fatalf("expected allowlist update to invalidate read-model cache, got load count %d", loadCalls)
+	}
+}
+
+// TestListMutationProjectsNamesEveryProjectWithMutations is what a wildcard
+// allowlist has to expand into at startup: the set of projects that actually
+// have mutations, rather than a project literally named "*".
+func TestListMutationProjectsNamesEveryProjectWithMutations(t *testing.T) {
+	cs := openTestCloudStore(t)
+	ctx := context.Background()
+	first := uniqueCloudstoreTestProject("mutation-projects-a")
+	second := uniqueCloudstoreTestProject("mutation-projects-b")
+	cleanupCloudstoreProject(t, cs, first)
+	cleanupCloudstoreProject(t, cs, second)
+
+	insertLegacyCloudMutation(t, cs, first, store.SyncEntityObservation, "obs-a", store.SyncOpUpsert,
+		`{"sync_id":"obs-a","session_id":"sess-a","type":"decision","title":"A","content":"a","scope":"project"}`)
+	insertLegacyCloudMutation(t, cs, first, store.SyncEntityObservation, "obs-a2", store.SyncOpUpsert,
+		`{"sync_id":"obs-a2","session_id":"sess-a","type":"decision","title":"A2","content":"a2","scope":"project"}`)
+	insertLegacyCloudMutation(t, cs, second, store.SyncEntityObservation, "obs-b", store.SyncOpUpsert,
+		`{"sync_id":"obs-b","session_id":"sess-b","type":"decision","title":"B","content":"b","scope":"project"}`)
+
+	projects, err := cs.ListMutationProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListMutationProjects: %v", err)
+	}
+	for _, want := range []string{first, second} {
+		if !slices.Contains(projects, want) {
+			t.Fatalf("project %q has mutations but was not listed: %v", want, projects)
+		}
+	}
+	// Each project is named once, however many mutations it owns: the caller
+	// runs a backfill per entry.
+	seen := make(map[string]int, len(projects))
+	for _, project := range projects {
+		seen[project]++
+	}
+	if seen[first] != 1 {
+		t.Fatalf("project %q listed %d times, want exactly once", first, seen[first])
 	}
 }

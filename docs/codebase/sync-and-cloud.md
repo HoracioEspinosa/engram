@@ -64,11 +64,23 @@ Business rule: **if sync is blocked, fail loudly and visibly**. No silent drops.
 
 `POST /sync/push` and `POST /sync/mutations/push` enforce the server-side push request body limit from `ENGRAM_CLOUD_MAX_PUSH_BYTES` (default 8 MiB).
 
+A pushed session requires an `id` and nothing else. `directory` records where a session was opened, and a session saved against an explicit project was never opened in a checkout — the local store writes those on purpose, so the codec, the server and the local backfill all carry them as they are. A push rejection is chunk-wide, so every required-field rule on this path has to match a rule the local schema actually enforces.
+
 For complete route details, use [DOCS.md — HTTP API Endpoints](../../DOCS.md#http-api-endpoints).
+
+### Project names are compared folded
+
+Enrollment normalizes a project name to lower case (`store.NormalizeProject`); the rows keep whatever case they were written with, which is why reads across the store compare `lower(project)` and `core-0003-fn-indexes` / `core-0004-sync-project-fn-indexes` index that expression on observations, sessions, prompts and `sync_mutations`. The sync journal follows the same rule end to end: the backfill selects, `projectNeedsBackfill`, the enrolled-projects join on both pending-mutation reads, and `SkipAckNonEnrolledMutations`. An exact-equality filter there is a silent data-loss bug — it selects nothing for a project named with capitals and the skip-ack then acks its mutations as unenrolled.
+
+`engram cloud enroll` refuses a name that owns no local row at all (exit 1, `reason_code: enroll_project_has_no_local_rows`). Enrollment is the one place where a typo is indistinguishable from a healthy project that simply has nothing new. A fresh replica enrolling a project in order to pull it is the legitimate version of the same state, and says so with `--allow-empty`.
 
 ## Cloud store: `internal/cloud/cloudstore`
 
 `internal/cloud/cloudstore/cloudstore.go` persists to Postgres, materializes chunks/mutations, and feeds dashboard read models. If an organizational policy matters, state lives here or is enforced from `cloudserver` against data from here.
+
+A chunk carries three entities in typed arrays — `sessions`, `observations`, `prompts` — and everything else only inside `mutations`. `WriteChunk` materializes the typed three from their arrays and every other entity from its mutation, so `relation` and all seven engram-projects entities reach `cloud_mutations`. That table is what `ListMutationsSince` serves, so an entity missing from it is invisible to every pulling replica while the pushing client still acks the chunk — a silent, reason-code-less hole. The predicate is the complement (`hasTypedChunkCollection`) rather than a list of entities to carry, so a newly replicated entity is carried by default.
+
+`ENGRAM_CLOUD_ALLOWED_PROJECTS=*` is a wildcard, never a project name: nothing is ever stored, authorized or materialized under `*`. Every consumer of the allowlist asks `cloud.AllowsAllProjects` before it iterates the list — the project authorizer, the dashboard scope, and the startup materialization in `cmd/engram/cloud.go`, which expands the wildcard through `CloudStore.ListMutationProjects`. Iterating the list literally means running per-project work against one project that holds nothing, which is invisible: no error, and only the dashboard's `cloud_chunks` count reads short of `cloud_mutations`.
 
 ## engram-projects replication: `internal/store/projects_sync.go`
 
@@ -87,6 +99,8 @@ Five entities travel besides the upstream four: `project_card`, `task`, `evidenc
 | `observation_ref` | Grow-only set, no delete in v1 |
 
 Ties on any clock are broken by the SHA-256 of that group's own fields, never of the whole payload — the local side of a comparison may already carry another group's values merged in from a third replica.
+
+**The wire contract accepts exactly the rows the store accepts.** `internal/cloud/chunkcodec/projects.go` keeps its own copy of the payload structs, so its required-field rules have to be read against the store's CHECK constraints rather than assumed to follow them. A task is identified by `jira_key`, `sdd_change` **or** `slug` — the vault importer writes tasks carrying only the last one. A rejection here aborts the whole chunk, not just the offending mutation, so the error names the entity and the row's own identity (`sync_id`, or the alias for `project_alias`, or the observation for `observation_ref`) instead of only its index inside the chunk.
 
 A projects mutation whose parent row has not arrived is parked in `sync_apply_deferred` and the chunk still succeeds; upstream entities keep their strict behavior. Parked rows are keyed by entity plus payload digest, because several distinct payloads for one task can be in flight and keying them by entity alone loses whichever arrived first.
 

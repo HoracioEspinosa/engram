@@ -67,7 +67,7 @@ func (s *Store) ListDiagnosticSessions(project string) ([]DiagnosticSessionEvide
 	query := `SELECT id, project, ifnull(directory, ''), id FROM sessions`
 	args := []any{}
 	if project != "" {
-		query += ` WHERE project = ?`
+		query += ` WHERE lower(project) = ?`
 		args = append(args, project)
 	}
 	query += ` ORDER BY started_at DESC, id ASC`
@@ -109,7 +109,7 @@ func (s *Store) listPendingProjectMutationsTxLike(q rowQuerier, project string) 
 		WHERE target_key = ? AND acked_at IS NULL`
 	args := []any{DefaultSyncTargetKey}
 	if project != "" {
-		query += ` AND project = ?`
+		query += ` AND lower(project) = ?`
 		args = append(args, project)
 	}
 	query += ` ORDER BY seq ASC`
@@ -171,11 +171,11 @@ func ValidateSyncMutationPayload(entity, op, payload, entityKey string) SyncMuta
 
 	switch entity {
 	case SyncEntitySession:
+		// The id is the whole requirement. A directory says where the session
+		// was opened, and a session saved against an explicit project was
+		// never opened in one — the cloud accepts it without.
 		if field("id") == "" && entityKey == "" {
 			missing = append(missing, "id")
-		}
-		if op == SyncOpUpsert {
-			require("directory")
 		}
 	case SyncEntityObservation:
 		if field("sync_id") == "" && entityKey == "" {

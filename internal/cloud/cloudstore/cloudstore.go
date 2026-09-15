@@ -68,20 +68,52 @@ func (cs *CloudStore) SetDashboardAllowedProjects(projects []string) {
 	}
 	cs.dashboardAllowedAll = false
 	cs.dashboardAllowedScopes = make(map[string]struct{})
+	if cloud.AllowsAllProjects(projects) {
+		cs.dashboardAllowedAll = true
+		cs.dashboardAllowedScopes = nil
+		cs.invalidateDashboardReadModel()
+		return
+	}
 	for _, project := range projects {
 		project = strings.TrimSpace(project)
-		if project == "*" {
-			cs.dashboardAllowedAll = true
-			cs.dashboardAllowedScopes = nil
-			cs.invalidateDashboardReadModel()
-			return
-		}
 		if project == "" {
 			continue
 		}
 		cs.dashboardAllowedScopes[project] = struct{}{}
 	}
 	cs.invalidateDashboardReadModel()
+}
+
+// ListMutationProjects names every project that owns at least one row in
+// cloud_mutations, sorted. It is what a wildcard allowlist expands into for any
+// caller that has to do per-project work: "*" is not a project, so iterating
+// the allowlist literally reaches none of them.
+func (cs *CloudStore) ListMutationProjects(ctx context.Context) ([]string, error) {
+	if cs == nil || cs.db == nil {
+		return nil, fmt.Errorf("cloudstore: not initialized")
+	}
+	rows, err := cs.db.QueryContext(ctx, `
+		SELECT DISTINCT project
+		FROM cloud_mutations
+		WHERE trim(coalesce(project, '')) <> ''
+		ORDER BY project ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("cloudstore: list mutation projects: %w", err)
+	}
+	defer rows.Close()
+
+	projects := make([]string, 0)
+	for rows.Next() {
+		var project string
+		if err := rows.Scan(&project); err != nil {
+			return nil, fmt.Errorf("cloudstore: scan mutation project: %w", err)
+		}
+		projects = append(projects, project)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cloudstore: iterate mutation projects: %w", err)
+	}
+	return projects, nil
 }
 
 type User struct {
@@ -394,18 +426,23 @@ func materializedChunkMutations(project string, chunk engramsync.ChunkData) ([]M
 		entries = append(entries, MutationEntry{Project: project, Entity: store.SyncEntityPrompt, EntityKey: entityKey, Op: store.SyncOpUpsert, Payload: payload})
 	}
 
-	// Relations travel only as relation-entity entries in chunk.Mutations — there is no
-	// typed collection for them like Sessions/Observations/Prompts — so materialize them
-	// here to mirror the mutation-push path (#379). Session/observation/prompt mutations
-	// are already materialized from the typed collections above, so they are skipped to
-	// avoid duplicate cloud_mutations rows.
+	// Session, observation and prompt mutations are already materialized from
+	// the typed collections above, so they are skipped here to avoid duplicate
+	// cloud_mutations rows. Every other entity — relation, and each of the
+	// engram-projects entities: cards, aliases, tasks, evidence, benchmarks,
+	// task links, observation references — has no typed collection at all and
+	// travels only as a mutation. Skipping those meant they reached
+	// cloud_chunks and never cloud_mutations, which is what ListMutationsSince
+	// reads: a pulling replica received none of them, and the pushing client
+	// acked the chunk with nothing to report.
 	for i, mutation := range chunk.Mutations {
-		if strings.TrimSpace(mutation.Entity) != store.SyncEntityRelation {
+		entity := strings.TrimSpace(mutation.Entity)
+		if hasTypedChunkCollection(entity) {
 			continue
 		}
 		entityKey := strings.TrimSpace(mutation.EntityKey)
 		if entityKey == "" {
-			return nil, fmt.Errorf("cloudstore: materialize chunk: mutations[%d].entity_key is required for relation", i)
+			return nil, fmt.Errorf("cloudstore: materialize chunk: mutations[%d].entity_key is required for %s", i, entity)
 		}
 		op := strings.TrimSpace(mutation.Op)
 		if op == "" {
@@ -415,10 +452,29 @@ func materializedChunkMutations(project string, chunk engramsync.ChunkData) ([]M
 		if len(payload) == 0 {
 			payload = json.RawMessage("{}")
 		}
-		entries = append(entries, MutationEntry{Project: project, Entity: store.SyncEntityRelation, EntityKey: entityKey, Op: op, Payload: payload})
+		entries = append(entries, MutationEntry{Project: project, Entity: entity, EntityKey: entityKey, Op: op, Payload: payload})
 	}
 
 	return entries, nil
+}
+
+// hasTypedChunkCollection reports whether a chunk carries this entity in an
+// array of its own (ChunkData.Sessions / .Observations / .Prompts) as well as
+// in ChunkData.Mutations. Those three are materialized from the array, so
+// materializing the mutation too would duplicate the row; every other entity is
+// materialized from the mutation, because that is the only place it appears.
+//
+// The predicate is deliberately the complement rather than a list of the
+// entities that do need materializing: a new replicated entity has no typed
+// collection, so it is carried by default instead of being silently dropped
+// until someone remembers to extend a second list.
+func hasTypedChunkCollection(entity string) bool {
+	switch strings.TrimSpace(entity) {
+	case store.SyncEntitySession, store.SyncEntityObservation, store.SyncEntityPrompt:
+		return true
+	default:
+		return false
+	}
 }
 
 func insertMaterializedMutations(ctx context.Context, tx *sql.Tx, entries []MutationEntry) error {

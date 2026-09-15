@@ -707,12 +707,14 @@ func validateImportableChunkPayload(payload []byte) (engramsync.ChunkData, error
 }
 
 func validateDirectChunkArrayEntries(chunk engramsync.ChunkData) error {
+	// The id is the identity and is required. The directory is not: it records
+	// where a session was opened, and a session saved against an explicit
+	// project — mem_save with a project name — was never opened in a checkout.
+	// The local store writes those legitimately, so demanding a directory here
+	// rejected the whole chunk over rows that had nothing wrong with them.
 	for i, session := range chunk.Sessions {
 		if strings.TrimSpace(session.ID) == "" {
 			return fmt.Errorf("sessions[%d].id is required", i)
-		}
-		if strings.TrimSpace(session.Directory) == "" {
-			return fmt.Errorf("sessions[%d].directory is required", i)
 		}
 	}
 

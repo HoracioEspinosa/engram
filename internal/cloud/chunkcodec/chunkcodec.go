@@ -364,9 +364,9 @@ func normalizeMutationPayload(entity, op, payload, project string) (normalizedPa
 		if body.ID == "" {
 			return "", "", fmt.Errorf("session payload id is required")
 		}
-		if op == store.SyncOpUpsert && body.Directory == "" {
-			return "", "", fmt.Errorf("session payload directory is required for upsert")
-		}
+		// directory is optional: it records where a session was opened, and a
+		// session saved against an explicit project was never opened in a
+		// checkout. The store writes those, so the wire contract carries them.
 		if op == store.SyncOpDelete {
 			body.Directory = ""
 			body.StartedAt = ""
