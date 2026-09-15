@@ -110,6 +110,12 @@ always reloads the screen on display.
 
 Below 100 columns the tab bar drops the labels and shows only each slot's glyph and digit.
 
+The tab bar and the status bar belong to the frame, not to the screen between them: a tab is laid
+out against the rows the frame leaves it, and a screen that still needs more is cut at the bottom,
+with the same `…` every truncated field carries. That cut is the frame's own, deliberately —
+left to the renderer it happens at the top instead, and the reader loses the bar that says where
+they are.
+
 ### 0 · Home
 
 The active project seen whole: its card and breadcrumb as a header, then four navigable blocks —
@@ -135,8 +141,9 @@ cycles the scope `all` → `project` → `subtree` → `all`, and the tab's own 
 `Memory (project)`, `Memory (subtree)`, plain `Memory` for `all`. With no active project the key is
 inert and the hint disappears rather than advertising a narrowing that has nothing to narrow to.
 Changing the scope resets the list offsets, so the reader never lands on a page that no longer
-exists. The choice lasts for the session: the tab is built without a settings store, so every start
-opens at `all` again.
+exists. The choice is remembered in `tui.memory_scope` and read back when the workspace opens, so a
+reader who works inside one project does not re-narrow Memory on every start. A value the build
+does not recognise opens at `all`: too much memory is never wrong for the wrong reason.
 
 `L` links the observation under the cursor to a task; `t` opens its topic-key timeline; `c` copies
 it to the clipboard through OSC 52.
@@ -244,11 +251,6 @@ sync configuration is a row, not a tab.
 
 The vault root, evidence dir and doctor rows are readings, not actions: the place to change them is
 the environment they were read from, and the full diagnostic is `engram doctor`.
-
-This tab is built without a settings store bound to it, which shows in two rows: cycling `icons`
-changes the vocabulary for the rest of the session and then reports that it could not remember the
-choice, and `doctor` reads *no settings store bound* instead of counting. Set `ENGRAM_TUI_ICONS`,
-or write `tui.icons` directly, to make an icon choice survive a restart.
 
 ## The search palette
 
@@ -567,8 +569,12 @@ to the next tier rather than acting on a typo.
 The environment can only ever **downgrade**: a `TERM` of `dumb`, or a locale that does not say
 UTF-8, resolves to `ascii`. `nerd` is **never** inferred — there is no reliable way to detect a
 patched font, and guessing wrong fills the screen with replacement characters — so it must be asked
-for, by the variable, by the setting, or by cycling the Settings tab's `icons` row (which changes
-the vocabulary for the session but cannot write the setting — see [7 · Settings](#7--settings)).
+for, by the variable, by the setting, or by cycling the Settings tab's `icons` row, which repaints
+the workspace and writes `tui.icons`.
+
+Under `ascii` a tab bar slot is its digit and, where the terminal is wide enough, its label: that
+vocabulary spells each tab's icon as that tab's own digit, so the bar reads `0 Home  1 Memory` and
+never doubles the number.
 
 ## What the workspace remembers
 
@@ -581,8 +587,9 @@ asked for, and only the memory of it failed.
 | `tui.last_project` | opening a project from the tree | the project resolver, below cwd detection |
 | `tui.last_tab` | every tab switch, deep links included | startup — **only** when `tui.last_project` matches the project now opening |
 | `tui.theme` | the theme picker's `enter`, and `engram theme use` | startup, below `--theme` and `ENGRAM_TUI_THEME` |
-| `tui.icons` | by hand — the Settings tab's `icons` row tries and reports that it cannot | startup, below `ENGRAM_TUI_ICONS` |
+| `tui.icons` | the Settings tab's `icons` row | startup, below `ENGRAM_TUI_ICONS` |
 | `tui.mouse` | by hand | startup, below `--no-mouse` |
+| `tui.memory_scope` | Memory's `a` | startup, to open Memory at the width it was left at |
 | `tui.search_history` | opening a palette hit | startup, to seed the palette's recent queries |
 
 `tui.last_tab` is deliberately scoped to its project: a tab is a place inside a project, not a
@@ -617,6 +624,12 @@ bash scripts/dev/tapes.sh --check    # fail if a tape on disk has drifted from t
 No hex value is ever hand-written outside `internal/tui/theme`; edit a palette, re-run this, and
 every tape follows.
 
+Every tape asks for `JetBrainsMono NFM`, the patched monospace face the VHS image ships: a
+proportional fallback throws away the cell grid the whole layout is solved against, and an
+unpatched one draws the nerd vocabulary as blanks. The workspace itself runs in the alternate
+screen — it is a program option, not something the model asks for once it has started — so what a
+capture holds is the frame and nothing of the shell that launched it.
+
 **Rendering one tape to a PNG**:
 
 ```bash
@@ -632,10 +645,11 @@ same name.
 bash scripts/dev/tui-shots.sh
 ```
 
-It asserts three things per scene: no line overflows the terminal it was drawn for, the frame was
-drawn with the palette the run asked for, and every background colour belongs to that palette. It
-also proves, across two runs, that the Runbooks Markdown view repaints its syntax-highlighted code
-block when the palette changes. Output goes to `docker/dev/out/tui/`.
+It asserts four things per scene: no line overflows the terminal it was drawn for, the frame holds
+exactly the rows that terminal has with the tab bar still on the second of them, the frame was
+drawn with the palette the run asked for, and every colour belongs to that palette. It also proves,
+across two runs, that the Runbooks Markdown view repaints its syntax-highlighted code block when
+the palette changes. Output goes to `docker/dev/out/tui/`.
 
 **The guard** — a golden file never moves without a picture of it:
 
