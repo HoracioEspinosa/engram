@@ -738,14 +738,22 @@ func cmdCloudEnroll(cfg store.Config) {
 	if len(os.Args) >= 4 {
 		arg := strings.TrimSpace(os.Args[3])
 		if arg == "--help" || arg == "-h" || arg == "help" {
-			fmt.Println("usage: engram cloud enroll <project>")
+			fmt.Println("usage: engram cloud enroll <project> [--allow-empty]")
 			fmt.Println("Enroll a local-first project for explicit cloud replication.")
+			fmt.Println("--allow-empty  enroll a project this machine does not hold yet, to pull it")
 			return
 		}
 	}
 	if len(os.Args) < 4 || strings.TrimSpace(os.Args[3]) == "" {
-		fmt.Fprintln(os.Stderr, "usage: engram cloud enroll <project>")
+		fmt.Fprintln(os.Stderr, "usage: engram cloud enroll <project> [--allow-empty]")
 		exitFunc(1)
+	}
+
+	allowEmpty := false
+	for _, arg := range os.Args[4:] {
+		if strings.TrimSpace(arg) == "--allow-empty" {
+			allowEmpty = true
+		}
 	}
 
 	s, err := storeNew(cfg)
@@ -756,6 +764,32 @@ func cmdCloudEnroll(cfg store.Config) {
 	defer s.Close()
 
 	projectName := strings.TrimSpace(os.Args[3])
+
+	// An enrollment that matches nothing locally replicates nothing, and the
+	// first sync then answers "Nothing new to sync" with exit 0 forever. That
+	// is a typo wearing the costume of a healthy project, so it is refused here
+	// with a code a script can branch on.
+	//
+	// Enrolling a project this machine has never seen is also how a fresh
+	// replica prepares to pull one, and that is indistinguishable from the typo
+	// by inspection — only the operator knows which they meant. --allow-empty
+	// is where they say so.
+	if !allowEmpty {
+		hasRows, err := s.ProjectHasLocalRows(projectName)
+		if err != nil {
+			fatal(err)
+			return
+		}
+		if !hasRows {
+			fmt.Fprintf(os.Stderr, "engram: project %q has no local observations, sessions, prompts or project card; nothing would sync\n", projectName)
+			fmt.Fprintf(os.Stderr, "reason_code: %s\n", constants.ReasonEnrollProjectHasNoLocalRows)
+			fmt.Fprintln(os.Stderr, "hint: run `engram projects list` to see the names this machine actually holds,")
+			fmt.Fprintln(os.Stderr, "      or pass --allow-empty to enroll a project you intend to pull onto this machine")
+			exitFunc(1)
+			return
+		}
+	}
+
 	if err := s.EnrollProject(projectName); err != nil {
 		fatal(err)
 		return

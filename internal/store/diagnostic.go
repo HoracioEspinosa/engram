@@ -67,7 +67,7 @@ func (s *Store) ListDiagnosticSessions(project string) ([]DiagnosticSessionEvide
 	query := `SELECT id, project, ifnull(directory, ''), id FROM sessions`
 	args := []any{}
 	if project != "" {
-		query += ` WHERE project = ?`
+		query += ` WHERE lower(project) = ?`
 		args = append(args, project)
 	}
 	query += ` ORDER BY started_at DESC, id ASC`
@@ -109,7 +109,7 @@ func (s *Store) listPendingProjectMutationsTxLike(q rowQuerier, project string) 
 		WHERE target_key = ? AND acked_at IS NULL`
 	args := []any{DefaultSyncTargetKey}
 	if project != "" {
-		query += ` AND project = ?`
+		query += ` AND lower(project) = ?`
 		args = append(args, project)
 	}
 	query += ` ORDER BY seq ASC`

@@ -1110,6 +1110,49 @@ func TestCmdCloudStatusEmitsLocalDaemonLine(t *testing.T) {
 	})
 }
 
+// TestCmdCloudEnrollRefusesAProjectWithNoLocalRows is the loud half of the
+// case-insensitive fix: enrolling a name that matches nothing locally used to
+// succeed, and the first sync answered `Nothing new to sync` with exit 0 while
+// every observation stayed behind. Enrollment that replicates nothing is a
+// typo, and a typo has to say so.
+func TestCmdCloudEnrollRefusesAProjectWithNoLocalRows(t *testing.T) {
+	stubExitWithPanic(t)
+	cfg := testConfig(t)
+
+	withArgs(t, "engram", "cloud", "enroll", "gentlemen.dots")
+	stdout, stderr, recovered := captureOutputAndRecover(t, func() { cmdCloud(cfg) })
+	if _, ok := recovered.(exitCode); !ok {
+		t.Fatalf("expected a non-zero exit for a project with no local rows, got %v stdout=%q", recovered, stdout)
+	}
+	if !strings.Contains(stderr, "enroll_project_has_no_local_rows") {
+		t.Fatalf("expected a typed reason code on stderr, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "gentlemen.dots") {
+		t.Fatalf("expected the refused project name on stderr, got %q", stderr)
+	}
+
+	// A fresh replica preparing to pull a project it has never held says so.
+	withArgs(t, "engram", "cloud", "enroll", "gentlemen.dots", "--allow-empty")
+	stdout, stderr, recovered = captureOutputAndRecover(t, func() { cmdCloud(cfg) })
+	if recovered != nil || stderr != "" {
+		t.Fatalf("--allow-empty must enroll a project meant to be pulled, panic=%v stderr=%q", recovered, stderr)
+	}
+	if !strings.Contains(stdout, "enrolled for cloud sync") {
+		t.Fatalf("expected enroll success output, got %q", stdout)
+	}
+
+	// The same name, once it owns local rows under a different case, enrolls.
+	mustSeedObservation(t, cfg, "s-gd", "Gentleman.Dots", "note", "t", "c", "project")
+	withArgs(t, "engram", "cloud", "enroll", "Gentleman.Dots")
+	stdout, stderr, recovered = captureOutputAndRecover(t, func() { cmdCloud(cfg) })
+	if recovered != nil || stderr != "" {
+		t.Fatalf("enrolling a project that exists must succeed, panic=%v stderr=%q", recovered, stderr)
+	}
+	if !strings.Contains(stdout, "enrolled for cloud sync") {
+		t.Fatalf("expected enroll success output, got %q", stdout)
+	}
+}
+
 func TestCmdCloudUpgradeDoctorRequiresProjectAndIsDeterministic(t *testing.T) {
 	stubExitWithPanic(t)
 	stubRuntimeHooks(t)
@@ -1724,6 +1767,10 @@ func TestCloudDashboardDocsEnablementFlowIsExecutable(t *testing.T) {
 	if !strings.Contains(stdout, "Cloud status: configured") {
 		t.Fatalf("expected configured cloud status output, got %q", stdout)
 	}
+
+	// The docs flow enrolls a project the reader already has memories in;
+	// enrollment refuses a name that matches nothing on this machine.
+	mustSeedObservation(t, cfg, "s-smoke", "smoke-project", "note", "t", "c", "project")
 
 	withArgs(t, "engram", "cloud", "enroll", "smoke-project")
 	stdout, stderr, recovered = captureOutputAndRecover(t, func() { cmdCloud(cfg) })

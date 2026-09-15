@@ -13,6 +13,10 @@ const (
 	ReasonTransportFailed             = "transport_failed"
 	ReasonUnsupportedEntity           = "unsupported_entity"
 	ReasonCloudConfigError            = "cloud_config_error"
+	// ReasonEnrollProjectHasNoLocalRows refuses an enrollment that would
+	// replicate nothing. A name that matches no local row is a typo, and a
+	// silent enrollment turns it into a sync that reports success forever.
+	ReasonEnrollProjectHasNoLocalRows = "enroll_project_has_no_local_rows"
 
 	UpgradeStatusReady   = "ready"
 	UpgradeStatusBlocked = "blocked"

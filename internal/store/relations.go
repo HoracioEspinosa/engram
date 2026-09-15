@@ -654,7 +654,7 @@ func (s *Store) JudgeRelation(p JudgeRelationParams) (*Relation, error) {
 		}
 		var enrolled int
 		if err := tx.QueryRow(
-			`SELECT 1 FROM sync_enrolled_projects WHERE project = ? LIMIT 1`, enrollCheckProject,
+			`SELECT 1 FROM sync_enrolled_projects WHERE lower(project) = ? LIMIT 1`, enrollCheckProject,
 		).Scan(&enrolled); err != nil && err != sql.ErrNoRows {
 			return fmt.Errorf("JudgeRelation: check enrollment: %w", err)
 		}
@@ -856,7 +856,7 @@ func (s *Store) JudgeBySemantic(p JudgeBySemanticParams) (string, error) {
 
 		var enrolled int
 		if err := tx.QueryRow(
-			`SELECT 1 FROM sync_enrolled_projects WHERE project = ? LIMIT 1`, enrollCheckProject,
+			`SELECT 1 FROM sync_enrolled_projects WHERE lower(project) = ? LIMIT 1`, enrollCheckProject,
 		).Scan(&enrolled); err != nil && err != sql.ErrNoRows {
 			return fmt.Errorf("JudgeBySemantic: check enrollment: %w", err)
 		}

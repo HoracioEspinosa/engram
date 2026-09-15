@@ -9105,6 +9105,118 @@ func TestRepairBackfillsSessionsWithoutADirectory(t *testing.T) {
 	}
 }
 
+// TestEnrollProjectFindsRowsWrittenUnderAnotherCase pins the project filter of
+// the sync journal to the same rule the rest of the store already follows.
+// Enrollment normalizes a project name to lower case and the rows keep whatever
+// case they were written with, so an exact-equality filter simply found nothing
+// for `Gentleman.Dots` — no mutations, no error, `Nothing new to sync`, exit 0.
+func TestEnrollProjectFindsRowsWrittenUnderAnotherCase(t *testing.T) {
+	s := newTestStoreRaw(t)
+
+	const mixedCase = "Gentleman.Dots"
+	if _, err := s.db.Exec(
+		`INSERT INTO sessions (id, project, directory, started_at) VALUES (?, ?, ?, datetime('now'))`,
+		"s-gd", mixedCase, "/tmp/gd",
+	); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+	if _, err := s.db.Exec(`
+		INSERT INTO observations (sync_id, session_id, type, title, content, project, scope, created_at, updated_at)
+		VALUES (?, ?, 'decision', 'a title', 'some content', ?, 'project', datetime('now'), datetime('now'))`,
+		"obs-gd", "s-gd", mixedCase,
+	); err != nil {
+		t.Fatalf("insert observation: %v", err)
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO user_prompts (sync_id, session_id, content, project, created_at) VALUES (?, ?, ?, ?, datetime('now'))`,
+		"prompt-gd", "s-gd", "hola", mixedCase,
+	); err != nil {
+		t.Fatalf("insert prompt: %v", err)
+	}
+
+	if err := s.EnrollProject(mixedCase); err != nil {
+		t.Fatalf("EnrollProject: %v", err)
+	}
+
+	for _, want := range []struct {
+		entity    string
+		entityKey string
+	}{
+		{SyncEntitySession, "s-gd"},
+		{SyncEntityObservation, "obs-gd"},
+		{SyncEntityPrompt, "prompt-gd"},
+	} {
+		var count int
+		if err := s.db.QueryRow(
+			`SELECT COUNT(*) FROM sync_mutations WHERE entity = ? AND entity_key = ?`,
+			want.entity, want.entityKey,
+		).Scan(&count); err != nil {
+			t.Fatalf("count %s mutations: %v", want.entity, err)
+		}
+		if count == 0 {
+			t.Fatalf("enrolling %q left its %s unqueued: nothing would ever sync", mixedCase, want.entity)
+		}
+	}
+
+	// And the push must see them: the enrolled-projects join decides what
+	// leaves this machine, and the skip-ack decides what is silently dropped.
+	pending, err := s.ListPendingSyncMutations(DefaultSyncTargetKey, 100)
+	if err != nil {
+		t.Fatalf("ListPendingSyncMutations: %v", err)
+	}
+	if len(pending) < 3 {
+		t.Fatalf("the push selected %d mutation(s) for an enrolled project, want at least 3", len(pending))
+	}
+
+	skipped, err := s.SkipAckNonEnrolledMutations(DefaultSyncTargetKey)
+	if err != nil {
+		t.Fatalf("SkipAckNonEnrolledMutations: %v", err)
+	}
+	if skipped != 0 {
+		t.Fatalf("skip-ack dropped %d mutation(s) of an enrolled project", skipped)
+	}
+}
+
+// TestProjectHasLocalRowsIgnoresEnrollment is what `cloud enroll` asks before
+// it accepts a project name: enrollment itself must not count as evidence that
+// the project exists, or the check would answer yes to its own side effect.
+func TestProjectHasLocalRowsIgnoresEnrollment(t *testing.T) {
+	s := newTestStore(t)
+
+	has, err := s.ProjectHasLocalRows("Gentleman.Dots")
+	if err != nil {
+		t.Fatalf("ProjectHasLocalRows: %v", err)
+	}
+	if has {
+		t.Fatal("an unknown project must have no local rows")
+	}
+
+	if err := s.EnrollProject("Gentleman.Dots"); err != nil {
+		t.Fatalf("EnrollProject: %v", err)
+	}
+	has, err = s.ProjectHasLocalRows("Gentleman.Dots")
+	if err != nil {
+		t.Fatalf("ProjectHasLocalRows after enrollment: %v", err)
+	}
+	if has {
+		t.Fatal("enrollment is not a local row: the check would confirm its own side effect")
+	}
+
+	if _, err := s.db.Exec(
+		`INSERT INTO sessions (id, project, directory, started_at) VALUES (?, ?, ?, datetime('now'))`,
+		"s-gd", "Gentleman.Dots", "/tmp/gd",
+	); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+	has, err = s.ProjectHasLocalRows("gentleman.dots")
+	if err != nil {
+		t.Fatalf("ProjectHasLocalRows with a session: %v", err)
+	}
+	if !has {
+		t.Fatal("a session written under another case is still a local row")
+	}
+}
+
 // TestCloudUpgradeDoctorDoesNotBlockOnAMissingSessionDirectory is the doctor
 // half of the same rule: a session mutation whose directory cannot be inferred
 // used to be reported as needing manual action, which is a repair no operator

@@ -28,6 +28,9 @@ const (
 	// migrationFunctionIndexesID adds the functional indexes that let a read
 	// scoped to one project find its rows instead of scanning every observation.
 	migrationFunctionIndexesID = "core-0003-fn-indexes"
+	// migrationSyncProjectIndexesID extends the same treatment to the three
+	// tables the sync journal scans by project.
+	migrationSyncProjectIndexesID = "core-0004-sync-project-fn-indexes"
 )
 
 // ensureFunctionIndexes builds the indexes behind observationsByProjectPredicate.
@@ -43,6 +46,25 @@ func (s *Store) ensureFunctionIndexes() error {
 				ON observations(lower(project), deleted_at);
 			CREATE INDEX IF NOT EXISTS idx_obs_project_lower_created
 				ON observations(lower(project), created_at DESC);
+		`)
+		return err
+	})
+}
+
+// ensureSyncProjectFunctionIndexes covers the tables the sync journal filters by
+// project. Enrollment normalizes a project name to lower case while the rows
+// keep whatever case they were written with, so those filters compare
+// lower(project) for the same reason the observation reads do — and the index
+// on the bare column cannot serve that comparison.
+func (s *Store) ensureSyncProjectFunctionIndexes() error {
+	return s.once(migrationSyncProjectIndexesID, func() error {
+		_, err := s.execHook(s.db, `
+			CREATE INDEX IF NOT EXISTS idx_sessions_project_lower
+				ON sessions(lower(project));
+			CREATE INDEX IF NOT EXISTS idx_prompts_project_lower
+				ON user_prompts(lower(project));
+			CREATE INDEX IF NOT EXISTS idx_sync_mutations_project_lower
+				ON sync_mutations(lower(project));
 		`)
 		return err
 	})

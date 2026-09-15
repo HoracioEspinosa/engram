@@ -1297,6 +1297,10 @@ func (s *Store) migrate() error {
 		return err
 	}
 
+	if err := s.ensureSyncProjectFunctionIndexes(); err != nil {
+		return err
+	}
+
 	if err := s.migrateProjects(); err != nil {
 		return err
 	}
@@ -2977,7 +2981,7 @@ func (s *Store) DeleteSession(id string) error {
 		}
 
 		var enrolled int
-		if err := tx.QueryRow(`SELECT 1 FROM sync_enrolled_projects WHERE project = ? LIMIT 1`, project).Scan(&enrolled); err != nil {
+		if err := tx.QueryRow(`SELECT 1 FROM sync_enrolled_projects WHERE lower(project) = ? LIMIT 1`, project).Scan(&enrolled); err != nil {
 			if !errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("delete session: check enrollment: %w", err)
 			}
@@ -3689,8 +3693,8 @@ func (s *Store) ExportRelationMutations(project string) ([]SyncMutation, error) 
 		WHERE r.judgment_status != ?`
 	args := []any{JudgmentStatusOrphaned}
 	if normalizedProject != "" {
-		query += ` AND coalesce(nullif(src.project, ''), src_s.project, '') = ?
-			AND coalesce(nullif(tgt.project, ''), tgt_s.project, '') = ?`
+		query += ` AND lower(coalesce(nullif(src.project, ''), src_s.project, '')) = ?
+			AND lower(coalesce(nullif(tgt.project, ''), tgt_s.project, '')) = ?`
 		args = append(args, normalizedProject, normalizedProject)
 	}
 	query += ` ORDER BY r.created_at, r.sync_id`
@@ -3974,7 +3978,7 @@ func (s *Store) ListPendingSyncMutations(targetKey string, limit int) ([]SyncMut
 	rows, err := s.queryItHook(s.db, `
 		SELECT sm.seq, sm.target_key, sm.entity, sm.entity_key, sm.op, sm.payload, sm.source, sm.project, sm.occurred_at, sm.acked_at
 		FROM sync_mutations sm
-		LEFT JOIN sync_enrolled_projects sep ON sm.project = sep.project
+		LEFT JOIN sync_enrolled_projects sep ON lower(sm.project) = lower(sep.project)
 		WHERE sm.target_key = ? AND sm.acked_at IS NULL
 		  AND (sm.project = '' OR sep.project IS NOT NULL)
 		ORDER BY sm.seq ASC
@@ -4003,7 +4007,7 @@ func (s *Store) ListPendingSyncMutationsAfterSeq(targetKey string, afterSeq int6
 	rows, err := s.queryItHook(s.db, `
 		SELECT sm.seq, sm.target_key, sm.entity, sm.entity_key, sm.op, sm.payload, sm.source, sm.project, sm.occurred_at, sm.acked_at
 		FROM sync_mutations sm
-		LEFT JOIN sync_enrolled_projects sep ON sm.project = sep.project
+		LEFT JOIN sync_enrolled_projects sep ON lower(sm.project) = lower(sep.project)
 		WHERE sm.target_key = ? AND sm.acked_at IS NULL
 		  AND sm.seq > ?
 		  AND (sm.project = '' OR sep.project IS NOT NULL)
@@ -4030,7 +4034,7 @@ func (s *Store) CountPendingNonEnrolledSyncMutations(targetKey string) ([]Pendin
 	rows, err := s.queryItHook(s.db, `
 		SELECT sm.project, COUNT(*)
 		FROM sync_mutations sm
-		LEFT JOIN sync_enrolled_projects sep ON sm.project = sep.project
+		LEFT JOIN sync_enrolled_projects sep ON lower(sm.project) = lower(sep.project)
 		WHERE sm.target_key = ?
 		  AND sm.acked_at IS NULL
 		  AND sm.project != ''
@@ -4064,7 +4068,7 @@ func (s *Store) SkipAckNonEnrolledMutations(targetKey string) (int64, error) {
 		WHERE target_key = ?
 		  AND acked_at IS NULL
 		  AND project != ''
-		  AND project NOT IN (SELECT project FROM sync_enrolled_projects)`,
+		  AND lower(project) NOT IN (SELECT lower(project) FROM sync_enrolled_projects)`,
 		targetKey,
 	)
 	if err != nil {
@@ -4662,6 +4666,42 @@ func (s *Store) GetObservationBySyncID(syncID string) (*Observation, error) {
 
 // ─── Project Enrollment for Cloud Sync ───────────────────────────────────────
 
+// ProjectHasLocalRows reports whether the named project owns anything this
+// machine could replicate: an observation, a session, a prompt, or a project
+// card. Enrollment deliberately does not count — it is the side effect the
+// caller is about to produce, so counting it would let the check confirm
+// itself, and `cloud enroll` needs to tell a real project from a typo.
+//
+// The comparison is folded for the same reason every other project filter is:
+// the name a caller types is normalized to lower case, and rows keep whatever
+// case they were written with.
+func (s *Store) ProjectHasLocalRows(project string) (bool, error) {
+	project, _ = NormalizeProject(project)
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return false, nil
+	}
+	const query = `
+SELECT 1 FROM (
+  SELECT project FROM observations   WHERE lower(project) = ? AND deleted_at IS NULL
+  UNION ALL
+  SELECT project FROM sessions       WHERE lower(project) = ?
+  UNION ALL
+  SELECT project FROM user_prompts   WHERE lower(project) = ?
+  UNION ALL
+  SELECT slug    FROM project_cards  WHERE lower(slug)    = ?
+) LIMIT 1`
+	var dummy int
+	err := s.db.QueryRow(query, project, project, project, project).Scan(&dummy)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // EnrollProject registers a project for cloud sync. Idempotent — re-enrolling
 // an already-enrolled project is a no-op.
 func (s *Store) EnrollProject(project string) error {
@@ -4696,7 +4736,7 @@ func (s *Store) UnenrollProject(project string) error {
 		return fmt.Errorf("project name must not be empty")
 	}
 	_, err := s.execHook(s.db,
-		`DELETE FROM sync_enrolled_projects WHERE project = ?`,
+		`DELETE FROM sync_enrolled_projects WHERE lower(project) = ?`,
 		project,
 	)
 	return err
@@ -4731,7 +4771,7 @@ func (s *Store) IsProjectEnrolled(project string) (bool, error) {
 	}
 	var exists int
 	err := s.db.QueryRow(
-		`SELECT 1 FROM sync_enrolled_projects WHERE project = ? LIMIT 1`,
+		`SELECT 1 FROM sync_enrolled_projects WHERE lower(project) = ? LIMIT 1`,
 		project,
 	).Scan(&exists)
 	if err == sql.ErrNoRows {
@@ -5978,11 +6018,16 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			// directory to report. This predicate must stay identical to the
 			// SELECT in backfillSessionSyncMutationsTx, or the fast-path skip
 			// desyncs from the write path.
+			//
+			// project is compared folded, here and in every query below:
+			// enrollment normalizes the name to lower case and the rows keep
+			// whatever case they were written with, so exact equality finds
+			// nothing at all for a project named with capitals.
 			q: `SELECT COUNT(*) FROM sessions
-			    WHERE project = ?
+			    WHERE lower(project) = ?
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = sessions.id AND sm.source = ? AND sm.project = ?
+			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = sessions.id AND sm.source = ? AND lower(sm.project) = ?
 			      )`,
 			args: []any{project, DefaultSyncTargetKey, SyncEntitySession, SyncSourceLocal, project},
 		},
@@ -5993,7 +6038,7 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			// backfillObservationSyncMutationsTx's live-observations query.
 			q: `SELECT COUNT(*) FROM observations o
 			    LEFT JOIN sessions s ON s.id = o.session_id
-			    WHERE (ifnull(o.project,'') = ? OR (ifnull(o.project,'') = '' AND ifnull(s.project,'') = ?))
+			    WHERE (lower(ifnull(o.project, '')) = ? OR (ifnull(o.project, '') = '' AND lower(ifnull(s.project, '')) = ?))
 			      AND o.deleted_at IS NULL
 			      AND trim(ifnull(o.session_id, '')) != ''
 			      AND trim(ifnull(o.type, '')) != ''
@@ -6002,7 +6047,7 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			      AND trim(ifnull(o.scope, '')) != ''
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = o.sync_id AND sm.source = ? AND sm.project = ?
+			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = o.sync_id AND sm.source = ? AND lower(sm.project) = ?
 			      )`,
 			args: []any{project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncSourceLocal, project},
 		},
@@ -6013,12 +6058,12 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			// live-prompts query.
 			q: `SELECT COUNT(*) FROM user_prompts p
 			    LEFT JOIN sessions s ON s.id = p.session_id
-			    WHERE (ifnull(p.project,'') = ? OR (ifnull(p.project,'') = '' AND ifnull(s.project,'') = ?))
+			    WHERE (lower(ifnull(p.project, '')) = ? OR (ifnull(p.project, '') = '' AND lower(ifnull(s.project, '')) = ?))
 			      AND trim(ifnull(p.session_id, '')) != ''
 			      AND trim(ifnull(p.content, '')) != ''
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = p.sync_id AND sm.source = ? AND sm.project = ?
+			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = p.sync_id AND sm.source = ? AND lower(sm.project) = ?
 			      )`,
 			args: []any{project, project, DefaultSyncTargetKey, SyncEntityPrompt, SyncSourceLocal, project},
 		},
@@ -6039,10 +6084,10 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 			    WHERE r.judgment_status NOT IN (?, ?)
 			      AND ifnull(r.marked_by_actor, '') != ''
 			      AND ifnull(r.marked_by_kind, '') != ''
-			      AND coalesce(nullif(src.project, ''), src_s.project, '') = ?
+			      AND lower(coalesce(nullif(src.project, ''), src_s.project, '')) = ?
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = r.sync_id AND sm.source = ? AND sm.project = ?
+			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = r.sync_id AND sm.source = ? AND lower(sm.project) = ?
 			      )`,
 			args: []any{JudgmentStatusOrphaned, JudgmentStatusPending, project, DefaultSyncTargetKey, SyncEntityRelation, SyncSourceLocal, project},
 		},
@@ -6106,7 +6151,7 @@ func (s *Store) backfillSessionSyncMutationsTx(tx *sql.Tx, project string) error
 	rows, err := s.queryItHook(tx, `
 		SELECT id, project, directory, started_at, ended_at, summary
 		FROM sessions
-		WHERE project = ?
+		WHERE lower(project) = ?
 		  AND NOT EXISTS (
 			SELECT 1
 			FROM sync_mutations sm
@@ -6114,7 +6159,7 @@ func (s *Store) backfillSessionSyncMutationsTx(tx *sql.Tx, project string) error
 			  AND sm.entity = ?
 			  AND sm.entity_key = sessions.id
 			  AND sm.source = ?
-			  AND sm.project = ?
+			  AND lower(sm.project) = ?
 		  )
 		ORDER BY started_at ASC, id ASC`,
 		project, DefaultSyncTargetKey, SyncEntitySession, SyncSourceLocal, project,
@@ -6164,8 +6209,8 @@ func (s *Store) backfillObservationSyncMutationsTx(tx *sql.Tx, project string) e
 		FROM observations o
 		LEFT JOIN sessions s ON s.id = o.session_id
 		WHERE (
-			ifnull(o.project, '') = ?
-			OR (ifnull(o.project, '') = '' AND ifnull(s.project, '') = ?)
+			lower(ifnull(o.project, '')) = ?
+			OR (ifnull(o.project, '') = '' AND lower(ifnull(s.project, '')) = ?)
 		)
 		  AND deleted_at IS NULL
 		  AND trim(ifnull(o.session_id, '')) != ''
@@ -6180,7 +6225,7 @@ func (s *Store) backfillObservationSyncMutationsTx(tx *sql.Tx, project string) e
 			  AND sm.entity = ?
 			  AND sm.entity_key = o.sync_id
 			  AND sm.source = ?
-			  AND sm.project = ?
+			  AND lower(sm.project) = ?
 		  )
 		ORDER BY o.id ASC`,
 		project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncSourceLocal, project,
@@ -6233,8 +6278,8 @@ func (s *Store) backfillObservationSyncMutationsTx(tx *sql.Tx, project string) e
 		FROM observations o
 		LEFT JOIN sessions s ON s.id = o.session_id
 		WHERE (
-			ifnull(o.project, '') = ?
-			OR (ifnull(o.project, '') = '' AND ifnull(s.project, '') = ?)
+			lower(ifnull(o.project, '')) = ?
+			OR (ifnull(o.project, '') = '' AND lower(ifnull(s.project, '')) = ?)
 		)
 		  AND o.deleted_at IS NOT NULL
 		  AND NOT EXISTS (
@@ -6245,7 +6290,7 @@ func (s *Store) backfillObservationSyncMutationsTx(tx *sql.Tx, project string) e
 			  AND sm.entity_key = o.sync_id
 			  AND sm.op = ?
 			  AND sm.source = ?
-			  AND sm.project = ?
+			  AND lower(sm.project) = ?
 		  )
 		ORDER BY o.id ASC`,
 		project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncOpDelete, SyncSourceLocal, project,
@@ -6292,8 +6337,8 @@ func (s *Store) backfillPromptSyncMutationsTx(tx *sql.Tx, project string) error 
 		FROM user_prompts p
 		LEFT JOIN sessions s ON s.id = p.session_id
 		WHERE (
-			ifnull(p.project, '') = ?
-			OR (ifnull(p.project, '') = '' AND ifnull(s.project, '') = ?)
+			lower(ifnull(p.project, '')) = ?
+			OR (ifnull(p.project, '') = '' AND lower(ifnull(s.project, '')) = ?)
 		)
 		  AND trim(ifnull(p.session_id, '')) != ''
 		  AND trim(ifnull(p.content, '')) != ''
@@ -6304,7 +6349,7 @@ func (s *Store) backfillPromptSyncMutationsTx(tx *sql.Tx, project string) error 
 			  AND sm.entity = ?
 			  AND sm.entity_key = p.sync_id
 			  AND sm.source = ?
-			  AND sm.project = ?
+			  AND lower(sm.project) = ?
 		  )
 		ORDER BY p.id ASC`,
 		project, project, DefaultSyncTargetKey, SyncEntityPrompt, SyncSourceLocal, project,
@@ -6342,8 +6387,8 @@ func (s *Store) backfillPromptSyncMutationsTx(tx *sql.Tx, project string) error 
 		FROM prompt_tombstones
 		LEFT JOIN sessions s ON s.id = prompt_tombstones.session_id
 		WHERE (
-			ifnull(prompt_tombstones.project, '') = ?
-			OR (ifnull(prompt_tombstones.project, '') = '' AND ifnull(s.project, '') = ?)
+			lower(ifnull(prompt_tombstones.project, '')) = ?
+			OR (ifnull(prompt_tombstones.project, '') = '' AND lower(ifnull(s.project, '')) = ?)
 		)
 		  AND NOT EXISTS (
 			SELECT 1
@@ -6353,7 +6398,7 @@ func (s *Store) backfillPromptSyncMutationsTx(tx *sql.Tx, project string) error 
 			  AND sm.entity_key = prompt_tombstones.sync_id
 			  AND sm.source = ?
 			  AND sm.op = ?
-			  AND sm.project = ?
+			  AND lower(sm.project) = ?
 		  )
 		ORDER BY deleted_at ASC`,
 		project, project, DefaultSyncTargetKey, SyncEntityPrompt, SyncSourceLocal, SyncOpDelete, project,
@@ -6424,14 +6469,14 @@ func (s *Store) backfillRelationSyncMutationsTx(tx *sql.Tx, project string) erro
 		WHERE r.judgment_status NOT IN (?, ?)
 		  AND ifnull(r.marked_by_actor, '') != ''
 		  AND ifnull(r.marked_by_kind, '') != ''
-		  AND coalesce(nullif(src.project, ''), src_s.project, '') = ?
+		  AND lower(coalesce(nullif(src.project, ''), src_s.project, '')) = ?
 		  AND NOT EXISTS (
 		    SELECT 1 FROM sync_mutations sm
 		    WHERE sm.target_key = ?
 		      AND sm.entity = ?
 		      AND sm.entity_key = r.sync_id
 		      AND sm.source = ?
-		      AND sm.project = ?
+		      AND lower(sm.project) = ?
 		  )
 		ORDER BY r.created_at ASC, r.sync_id ASC`,
 		JudgmentStatusOrphaned, JudgmentStatusPending,

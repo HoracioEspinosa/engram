@@ -68,6 +68,12 @@ A pushed session requires an `id` and nothing else. `directory` records where a 
 
 For complete route details, use [DOCS.md — HTTP API Endpoints](../../DOCS.md#http-api-endpoints).
 
+### Project names are compared folded
+
+Enrollment normalizes a project name to lower case (`store.NormalizeProject`); the rows keep whatever case they were written with, which is why reads across the store compare `lower(project)` and `core-0003-fn-indexes` / `core-0004-sync-project-fn-indexes` index that expression on observations, sessions, prompts and `sync_mutations`. The sync journal follows the same rule end to end: the backfill selects, `projectNeedsBackfill`, the enrolled-projects join on both pending-mutation reads, and `SkipAckNonEnrolledMutations`. An exact-equality filter there is a silent data-loss bug — it selects nothing for a project named with capitals and the skip-ack then acks its mutations as unenrolled.
+
+`engram cloud enroll` refuses a name that owns no local row at all (exit 1, `reason_code: enroll_project_has_no_local_rows`). Enrollment is the one place where a typo is indistinguishable from a healthy project that simply has nothing new. A fresh replica enrolling a project in order to pull it is the legitimate version of the same state, and says so with `--allow-empty`.
+
 ## Cloud store: `internal/cloud/cloudstore`
 
 `internal/cloud/cloudstore/cloudstore.go` persists to Postgres, materializes chunks/mutations, and feeds dashboard read models. If an organizational policy matters, state lives here or is enforced from `cloudserver` against data from here.
