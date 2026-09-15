@@ -495,3 +495,110 @@ var errStub = stubError("the store said no")
 type stubError string
 
 func (e stubError) Error() string { return string(e) }
+
+// keyReload is the picker's own "R": re-read the themes table without leaving
+// the overlay.
+var keyReload = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}}
+
+// TestReloadingThePickerRepaintsTheWorkspace: "R" exists so an edit made
+// outside the workspace shows up in it, and the workspace is what the reader
+// is judging the theme by.
+//
+// A reload that filled the list and left the screen alone put the new palette's
+// name in front of the old colours. The only way to see the edit was then to
+// move the cursor off the row and back onto it, which is a workaround for a
+// screen that has already been handed the answer.
+func TestReloadingThePickerRepaintsTheWorkspace(t *testing.T) {
+	m, themes, _ := pickerFixture(t)
+	m = openPicker(t, m)
+
+	// The same theme, edited the way `engram theme` edits one: a role
+	// replaced, the name kept. The replacement is another stored palette's
+	// role rather than a literal, so no colour is spelled outside theme/.
+	edited := theme.KoiPond()
+	edited.Primary = theme.Ogon().Primary
+	themes.Themes[0] = storedTheme(t, "koi-pond", theme.ThemeVariantDark, edited)
+
+	before := m.styles.Palette.Primary
+	cursor := m.themePicker.list.Index()
+
+	m, msg := press(t, m, keyReload)
+	loaded, ok := msg.(themesLoadedMsg)
+	if !ok {
+		t.Fatalf("R produced %T, want themesLoadedMsg", msg)
+	}
+
+	updated, cmd := m.Update(loaded)
+	m, ok = updated.(Model)
+	if !ok {
+		t.Fatalf("Update returned %T, want app.Model", updated)
+	}
+	if got := m.themePicker.list.Index(); got != cursor {
+		t.Fatalf("the reload moved the cursor from %d to %d", cursor, got)
+	}
+	if cmd == nil {
+		t.Fatal("the reload repainted nothing")
+	}
+
+	previewed, ok := cmd().(themePreviewMsg)
+	if !ok {
+		t.Fatalf("the reload produced %T, want themePreviewMsg", cmd())
+	}
+	if previewed.palette.Primary != edited.Primary {
+		t.Fatalf("the reload previewed %v, want the palette it just read", previewed.palette.Primary)
+	}
+
+	m = deliver(t, m, previewed)
+	if m.styles.Palette.Primary == before {
+		t.Fatalf("the workspace still paints in %v, the palette the reload replaced", before)
+	}
+}
+
+// TestAReloadedPickerPreviewsNothingItCannotApply: a row the picker refuses to
+// apply is a row it refuses to paint the workspace in, whether the cursor
+// landed on it or a reload put it under one.
+func TestAReloadedPickerPreviewsNothingItCannotApply(t *testing.T) {
+	broken := data.ThemeRecord{ThemeRecord: store.ThemeRecord{
+		Name:    "koi-pond",
+		Variant: theme.ThemeVariantDark,
+		Palette: json.RawMessage(`{"not":"a theme document"}`),
+		Source:  "builtin",
+	}}
+
+	m, themes, _ := pickerFixture(t)
+	m = openPicker(t, m)
+	themes.Themes[0] = broken
+
+	m, msg := press(t, m, keyReload)
+	loaded, ok := msg.(themesLoadedMsg)
+	if !ok {
+		t.Fatalf("R produced %T, want themesLoadedMsg", msg)
+	}
+	if _, cmd := m.Update(loaded); cmd != nil {
+		t.Fatalf("the reload previewed a theme it would refuse to apply: %T", cmd())
+	}
+}
+
+// TestRepaintingKeepsTheIconVocabulary: a change of palette is not a change of
+// glyphs.
+//
+// theme.New starts every style set at the default vocabulary, so a repaint
+// that took it as-is dropped an ascii or nerd workspace back to unicode the
+// moment a theme was previewed — a terminal that cannot draw those glyphs
+// cannot draw them in another colour either.
+func TestRepaintingKeepsTheIconVocabulary(t *testing.T) {
+	m, _, _ := pickerFixture(t)
+	m = m.WithIcons(theme.IconModeASCII)
+	m = openPicker(t, m)
+
+	m, msg := press(t, m, keyDown)
+	previewed, ok := msg.(themePreviewMsg)
+	if !ok {
+		t.Fatalf("moving the cursor produced %T, want themePreviewMsg", msg)
+	}
+	m = deliver(t, m, previewed)
+
+	if got := m.styles.Icons.Mode(); got != theme.IconModeASCII {
+		t.Fatalf("previewing a theme left the workspace drawing in %v, want the vocabulary it had", got)
+	}
+}

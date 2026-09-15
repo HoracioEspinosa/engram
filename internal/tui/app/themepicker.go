@@ -223,7 +223,7 @@ func (m Model) updateThemePicker(msg tea.KeyMsg) (bool, Model, tea.Cmd) {
 		m.themePicker.notice = ""
 		// Restore rather than repaint from m.styles: what is on screen right
 		// now is whatever was last previewed.
-		return true, m.withStyles(theme.New(m.themePicker.original)), nil
+		return true, m.repaint(m.themePicker.original), nil
 
 	case key.Matches(msg, themePickerKeys.Reload):
 		return true, m, loadThemes(m.themePicker.themes)
@@ -261,23 +261,58 @@ func (m Model) updateThemeMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case themesLoadedMsg:
 		m.themePicker = m.themePicker.applyLoaded(msg)
-		return m, nil
+		return m, m.themePicker.previewSelected()
 
 	case themePreviewMsg:
-		return m.withStyles(theme.New(msg.palette)), nil
+		return m.repaint(msg.palette), nil
 
 	case themeAppliedMsg:
 		if msg.err != nil {
 			// The palette is still worth showing — the failure is about
 			// remembering the choice, not about the colours.
 			m.themePicker.notice = "could not remember " + msg.name + ": " + msg.err.Error()
-			return m.withStyles(theme.New(msg.palette)), nil
+			return m.repaint(msg.palette), nil
 		}
 		m.themePicker.notice = ""
 		m.themePicker.original = msg.palette
-		return m.withStyles(theme.New(msg.palette)), nil
+		return m.repaint(msg.palette), nil
 	}
 	return m, nil
+}
+
+// repaint returns a copy of the root painted in palette, still drawing with
+// the icon vocabulary it was drawing with.
+//
+// theme.New starts every style set at the default vocabulary, and a change of
+// palette is not a change of glyphs: a terminal that cannot draw the nerd set
+// cannot draw it in another colour either. Losing the vocabulary here is the
+// same defect WithIcons exists to prevent, and it looks like a broken font
+// rather than like a theme.
+func (m Model) repaint(palette theme.Palette) Model {
+	return m.withStyles(theme.New(palette).WithIcons(m.styles.Icons.Mode()))
+}
+
+// previewSelected repaints the workspace in the theme under the cursor.
+//
+// The list is drawn from a table the command line writes to as well, so a
+// reload is how a theme imported or edited outside the workspace arrives. A
+// reload that redrew only the list would show the new palette's name against
+// the old colours, and the one way to see the edit would be to move the cursor
+// off the row and back onto it — which is a workaround for a screen that has
+// already been told.
+//
+// A picker nobody opened has no workspace to preview into, and a row that
+// cannot be applied is not previewed either: the same rule the cursor plays
+// by.
+func (p themePickerModel) previewSelected() tea.Cmd {
+	if !p.open {
+		return nil
+	}
+	item, ok := p.selected()
+	if !ok || item.problem != "" {
+		return nil
+	}
+	return preview(item.palette)
 }
 
 // applyLoaded fills the list and puts the cursor on the theme currently
