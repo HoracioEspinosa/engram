@@ -10,10 +10,10 @@
 # What it guarantees, per scene and per geometry:
 #   * no line overflows the terminal it was drawn for. That is the single
 #     measurable statement behind "the layout does not break at 80 columns";
-#   * the frame holds exactly the rows the terminal has, and the tab bar is
-#     still on the second of them. A frame taller than its terminal is cut
-#     from the top by the renderer, so that pair is what "the layout does not
-#     break at 24 rows" measures;
+#   * the frame holds exactly the rows the terminal has, and the second of them
+#     is still chrome — the tab bar, or the top edge of the panel covering it.
+#     A frame taller than its terminal is cut from the top by the renderer, so
+#     that pair is what "the layout does not break at 24 rows" measures;
 #   * every colour the frame emits, foreground and background alike, is a role
 #     of the palette the run asked for. That is both the proof that the right
 #     palette drew the frame — the koi palettes share no colour — and the
@@ -215,41 +215,60 @@ assert_height() {
   return 1
 }
 
-# assert_tab_bar_is_on_screen requires the frame's second row to be the tab bar.
+# OVERLAY_SCENES are the scenes captured with a panel composed over the
+# workspace. A panel is centred on the terminal, so on a short one it starts on
+# the very row the tab bar occupies and covers it — which is a modal panel
+# doing its job, not a frame that overflowed.
+OVERLAY_SCENES="tree palette theme-picker help"
+
+# assert_chrome_is_on_screen requires the frame's second row to be the chrome:
+# the tab bar, or the top edge of the panel covering it.
 #
 # This is what a frame taller than its terminal actually costs. The renderer
-# drops the rows that do not fit from the TOP, so an overflowing screen does not
-# lose its last list row — it loses the app frame's padding, then the tab bar,
-# then the screen's own header, and the reader is left looking at the middle of
-# a list with nothing on screen to say which tab it belongs to. An overlay is
-# composed over the workspace rather than replacing it, so the rule is the same
-# with a panel open: the panel is centred between the bar and the status bar,
-# and a frame where it has reached the second row is a frame that overflowed.
+# drops the rows that do not fit from the TOP, so an overflowing screen does
+# not lose its last list row — it loses the app frame's padding, then the tab
+# bar, then the screen's own header, and the reader is left looking at the
+# middle of a list with nothing on screen to say which tab it belongs to. A
+# frame whose second row is still chrome is a frame nothing was dropped from.
 #
 # The bar is recognised by its structure, not by its glyphs: eight slots
 # numbered in order, exactly one of them bracketed as the active one. That is
 # the same reading internal/tui/app/golden_lint_test.go takes of it, and it
-# holds in every icon mode, at both geometries, in either palette.
-assert_tab_bar_is_on_screen() {
+# holds in every icon mode, at both geometries, in either palette. A panel's
+# top edge is recognised the same way, as a long run of one repeated
+# non-alphanumeric cell, over an empty first row — the app frame's own padding,
+# which is the row the renderer would have taken first.
+assert_chrome_is_on_screen() {
   perl -CSD -e '
-      my ($file) = @ARGV;
+      my ($file, $overlay) = @ARGV;
       open my $fh, "<", $file or die "cannot read $file: $!\n";
-      my $row = "";
+      my ($first, $row) = ("", "");
       while (my $line = <$fh>) {
+        $first = $line if $. == 1;
         if ($. == 2) { $row = $line; last }
       }
       close $fh;
+      chomp $first;
       chomp $row;
 
       my $digits = join "", ($row =~ /(\d)/g);
       my $active = () = $row =~ /\[/g;
-      if ($digits eq "01234567" && $active == 1) {
-        exit 0;
-      }
-      printf "      row 2 is not the tab bar (slots %s, %d active):\n      | %s\n",
+      exit 0 if $digits eq "01234567" && $active == 1;
+      exit 0 if $overlay && $first =~ /^\s*$/ && $row =~ /([^\p{Alnum}\s])\1{19,}/;
+
+      printf "      row 2 is neither the tab bar (slots %s, %d active) nor a panel edge:\n      | %s\n",
         ($digits eq "" ? "none" : $digits), $active, $row;
       exit 1;
-    ' "$1"
+    ' "$1" "$2"
+}
+
+# scene_has_overlay reports whether a scene name is one of OVERLAY_SCENES.
+scene_has_overlay() {
+  local scene
+  for scene in $OVERLAY_SCENES; do
+    [ "$scene" = "$1" ] && return 0
+  done
+  return 1
 }
 
 # assert_colours_are_the_palettes reports every true-colour sequence the frame
@@ -379,14 +398,17 @@ shot() {
     return
   fi
 
+  local overlay=""
+  scene_has_overlay "$name" && overlay="overlay"
+
   local problems=""
   assert_width "$width" "$txt" || problems="$problems width"
   assert_height "$height" "$txt" || problems="$problems height"
-  assert_tab_bar_is_on_screen "$txt" || problems="$problems chrome"
+  assert_chrome_is_on_screen "$txt" "$overlay" || problems="$problems chrome"
   assert_colours_are_the_palettes "$ansi" || problems="$problems colour"
 
   if [ -z "$problems" ]; then
-    printf 'PASS  %s (fits %sx%s, tab bar on screen, every colour a %s role)\n' \
+    printf 'PASS  %s (fits %sx%s, chrome on screen, every colour a %s role)\n' \
       "$label" "$width" "$height" "$ACTIVE_THEME"
     PASS_COUNT=$((PASS_COUNT + 1))
   else
