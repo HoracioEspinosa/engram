@@ -135,6 +135,17 @@ func (m Model) WithUpdateChecker(check memory.UpdateChecker) Model {
 	return m
 }
 
+// WithMemoryScope opens the Memory tab at the width it was last left at.
+//
+// Reading the remembered value is the facade's job, alongside the theme and
+// the search history it already resolves before the workspace opens: a read
+// on the render path is a read nobody can see failing, and the root is told
+// the answer rather than asked to go and find it.
+func (m Model) WithMemoryScope(scope memory.Scope) Model {
+	m.memory = m.memory.WithScope(scope)
+	return m
+}
+
 // WithGraph binds Home's graph block to its reader and to the syncer "s"
 // runs. A workspace built without them still opens; the block then says the
 // graph has never been read.

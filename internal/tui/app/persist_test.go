@@ -5,6 +5,7 @@ import (
 
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/memory"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -185,4 +186,42 @@ func TestWithIconsRepaintsEveryTab(t *testing.T) {
 		return
 	}
 	t.Fatalf("no registered tab changed its rendering when the icon vocabulary did")
+}
+
+// TestTheSettingsStoreReachesTheMemoryScope: the root's one binding for "what
+// the workspace writes down about itself" has to reach every row that writes
+// something, and Memory's own width is one of them.
+//
+// A binding that stopped at the Settings tab left "a" cycling a width that
+// never outlived the session, in a tab whose own title reports which width it
+// is reading — so the workspace opened wide on every start and looked as if
+// the choice had never been made.
+func TestTheSettingsStoreReachesTheMemoryScope(t *testing.T) {
+	remembered := &data.FakeSettings{}
+	m := New(&data.FakeMemory{}, &data.FakeProject{}, &data.FakeTask{}, &data.FakeEvidence{}, &data.FakeRunbook{},
+		"test", theme.New(theme.KoiPond()), "acme").
+		WithSettingsStore(remembered, remembered)
+	m.memory.Screen = memory.ScreenRecent
+
+	_, cmd := m.memory.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	drain(cmd)
+
+	if got := rememberedValue(t, remembered, memory.ScopeSettingKey); got != memory.ScopeProject.String() {
+		t.Fatalf("settings hold %q for %s, want the width the key chose",
+			got, memory.ScopeSettingKey)
+	}
+}
+
+// TestWithMemoryScopeOpensTheTabWhereItWasLeft is the read side of the same
+// setting: the root is told the remembered width and opens the tab at it.
+func TestWithMemoryScopeOpensTheTabWhereItWasLeft(t *testing.T) {
+	m := New(&data.FakeMemory{}, nil, nil, nil, nil, "test", theme.New(theme.KoiPond()), "acme").
+		WithMemoryScope(memory.ScopeSubtree)
+
+	if got := m.memory.Scope; got != memory.ScopeSubtree {
+		t.Fatalf("Memory opened at %v, want the width it was told", got)
+	}
+	if got := m.memory.Title(); got != "Memory (subtree)" {
+		t.Fatalf("the tab bar reads %q, want the width in it", got)
+	}
 }

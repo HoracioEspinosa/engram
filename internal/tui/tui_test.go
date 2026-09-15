@@ -9,6 +9,8 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui"
 	"github.com/HoracioEspinosa/engram/internal/tui/app"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/memory"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/settings"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -173,5 +175,95 @@ func TestNewOpensTheDashboardForAnExplicitProject(t *testing.T) {
 	}
 	if strings.Contains(out, "Select a project") {
 		t.Fatalf("an explicit project must open its dashboard, not the selector, got:\n%s", out)
+	}
+}
+
+// openWorkspace opens the facade on a seeded project, sized, with the project
+// tree the workspace raises on an unresolvable project already out of the way.
+func openWorkspace(t *testing.T, s *store.Store) tea.Model {
+	t.Helper()
+
+	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{Slug: "koi"}); err != nil {
+		t.Fatalf("seed project card: %v", err)
+	}
+
+	var m tea.Model = tui.New(s, "1.0.0-test", "koi", theme.CatppuccinMocha())
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	return m
+}
+
+// TestTheIconsRowRemembersTheVocabularyItChose: the Settings tab writes the
+// chosen icon vocabulary to the store the facade opened.
+//
+// The tab has always known how to write it. What it lacked was the store: the
+// facade wired the theme picker's writer and nothing else, so every row that
+// remembers something wrote into a nil and reported that it could not. The
+// Doctor row said so in as many words, and the only place that showed was a
+// screen capture nobody reads as a defect.
+func TestTheIconsRowRemembersTheVocabularyItChose(t *testing.T) {
+	s := newTestStore(t)
+	m := openWorkspace(t, s)
+
+	m, _ = m.Update(tabs.NavigateMsg{Target: tabs.Settings})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("cycling the icon vocabulary should remember the choice")
+	}
+	m, _ = m.Update(run(t, cmd))
+
+	value, ok, err := s.Setting(settings.IconSettingKey)
+	if err != nil {
+		t.Fatalf("read %s: %v", settings.IconSettingKey, err)
+	}
+	if !ok || value == "" {
+		t.Fatalf("%s was never written", settings.IconSettingKey)
+	}
+
+	if out := m.View(); strings.Contains(out, "no settings store bound") {
+		t.Fatalf("the Doctor row reports no store on a workspace built from one:\n%s", out)
+	}
+}
+
+// TestMemoryRemembersTheScopeItWasCycledTo is the same wiring for the other
+// row that writes one: "a" narrows Memory, and the choice has to outlive the
+// session or a reader working inside one project re-narrows it every start.
+func TestMemoryRemembersTheScopeItWasCycledTo(t *testing.T) {
+	s := newTestStore(t)
+	m := openWorkspace(t, s)
+
+	m, _ = m.Update(tabs.NavigateMsg{Target: tabs.Memory})
+	// The dashboard's second entry is the recent list, which is one of the
+	// screens "a" narrows.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if cmd == nil {
+		t.Fatal("narrowing Memory should remember the choice and reload")
+	}
+	m, _ = m.Update(run(t, cmd))
+
+	value, ok, err := s.Setting(memory.ScopeSettingKey)
+	if err != nil {
+		t.Fatalf("read %s: %v", memory.ScopeSettingKey, err)
+	}
+	if !ok || value != memory.ScopeProject.String() {
+		t.Fatalf("%s holds %q (written: %v), want the width that was chosen",
+			memory.ScopeSettingKey, value, ok)
+	}
+}
+
+// TestMemoryOpensAtTheScopeItRemembers closes the loop: a remembered width is
+// read back when the workspace opens, and the tab bar says which one it is.
+func TestMemoryOpensAtTheScopeItRemembers(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetSetting(memory.ScopeSettingKey, memory.ScopeSubtree.String()); err != nil {
+		t.Fatalf("set %s: %v", memory.ScopeSettingKey, err)
+	}
+
+	out := openWorkspace(t, s).View()
+	if !strings.Contains(out, "Memory (subtree)") {
+		t.Fatalf("the workspace opened workspace-wide with a narrower width remembered:\n%s", out)
 	}
 }

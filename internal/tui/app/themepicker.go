@@ -146,9 +146,18 @@ func (m Model) WithThemePicker(themes data.ThemeReader, writer data.SettingsWrit
 	return m
 }
 
-// WithSettingsStore binds the Settings tab to what it reads and writes.
+// WithSettingsStore binds every row that remembers something to the store it
+// remembers it in: the Settings tab's own rows and its Doctor summary, and the
+// width Memory reads at.
+//
+// One binding rather than one per tab, because it is one question — what the
+// workspace writes down about itself — and a second entry point is a second
+// thing to leave unwired. A tab bound to nothing still works the key; the
+// choice simply does not outlive the session, which looks like a workspace
+// that forgets rather than like a wire nobody connected.
 func (m Model) WithSettingsStore(writer data.SettingsWriter, reader data.SettingsReader) Model {
 	m.settings = m.settings.WithSettings(writer, reader)
+	m.memory = m.memory.WithSettings(writer)
 	return m
 }
 

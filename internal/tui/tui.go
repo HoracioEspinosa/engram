@@ -11,6 +11,7 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/app"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/memory"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 )
 
@@ -61,6 +62,11 @@ func New(s *store.Store, version string, project string, palette theme.Palette) 
 		data.NewSettingsWriter(s),
 	).WithSearchHistory(
 		searchHistory(data.NewSettingsReader(s)),
+	).WithSettingsStore(
+		data.NewSettingsWriter(s),
+		data.NewSettingsReader(s),
+	).WithMemoryScope(
+		memoryScope(data.NewSettingsReader(s)),
 	)
 }
 
@@ -77,6 +83,22 @@ func searchHistory(reader data.SettingsReader) []string {
 		return nil
 	}
 	return app.DecodeSearchHistory(raw)
+}
+
+// memoryScope reads the width Memory was last left at, the same way and for
+// the same reason searchHistory reads the queries it last remembered. A store
+// that will not answer opens the tab workspace-wide, which is what a fresh
+// install gets anyway and is the answer that can never be wrong for the wrong
+// reason: too much memory, never too little.
+func memoryScope(reader data.SettingsReader) memory.Scope {
+	if reader == nil {
+		return memory.ScopeAll
+	}
+	raw, _, err := reader.Setting(memory.ScopeSettingKey)
+	if err != nil {
+		return memory.ScopeAll
+	}
+	return memory.ParseScope(raw)
 }
 
 // workingDir is the checkout the graph syncer resolves graph.json and git HEAD
