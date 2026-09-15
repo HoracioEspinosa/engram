@@ -492,6 +492,12 @@ const (
 	// push because the cloud upsert contract rejects them, so no backfill can
 	// journal them. The row itself has to be completed or removed.
 	UpgradeReasonBlockedUnjournaledRows = "upgrade_blocked_unjournaled_rows"
+	// UpgradeReasonBlockedPushContractRows marks rows the next chunk would
+	// carry and the cloud would reject on sight. They are journaled, so the
+	// unjournaled counters say nothing about them, and a push rejection is
+	// chunk-wide: every other pending row of the project stays behind them.
+	// The row itself has to be completed or removed.
+	UpgradeReasonBlockedPushContractRows = "upgrade_blocked_push_contract_rows"
 )
 
 // EnrolledProject represents a project enrolled for cloud sync.

@@ -1348,6 +1348,17 @@ func (sy *Syncer) filterByPendingMutations(data *store.ExportData, project strin
 		if _, ok := observationSyncIDs[observation.SyncID]; !ok {
 			continue
 		}
+		// The export selects rows regardless of deleted_at, so a tombstone
+		// reaches this loop whenever its delete mutation is still pending. The
+		// delete is already in the mutation array and the cloud applies it from
+		// there; putting the row in the typed collection on top of that asks
+		// for an upsert of a row the deletion stripped no guarantees from —
+		// one deleted for having no title is rejected for exactly that, and the
+		// whole project's push dies with it. No session citation either: the
+		// cloud resolves no session for a delete.
+		if ObservationIsSoftDeleted(observation) {
+			continue
+		}
 		chunk.Observations = append(chunk.Observations, observation)
 		referencedSessionIDs[observation.SessionID] = struct{}{}
 	}

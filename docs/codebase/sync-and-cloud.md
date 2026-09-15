@@ -80,6 +80,12 @@ The cloud validates each observation and prompt upsert against the sessions the 
 
 New manual saves get a per-project session id (`manual-save-<slug>`) for the same reason: one shared `manual-save` row cited from many projects is a reference the server's model cannot express.
 
+### A deleted row travels as a mutation, never in the typed collections
+
+The typed arrays of a chunk are upserts, and the cloud requires every field an upsert needs on the row itself. A soft delete keeps the row (`deleted_at`) so the deletion can replicate, but it promises nothing about the rest of the row — an observation deleted for having no title still has none. In a cloud chunk the deletion already travels as its own `delete` mutation, so `filterByPendingMutations` leaves tombstones out of `observations`; carrying one as well asks the server to upsert a row it must reject, and a push rejection is chunk-wide, so one tombstone strands every other row of the project.
+
+The rule is cloud-only, and `internal/sync/pushcontract.go` says why: a local filesystem chunk carries no delete mutations, so there the tombstone in the typed array *is* the delete signal and `synthesizeMutationsFromChunk` turns it back into one on import.
+
 ### A row with no journal entry is not replicated
 
 `pending mutations = 0` means the journal is drained, not that every row reached the cloud. A row with no `sync_mutations` entry at all never enters a push. `Store.ProjectJournalGaps` counts those per enrolled project, folded, split in two:
@@ -88,6 +94,12 @@ New manual saves get a per-project session id (`manual-save-<slug>`) for the sam
 - **blocked** — the cloud upsert contract rejects them (an observation needs `session_id`, `type`, `title`, `content` and `scope`; a prompt needs `session_id` and `content`), so no backfill can deliver them. Only completing or removing the row clears the count.
 
 `engram cloud upgrade doctor` prints `unjournaled_rows` and `unjournaled_detail`, and never answers `ready` while either number is above zero.
+
+### The doctor answers with the push contract, not with a copy of it
+
+Both counters above only see rows with **no** journal entry. A row that was journaled and later lost a field the cloud requires has one, so nothing counted it — and it still travels in the next chunk, where a chunk-wide 400 strands every other pending row of the project. That is how the doctor came to report `ready` for projects whose push was being rejected.
+
+`ValidateChunkRows`, `ChunkRowRejections` and `PendingPushRowRejections` in `internal/sync/pushcontract.go` are the one definition of the row contract. `cloudserver` accepts a push with it, the exporter keeps rows out with it, and the doctor predicts with it: `PendingPushRowRejections` runs the exporter's own selection (`filterByPendingMutations`) and validates what comes out, so `ready` means the next push is accepted. Anything not pending is not offered and does not block, and a tombstone the collections drop does not block either. Rejections print as `push_contract_rejections` plus one `push_contract_row` line per row, named by `sync_id` so the row can be completed or removed — the only two things that clear it. Restating the field list in any of the three callers puts the doctor back to guessing.
 
 ## Cloud store: `internal/cloud/cloudstore`
 

@@ -33,11 +33,14 @@
 # colour and tags, because a column that only ever replicates its default proves
 # nothing about whether it replicates.
 #
-# Three shapes the real database was found in are planted on purpose, because no
-# writer produces them any more and each one used to stop the push silently:
+# Four shapes the real database was found in are planted on purpose, because no
+# writer produces them any more and each one used to stop the push:
 #   * a project whose rows carry capitals while its enrolled slug is lower case;
 #   * an observation of an enrolled project with no sync_mutations row at all,
 #     invisible to the push while the pending counters read zero;
+#   * an observation with no title, deleted after the fact: the tombstone used to
+#     travel in the chunk's typed collections, where the upsert contract rejects
+#     it and takes every other pending row of the project down with it;
 #   * a chunk an older client left in cloud_chunks whose project_card was never
 #     materialized into cloud_mutations, so the pull stream never carried it.
 #
@@ -341,6 +344,34 @@ else
   sed 's/^/      | /' "$CLOUD_OUT/rt-a-doctor-koi-garden.txt"
 fi
 
+log "rt-a: an observation with no title, deleted after the fact"
+# The shape that stranded four whole projects: rows that predate the title
+# requirement, deleted through the supported path. The soft delete keeps the row
+# and enqueues a delete mutation, and the export selected rows regardless of
+# deleted_at, so the tombstone entered the chunk's `observations` array — where
+# the upsert contract rejects it for the very field it never had, chunk-wide.
+# Planted after the doctor check above because a live row the contract rejects
+# is a genuine blocked gap; it stops being one the moment it is deleted.
+in_container sqlite3 "$DIR_A/engram.db" \
+  "INSERT INTO observations (sync_id, session_id, type, title, content, project, scope, topic_key)
+   VALUES ('obs-titleless-deleted', 'manual-save-koi-garden-nodir', 'discovery',
+           '', '', 'koi-garden', 'project', 'koi-workspace/fase-1/sin-titulo');"
+titleless_id="$(sql "$DIR_A" "SELECT id FROM observations WHERE sync_id = 'obs-titleless-deleted';" | tr -d '\r')"
+rt "$DIR_A" koi-garden delete "$titleless_id" >"$CLOUD_OUT/rt-a-delete-titleless.log" 2>&1 \
+  || { cat "$CLOUD_OUT/rt-a-delete-titleless.log"; fail "rt-a could not delete the title-less observation"; }
+
+# The doctor has to agree with the push it is predicting: the tombstone stays
+# out of the typed collections, so nothing blocks and `ready` means accepted.
+rt "$DIR_A" koi-garden cloud upgrade doctor --project koi-garden >"$CLOUD_OUT/rt-a-doctor-koi-garden-deleted.txt" 2>&1 || true
+doctor_status="$(awk -F': ' '/^status/ { print $2 }' "$CLOUD_OUT/rt-a-doctor-koi-garden-deleted.txt")"
+doctor_rejections="$(awk -F': ' '/^push_contract_rejections/ { print $2 }' "$CLOUD_OUT/rt-a-doctor-koi-garden-deleted.txt")"
+if [ "${doctor_status:-missing}" = "ready" ] && [ "${doctor_rejections:-missing}" = "0" ]; then
+  pass "engram cloud upgrade doctor stays ready with a soft-deleted title-less row"
+else
+  report_fail "engram cloud upgrade doctor reports status=${doctor_status:-<missing>} push_contract_rejections=${doctor_rejections:-<missing>} for koi-garden"
+  sed 's/^/      | /' "$CLOUD_OUT/rt-a-doctor-koi-garden-deleted.txt"
+fi
+
 for project in "${PROJECTS[@]}"; do
   log "rt-a: pushing $project"
   rt "$DIR_A" "$project" sync --cloud --project "$project" >"$CLOUD_OUT/rt-a-push-$project.log" 2>&1 \
@@ -473,6 +504,14 @@ expect_value "rt-a keeps the original casing of its own row" "$MIXED_CASE_ROW_PR
 unjournaled_obs="$(sql "$DIR_B" "SELECT ifnull(title, '<NULL>') FROM observations
   WHERE sync_id = 'obs-unjournaled' AND deleted_at IS NULL;")"
 expect_value "rt-b observation that had no journal row on rt-a" "fila sin journal" "$unjournaled_obs"
+
+# The deletion travels as a mutation, never as a row in the typed collections:
+# rt-b must hold no live copy of it, and the rows pushed alongside it — the two
+# above among them — must have arrived, which is what the push rejection used to
+# prevent.
+deleted_obs_live="$(sql "$DIR_B" "SELECT count(*) FROM observations
+  WHERE sync_id = 'obs-titleless-deleted' AND deleted_at IS NULL;")"
+expect_value "rt-b live copies of the deleted title-less observation" "0" "$deleted_obs_live"
 
 # The chunk is not the only way a replica reads the server: autosync pulls from
 # cloud_mutations through /sync/mutations/pull. An entity that reaches
