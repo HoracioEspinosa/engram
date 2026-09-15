@@ -13,9 +13,10 @@ import (
 // Update routes a message.
 //
 // Keys reach only the active tab, after the root has taken its global
-// bindings and whichever overlay has the keyboard. Everything else — window
-// size, data loads, timers — goes to the tab that owns it, or to every tab
-// when it genuinely concerns them all.
+// bindings and whichever overlay has the keyboard. Mouse events reach the tab
+// bar or the active tab, never the tabs nobody is looking at. Everything
+// else — window size, data loads, timers — goes to the tab that owns it, or to
+// every tab when it genuinely concerns them all.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -43,6 +44,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.updateActive(msg)
+
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
 
 	case tabs.NavigateMsg:
 		if msg.Slug != "" && msg.Slug != m.project {
@@ -111,50 +115,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // routeNavigate opens whatever one NavigateMsg points at: a deep link into a
 // row, or a plain tab switch.
+//
+// Every branch goes through openTab rather than assigning m.active itself:
+// a deep link is a way of changing tabs like any other, and the one that
+// skipped the assignment would be the one the workspace forgets on the way
+// out.
 func (m Model) routeNavigate(msg tabs.NavigateMsg) (tea.Model, tea.Cmd) {
-	{
-		if msg.Target == tabs.Memory && msg.ObservationID != 0 {
-			// A deep-link into one observation (rfc-tui.md §3.1 S4's "Enter
-			// opens the observation in Memory"), not a plain tab switch: skip
-			// activate()'s generic tab.Refresh() and load that observation's
-			// detail directly instead.
-			m.active = tabs.Memory
-			return m, m.memory.OpenObservation(msg.ObservationID)
-		}
-		if msg.Target == tabs.Memory && msg.Query != "" {
-			// Runbooks' "t" (rfc-tui.md §3.1 S8/S9): open Memory pre-searched
-			// for this runbook's executions instead of landing on whatever
-			// screen Memory last showed.
-			m.active = tabs.Memory
-			return m, m.memory.SearchFor(msg.Query)
-		}
-		if msg.Target == tabs.Tasks && msg.TaskID != 0 {
-			// The mirror image, for S7's "Enter" on an evidence file: open
-			// that file's task directly instead of landing on the list.
-			m.active = tabs.Tasks
-			return m, m.tasks.OpenTask(msg.TaskID)
-		}
-		if msg.Target == tabs.Evidence && msg.TaskID != 0 {
-			// S4's "e" key: filter Evidence to the task under view (S6's
-			// task_id filter) instead of showing every file in the project.
-			m.active = tabs.Evidence
-			return m, m.evidence.OpenForTask(msg.TaskID)
-		}
-		if msg.Target == tabs.Benchmarks && msg.BenchmarkID != 0 {
-			// The palette's deep link into one measurement: the tab's own
-			// table is what shows it, filtered to nothing so the row is
-			// where the search said it was.
-			return m.activate(tabs.Benchmarks)
-		}
-		if msg.Target == tabs.Evidence && msg.EvidenceID != 0 {
-			// The palette's own deep link: one file, opened by its id.
-			m.active = tabs.Evidence
-			opened, cmd := m.evidence.OpenEvidence(msg.EvidenceID)
-			m.evidence = opened
-			return m, cmd
-		}
-		return m.activate(msg.Target)
+	if msg.Target == tabs.Memory && msg.ObservationID != 0 {
+		// A deep-link into one observation (rfc-tui.md §3.1 S4's "Enter
+		// opens the observation in Memory"), not a plain tab switch: skip
+		// activate()'s generic tab.Refresh() and load that observation's
+		// detail directly instead.
+		return m.openTab(tabs.Memory, m.memory.OpenObservation(msg.ObservationID))
 	}
+	if msg.Target == tabs.Memory && msg.Query != "" {
+		// Runbooks' "t" (rfc-tui.md §3.1 S8/S9): open Memory pre-searched
+		// for this runbook's executions instead of landing on whatever
+		// screen Memory last showed.
+		return m.openTab(tabs.Memory, m.memory.SearchFor(msg.Query))
+	}
+	if msg.Target == tabs.Tasks && msg.TaskID != 0 {
+		// The mirror image, for S7's "Enter" on an evidence file: open
+		// that file's task directly instead of landing on the list.
+		return m.openTab(tabs.Tasks, m.tasks.OpenTask(msg.TaskID))
+	}
+	if msg.Target == tabs.Evidence && msg.TaskID != 0 {
+		// S4's "e" key: filter Evidence to the task under view (S6's
+		// task_id filter) instead of showing every file in the project.
+		return m.openTab(tabs.Evidence, m.evidence.OpenForTask(msg.TaskID))
+	}
+	if msg.Target == tabs.Benchmarks && msg.BenchmarkID != 0 {
+		// The palette's deep link into one measurement: the tab's own
+		// table is what shows it, filtered to nothing so the row is
+		// where the search said it was.
+		return m.activate(tabs.Benchmarks)
+	}
+	if msg.Target == tabs.Evidence && msg.EvidenceID != 0 {
+		// The palette's own deep link: one file, opened by its id.
+		opened, cmd := m.evidence.OpenEvidence(msg.EvidenceID)
+		m.evidence = opened
+		return m.openTab(tabs.Evidence, cmd)
+	}
+	return m.activate(msg.Target)
 }
 
 // deliver hands msg to one tab and stores the result back. A message for a
@@ -321,9 +323,10 @@ func (m Model) activate(target tabs.ID) (tea.Model, tea.Cmd) {
 	}
 	m.active = target
 
+	remember := m.rememberTab(target)
 	if !m.freshness.stale(target, time.Now()) {
-		return m, nil
+		return m, remember
 	}
 	m.freshness = m.freshness.loaded(target)
-	return m, tab.Refresh()
+	return m, tea.Batch(remember, tab.Refresh())
 }

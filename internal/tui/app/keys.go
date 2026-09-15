@@ -74,6 +74,27 @@ var globalKeys = globalKeyMap{
 	),
 }
 
+// nativeSelection names the gesture that gets the terminal's own text
+// selection back.
+//
+// Turning the mouse on takes it away: every drag becomes an event the program
+// consumes, so a reader who wants to copy a path off the screen finds their
+// usual gesture doing nothing. Every terminal worth the name still selects and
+// copies on shift+drag, and that is only discoverable if somebody writes it
+// down.
+//
+// It is declared as a binding so the "?" overlay lists it in the grid rather
+// than in a line of prose of its own: the panel is composited over the screen
+// it describes, and every row or column it grows by is part of that screen the
+// reader loses. Both halves are kept inside the widths the grid already has.
+// Nothing ever matches against it — no terminal emits "shift+drag" as a key,
+// and the pointer arrives as a tea.MouseMsg — which is why it is not a field
+// of globalKeyMap.
+var nativeSelection = key.NewBinding(
+	key.WithKeys("shift+drag"),
+	key.WithHelp("shift", "drag/copy"),
+)
+
 // globalHelpBindings is what the "?" overlay shows for every screen,
 // regardless of which one is active — the chrome rfc-tui.md §7.1 owns, as
 // opposed to whatever the active screen's own Help() adds on top.
@@ -85,6 +106,7 @@ func globalHelpBindings() []key.Binding {
 		globalKeys.ProjectSelector,
 		globalKeys.Refresh,
 		globalKeys.ThemePicker,
+		nativeSelection,
 		globalKeys.Help,
 		globalKeys.Quit,
 	}

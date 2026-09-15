@@ -552,7 +552,10 @@ func (m Model) openProject(slug string) (tea.Model, tea.Cmd) {
 	// Nothing any tab is holding belongs to the project now active.
 	m.freshness = m.freshness.invalidateAll()
 	m.freshness = m.freshness.loaded(tabs.Home)
-	return m, tea.Batch(m.home.Refresh(), loadAncestors(m.treeReader, slug))
+	// The tree is the only way into a project, so it is also where the choice
+	// is recorded: the next run reopens on the project the reader was last
+	// actually working in.
+	return m, tea.Batch(m.home.Refresh(), loadAncestors(m.treeReader, slug), m.rememberProject(slug))
 }
 
 // ─── View ────────────────────────────────────────────────────────────────────

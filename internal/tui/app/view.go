@@ -48,6 +48,15 @@ func (m Model) View() string {
 	return m.styles.App.Render(body)
 }
 
+// overlayOpen reports whether any overlay currently holds the workspace.
+//
+// The four are listed once, here, because they are modal as a group: a caller
+// that asked about three of them would let the fourth pass the pointer or a
+// key through to the body it is covering.
+func (m Model) overlayOpen() bool {
+	return m.themePicker.open || m.palette.open || m.tree.open || m.showHelp
+}
+
 // bodyWidth is how many cells the frame's body may occupy: the terminal less
 // the app frame's own padding. A root that has not received a
 // tea.WindowSizeMsg yet assumes the width the wireframes were drawn at.
