@@ -73,6 +73,7 @@ For a direct registry-based deploy example, use:
 
 ### Cloud runtime: `engram cloud serve`
 - `GET /health`
+- `GET /version`
 - `GET /sync/pull`, `POST /sync/push`
 - `GET /dashboard/*` (browser surfaces)
 

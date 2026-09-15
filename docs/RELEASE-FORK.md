@@ -39,20 +39,23 @@ una etiqueta puesta en el fork ya no los enciende. `release-custom.yml` es el
 
 Estos tres pasos son acciones del usuario, no del pipeline.
 
-### 2.1 Crear el tap
+### 2.1 El tap
 
-El repositorio `HoracioEspinosa/homebrew-tap` **todavía no existe**
-(comprobado con `git ls-remote`, que responde 128). Sin él, la fórmula no se
-puede publicar; el resto del release sí funciona, porque el workflow detecta
-la ausencia del token y se salta ese paso.
+El repositorio `HoracioEspinosa/homebrew-tap` existe y publica
+`Formula/engram-custom.rb`, que es lo que resuelve
+`brew install horacioespinosa/tap/engram-custom`.
+
+El nombre del repositorio tiene que ser exactamente `homebrew-tap`: es lo que
+convierte `brew tap horacioespinosa/tap` en una ruta válida. Un fork que
+arranque sin tap propio lo crea así:
 
 ```
-gh repo create HoracioEspinosa/homebrew-tap --public \
+gh repo create <owner>/homebrew-tap --public \
   --description "Homebrew tap de ClaroDrive"
 ```
 
-El nombre del repositorio tiene que ser exactamente `homebrew-tap`: es lo que
-convierte `brew tap horacioespinosa/tap` en una ruta válida.
+Sin tap la fórmula no se puede publicar; el resto del release sí funciona,
+porque el workflow detecta la ausencia del token y se salta ese paso.
 
 ### 2.2 Crear el token del tap
 
@@ -325,7 +328,15 @@ Verificación después del despliegue:
 
 ```
 curl -fsS https://<host-del-cloud>/health
+curl -fsS https://<host-del-cloud>/version
 ```
+
+`/version` responde `{"service":"engram-cloud","version":"<versión>","go":"<toolchain>"}`
+con la versión estampada en el binario del contenedor. Es la manera de confirmar
+que el despliegue quedó en el digest que se pidió sin entrar por SSH al host: si
+la versión no coincide con la etiqueta que se fijó, el servicio sigue sirviendo
+la imagen anterior. Un binario compilado fuera del pipeline de release responde
+`dev`.
 
 ### 5.5 Revertir
 

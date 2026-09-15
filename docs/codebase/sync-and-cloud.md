@@ -54,6 +54,7 @@ Business rule: **if sync is blocked, fail loudly and visibly**. No silent drops.
 `internal/cloud/remote/transport.go` is the client. `internal/cloud/cloudserver/cloudserver.go` is the server. The server mounts:
 
 - `GET /health`
+- `GET /version`
 - `GET /sync/pull`
 - `GET /sync/pull/{chunkID}`
 - `POST /sync/push`
