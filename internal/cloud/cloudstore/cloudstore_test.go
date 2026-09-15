@@ -1247,3 +1247,41 @@ func TestSetDashboardAllowedProjectsInvalidatesCachedReadModel(t *testing.T) {
 		t.Fatalf("expected allowlist update to invalidate read-model cache, got load count %d", loadCalls)
 	}
 }
+
+// TestListMutationProjectsNamesEveryProjectWithMutations is what a wildcard
+// allowlist has to expand into at startup: the set of projects that actually
+// have mutations, rather than a project literally named "*".
+func TestListMutationProjectsNamesEveryProjectWithMutations(t *testing.T) {
+	cs := openTestCloudStore(t)
+	ctx := context.Background()
+	first := uniqueCloudstoreTestProject("mutation-projects-a")
+	second := uniqueCloudstoreTestProject("mutation-projects-b")
+	cleanupCloudstoreProject(t, cs, first)
+	cleanupCloudstoreProject(t, cs, second)
+
+	insertLegacyCloudMutation(t, cs, first, store.SyncEntityObservation, "obs-a", store.SyncOpUpsert,
+		`{"sync_id":"obs-a","session_id":"sess-a","type":"decision","title":"A","content":"a","scope":"project"}`)
+	insertLegacyCloudMutation(t, cs, first, store.SyncEntityObservation, "obs-a2", store.SyncOpUpsert,
+		`{"sync_id":"obs-a2","session_id":"sess-a","type":"decision","title":"A2","content":"a2","scope":"project"}`)
+	insertLegacyCloudMutation(t, cs, second, store.SyncEntityObservation, "obs-b", store.SyncOpUpsert,
+		`{"sync_id":"obs-b","session_id":"sess-b","type":"decision","title":"B","content":"b","scope":"project"}`)
+
+	projects, err := cs.ListMutationProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListMutationProjects: %v", err)
+	}
+	for _, want := range []string{first, second} {
+		if !slices.Contains(projects, want) {
+			t.Fatalf("project %q has mutations but was not listed: %v", want, projects)
+		}
+	}
+	// Each project is named once, however many mutations it owns: the caller
+	// runs a backfill per entry.
+	seen := make(map[string]int, len(projects))
+	for _, project := range projects {
+		seen[project]++
+	}
+	if seen[first] != 1 {
+		t.Fatalf("project %q listed %d times, want exactly once", first, seen[first])
+	}
+}

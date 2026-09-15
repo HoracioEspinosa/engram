@@ -68,20 +68,52 @@ func (cs *CloudStore) SetDashboardAllowedProjects(projects []string) {
 	}
 	cs.dashboardAllowedAll = false
 	cs.dashboardAllowedScopes = make(map[string]struct{})
+	if cloud.AllowsAllProjects(projects) {
+		cs.dashboardAllowedAll = true
+		cs.dashboardAllowedScopes = nil
+		cs.invalidateDashboardReadModel()
+		return
+	}
 	for _, project := range projects {
 		project = strings.TrimSpace(project)
-		if project == "*" {
-			cs.dashboardAllowedAll = true
-			cs.dashboardAllowedScopes = nil
-			cs.invalidateDashboardReadModel()
-			return
-		}
 		if project == "" {
 			continue
 		}
 		cs.dashboardAllowedScopes[project] = struct{}{}
 	}
 	cs.invalidateDashboardReadModel()
+}
+
+// ListMutationProjects names every project that owns at least one row in
+// cloud_mutations, sorted. It is what a wildcard allowlist expands into for any
+// caller that has to do per-project work: "*" is not a project, so iterating
+// the allowlist literally reaches none of them.
+func (cs *CloudStore) ListMutationProjects(ctx context.Context) ([]string, error) {
+	if cs == nil || cs.db == nil {
+		return nil, fmt.Errorf("cloudstore: not initialized")
+	}
+	rows, err := cs.db.QueryContext(ctx, `
+		SELECT DISTINCT project
+		FROM cloud_mutations
+		WHERE trim(coalesce(project, '')) <> ''
+		ORDER BY project ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("cloudstore: list mutation projects: %w", err)
+	}
+	defer rows.Close()
+
+	projects := make([]string, 0)
+	for rows.Next() {
+		var project string
+		if err := rows.Scan(&project); err != nil {
+			return nil, fmt.Errorf("cloudstore: scan mutation project: %w", err)
+		}
+		projects = append(projects, project)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cloudstore: iterate mutation projects: %w", err)
+	}
+	return projects, nil
 }
 
 type User struct {

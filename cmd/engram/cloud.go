@@ -184,6 +184,17 @@ func buildRuntimeAuthenticator(cfg cloud.Config, cs *cloudstore.CloudStore, allo
 }
 
 func backfillAllowedProjectMutationChunks(ctx context.Context, cs *cloudstore.CloudStore, projects []string) error {
+	// "*" is a wildcard everywhere else that reads the allowlist — the project
+	// authorizer, the dashboard scope — so it has to be one here too. Iterating
+	// the list literally ran a single backfill against a project named "*",
+	// which owns nothing, and left every real project unmaterialized.
+	if cloud.AllowsAllProjects(projects) {
+		resolved, err := cs.ListMutationProjects(ctx)
+		if err != nil {
+			return fmt.Errorf("cloud repair materialize-mutations: resolve wildcard allowlist: %w", err)
+		}
+		projects = resolved
+	}
 	for _, project := range projects {
 		report, err := cs.BackfillMutationChunks(ctx, project, true)
 		if err != nil {

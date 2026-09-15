@@ -271,3 +271,66 @@ func TestCloudRuntimeInsecureNoAuthServesSyncRoutes(t *testing.T) {
 		t.Fatalf("expected the allowlist to still refuse an unlisted project, got status=%d body=%s", status, body)
 	}
 }
+
+// TestBackfillAllowedProjectMutationChunksExpandsTheWildcard pins startup
+// materialization to the wildcard rule the authorizer and the dashboard
+// allowlist already follow. Iterating the allowlist literally ran one backfill
+// against a project named "*", which owns nothing, so with
+// ENGRAM_CLOUD_ALLOWED_PROJECTS=* no real project was materialized at all and
+// the dashboard — which counts cloud_chunks — read short of cloud_mutations.
+func TestBackfillAllowedProjectMutationChunksExpandsTheWildcard(t *testing.T) {
+	testDSN := openIsolatedCloudRuntimeSchema(t)
+
+	cs, err := cloudstore.New(cloud.Config{DSN: testDSN})
+	if err != nil {
+		t.Fatalf("cloudstore.New: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	db, err := sql.Open("pgx", testDSN)
+	if err != nil {
+		t.Fatalf("open schema db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	for _, seed := range []struct{ project, syncID string }{
+		{"alpha", "obs-alpha"},
+		{"beta", "obs-beta"},
+	} {
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO cloud_mutations (project, entity, entity_key, op, payload)
+			VALUES ($1, 'observation', $2, 'upsert', $3)`,
+			seed.project, seed.syncID,
+			[]byte(`{"sync_id":"`+seed.syncID+`","session_id":"sess-1","type":"decision","title":"t","content":"c","scope":"project"}`),
+		); err != nil {
+			t.Fatalf("seed mutation for %s: %v", seed.project, err)
+		}
+	}
+
+	if err := backfillAllowedProjectMutationChunks(ctx, cs, []string{"*"}); err != nil {
+		t.Fatalf("backfillAllowedProjectMutationChunks: %v", err)
+	}
+
+	for _, project := range []string{"alpha", "beta"} {
+		var chunks int
+		if err := db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM cloud_chunks WHERE project_name = $1`, project,
+		).Scan(&chunks); err != nil {
+			t.Fatalf("count chunks for %s: %v", project, err)
+		}
+		if chunks == 0 {
+			t.Fatalf("a wildcard allowlist left project %q unmaterialized", project)
+		}
+	}
+
+	var wildcardChunks int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM cloud_chunks WHERE project_name = '*'`,
+	).Scan(&wildcardChunks); err != nil {
+		t.Fatalf("count wildcard chunks: %v", err)
+	}
+	if wildcardChunks != 0 {
+		t.Fatalf(`"*" is a wildcard, not a project: %d chunk(s) were written under it`, wildcardChunks)
+	}
+}

@@ -78,6 +78,8 @@ Enrollment normalizes a project name to lower case (`store.NormalizeProject`); t
 
 `internal/cloud/cloudstore/cloudstore.go` persists to Postgres, materializes chunks/mutations, and feeds dashboard read models. If an organizational policy matters, state lives here or is enforced from `cloudserver` against data from here.
 
+`ENGRAM_CLOUD_ALLOWED_PROJECTS=*` is a wildcard, never a project name: nothing is ever stored, authorized or materialized under `*`. Every consumer of the allowlist asks `cloud.AllowsAllProjects` before it iterates the list — the project authorizer, the dashboard scope, and the startup materialization in `cmd/engram/cloud.go`, which expands the wildcard through `CloudStore.ListMutationProjects`. Iterating the list literally means running per-project work against one project that holds nothing, which is invisible: no error, and only the dashboard's `cloud_chunks` count reads short of `cloud_mutations`.
+
 ## engram-projects replication: `internal/store/projects_sync.go`
 
 Five entities travel besides the upstream four: `project_card`, `task`, `evidence`, `task_link` and `observation_ref`. Two rules shape the code.
