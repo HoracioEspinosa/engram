@@ -33,6 +33,14 @@
 # colour and tags, because a column that only ever replicates its default proves
 # nothing about whether it replicates.
 #
+# Three shapes the real database was found in are planted on purpose, because no
+# writer produces them any more and each one used to stop the push silently:
+#   * a project whose rows carry capitals while its enrolled slug is lower case;
+#   * an observation of an enrolled project with no sync_mutations row at all,
+#     invisible to the push while the pending counters read zero;
+#   * a chunk an older client left in cloud_chunks whose project_card was never
+#     materialized into cloud_mutations, so the pull stream never carried it.
+#
 # Usage (from the repository root):
 #   bash scripts/dev/cloud-roundtrip.sh
 
@@ -64,8 +72,22 @@ CLOUD_BOOT_TIMEOUT=60
 DIR_A="/data/rt-a"
 DIR_B="/data/rt-b"
 
-PROJECTS=(koi-garden koi-garden-pond-02)
+# koi-garden-pond-01 is the mixed-case half of the rehearsal: its rows are
+# written as "Koi-Garden-Pond-01" while enrollment normalizes the slug to lower
+# case, which is the shape the real database is in for every project named with
+# capitals.
+MIXED_CASE_PROJECT="koi-garden-pond-01"
+MIXED_CASE_ROW_PROJECT="Koi-Garden-Pond-01"
+PROJECTS=(koi-garden koi-garden-pond-02 "$MIXED_CASE_PROJECT")
 EVIDENCE_REL="koi-garden/KOI-1099/01-traza.png"
+
+# psql runs a statement against the dev cloud's Postgres. It exists so the
+# rehearsal can plant a chunk the way an older client left one — inside
+# cloud_chunks with nothing materialized into cloud_mutations — which no client
+# can produce any more.
+psql() {
+  docker exec -i engram-dev-postgres psql -U engram_dev -d engram_dev -tAc "$1"
+}
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -277,12 +299,47 @@ rt "$DIR_A" koi-garden save \
   "rt-a escribe la tarjeta, la tarea y la evidencia; rt-b las recibe sin tocar el disco de rt-a" \
   --type discovery --project koi-garden --topic koi-workspace/fase-1/cloud-roundtrip >/dev/null
 
+log "rt-a: a project whose rows carry capitals"
+# Written straight to SQLite because every writer normalizes: the rows of a
+# project named with capitals predate that normalization, and the export used
+# to compare the column exactly, so the typed collections of the chunk came out
+# empty and the server rejected it for citing a session it was never sent.
+in_container sqlite3 "$DIR_A/engram.db" \
+  "INSERT INTO sessions (id, project, directory, started_at)
+   VALUES ('manual-save-$MIXED_CASE_PROJECT', '$MIXED_CASE_ROW_PROJECT', '/work/pond-01', datetime('now'));
+   INSERT INTO observations (sync_id, session_id, type, title, content, project, scope, topic_key)
+   VALUES ('obs-mixed-case', 'manual-save-$MIXED_CASE_PROJECT', 'discovery',
+           'la fila guarda mayusculas', 'el slug inscrito esta en minusculas',
+           '$MIXED_CASE_ROW_PROJECT', 'project', 'koi-workspace/fase-1/mixed-case');"
+
 # ─── 4. rt-a enrolls and pushes ──────────────────────────────────────────────
 
 for project in "${PROJECTS[@]}"; do
   log "rt-a: enrolling $project"
   rt "$DIR_A" "$project" cloud enroll "$project" >/dev/null
 done
+
+log "rt-a: an observation written with no journal row"
+# The shape the real database was found in: 167 observations of enrolled
+# projects with no sync_mutations row at all, invisible to the push while the
+# pending counters read zero. Written after enrollment so the row is a genuine
+# gap rather than something the first enrollment swept up.
+in_container sqlite3 "$DIR_A/engram.db" \
+  "INSERT INTO observations (sync_id, session_id, type, title, content, project, scope, topic_key)
+   VALUES ('obs-unjournaled', 'manual-save-koi-garden-nodir', 'discovery',
+           'fila sin journal', 'nunca se encolo una mutacion para esta fila',
+           'koi-garden', 'project', 'koi-workspace/fase-1/sin-journal');"
+
+log "rt-a: re-enrolling koi-garden to journal what was written outside the journal"
+rt "$DIR_A" koi-garden cloud enroll koi-garden >/dev/null
+rt "$DIR_A" koi-garden cloud upgrade doctor --project koi-garden >"$CLOUD_OUT/rt-a-doctor-koi-garden.txt" 2>&1 || true
+doctor_gap="$(awk -F': ' '/^unjournaled_rows/ { print $2 }' "$CLOUD_OUT/rt-a-doctor-koi-garden.txt")"
+if [ "${doctor_gap:-missing}" = "0" ]; then
+  pass "engram cloud upgrade doctor reports no unjournaled rows for koi-garden"
+else
+  report_fail "engram cloud upgrade doctor reports unjournaled_rows=${doctor_gap:-<missing>} for koi-garden"
+  sed 's/^/      | /' "$CLOUD_OUT/rt-a-doctor-koi-garden.txt"
+fi
 
 for project in "${PROJECTS[@]}"; do
   log "rt-a: pushing $project"
@@ -326,7 +383,12 @@ TASK_COLUMNS="sync_id, project, jira_key, sdd_change, slug, title, summary, pend
 EVIDENCE_COLUMNS="sync_id, project, task_sync_id, path, sha256, category, kind, proves, config_stamp,
   captured_at, attached_jira, attached_confluence_url, size_bytes, manifest_path"
 
-OBSERVATION_COLUMNS="sync_id, type, title, content, project, scope, topic_key"
+# project is folded here and nowhere else: the chunk codec canonicalizes the
+# project of every row it carries, so an observation whose local column holds
+# capitals arrives at the replica under the normalized slug. That is the
+# contract, not a loss — the two spellings are the same project — and the
+# original casing on rt-a is asserted on its own below.
+OBSERVATION_COLUMNS="sync_id, type, title, content, lower(ifnull(project, '')), scope, topic_key"
 
 ALIAS_COLUMNS="alias, sync_id, slug, source"
 
@@ -395,6 +457,23 @@ nodir_session="$(sql "$DIR_B" "SELECT id || '|' || ifnull(directory, '<NULL>')
   FROM sessions WHERE id = 'manual-save-koi-garden-nodir';")"
 expect_value "rt-b session with no directory" "manual-save-koi-garden-nodir|" "$nodir_session"
 
+# The push used to drop this row entirely: the export compared the project
+# column exactly, so the typed collections came out empty and the server
+# rejected the chunk for citing a session it was never sent.
+mixed_case_obs="$(sql "$DIR_B" "SELECT ifnull(project, '<NULL>') FROM observations
+  WHERE sync_id = 'obs-mixed-case' AND deleted_at IS NULL;")"
+expect_value "rt-b observation of a project whose rows carry capitals" "$MIXED_CASE_PROJECT" "$mixed_case_obs"
+
+# And the push does not rewrite what it reads: rt-a keeps the casing it was
+# written with.
+mixed_case_local="$(sql "$DIR_A" "SELECT ifnull(project, '<NULL>') FROM observations
+  WHERE sync_id = 'obs-mixed-case' AND deleted_at IS NULL;")"
+expect_value "rt-a keeps the original casing of its own row" "$MIXED_CASE_ROW_PROJECT" "$mixed_case_local"
+
+unjournaled_obs="$(sql "$DIR_B" "SELECT ifnull(title, '<NULL>') FROM observations
+  WHERE sync_id = 'obs-unjournaled' AND deleted_at IS NULL;")"
+expect_value "rt-b observation that had no journal row on rt-a" "fila sin journal" "$unjournaled_obs"
+
 # The chunk is not the only way a replica reads the server: autosync pulls from
 # cloud_mutations through /sync/mutations/pull. An entity that reaches
 # cloud_chunks and not cloud_mutations is invisible on that path, and the client
@@ -422,6 +501,68 @@ if [ "$stale_rows" = "0" ]; then
   pass "rt-b holds no staleness verdict (graph_stale_reason, graph_changed_files, graph_checked_at all NULL)"
 else
   report_fail "rt-b carries a staleness verdict on $stale_rows card(s); those three columns are local and must not travel"
+fi
+
+# ─── 6c. a chunk an older client left behind ─────────────────────────────────
+#
+# An entity without a typed collection travels only as a mutation inside the
+# chunk, and a push materializes it into cloud_mutations as it writes. Chunks
+# written before that behavior existed still hold theirs and nothing else does,
+# so the pull stream never carried them. No client can produce such a chunk any
+# more, so it is planted directly and the server is restarted over it.
+
+STALE_CHUNK_CARD="card-left-inside-an-older-chunk"
+log "planting a chunk whose project_card was never materialized"
+psql "INSERT INTO cloud_chunks (project_name, chunk_id, created_by, payload, sessions_count, observations_count, prompts_count)
+      VALUES ('koi-garden', 'legacy-unmaterialized-chunk', 'legacy-push',
+        '{\"sessions\":[],\"observations\":[],\"prompts\":[],\"mutations\":[{\"entity\":\"project_card\",\"entity_key\":\"$STALE_CHUNK_CARD\",\"op\":\"upsert\",\"project\":\"koi-garden\",\"payload\":\"{\\\"slug\\\":\\\"koi-garden\\\",\\\"sync_id\\\":\\\"$STALE_CHUNK_CARD\\\"}\"}]}'::jsonb,
+        0, 0, 0)
+      ON CONFLICT (project_name, chunk_id) DO NOTHING;" >/dev/null
+
+stream_before="$(psql "SELECT count(*) FROM cloud_mutations WHERE entity_key = '$STALE_CHUNK_CARD';" | tr -d ' ')"
+if [ "${stream_before:-0}" = "0" ]; then
+  pass "the planted chunk starts out invisible to the mutation stream"
+else
+  report_fail "the planted chunk was already materialized before the restart (rows=$stream_before)"
+fi
+
+log "restarting the cloud server so its start-up pass drains the chunk"
+"${DC[@]}" --profile cloud restart cloud-dev >/dev/null
+waited=0
+while :; do
+  if curl -fsS --max-time 3 "$CLOUD_HEALTH_URL" >"$CLOUD_OUT/health-after-restart.json" 2>/dev/null; then
+    break
+  fi
+  waited=$((waited + 1))
+  [ "$waited" -lt "$CLOUD_BOOT_TIMEOUT" ] || fail "the cloud server did not come back within ${CLOUD_BOOT_TIMEOUT}s"
+  sleep 1
+done
+
+stream_after="$(psql "SELECT count(*) FROM cloud_mutations WHERE entity_key = '$STALE_CHUNK_CARD';" | tr -d ' ')"
+if [ "${stream_after:-0}" = "1" ]; then
+  pass "the server start materialized the project_card the older chunk held"
+else
+  report_fail "the project_card stuck inside the older chunk is still missing from cloud_mutations (rows=${stream_after:-0})"
+fi
+
+# And it is a start-up pass, not a one-shot migration: a second restart must
+# not duplicate the row.
+log "restarting once more to prove the pass is idempotent"
+"${DC[@]}" --profile cloud restart cloud-dev >/dev/null
+waited=0
+while :; do
+  if curl -fsS --max-time 3 "$CLOUD_HEALTH_URL" >/dev/null 2>&1; then
+    break
+  fi
+  waited=$((waited + 1))
+  [ "$waited" -lt "$CLOUD_BOOT_TIMEOUT" ] || fail "the cloud server did not come back within ${CLOUD_BOOT_TIMEOUT}s"
+  sleep 1
+done
+stream_twice="$(psql "SELECT count(*) FROM cloud_mutations WHERE entity_key = '$STALE_CHUNK_CARD';" | tr -d ' ')"
+if [ "${stream_twice:-0}" = "1" ]; then
+  pass "a second start left the materialized mutation alone"
+else
+  report_fail "a second start changed the materialized mutation count to ${stream_twice:-0}"
 fi
 
 # ─── 7. the queues both ends keep ────────────────────────────────────────────
