@@ -35,7 +35,10 @@ type TaskAction struct {
 	// State is the state the vault says the task is in, empty when the vault
 	// names none this package recognises. A state is never guessed: an
 	// unrecognised one leaves whatever the store already records untouched.
-	State     string `json:"state,omitempty"`
+	State string `json:"state,omitempty"`
+	// ClosedAt is the date a "Cerrado (...)" cell carries, verbatim. It is
+	// reported so a plan can be read against the table it came from.
+	ClosedAt  string `json:"closed_at,omitempty"`
 	Kind      string `json:"kind"`
 	Title     string `json:"title"`
 	VaultPath string `json:"vault_path"`
@@ -206,12 +209,13 @@ func importTask(s *store.Store, root, project, dirName string, states map[string
 	}
 
 	vaultPath := project + "/" + dirName
-	state, pendingNote := stateFor(states, vaultPath, scanned)
+	state, closedAt, pendingNote := stateFor(states, vaultPath, scanned)
 	action := TaskAction{
 		Project:   project,
 		Slug:      scanned.Slug,
 		JiraKey:   scanned.JiraKey,
 		State:     state,
+		ClosedAt:  closedAt,
 		Kind:      kindOf(dirName, scanned.Title),
 		Title:     scanned.Title,
 		VaultPath: vaultPath,
@@ -374,12 +378,14 @@ func existingTask(s *store.Store, project, jiraKey, slug string) (store.Task, bo
 
 // stateFor picks the state a task is in: the vault README's task map first,
 // because that table is where the user keeps the overview, and the task's own
-// README as the fallback.
-func stateFor(states map[string]vault.ReadmeTask, vaultPath string, scanned vault.TaskDir) (state, pendingNote string) {
+// README as the fallback. The map is keyed by "<project>/<task>", the folder
+// each row's link points at, which is the one thing a row and a folder walk
+// can be matched on.
+func stateFor(states map[string]vault.ReadmeTask, vaultPath string, scanned vault.TaskDir) (state, closedAt, pendingNote string) {
 	if row, ok := states[vaultPath]; ok && row.State != "" {
-		return row.State, row.PendingNote
+		return row.State, row.ClosedAt, row.PendingNote
 	}
-	return scanned.State, scanned.PendingNote
+	return scanned.State, "", scanned.PendingNote
 }
 
 // kindKeywords maps what a task folder is called onto the kind it most likely

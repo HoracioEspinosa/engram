@@ -5,19 +5,27 @@ incidente aquí es real** — `koi-garden` y `tsukimi-bridge` son productos
 inventados para validar, en un Engram dockerizado y aislado, la forma real en
 la que el usuario organiza su conocimiento: `<proyecto>/<tarea>/<categoría>`.
 
-Este README imita el README raíz real del usuario: una tabla "Mapa de tareas"
-que el importador de vault (fase 2) debe aprender a parsear para crear
-proyectos y tareas automáticamente.
+Este README imita el README raíz real del usuario: una sección "Mapa de tareas"
+partida en un subencabezado y una tabla por proyecto, con el enlace de cada
+fila apuntando a la carpeta de la tarea. Es la forma que el importador de vault
+parsea para crear proyectos y tareas automáticamente.
 
 ## Mapa de tareas
 
-| Tarea | Qué es | Estado | Archivos |
+### `koi-garden/` — ingeniería del estanque
+
+| Tarea | Qué resuelve | Estado | Archivos |
 | --- | --- | --- | --- |
-| [Hardening del autologin](./koi-garden/KOI-1042-hardening-autologin/README.md) | Endurecer el autologin tras el incidente de tokens vencidos | Cerrado (2026-08-14) | 11 |
-| [Timeout de lookup en el estanque](./koi-garden/KOI-1099-lookup-timeout/README.md) | Investigar y mitigar el timeout al buscar peces entre estanques | Con pendientes | 12 |
-| [División del filesharing del estanque](./koi-garden/split-pond-filesharing/README.md) | Evaluar separar el filesharing de koi-garden en un servicio propio | Sin confirmar | 3 |
-| [Mantenimiento del estanque](./koi-garden/mantenimiento-del-estanque/README.md) | Bitácora de tareas puntuales que no ameritan una carpeta propia | Histórico | 3 |
-| [Migración de miniaturas](./tsukimi-bridge/TSU-204-migracion-thumbnails/README.md) | Migrar la generación de miniaturas de la galería al nuevo pipeline | Con pendientes | 6 |
+| [KOI-1042 — hardening del autologin](./koi-garden/KOI-1042-hardening-autologin/README.md) | Endurecer el autologin tras el incidente de tokens vencidos | Cerrado (2026-08-14) | 11 |
+| [KOI-1099 — timeout de lookup en el estanque](./koi-garden/KOI-1099-lookup-timeout/README.md) | Investigar y mitigar el timeout al buscar peces entre estanques | Con pendientes — falta validar en la instancia 02 | 12 |
+| [división del filesharing del estanque](./koi-garden/split-pond-filesharing/README.md) | Evaluar separar el filesharing de koi-garden en un servicio propio | Sin confirmar cuál variante corre hoy | 3 |
+| [mantenimiento del estanque](./koi-garden/mantenimiento-del-estanque/README.md) | Bitácora de tareas puntuales que no ameritan una carpeta propia | Histórico — el estanque viejo ya no existe | 3 |
+
+### `tsukimi-bridge/` — puente de miniaturas
+
+| Tarea | Qué resuelve | Estado | Archivos |
+| --- | --- | --- | --- |
+| [TSU-204 — migración de miniaturas](./tsukimi-bridge/TSU-204-migracion-thumbnails/README.md) | Migrar la generación de miniaturas de la galería al nuevo pipeline | Con pendientes | 6 |
 
 ## Proyectos
 

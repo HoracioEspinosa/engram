@@ -133,6 +133,60 @@ func newVault(t *testing.T) string {
 	return root
 }
 
+// newRealShapedVault builds a tree whose root README carries the task map in
+// the shape a real vault writes it: one subheading and one table per project,
+// link texts that lead with the ticket, a task with no ticket, and state cells
+// that continue past the state word. No task README carries an "**Estado:**"
+// line, so every state an import reports can only have come from that table.
+func newRealShapedVault(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+
+	writeFile(t, filepath.Join(root, "README.md"), "# Vault de conocimiento\n"+`
+## Mapa de tareas
+
+### `+"`koi-garden/`"+` — ingeniería del estanque
+
+| Tarea | Qué resuelve | Estado | Archivos |
+|---|---|---|---|
+| [KOI-1042 — hardening autologin](./koi-garden/KOI-1042-hardening-autologin/README.md) | Endurece la cadena de autologin. | Cerrado (2026-08-14) | 3 |
+| [KOI-1099 — timeout de lookup](./koi-garden/KOI-1099-lookup-timeout/README.md) | Mitiga el timeout de lookup. | Con pendientes — falta validar en pond-02 | 2 |
+| [mantenimiento del estanque](./koi-garden/mantenimiento-del-estanque/README.md) | Bitácora de tareas puntuales. | Histórico — el estanque viejo ya no existe | 1 |
+
+### `+"`tsukimi-bridge/`"+` — puente de miniaturas
+
+| Tarea | Qué resuelve | Estado | Archivos |
+|---|---|---|---|
+| [TSU-204 — migración de miniaturas](./tsukimi-bridge/TSU-204-migracion-thumbnails/README.md) | Migra la generación de miniaturas. | Sin confirmar cuál corre hoy en producción | 1 |
+
+## Cómo encontrar algo
+
+### Por ticket
+
+| Ticket | Carpeta | Nota |
+|---|---|---|
+| [KOI-9999 — trampa](./koi-garden/KOI-9999-trampa/README.md) | autologin, JWT | Sin confirmar |
+`)
+
+	writeFile(t, filepath.Join(root, "koi-garden", "README.md"), "# koi-garden\n\nPanel de un estanque.\n")
+	writeFile(t, filepath.Join(root, "tsukimi-bridge", "README.md"), "# tsukimi-bridge\n\nPuente de miniaturas.\n")
+
+	koi1042 := filepath.Join(root, "koi-garden", "KOI-1042-hardening-autologin")
+	writeFile(t, filepath.Join(koi1042, "README.md"), "# KOI-1042 — Hardening del autologin\n\nEndurecer el autologin.\n")
+	writeFile(t, filepath.Join(koi1042, "analysis", "causa-raiz.md"), "# Causa raíz\n\nEl token no expiraba.\n")
+
+	koi1099 := filepath.Join(root, "koi-garden", "KOI-1099-lookup-timeout")
+	writeFile(t, filepath.Join(koi1099, "README.md"), "# KOI-1099 — Timeout de lookup\n\nEl lookup falla con timeout.\n")
+
+	mant := filepath.Join(root, "koi-garden", "mantenimiento-del-estanque")
+	writeFile(t, filepath.Join(mant, "README.md"), "# Mantenimiento del estanque\n\nBitácora de tareas puntuales.\n")
+
+	tsu := filepath.Join(root, "tsukimi-bridge", "TSU-204-migracion-thumbnails")
+	writeFile(t, filepath.Join(tsu, "README.md"), "# TSU-204 — Migración de miniaturas\n\nMigrar las miniaturas.\n")
+
+	return root
+}
+
 // seedTask registers a task the way the store's own callers do, so a scan has
 // a row to attach evidence to.
 func seedTask(t *testing.T, s *store.Store, project, jiraKey, slug, vaultPath string) store.Task {

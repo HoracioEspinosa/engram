@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -62,6 +63,48 @@ func TestImportVaultPlansFiveTasksWithStates(t *testing.T) {
 	}
 	if items.Total != 0 {
 		t.Fatalf("the plan wrote %d tasks", items.Total)
+	}
+}
+
+// TestImportVaultAppliesReadmeStatesToRealShapedTable pins the correlation
+// against the shape a real vault's root README has: a task map split into one
+// subheading and one table per project. No task README names a state here, so
+// a plan that reports one proves the row was matched to its folder.
+func TestImportVaultAppliesReadmeStatesToRealShapedTable(t *testing.T) {
+	s := newStore(t)
+	root := newRealShapedVault(t)
+
+	plan, err := ImportVault(s, root, "", false, true, false, vault.Options{})
+	if err != nil {
+		t.Fatalf("ImportVault: %v", err)
+	}
+	for _, warning := range plan.Warnings {
+		if strings.Contains(warning, "maps no task to a state") {
+			t.Errorf("the task map was not read: %s", warning)
+		}
+	}
+	if len(plan.Tasks) != 4 {
+		t.Fatalf("planned %d tasks, want 4: %+v", len(plan.Tasks), plan.Tasks)
+	}
+
+	want := map[string]struct{ state, closedAt string }{
+		"koi-garden/KOI-1042-hardening-autologin":     {vault.StateDone, "2026-08-14"},
+		"koi-garden/KOI-1099-lookup-timeout":          {vault.StatePending, ""},
+		"koi-garden/mantenimiento-del-estanque":       {vault.StateArchived, ""},
+		"tsukimi-bridge/TSU-204-migracion-thumbnails": {vault.StateUnverified, ""},
+	}
+	for _, task := range plan.Tasks {
+		expected, ok := want[task.VaultPath]
+		if !ok {
+			t.Errorf("unexpected task %s", task.VaultPath)
+			continue
+		}
+		if task.State != expected.state {
+			t.Errorf("%s: state %q, want %q", task.VaultPath, task.State, expected.state)
+		}
+		if task.ClosedAt != expected.closedAt {
+			t.Errorf("%s: closed_at %q, want %q", task.VaultPath, task.ClosedAt, expected.closedAt)
+		}
 	}
 }
 

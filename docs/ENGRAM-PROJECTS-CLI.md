@@ -80,7 +80,7 @@ engram project nextcloud card --graph-summary --json \
 | `ambiguous_task` | The task reference resolves in more than one project |
 | `evidence_root_unresolved` | No folder under the vault root matches the task |
 | `vault_root_unresolved` | No argument, card or `ENGRAM_VAULT_ROOT` says where the vault is |
-| `vault_readme_unparsed` | The vault README carries no "Mapa de tareas" table, and states were asked for |
+| `vault_readme_unparsed` | The vault README carries no "Mapa de tareas" section, and states were asked for |
 | `path_escapes_vault` | A recorded vault path climbs out of the vault root |
 | `restricted_path_rejected` | The path resolves, through every symlink, under a restricted root |
 | `run_not_found` | The benchmark run file is not there |
@@ -486,7 +486,21 @@ engram project import-vault ~/.clarodrive --project nextcloud --apply --json
 | `--max-bytes N` | Size beyond which a file is recorded but not hashed |
 | `--json` | JSON envelope |
 
-States come from the `## Mapa de tareas` table of the vault's root README, falling back to the task README's own `**Estado:**` line: `Cerrado (YYYY-MM-DD)` → `done`, `Con pendientes` → `pending`, `Histórico` → `archived`, `Sin confirmar` → `unverified`. Anything else leaves the state untouched. With `--no-states` the table is not required; without it, a README carrying no such table fails with `vault_readme_unparsed`.
+States come from the `## Mapa de tareas` section of the vault's root README, falling back to the task README's own `**Estado:**` line: `Cerrado (fecha)` → `done`, `Con pendientes` → `pending`, `Histórico` → `archived`, `Sin confirmar` → `unverified`. The state is read from the start of the cell, so a row that qualifies it — `Con pendientes — falta la QA`, `Sin confirmar cuál corre hoy` — still maps; a cell opening with none of the four leaves the state untouched. With `--no-states` the section is not required; without it, a README carrying none fails with `vault_readme_unparsed`.
+
+The section runs until the next heading at its own level, and may be split into one subheading and one table per project:
+
+```markdown
+## Mapa de tareas
+
+### `nextcloud/` — ingeniería de la plataforma
+
+| Tarea | Qué resuelve | Estado | Archivos |
+|---|---|---|---|
+| [CDBS-10449 — migración de usuario](./nextcloud/CDBS-10449-migracion-usuario/README.md) | Migra un usuario entre instancias. | Cerrado (2026-06-22) | 195 |
+```
+
+A row is matched to a task folder by **the path its link points at** — `<project>/<task>` — never by its text, which is prose a person edits. The link text supplies the title, with any `TICKET — ` prefix dropped since the folder already carries the ticket. Lookup tables further down the file link to the same folders and are not part of the map.
 
 The import is idempotent, and only in one direction: the title, the summary, the folder and the kind the folder name suggests are written **once, at creation**, so re-running never undoes a correction somebody made in the store. State is the exception, and `--no-states` is how you refuse even that. A second run over an unchanged tree therefore reports every task as `skip` and zero new rows.
 
