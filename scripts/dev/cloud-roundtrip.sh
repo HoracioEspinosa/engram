@@ -565,6 +565,139 @@ else
   report_fail "a second start changed the materialized mutation count to ${stream_twice:-0}"
 fi
 
+# ─── 6d. a chunk whose typed collection does not cover its mutations ─────────
+#
+# A chunk's two halves come from different places: the typed collections from a
+# timestamp window over the local tables, the mutation array from the journal.
+# A session whose row predates the window travels only as a mutation, so the
+# collection is not a superset of the array. Deduplicating the array by entity
+# treated it as one and dropped exactly those rows — the client acked them and
+# the pull stream never carried them. Both halves are rehearsed: ingestion on a
+# live push, and the start-up pass on a chunk planted the way an older client
+# left one.
+
+GAP_SESSIONS="'gap-session-in-window','gap-session-before-window','gap-session-older-still'"
+
+log "pushing a chunk whose sessions array covers one of its three session mutations"
+cat >"$CLOUD_OUT/typed-gap-chunk.json" <<'JSON'
+{
+  "created_by": "roundtrip-typed-gap",
+  "client_created_at": "2026-04-29T10:03:00Z",
+  "data": {
+    "sessions": [
+      {"id":"gap-session-in-window","project":"koi-garden","directory":"/data/rt-a","started_at":"2026-04-29T10:00:00Z"}
+    ],
+    "observations": [],
+    "prompts": [],
+    "mutations": [
+      {"entity":"session","entity_key":"gap-session-in-window","op":"upsert","project":"koi-garden","payload":"{\"id\":\"gap-session-in-window\",\"directory\":\"/data/rt-a\",\"started_at\":\"2026-04-29T10:00:00Z\"}"},
+      {"entity":"session","entity_key":"gap-session-before-window","op":"upsert","project":"koi-garden","payload":"{\"id\":\"gap-session-before-window\",\"directory\":\"/data/rt-a\",\"started_at\":\"2026-03-01T10:00:00Z\"}"},
+      {"entity":"session","entity_key":"gap-session-older-still","op":"upsert","project":"koi-garden","payload":"{\"id\":\"gap-session-older-still\",\"directory\":\"/data/rt-a\",\"started_at\":\"2026-02-01T10:00:00Z\"}"}
+    ]
+  }
+}
+JSON
+
+push_status="$(curl -sS -o "$CLOUD_OUT/typed-gap-push.json" -w '%{http_code}' \
+  -X POST \
+  -H "Authorization: Bearer $CLOUD_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data-binary @"$CLOUD_OUT/typed-gap-chunk.json" \
+  "http://127.0.0.1:28081/sync/push?project=koi-garden" 2>>"$LOG_FILE")"
+if [ "$push_status" = "200" ]; then
+  pass "the cloud server accepted the chunk (HTTP 200)"
+else
+  report_fail "the cloud server answered $push_status on the push; expected 200"
+  awk '{ print "      | " $0 }' "$CLOUD_OUT/typed-gap-push.json"
+fi
+
+pushed_rows="$(psql "SELECT count(*) FROM cloud_mutations WHERE entity = 'session' AND entity_key IN ($GAP_SESSIONS);" | tr -d ' ')"
+if [ "${pushed_rows:-0}" = "3" ]; then
+  pass "all three session mutations reached cloud_mutations, not only the one the sessions array carried"
+else
+  report_fail "the push materialized ${pushed_rows:-0} of its 3 session mutations; the rest are acked and unreachable"
+  psql "SELECT entity_key FROM cloud_mutations WHERE entity = 'session' AND entity_key IN ($GAP_SESSIONS) ORDER BY entity_key;" \
+    | awk '{ print "      | " $0 }'
+fi
+
+# The repair half. An older server materialized the typed session and dropped
+# the other two, so the planted chunk is paired with the one row that ingestion
+# did write at the time.
+LEGACY_GAP_SESSIONS="'legacy-gap-session-typed','legacy-gap-session-a','legacy-gap-session-b'"
+
+log "planting a chunk an older ingestion would have half-materialized"
+docker exec -i engram-dev-postgres psql -U engram_dev -d engram_dev -tA >/dev/null <<'SQL'
+INSERT INTO cloud_chunks (project_name, chunk_id, created_by, payload, sessions_count, observations_count, prompts_count)
+VALUES ('koi-garden', 'legacy-typed-gap-chunk', 'legacy-push', $chunk${
+  "sessions": [{"id":"legacy-gap-session-typed","project":"koi-garden","directory":"/data/rt-a","started_at":"2026-04-29T10:00:00Z"}],
+  "observations": [],
+  "prompts": [],
+  "mutations": [
+    {"entity":"session","entity_key":"legacy-gap-session-typed","op":"upsert","project":"koi-garden","payload":"{\"id\":\"legacy-gap-session-typed\"}"},
+    {"entity":"session","entity_key":"legacy-gap-session-a","op":"upsert","project":"koi-garden","payload":"{\"id\":\"legacy-gap-session-a\"}"},
+    {"entity":"session","entity_key":"legacy-gap-session-b","op":"upsert","project":"koi-garden","payload":"{\"id\":\"legacy-gap-session-b\"}"}
+  ]
+}$chunk$::jsonb, 1, 0, 0)
+ON CONFLICT (project_name, chunk_id) DO NOTHING;
+
+INSERT INTO cloud_mutations (project, entity, entity_key, op, payload)
+VALUES ('koi-garden', 'session', 'legacy-gap-session-typed', 'upsert', $row${"id":"legacy-gap-session-typed"}$row$::jsonb);
+SQL
+
+legacy_before="$(psql "SELECT count(*) FROM cloud_mutations WHERE entity = 'session' AND entity_key IN ($LEGACY_GAP_SESSIONS);" | tr -d ' ')"
+if [ "${legacy_before:-0}" = "1" ]; then
+  pass "the planted chunk starts with only the session its typed collection carried"
+else
+  report_fail "the planted chunk did not start in the half-materialized state (rows=${legacy_before:-0})"
+fi
+
+log "restarting the cloud server so its start-up pass recovers the two dropped sessions"
+"${DC[@]}" --profile cloud restart cloud-dev >/dev/null
+waited=0
+while :; do
+  if curl -fsS --max-time 3 "$CLOUD_HEALTH_URL" >/dev/null 2>&1; then
+    break
+  fi
+  waited=$((waited + 1))
+  [ "$waited" -lt "$CLOUD_BOOT_TIMEOUT" ] || fail "the cloud server did not come back within ${CLOUD_BOOT_TIMEOUT}s"
+  sleep 1
+done
+
+legacy_after="$(psql "SELECT count(*) FROM cloud_mutations WHERE entity = 'session' AND entity_key IN ($LEGACY_GAP_SESSIONS);" | tr -d ' ')"
+if [ "${legacy_after:-0}" = "3" ]; then
+  pass "the server start recovered the two sessions the older chunk left out"
+else
+  report_fail "the sessions stuck inside the older chunk are still missing from cloud_mutations (rows=${legacy_after:-0})"
+fi
+
+# The pass says what it recovered per entity, so an operator reading the log
+# knows which rule was dropping rows rather than only how many.
+"${DC[@]}" --profile cloud logs --no-color cloud-dev >"$CLOUD_OUT/cloud-dev-start.log" 2>&1 || true
+if grep -q 'materialize-chunks: project=koi-garden .*by_entity=session=2' "$CLOUD_OUT/cloud-dev-start.log"; then
+  pass "the start-up pass logged the recovery broken down per entity"
+else
+  report_fail "the start-up pass did not log by_entity=session=2 for koi-garden"
+  grep 'materialize-chunks' "$CLOUD_OUT/cloud-dev-start.log" | awk '{ print "      | " $0 }'
+fi
+
+log "restarting once more to prove the recovery is idempotent"
+"${DC[@]}" --profile cloud restart cloud-dev >/dev/null
+waited=0
+while :; do
+  if curl -fsS --max-time 3 "$CLOUD_HEALTH_URL" >/dev/null 2>&1; then
+    break
+  fi
+  waited=$((waited + 1))
+  [ "$waited" -lt "$CLOUD_BOOT_TIMEOUT" ] || fail "the cloud server did not come back within ${CLOUD_BOOT_TIMEOUT}s"
+  sleep 1
+done
+legacy_twice="$(psql "SELECT count(*) FROM cloud_mutations WHERE entity = 'session' AND entity_key IN ($LEGACY_GAP_SESSIONS);" | tr -d ' ')"
+if [ "${legacy_twice:-0}" = "3" ]; then
+  pass "a second start left the recovered sessions alone"
+else
+  report_fail "a second start changed the recovered session count to ${legacy_twice:-0}"
+fi
+
 # ─── 7. the queues both ends keep ────────────────────────────────────────────
 
 pending_a="$(sql "$DIR_A" "SELECT count(*) FROM sync_mutations WHERE acked_at IS NULL;")"
