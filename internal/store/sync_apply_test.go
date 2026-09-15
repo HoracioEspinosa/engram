@@ -75,7 +75,7 @@ func setupSyncApplyStore(t *testing.T) (s *Store, syncObsA, syncObsB string) {
 	return
 }
 
-// ─── Phase C.3 — Pull-side RED tests (REQ-002, REQ-009) ──────────────────────
+// ─── Pull-side relation apply tests ─────────────────────────────────────────
 
 // C.3a — ApplyPulledRelation_InsertsWhenObsExist: both source and target
 // observations exist locally → relation is upserted into memory_relations.
@@ -177,7 +177,7 @@ func TestApplyPulledRelation_DefersOnFKMiss(t *testing.T) {
 }
 
 // C.3c — ApplyPulledRelation_IdempotentOnSyncID: pulling the same relation
-// twice yields exactly one row (REQ-009, INSERT OR REPLACE on sync_id).
+// twice yields exactly one row (INSERT OR REPLACE on sync_id).
 func TestApplyPulledRelation_IdempotentOnSyncID(t *testing.T) {
 	s, syncA, syncB := setupSyncApplyStore(t)
 
@@ -210,7 +210,7 @@ func TestApplyPulledRelation_IdempotentOnSyncID(t *testing.T) {
 	}
 }
 
-// ─── Phase E store-layer helpers (REQ-007) ────────────────────────────────────
+// ─── Store-layer helpers for deferred relation retries ─────────────────────
 
 // insertDeferredRow inserts a row directly into sync_apply_deferred for test setup.
 func insertDeferredRow(t *testing.T, s *Store, syncID, entity, payload string, retryCount int, applyStatus string) {
@@ -535,7 +535,7 @@ func TestApplyPulledRelation_MalformedPayload_StraightToDead(t *testing.T) {
 }
 
 // C.3d — ApplyPulledRelation_MultiActorSamePair: two mutations, same
-// (source, target) pair but different sync_id → two distinct rows (REQ-009).
+// (source, target) pair but different sync_id → two distinct rows.
 func TestApplyPulledRelation_MultiActorSamePair(t *testing.T) {
 	s, syncA, syncB := setupSyncApplyStore(t)
 

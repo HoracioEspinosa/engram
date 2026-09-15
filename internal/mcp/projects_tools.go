@@ -1,10 +1,9 @@
-// engram-projects MCP tools (RFC rfc-engram-projects.md §5): the 10 tools
-// registered under the `projects` --tools profile. Every tool follows the
-// conventions in RFC §5.0: project resolution via the same resolvers as the
-// rest of this package, an envelope of {"project", "project_source",
-// "project_path", "result"} on success, and {"error", "code", ...fields} on
-// failure — a fresh, simpler shape than errorWithMeta's, used exclusively by
-// this tool family per the RFC.
+// engram-projects MCP tools: the 10 tools registered under the `projects`
+// --tools profile. Every tool follows the same conventions: project
+// resolution via the same resolvers as the rest of this package, an
+// envelope of {"project", "project_source", "project_path", "result"} on
+// success, and {"error", "code", ...fields} on failure — a fresh, simpler
+// shape than errorWithMeta's, used exclusively by this tool family.
 package mcp
 
 import (

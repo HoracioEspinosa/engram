@@ -1,6 +1,6 @@
-// Subcommand implementations for `engram project <slug> …` (RFC
-// rfc-engram-projects.md §7.1). Dispatch, project resolution and the shared
-// rendering helpers live in project_cmd.go.
+// Subcommand implementations for `engram project <slug> …`. Dispatch,
+// project resolution and the shared rendering helpers live in
+// project_cmd.go.
 package main
 
 import (

@@ -504,7 +504,6 @@ func (s *CloudServer) handlePushChunk(w http.ResponseWriter, r *http.Request) {
 
 	// Push-path pause guard: check project sync control before accepting the chunk.
 	// Uses a structural interface assertion so the ChunkStore interface is NOT extended.
-	// Satisfies REQ-109 / Design Decision 5.
 	if storeForControls, ok := s.store.(interface {
 		IsProjectSyncEnabled(project string) (bool, error)
 	}); ok {
@@ -517,7 +516,7 @@ func (s *CloudServer) handlePushChunk(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !enabled {
-			// REQ-405: emit audit entry for chunk-push pause-rejection before writing 409.
+			// Emit audit entry for chunk-push pause-rejection before writing 409.
 			// Structural type assertion — ChunkStore is NOT extended.
 			contributor := strings.TrimSpace(req.CreatedBy)
 			if contributor == "" {
@@ -538,8 +537,8 @@ func (s *CloudServer) handlePushChunk(w http.ResponseWriter, r *http.Request) {
 			} else {
 				log.Printf("cloudserver: store (%T) does not implement InsertAuditEntry; audit skipped", s.store)
 			}
-			// JW4: include project envelope fields in 409 response, consistent
-			// with the mutation push 409 envelope (REQ-414 parity for chunk path).
+			// Include project envelope fields in 409 response, consistent
+			// with the mutation push 409 envelope (parity for the chunk path).
 			jsonResponse(w, http.StatusConflict, map[string]any{
 				"error_class":    strings.TrimSpace(constants.UpgradeErrorClassPolicy),
 				"error_code":     "sync-paused",

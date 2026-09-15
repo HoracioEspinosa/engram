@@ -76,7 +76,7 @@ type DashboardPromptRow struct {
 }
 
 // DashboardSystemHealth holds aggregate metrics for the admin health page.
-// Satisfies REQ-105 / AD-3.
+// Satisfies AD-3.
 type DashboardSystemHealth struct {
 	DBConnected  bool
 	Projects     int
@@ -1214,7 +1214,7 @@ func (cs *CloudStore) loadMutationRows(project string) ([]dashboardMutationRow, 
 // ─── SystemHealth ─────────────────────────────────────────────────────────────
 
 // SystemHealth returns aggregate metrics from the in-memory read model plus a DB ping.
-// Satisfies REQ-105 / AD-3.
+// Satisfies AD-3.
 func (cs *CloudStore) SystemHealth() (DashboardSystemHealth, error) {
 	model, err := cs.loadDashboardReadModel()
 	if err != nil {

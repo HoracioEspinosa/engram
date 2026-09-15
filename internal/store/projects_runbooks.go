@@ -486,15 +486,15 @@ func ftsMatchQuery(query, matchMode string) string {
 }
 
 // SearchRunbookIndex searches runbook_index_fts by title and symptoms,
-// returning full runbook_index rows ranked by BM25 (rfc-tui.md §9.2's "S8
-// search by symptoms" query). project scopes the match to one project;
+// returning full runbook_index rows ranked by BM25 — the TUI Runbooks tab's
+// search-by-symptoms query. project scopes the match to one project;
 // passing "" searches every project, backing the Runbooks tab's "a" toggle
-// (rfc-tui.md §3.1 S8).
+// for searching across every project at once.
 //
 // Unlike FindRunbooks — built for mem_runbook_find's thinner MCP envelope —
 // this returns the same RunbookIndexRow shape ListRunbookIndex does,
 // including Symptoms, because the TUI renders search results in the exact
-// same table as the unfiltered index (rfc-tui.md §9.4).
+// same table as the unfiltered index.
 func (s *Store) SearchRunbookIndex(query, project string, limit int) ([]RunbookIndexRow, error) {
 	ftsQuery := ftsMatchQuery(query, "any")
 
@@ -585,8 +585,8 @@ type RunbookIndexRow struct {
 }
 
 // ListRunbookIndex pages through the runbook index, scoped to one project or,
-// when project is "", every project — the cross-project mode
-// rfc-tui.md §3.1 S8's "a" (all projects) toggle needs, alongside
+// when project is "", every project — the cross-project mode the Runbooks
+// tab's "a" (all projects) toggle needs, alongside
 // GET /projects/{slug}/runbooks (internal/server/projects_routes.go), which
 // always resolves a real slug through knownProject before calling this and so
 // never hits the empty-string branch.

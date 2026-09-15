@@ -1,6 +1,6 @@
 package chunkcodec
 
-// engram-projects mutation encoding (RFC rfc-engram-projects.md section 10.2).
+// engram-projects mutation encoding.
 //
 // A chunk that leaves this machine must be canonical: the project stamped on
 // every payload, required fields present and trimmed, and an entity_key that
@@ -237,8 +237,8 @@ func normalizeProjectsMutationPayload(entity, op, payload, project string) (stri
 				return "", "", fmt.Errorf("project_card payload updated_at is required for upsert")
 			}
 		}
-		// A graph fact without the commit it was built from is exactly what
-		// ADR-026 forbids; reject it here so it never reaches a replica's DDL.
+		// A graph fact without the commit it was built from must never
+		// happen; reject it here so it never reaches a replica's DDL.
 		if trimmedPtr(body.GraphSummary) != nil && trimmedPtr(body.GraphCommit) == nil {
 			return "", "", fmt.Errorf("project_card payload graph_summary requires graph_commit")
 		}

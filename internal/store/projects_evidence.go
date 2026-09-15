@@ -16,7 +16,7 @@ type Evidence struct {
 	// TaskSyncID (the cross-machine identity mem_evidence_list and the sync
 	// pipeline filter by) so the TUI's Evidence tab can filter and deep-link
 	// by the same local row id tabs.NavigateMsg already carries for
-	// observations (rfc-tui.md §9.2's S6 query: `e.task_id = ?2`).
+	// observations (`e.task_id = ?2`).
 	TaskID     int64  `json:"task_id"`
 	TaskSyncID string `json:"task_sync_id"`
 	Path       string `json:"path"`

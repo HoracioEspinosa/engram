@@ -31,13 +31,13 @@ const (
 	SourceGitChild         = "git_child"         // auto-promoted from single child git repo
 	SourceDirBasename      = "dir_basename"      // fallback: directory basename
 	SourceAmbiguous        = "ambiguous"         // cwd contains multiple git repos (Case 4)
-	SourceExplicitOverride = "explicit_override" // JR2-2: caller explicitly supplied a project name
+	SourceExplicitOverride = "explicit_override" // caller explicitly supplied a project name
 	SourceSessionProject   = "session"           // caller supplied a session_id with an existing project
 	// SourceUserSelectedAfterAmbiguousProject means an MCP write initially hit
 	// ErrAmbiguousProject and the caller provided an explicit user-selected
 	// project from the ambiguity result's available_projects list.
 	SourceUserSelectedAfterAmbiguousProject = "user_selected_after_ambiguous_project"
-	SourceRequestBody                       = "request_body" // REQ-414: project came from the request body (server-side, no filesystem path)
+	SourceRequestBody                       = "request_body" // project came from the request body (server-side, no filesystem path)
 	SourceConfig                            = "config"       // derived from .engram/config.json project_name
 	SourceAllProjects                       = "all_projects" // caller asked for cross-project search (no single project resolved)
 	// SourceAlias means the caller named something the store knows as an alias
@@ -66,7 +66,7 @@ var noiseSet = map[string]bool{
 // than a fact the detector actually knows (a git-backed source, an explicit
 // override, session association, or config file). A caller that decides
 // where data lands must treat a guessed source as unresolved instead of
-// silently writing under it (ADR-057 §3): the guess is still useful for a
+// silently writing under it: the guess is still useful for a
 // caller that only decides what to display, such as which TUI screen opens.
 func IsGuessedSource(source string) bool {
 	return source == SourceDirBasename
@@ -112,7 +112,7 @@ func DetectProjectFull(dir string) DetectionResult {
 
 	// ── Case 1: git_remote ──────────────────────────────────────────────
 	if name := detectFromGitRemote(dir); name != "" {
-		// JS2: use repo root as Path for consistency with Case 2 (git_root).
+		// Use repo root as Path for consistency with Case 2 (git_root).
 		// When called from a subdir, both cases should set Path to the root.
 		path := detectGitRootDir(dir)
 		if path == "" {
@@ -161,9 +161,9 @@ func DetectProjectFull(dir string) DetectionResult {
 				names[i] = normalize(filepath.Base(c))
 			}
 			absDir, _ := filepath.Abs(dir)
-			// REQ-304: Project is empty on ambiguous (spec is authoritative).
+			// Project is empty on ambiguous (spec is authoritative).
 			// DetectProject wrapper handles CLI compat by using filepath.Base on error.
-			// JW3: use SourceAmbiguous (not SourceDirBasename) to avoid misleading consumers.
+			// Use SourceAmbiguous (not SourceDirBasename) to avoid misleading consumers.
 			return DetectionResult{
 				Project:           "",
 				Source:            SourceAmbiguous,
