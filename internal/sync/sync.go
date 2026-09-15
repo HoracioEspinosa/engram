@@ -50,6 +50,9 @@ var (
 	storeExportRelations      = func(s *store.Store, project string) ([]store.SyncMutation, error) {
 		return s.ExportRelationMutations(project)
 	}
+	storeSessionsByIDs = func(s *store.Store, ids []string) ([]store.Session, error) {
+		return s.SessionsByIDs(ids)
+	}
 	storeListMutationsAfterSeq = func(s *store.Store, targetKey string, afterSeq int64, limit int) ([]store.SyncMutation, error) {
 		return s.ListPendingSyncMutationsAfterSeq(targetKey, afterSeq, limit)
 	}
@@ -1357,18 +1360,75 @@ func (sy *Syncer) filterByPendingMutations(data *store.ExportData, project strin
 		referencedSessionIDs[prompt.SessionID] = struct{}{}
 	}
 
-	for _, session := range data.Sessions {
-		if _, ok := sessionKeys[session.ID]; ok {
-			chunk.Sessions = append(chunk.Sessions, session)
+	// An upsert mutation is what the cloud validates, and it can cite a session
+	// the typed collections never mention: the row may be scoped to another
+	// project (the shared manual-save fallback is), or the journal entry may
+	// name a project the row itself no longer carries. Reading the citation
+	// from the payload keeps the chunk complete no matter which of the two
+	// selectors picked the row. Deletes are left alone — the cloud does not
+	// resolve their session, and carrying one would turn a mutation-only chunk
+	// into a snapshot.
+	for _, mutation := range selectedMutations {
+		if mutation.Entity != store.SyncEntityObservation && mutation.Entity != store.SyncEntityPrompt {
 			continue
 		}
-		if _, ok := referencedSessionIDs[session.ID]; ok {
-			chunk.Sessions = append(chunk.Sessions, session)
+		if mutation.Op != store.SyncOpUpsert {
+			continue
 		}
+		if sessionID := sessionIDFromMutationPayload(mutation); sessionID != "" {
+			referencedSessionIDs[sessionID] = struct{}{}
+		}
+	}
+
+	attached := make(map[string]struct{}, len(sessionKeys)+len(referencedSessionIDs))
+	for _, session := range data.Sessions {
+		_, selected := sessionKeys[session.ID]
+		_, referenced := referencedSessionIDs[session.ID]
+		if !selected && !referenced {
+			continue
+		}
+		chunk.Sessions = append(chunk.Sessions, session)
+		attached[session.ID] = struct{}{}
+	}
+
+	// Whatever the export left out still has to travel: the cloud rejects the
+	// whole chunk when a citation resolves to neither a session inside it nor
+	// one it already indexed for this project.
+	missing := make([]string, 0)
+	for sessionID := range referencedSessionIDs {
+		if sessionID == "" {
+			continue
+		}
+		if _, ok := attached[sessionID]; ok {
+			continue
+		}
+		missing = append(missing, sessionID)
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		extra, err := storeSessionsByIDs(sy.store, missing)
+		if err != nil {
+			return nil, nil, fmt.Errorf("attach referenced sessions: %w", err)
+		}
+		chunk.Sessions = append(chunk.Sessions, extra...)
 	}
 	chunk.Mutations = selectedMutations
 
 	return chunk, seqs, nil
+}
+
+// sessionIDFromMutationPayload reads the session an observation or prompt
+// mutation cites. An undecodable payload yields no citation: the canonicalizer
+// and the server both reject it on their own, and guessing here would only
+// change which error the caller sees.
+func sessionIDFromMutationPayload(mutation store.SyncMutation) string {
+	var payload struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := decodeSyncPayloadForProject([]byte(mutation.Payload), &payload); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(payload.SessionID)
 }
 
 func (sy *Syncer) listPendingMutationsForExport() ([]store.SyncMutation, error) {

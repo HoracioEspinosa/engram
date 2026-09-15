@@ -55,11 +55,11 @@ Business rule: **if sync is blocked, fail loudly and visibly**. No silent drops.
 
 - `GET /health`
 - `GET /version`
-- `GET /sync/pull`
-- `GET /sync/pull/{chunkID}`
+- `GET /sync/pull` — the **manifest** of a project's chunks (`project` is required); it lists ids and counts, never chunk content
+- `GET /sync/pull/{chunkID}` — **one chunk**, by chunk id. The path segment is an id, not a cursor: `/sync/pull/0` is a 404, not "start from the beginning"
 - `POST /sync/push`
 - `POST /sync/mutations/push`
-- `GET /sync/mutations/pull`
+- `GET /sync/mutations/pull` — the **materialized stream** read from `cloud_mutations`, paged with `since_seq` (not `since`) and `limit`. It is global: a `project` parameter is ignored, and scoping comes from the caller's authorization
 - `/dashboard/*`
 
 `POST /sync/push` and `POST /sync/mutations/push` enforce the server-side push request body limit from `ENGRAM_CLOUD_MAX_PUSH_BYTES` (default 8 MiB).
@@ -70,15 +70,34 @@ For complete route details, use [DOCS.md — HTTP API Endpoints](../../DOCS.md#h
 
 ### Project names are compared folded
 
-Enrollment normalizes a project name to lower case (`store.NormalizeProject`); the rows keep whatever case they were written with, which is why reads across the store compare `lower(project)` and `core-0003-fn-indexes` / `core-0004-sync-project-fn-indexes` index that expression on observations, sessions, prompts and `sync_mutations`. The sync journal follows the same rule end to end: the backfill selects, `projectNeedsBackfill`, the enrolled-projects join on both pending-mutation reads, and `SkipAckNonEnrolledMutations`. An exact-equality filter there is a silent data-loss bug — it selects nothing for a project named with capitals and the skip-ack then acks its mutations as unenrolled.
+Enrollment normalizes a project name to lower case (`store.NormalizeProject`); the rows keep whatever case they were written with, which is why reads across the store compare `lower(project)` and `core-0003-fn-indexes` / `core-0004-sync-project-fn-indexes` index that expression on observations, sessions, prompts and `sync_mutations`. The whole push path follows the same rule end to end: `ExportProject`'s typed collections, the backfill selects, `ProjectJournalGaps`, the enrolled-projects join on both pending-mutation reads, and `SkipAckNonEnrolledMutations`. An exact-equality filter anywhere on that path is a silent data-loss bug — the export returns no rows for a project named with capitals while the mutation selector still picks them, so the chunk carries mutations citing sessions it does not include and the server rejects it wholesale.
 
 `engram cloud enroll` refuses a name that owns no local row at all (exit 1, `reason_code: enroll_project_has_no_local_rows`). Enrollment is the one place where a typo is indistinguishable from a healthy project that simply has nothing new. A fresh replica enrolling a project in order to pull it is the legitimate version of the same state, and says so with `--allow-empty`.
+
+### A chunk carries every session it cites
+
+The cloud validates each observation and prompt upsert against the sessions the chunk carries plus the ones it has already indexed for that project (`cloud_project_sessions`), and that index is per project. A session can be cited across projects — the manual-save fallback is — so the chunk builder reads the citation from every upsert it carries and loads whatever session the per-project export did not provide. Deletes are left out: the cloud does not resolve their session, and attaching one would turn a mutation-only chunk into a snapshot.
+
+New manual saves get a per-project session id (`manual-save-<slug>`) for the same reason: one shared `manual-save` row cited from many projects is a reference the server's model cannot express.
+
+### A row with no journal entry is not replicated
+
+`pending mutations = 0` means the journal is drained, not that every row reached the cloud. A row with no `sync_mutations` entry at all never enters a push. `Store.ProjectJournalGaps` counts those per enrolled project, folded, split in two:
+
+- **journalable** — a backfill pass can enqueue them. `engram cloud enroll` (every run, not only the first) and `engram cloud upgrade repair --apply` do exactly that, idempotently.
+- **blocked** — the cloud upsert contract rejects them (an observation needs `session_id`, `type`, `title`, `content` and `scope`; a prompt needs `session_id` and `content`), so no backfill can deliver them. Only completing or removing the row clears the count.
+
+`engram cloud upgrade doctor` prints `unjournaled_rows` and `unjournaled_detail`, and never answers `ready` while either number is above zero.
 
 ## Cloud store: `internal/cloud/cloudstore`
 
 `internal/cloud/cloudstore/cloudstore.go` persists to Postgres, materializes chunks/mutations, and feeds dashboard read models. If an organizational policy matters, state lives here or is enforced from `cloudserver` against data from here.
 
 A chunk carries three entities in typed arrays — `sessions`, `observations`, `prompts` — and everything else only inside `mutations`. `WriteChunk` materializes the typed three from their arrays and every other entity from its mutation, so `relation` and all seven engram-projects entities reach `cloud_mutations`. That table is what `ListMutationsSince` serves, so an entity missing from it is invisible to every pulling replica while the pushing client still acks the chunk — a silent, reason-code-less hole. The predicate is the complement (`hasTypedChunkCollection`) rather than a list of entities to carry, so a newly replicated entity is carried by default.
+
+`WriteChunk` only covers chunks written after that rule existed. Everything an older client pushed still sits in `cloud_chunks` alone, and no client can re-push a chunk the server already holds. `CloudStore.MaterializeChunkMutations` walks the stored chunks of a project and writes the missing entity mutations into `cloud_mutations`; `cloud serve` runs it over every project at start, and `engram cloud repair materialize-chunks [--project <name>] (--dry-run|--apply)` runs it on demand. It is idempotent, keyed on entity, key and op — never on the payload, so a later push carrying a newer payload stays a genuine update instead of being treated as a duplicate.
+
+The two repair commands move data in opposite directions and are not interchangeable: `materialize-mutations` rebuilds `cloud_chunks` from `cloud_mutations` (so the dashboard, which counts chunks, stops reading short); `materialize-chunks` fills `cloud_mutations` from `cloud_chunks` (so the pull stream stops missing entities).
 
 `ENGRAM_CLOUD_ALLOWED_PROJECTS=*` is a wildcard, never a project name: nothing is ever stored, authorized or materialized under `*`. Every consumer of the allowlist asks `cloud.AllowsAllProjects` before it iterates the list — the project authorizer, the dashboard scope, and the startup materialization in `cmd/engram/cloud.go`, which expands the wildcard through `CloudStore.ListMutationProjects`. Iterating the list literally means running per-project work against one project that holds nothing, which is invisible: no error, and only the dashboard's `cloud_chunks` count reads short of `cloud_mutations`.
 

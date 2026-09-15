@@ -88,6 +88,10 @@ var newCloudRuntime = func(cfg cloud.Config) (cloudServerRuntime, error) {
 		_ = cs.Close()
 		return nil, err
 	}
+	if err := materializeStoredChunkMutations(context.Background(), cs); err != nil {
+		_ = cs.Close()
+		return nil, err
+	}
 	projectAuth := auth.NewProjectScopeAuthorizer(allowedProjects)
 	token := strings.TrimSpace(os.Getenv("ENGRAM_CLOUD_TOKEN"))
 	cs.SetDashboardAllowedProjects(allowedProjects)
@@ -210,6 +214,28 @@ func backfillAllowedProjectMutationChunks(ctx context.Context, cs *cloudstore.Cl
 	return nil
 }
 
+// materializeStoredChunkMutations drains, on every server start, the entity
+// mutations that reached cloud_chunks before the push materialized them. Those
+// entities have no typed collection, so the pull stream — which reads
+// cloud_mutations — never carried them, and no amount of re-pushing from a
+// client brings back a chunk the server already holds.
+func materializeStoredChunkMutations(ctx context.Context, cs *cloudstore.CloudStore) error {
+	reports, err := cs.MaterializeAllChunkMutations(ctx, true)
+	if err != nil {
+		return fmt.Errorf("cloud serve materialize-chunks: %w", err)
+	}
+	for _, report := range reports {
+		if report.Materialized == 0 {
+			continue
+		}
+		fmt.Fprintf(os.Stderr,
+			"engram cloud repair materialize-chunks: project=%s chunks_scanned=%d candidates=%d already_present=%d materialized=%d\n",
+			report.Project, report.ChunksScanned, report.Candidates, report.AlreadyPresent, report.Materialized,
+		)
+	}
+	return nil
+}
+
 var runUpgradeBootstrap = func(s *store.Store, project string, cc *cloudConfig) (*engramsync.UpgradeBootstrapResult, error) {
 	transport, err := remote.NewRemoteTransport(cc.ServerURL, cc.Token, project)
 	if err != nil {
@@ -259,20 +285,27 @@ func cmdCloud(cfg store.Config) {
 
 func cmdCloudRepair() {
 	if len(os.Args) < 4 || os.Args[3] == "--help" || os.Args[3] == "-h" || os.Args[3] == "help" {
-		fmt.Println("usage: engram cloud repair materialize-mutations --project <name> (--dry-run|--apply)")
-		fmt.Println("repairs existing cloud_mutations into compatible cloud_chunks without deleting remote data")
+		fmt.Println("usage: engram cloud repair <materialize-mutations|materialize-chunks> [--project <name>] (--dry-run|--apply)")
+		fmt.Println("materialize-mutations: rebuilds compatible cloud_chunks from existing cloud_mutations")
+		fmt.Println("materialize-chunks:    writes the entity mutations stored inside cloud_chunks into cloud_mutations")
+		fmt.Println("neither command deletes remote data")
 		return
 	}
 	command := strings.TrimSpace(strings.ToLower(os.Args[3]))
-	if command != "materialize-mutations" {
+	if command != "materialize-mutations" && command != "materialize-chunks" {
 		fmt.Fprintf(os.Stderr, "unknown cloud repair command: %s\n", command)
-		fmt.Fprintln(os.Stderr, "supported cloud repair commands: materialize-mutations")
+		fmt.Fprintln(os.Stderr, "supported cloud repair commands: materialize-mutations, materialize-chunks")
 		exitFunc(1)
 		return
 	}
+	usage := fmt.Sprintf("usage: engram cloud repair %s --project <name> (--dry-run|--apply)", command)
+	if command == "materialize-chunks" {
+		usage = "usage: engram cloud repair materialize-chunks [--project <name>] (--dry-run|--apply)"
+	}
+
 	project := parseCloudUpgradeProjectArg(os.Args[4:])
-	if project == "" {
-		fmt.Fprintln(os.Stderr, "usage: engram cloud repair materialize-mutations --project <name> (--dry-run|--apply)")
+	if project == "" && command == "materialize-mutations" {
+		fmt.Fprintln(os.Stderr, usage)
 		fmt.Fprintln(os.Stderr, "error: --project is required")
 		exitFunc(1)
 		return
@@ -280,7 +313,7 @@ func cmdCloudRepair() {
 	dryRun := hasCloudUpgradeFlag(os.Args[4:], "--dry-run")
 	apply := hasCloudUpgradeFlag(os.Args[4:], "--apply")
 	if dryRun == apply {
-		fmt.Fprintln(os.Stderr, "usage: engram cloud repair materialize-mutations --project <name> (--dry-run|--apply)")
+		fmt.Fprintln(os.Stderr, usage)
 		fmt.Fprintln(os.Stderr, "error: exactly one of --dry-run or --apply is required")
 		exitFunc(1)
 		return
@@ -292,12 +325,25 @@ func cmdCloudRepair() {
 		return
 	}
 	defer cs.Close()
-	report, err := cs.BackfillMutationChunks(context.Background(), project, apply)
+
+	var payload any
+	switch command {
+	case "materialize-mutations":
+		payload, err = cs.BackfillMutationChunks(context.Background(), project, apply)
+	case "materialize-chunks":
+		// Without --project the pass covers every project that has chunks,
+		// which is what the backlog of older pushes actually looks like.
+		if project == "" {
+			payload, err = cs.MaterializeAllChunkMutations(context.Background(), apply)
+		} else {
+			payload, err = cs.MaterializeChunkMutations(context.Background(), project, apply)
+		}
+	}
 	if err != nil {
 		fatal(err)
 		return
 	}
-	encoded, err := jsonMarshalIndent(report, "", "  ")
+	encoded, err := jsonMarshalIndent(payload, "", "  ")
 	if err != nil {
 		fatal(err)
 		return
@@ -405,6 +451,34 @@ func cmdCloudUpgradeDoctor(cfg store.Config) {
 		}
 	}
 
+	// A row with no sync journal entry never enters a push, and the pending
+	// counters say nothing about it — a project could report zero pending
+	// mutations and `ready` while hundreds of its observations had never been
+	// offered to the cloud at all. Count them and refuse `ready` while any
+	// remain.
+	gaps, err := s.ProjectJournalGaps(project)
+	if err != nil {
+		fatal(fmt.Errorf("cloud upgrade doctor journal gap check: %w", err))
+		return
+	}
+	if report.Status == engramsync.UpgradeStatusReady && gaps.Total() > 0 {
+		if gaps.Journalable() > 0 {
+			report = engramsync.UpgradeDiagnosisReport{
+				Status:  engramsync.UpgradeStatusBlocked,
+				Class:   engramsync.UpgradeReasonClassRepairable,
+				Code:    store.UpgradeReasonRepairableUnjournaledRows,
+				Message: fmt.Sprintf("project %q has %d row(s) with no sync journal entry; run `engram cloud upgrade repair --project %s --apply`", project, gaps.Total(), project),
+			}
+		} else {
+			report = engramsync.UpgradeDiagnosisReport{
+				Status:  engramsync.UpgradeStatusBlocked,
+				Class:   engramsync.UpgradeReasonClassBlocked,
+				Code:    store.UpgradeReasonBlockedUnjournaledRows,
+				Message: fmt.Sprintf("manual-action-required: project %q has %d row(s) the cloud upsert contract rejects, so no backfill can journal them", project, gaps.Blocked),
+			}
+		}
+	}
+
 	stage := store.UpgradeStageDoctorBlocked
 	if report.Status == engramsync.UpgradeStatusReady {
 		stage = store.UpgradeStageDoctorReady
@@ -422,6 +496,8 @@ func cmdCloudUpgradeDoctor(cfg store.Config) {
 	fmt.Printf("class: %s\n", report.Class)
 	fmt.Printf("reason_code: %s\n", report.Code)
 	fmt.Printf("message: %s\n", report.Message)
+	fmt.Printf("unjournaled_rows: %d\n", gaps.Total())
+	fmt.Printf("unjournaled_detail: %s\n", gaps.Summary())
 }
 
 func cloudUpgradePolicyDenied(s *store.Store, project string) (bool, error) {

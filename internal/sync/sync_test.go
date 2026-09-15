@@ -221,6 +221,7 @@ func resetSyncTestHooks(t *testing.T) {
 	origStoreExportData := storeExportData
 	origStoreExportDataForProject := storeExportDataForProject
 	origStoreExportRelations := storeExportRelations
+	origStoreSessionsByIDs := storeSessionsByIDs
 	origStoreListMutationsAfterSeq := storeListMutationsAfterSeq
 	origStoreAckMutationSeq := storeAckMutationSeq
 	origStoreApplyPulledChunk := storeApplyPulledChunk
@@ -236,6 +237,7 @@ func resetSyncTestHooks(t *testing.T) {
 		storeExportData = origStoreExportData
 		storeExportDataForProject = origStoreExportDataForProject
 		storeExportRelations = origStoreExportRelations
+		storeSessionsByIDs = origStoreSessionsByIDs
 		storeListMutationsAfterSeq = origStoreListMutationsAfterSeq
 		storeAckMutationSeq = origStoreAckMutationSeq
 		storeApplyPulledChunk = origStoreApplyPulledChunk

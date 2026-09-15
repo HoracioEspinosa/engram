@@ -1331,13 +1331,25 @@ func cmdSave(cfg store.Config) {
 	}
 	defer s.Close()
 
-	sessionID := "manual-save"
-	if project != "" {
-		sessionID = "manual-save-" + project
-	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		fatal(err)
+	}
+	// A manual save without --project used to land on the bare "manual-save"
+	// session: one row, shared by every project on the machine, owned by
+	// whichever project happened to stamp it first. Observations of other
+	// projects then cited a session the cloud indexes under someone else, which
+	// the per-project session index cannot express. Detecting the project keeps
+	// each manual save on its own manual-save-<slug> row; existing rows keep
+	// their id and are never rewritten.
+	if project == "" {
+		if det := detectProjectFull(cwd); det.Error == nil {
+			project = strings.TrimSpace(det.Project)
+		}
+	}
+	sessionID := "manual-save"
+	if project != "" {
+		sessionID = "manual-save-" + project
 	}
 	if err := s.CreateSession(sessionID, project, cwd); err != nil {
 		fatal(err)

@@ -304,9 +304,46 @@ engram sync --cloud --status --project <project>
 Expected result:
 
 - `doctor` no longer reports the same blocker.
+- `doctor` reports `unjournaled_rows: 0`.
 - `sync --cloud` completes without canonicalization errors.
 - `last_acked_seq` advances.
 - Dashboard stats stop showing `0` once data has been accepted by cloud.
+
+---
+
+## The local project has more rows than the cloud, with nothing pending
+
+Zero pending mutations means the journal is drained, not that every row reached the cloud. A row written outside the journal — created before the project was enrolled, or inserted by an import — has no `sync_mutations` entry and never enters a push. `doctor` counts them:
+
+```
+unjournaled_rows: 12
+unjournaled_detail: sessions=0 observations=11 prompts=1 relations=0 blocked=0
+```
+
+Fix:
+
+```bash
+engram cloud enroll <project>          # safe to re-run; journals what is missing
+engram cloud upgrade repair --project <project> --apply
+engram sync --cloud --project <project>
+```
+
+Rows counted under `blocked=` cannot be journaled at all: the cloud upsert contract rejects them (an observation needs `session_id`, `type`, `title`, `content` and `scope`; a prompt needs `session_id` and `content`). Complete or delete the row — enqueuing it would make the server reject the whole chunk.
+
+---
+
+## The dashboard shows a project card the pulling replica never receives
+
+An entity with no typed collection — `project_card`, `project_alias`, `task`, `evidence`, `benchmark`, `task_link`, `observation_ref`, `relation` — travels only as a mutation inside the chunk. Chunks pushed before the server materialized those entities still hold theirs, and `GET /sync/mutations/pull` reads `cloud_mutations`, so a replica pulling the stream sees nothing while the dashboard, which counts chunks, shows the data as present. Re-pushing does not help: the server already holds the chunk.
+
+`engram cloud serve` drains that backlog at start. To run it against a live database without restarting:
+
+```bash
+ENGRAM_DATABASE_URL='postgres://...' engram cloud repair materialize-chunks --dry-run
+ENGRAM_DATABASE_URL='postgres://...' engram cloud repair materialize-chunks --apply
+```
+
+Do not confuse it with `materialize-mutations`, which fills `cloud_chunks` from `cloud_mutations` — the opposite direction, for when the dashboard undercounts.
 
 ---
 
