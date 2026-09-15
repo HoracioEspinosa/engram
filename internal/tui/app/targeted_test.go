@@ -109,8 +109,10 @@ func TestBroadcastStillReachesEveryTabForWindowSize(t *testing.T) {
 		{"evidence", next.evidence.Width, next.evidence.Height},
 		{"runbooks", next.runbooks.Width, next.runbooks.Height},
 	} {
-		if got.width != 120 || got.height != 40 {
-			t.Fatalf("%s saw %dx%d, want the size every tab was told", got.name, got.width, got.height)
+		// 36, not 40: what every tab is told is the room the frame leaves it,
+		// once its own padding, the tab bar and the status bar are paid for.
+		if got.width != 120 || got.height != 36 {
+			t.Fatalf("%s saw %dx%d, want the 120x36 every tab was told", got.name, got.width, got.height)
 		}
 	}
 }

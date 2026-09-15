@@ -4,8 +4,10 @@ import (
 	"strings"
 
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // View draws the application frame around the active tab's body. The
@@ -48,13 +50,84 @@ func (m Model) viewOverlay() string {
 	return ""
 }
 
-// withStatusBar puts the frame's own bottom row under the body.
+// withStatusBar puts the frame's own bottom row under the body, with the body
+// cut to whatever is left of the terminal above it.
 func (m Model) withStatusBar(body string) string {
 	bar := m.viewStatusBar()
+	body = m.clipRows(strings.TrimRight(body, "\n"), m.bodyRows())
 	if bar == "" {
 		return body
 	}
-	return strings.TrimRight(body, "\n") + "\n" + bar
+	return body + "\n" + bar
+}
+
+// bodyRows is how many rows the frame may spend on the tab bar and the screen
+// under it: the terminal, less the app frame's own padding and less the status
+// bar pinned to the bottom.
+//
+// A root that has not been told the terminal's size yet reports 0, which its
+// callers read as "no ceiling": there is nothing to measure against, and a
+// frame cut to a size nobody declared would be worse than one drawn whole.
+func (m Model) bodyRows() int {
+	rows := m.contentHeight()
+	if rows <= 0 {
+		return 0
+	}
+	if m.viewStatusBar() != "" {
+		rows--
+	}
+	return rows
+}
+
+// tabRows is how many rows a tab's own screen may occupy: the frame's body
+// less the tab bar drawn above it. It is what the root tells every tab the
+// terminal is, so a tab solves its viewport against the room it has rather
+// than against the whole screen.
+func (m Model) tabRows() int {
+	rows := m.bodyRows()
+	if rows <= 0 {
+		return 0
+	}
+	return max(rows-1, 0)
+}
+
+// clipRows caps body at rows terminal lines and marks the cut on the last one
+// it keeps.
+//
+// Something has to do this, and the alternative does it far worse: bubbletea's
+// renderer discards the rows a frame does not have room for in the order it
+// writes them, which is from the top. A screen one row too tall therefore
+// loses its tab bar, not its last list row, and the reader is left on a screen
+// with no chrome to say where they are. Cutting here loses the bottom instead,
+// which is where a list already says "there was more".
+//
+// rows at zero or less is a root with no terminal to measure against, and the
+// body is returned whole.
+func (m Model) clipRows(body string, rows int) string {
+	if rows <= 0 {
+		return body
+	}
+	lines := strings.Split(body, "\n")
+	if len(lines) <= rows {
+		return body
+	}
+	lines = lines[:rows]
+	lines[rows-1] = m.markClipped(lines[rows-1])
+	return strings.Join(lines, "\n")
+}
+
+// markClipped ends a row with the mark that says the screen continues past it,
+// paying for the mark out of the row's own width rather than past it.
+func (m Model) markClipped(line string) string {
+	trimmed := strings.TrimRight(line, " ")
+	if strings.HasSuffix(trimmed, theme.Ellipsis) {
+		return trimmed
+	}
+	width := m.bodyWidth()
+	if ansi.StringWidth(trimmed) >= width {
+		trimmed = ansi.Truncate(trimmed, width-1, "")
+	}
+	return trimmed + theme.Ellipsis
 }
 
 // overlayCanvas is the base an overlay is composed over: the frame the reader
@@ -67,17 +140,14 @@ func (m Model) withStatusBar(body string) string {
 // an overlay that took them off the display would answer "what is this?" while
 // hiding "where am I?".
 func (m Model) overlayCanvas(body string) string {
-	body = strings.TrimRight(body, "\n")
+	rows := m.bodyRows()
+	body = m.clipRows(strings.TrimRight(body, "\n"), rows)
 
-	bar := m.viewStatusBar()
-	rows := m.contentHeight()
-	if bar != "" {
-		rows--
-	}
 	if grow := rows - lipgloss.Height(body); grow > 0 {
 		body += strings.Repeat("\n", grow)
 	}
 
+	bar := m.viewStatusBar()
 	if bar == "" {
 		return body
 	}
@@ -165,11 +235,16 @@ func (m Model) compose(body, panel string) string {
 	// The extent the panel is centred in is the terminal's, less the frame's
 	// own padding — not the body's rendered size. A panel centred on the body
 	// drifts with every screen it opens over, and over a short one it lands on
-	// the tab bar and the status bar instead of between them. The body and the
-	// panel still widen it, so an unsized root and an oversized panel both
-	// still have somewhere to be drawn.
+	// the tab bar and the status bar instead of between them. The body still
+	// widens it and the panel widens and heightens it, so an unsized root and
+	// an oversized panel both still have somewhere to be drawn.
+	//
+	// The body's own height is deliberately not part of the vertical extent:
+	// a screen taller than the terminal would push the panel down by half of
+	// its excess, and what leaves the frame first is the panel's top border
+	// and title.
 	width := max(m.bodyWidth(), lipgloss.Width(body), lipgloss.Width(framed))
-	height := max(m.contentHeight(), lipgloss.Height(body), lipgloss.Height(framed))
+	height := max(m.contentHeight(), lipgloss.Height(framed))
 
 	// Composite only paints on rows the base already has, so a body shorter
 	// than the panel is grown first: an overlay clipped by whatever happened

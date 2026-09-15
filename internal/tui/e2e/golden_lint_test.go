@@ -79,11 +79,12 @@ func trimTrailingBlank(lines []string) []string {
 // lintFrozenScene applies every structural rule to one scene and reports what
 // it found. hasTabBar says whether the scene drew one at all, so the suite can
 // tell a document where the rule passed from one where it never ran.
-func lintFrozenScene(scene frozenScene, width int) (problems []string, hasTabBar bool) {
+func lintFrozenScene(scene frozenScene, width, height int) (problems []string, hasTabBar bool) {
 	if len(scene.lines) == 0 {
 		return []string{scene.name + ": the scene rendered nothing"}, false
 	}
 
+	problems = append(problems, lintFrozenHeight(scene, height)...)
 	for i, line := range scene.lines {
 		problems = append(problems, lintFrozenLine(scene.name, i+1, line, width)...)
 	}
@@ -92,6 +93,24 @@ func lintFrozenScene(scene frozenScene, width int) (problems []string, hasTabBar
 	problems = append(problems, barProblems...)
 	problems = append(problems, lintFrozenStatusBar(scene)...)
 	return problems, hasTabBar
+}
+
+// lintFrozenHeight requires the frame to fit the terminal it was drawn for.
+//
+// The geometry a scene is frozen at is a width and a height, and only the
+// width used to be measured. A frame taller than its terminal is not clipped
+// at the bottom by the renderer: bubbletea's standard renderer drops the rows
+// that do not fit from the TOP, so the reader loses the tab bar and the header
+// while the tail of a list keeps the screen. That is a screen with no chrome
+// on it, and it looks like a different application rather than like a
+// truncation.
+func lintFrozenHeight(scene frozenScene, height int) (problems []string) {
+	if rows := len(scene.lines); rows > height {
+		problems = append(problems, fmt.Sprintf(
+			"%s: the frame is %d rows tall, past the %d the geometry declares; the renderer drops the excess from the top, taking the tab bar with it",
+			scene.name, rows, height))
+	}
+	return problems
 }
 
 // lintFrozenLine is the per-row half: the geometry, and the two marks a render
@@ -275,12 +294,12 @@ func frozenCells(line string, span [2]int) string {
 
 // lintFrozenDocument lints every scene of one document and fails with what it
 // found.
-func lintFrozenDocument(t *testing.T, where, document string, width int) {
+func lintFrozenDocument(t *testing.T, where, document string, width, height int) {
 	t.Helper()
 
 	bars := 0
 	for _, scene := range parseFrozen(t, document) {
-		problems, hasTabBar := lintFrozenScene(scene, width)
+		problems, hasTabBar := lintFrozenScene(scene, width, height)
 		if hasTabBar {
 			bars++
 		}
@@ -302,7 +321,7 @@ func TestTeatestGoldenScreensAreStructurallySound(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read golden: %v", err)
 			}
-			lintFrozenDocument(t, path, string(document), size.width)
+			lintFrozenDocument(t, path, string(document), size.width, size.height)
 		})
 	}
 }
@@ -323,7 +342,7 @@ func TestTeatestRenderedScreensAreStructurallySound(t *testing.T) {
 				b.WriteString(renderTeatestScene(t, screen, size))
 				b.WriteString("\n")
 			}
-			lintFrozenDocument(t, "rendered/"+size.name, b.String(), size.width)
+			lintFrozenDocument(t, "rendered/"+size.name, b.String(), size.width, size.height)
 		})
 	}
 }

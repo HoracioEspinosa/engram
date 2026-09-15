@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -139,6 +140,117 @@ func TestAnOverlayNeverGrowsPastTheTerminal(t *testing.T) {
 			t.Fatalf("%dx%d: a full palette pushed the status bar off the frame:\n%s", size.width, size.height, frame)
 		}
 	}
+}
+
+// graphRefs is a page of graph-linked observations, which is what the Graph
+// tab draws one row each of.
+func graphRefs(n int) []data.ObservationRef {
+	refs := make([]data.ObservationRef, 0, n)
+	for i := range n {
+		refs = append(refs, data.ObservationRef{
+			ObservationID: int64(i + 1),
+			RefKind:       "file",
+			Ref:           "internal/tui/app/view.go",
+			GraphCommit:   "0123456789ab",
+		})
+	}
+	return refs
+}
+
+// overflowingWorkspace is a sized workspace showing a screen taller than the
+// terminal.
+//
+// The Graph tab is the one that draws every row it holds instead of windowing
+// them, so it is what a frame that outgrows its terminal actually looks like
+// in this build — no stub stands in for it.
+func overflowingWorkspace(t *testing.T, width, height int) Model {
+	t.Helper()
+
+	graph := &data.FakeGraph{
+		StateByProject: map[string]data.GraphState{"acme": {
+			Nodes: 11482, Edges: 30671, Communities: 42,
+			Commit: "0123456789abcdef", BuiltAt: "2026-01-15 09:30:00", CheckedAt: "2026-01-15 09:31:00",
+		}},
+		RefsByProject: map[string][]data.ObservationRef{"acme": graphRefs(60)},
+	}
+
+	m := New(&data.FakeMemory{}, &data.FakeProject{}, &data.FakeTask{}, &data.FakeEvidence{}, &data.FakeRunbook{},
+		"test", theme.New(theme.KoiPond()), "acme").WithGraph(graph, graph)
+	m.tree.open = false
+	m.active = tabs.Graph
+
+	sized, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	m = sized.(Model)
+
+	loaded, _ := m.graph.Update(m.graph.Refresh()())
+	return m.withTab(tabs.Graph, loaded)
+}
+
+// statusBarRow is the index of the frame's bottom line — the last row that
+// carries anything, the app frame's own bottom padding excluded.
+func statusBarRow(rows []string) int {
+	for i := len(rows) - 1; i >= 0; i-- {
+		if strings.TrimSpace(rows[i]) != "" {
+			return i
+		}
+	}
+	return -1
+}
+
+// TestTheBodyIsClippedToTheTerminalHeight: a screen taller than the terminal
+// is cut at the bottom, by the frame, on purpose.
+//
+// Left alone it is cut at the TOP instead, by bubbletea's renderer, which
+// discards the rows that do not fit in the order it writes them. The reader
+// then loses the tab bar and the screen's own header and keeps the tail of a
+// list, which reads as a different application rather than as a truncation.
+// The frame is the only place that sees the bar, the body and the status bar
+// together, so it is where the cut is made — and the cut says so, with the
+// same mark every truncated field in this workspace carries.
+func TestTheBodyIsClippedToTheTerminalHeight(t *testing.T) {
+	const width, height = 80, 24
+
+	m := overflowingWorkspace(t, width, height)
+	frame := ansi.Strip(m.View())
+	rows := strings.Split(frame, "\n")
+
+	if len(rows) != height {
+		t.Fatalf("a screen taller than the terminal renders %d rows, want the terminal's %d:\n%s",
+			len(rows), height, frame)
+	}
+
+	bar := strings.TrimSpace(ansi.Strip(m.viewTabBar()))
+	if !strings.Contains(rows[1], bar) {
+		t.Fatalf("the second row carries no tab bar, so the renderer would drop it:\n%s", frame)
+	}
+
+	status := statusBarRow(rows)
+	if status < 0 || !strings.HasSuffix(strings.TrimRight(rows[status], " "), m.styles.Palette.Name) {
+		t.Fatalf("the bottom row carries no status bar:\n%s", frame)
+	}
+
+	last := strings.TrimRight(rows[status-1], " ")
+	if !strings.HasSuffix(last, theme.Ellipsis) {
+		t.Fatalf("the last row of the clipped body does not say it was cut:\n\t%q", last)
+	}
+}
+
+// TestAnOverlayOverAClippedBodyKeepsItsOwnTop: the panel is centred on the
+// terminal's extent, so a body that outgrew the screen must not push the top
+// of it off the frame. What would go first is the panel's own border and
+// title — the two things that say what the overlay is.
+func TestAnOverlayOverAClippedBodyKeepsItsOwnTop(t *testing.T) {
+	const width, height = 80, 24
+
+	m := overflowingWorkspace(t, width, height)
+	m.tree.open = true
+
+	frame := strings.Split(ansi.Strip(m.View()), "\n")
+	if len(frame) != height {
+		t.Fatalf("an overlay over a clipped body renders %d rows, want the terminal's %d:\n%s",
+			len(frame), height, strings.Join(frame, "\n"))
+	}
+	panelBounds(t, m, frame)
 }
 
 // panelBounds finds the overlay panel inside a rendered frame by the corners

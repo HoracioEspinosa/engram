@@ -100,7 +100,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The terminal's size genuinely concerns every tab, not only the
 		// active one: a tab laid out at the old width would render wrong the
 		// moment it is switched to.
-		return m.broadcast(msg)
+		//
+		// What a tab is told, though, is the room it actually has — the
+		// terminal less the frame's own rows — and not the terminal itself.
+		// The frame is the only thing that knows it spends two rows on
+		// padding, one on the tab bar and one on the status bar; a tab handed
+		// the raw height solves its viewport for a screen four rows taller
+		// than it will ever get, and every one of them overflows the same way
+		// for the same reason. The root keeps m.width/m.height raw, because
+		// the status bar and the overlays are laid out against the terminal.
+		return m.broadcast(tea.WindowSizeMsg{Width: msg.Width, Height: m.tabRows()})
 	}
 
 	// A message that names its owner goes to that tab alone. Broadcasting it

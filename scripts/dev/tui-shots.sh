@@ -10,6 +10,10 @@
 # What it guarantees, per scene and per geometry:
 #   * no line overflows the terminal it was drawn for. That is the single
 #     measurable statement behind "the layout does not break at 80 columns";
+#   * the frame holds exactly the rows the terminal has, and the tab bar is
+#     still on the second of them. A frame taller than its terminal is cut
+#     from the top by the renderer, so that pair is what "the layout does not
+#     break at 24 rows" measures;
 #   * every colour the frame emits, foreground and background alike, is a role
 #     of the palette the run asked for. That is both the proof that the right
 #     palette drew the frame — the koi palettes share no colour — and the
@@ -196,6 +200,58 @@ assert_width() {
     ' "$1" "$2"
 }
 
+# assert_height reports a capture that does not hold exactly the rows its
+# terminal has.
+#
+# It is the other half of assert_width, and it is the half that catches the
+# frame going missing rather than the row going wide: tmux pads a pane to its
+# own height, so a capture with fewer rows is a pane that never filled, and one
+# with more is a capture of something other than the pane.
+assert_height() {
+  local height="$1" file="$2" rows
+  rows="$(awk 'END { print NR }' "$file")"
+  [ "${rows:-0}" -eq "$height" ] && return 0
+  printf '      the capture holds %s rows, not the %s the terminal has\n' "${rows:-0}" "$height"
+  return 1
+}
+
+# assert_tab_bar_is_on_screen requires the frame's second row to be the tab bar.
+#
+# This is what a frame taller than its terminal actually costs. The renderer
+# drops the rows that do not fit from the TOP, so an overflowing screen does not
+# lose its last list row — it loses the app frame's padding, then the tab bar,
+# then the screen's own header, and the reader is left looking at the middle of
+# a list with nothing on screen to say which tab it belongs to. An overlay is
+# composed over the workspace rather than replacing it, so the rule is the same
+# with a panel open: the panel is centred between the bar and the status bar,
+# and a frame where it has reached the second row is a frame that overflowed.
+#
+# The bar is recognised by its structure, not by its glyphs: eight slots
+# numbered in order, exactly one of them bracketed as the active one. That is
+# the same reading internal/tui/app/golden_lint_test.go takes of it, and it
+# holds in every icon mode, at both geometries, in either palette.
+assert_tab_bar_is_on_screen() {
+  perl -CSD -e '
+      my ($file) = @ARGV;
+      open my $fh, "<", $file or die "cannot read $file: $!\n";
+      my $row = "";
+      while (my $line = <$fh>) {
+        if ($. == 2) { $row = $line; last }
+      }
+      close $fh;
+      chomp $row;
+
+      my $digits = join "", ($row =~ /(\d)/g);
+      my $active = () = $row =~ /\[/g;
+      if ($digits eq "01234567" && $active == 1) {
+        exit 0;
+      }
+      printf "      row 2 is not the tab bar (slots %s, %d active):\n      | %s\n",
+        ($digits eq "" ? "none" : $digits), $active, $row;
+      exit 1;
+    ' "$1"
+}
+
 # assert_colours_are_the_palettes reports every true-colour sequence the frame
 # emits that is not a role of the active palette, foreground and background
 # alike, and refuses a frame that carries almost no colour at all.
@@ -325,11 +381,13 @@ shot() {
 
   local problems=""
   assert_width "$width" "$txt" || problems="$problems width"
+  assert_height "$height" "$txt" || problems="$problems height"
+  assert_tab_bar_is_on_screen "$txt" || problems="$problems chrome"
   assert_colours_are_the_palettes "$ansi" || problems="$problems colour"
 
   if [ -z "$problems" ]; then
-    printf 'PASS  %s (fits %s columns, every colour a %s role)\n' \
-      "$label" "$width" "$ACTIVE_THEME"
+    printf 'PASS  %s (fits %sx%s, tab bar on screen, every colour a %s role)\n' \
+      "$label" "$width" "$height" "$ACTIVE_THEME"
     PASS_COUNT=$((PASS_COUNT + 1))
   else
     printf 'FAIL  %s:%s\n' "$label" "$problems"

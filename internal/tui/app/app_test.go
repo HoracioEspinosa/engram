@@ -107,6 +107,13 @@ func TestCtrlCQuitsEvenWithTheSearchInputFocused(t *testing.T) {
 	}
 }
 
+// TestWindowSizeReachesEveryTab: the root keeps the terminal it was told and
+// hands each tab the room that is left once the frame has taken its own.
+//
+// The four rows are the app frame's padding above and below, the tab bar and
+// the status bar. A tab told the raw 40 solves its viewport for a screen it
+// will never be given, and every screen that does so overflows the terminal by
+// the same four rows.
 func TestWindowSizeReachesEveryTab(t *testing.T) {
 	m, cmd := step(t, New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), ""), tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -116,8 +123,9 @@ func TestWindowSizeReachesEveryTab(t *testing.T) {
 	if m.width != 120 || m.height != 40 {
 		t.Fatalf("root size = %dx%d, want 120x40", m.width, m.height)
 	}
-	if m.memory.Width != 120 || m.memory.Height != 40 {
-		t.Fatalf("memory size = %dx%d, want 120x40", m.memory.Width, m.memory.Height)
+	if m.memory.Width != 120 || m.memory.Height != 36 {
+		t.Fatalf("memory size = %dx%d, want 120x36 — the terminal less the frame's own four rows",
+			m.memory.Width, m.memory.Height)
 	}
 }
 
