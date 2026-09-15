@@ -2164,15 +2164,104 @@ func cmdProjects(cfg store.Config) {
 		cmdProjectsConsolidate(cfg)
 	case "prune":
 		cmdProjectsPrune(cfg)
+	case "merge":
+		cmdProjectsMerge(cfg)
 	case "list", "":
 		cmdProjectsList(cfg)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown projects subcommand: %s\n", subCmd)
-		fmt.Fprintln(os.Stderr, "usage: engram projects list")
+		fmt.Fprintln(os.Stderr, "usage: engram projects list [--json]")
+		fmt.Fprintln(os.Stderr, "       engram projects merge <from>[,<from>…] <to> [--json]")
 		fmt.Fprintln(os.Stderr, "       engram projects consolidate [--all] [--dry-run]")
 		fmt.Fprintln(os.Stderr, "       engram projects prune [--dry-run]")
 		exitFunc(1)
 	}
+}
+
+// cmdProjectsMerge implements `engram projects merge <from> <to>`: the command
+// the alias refusal and the CLI reference both send a reader to, over the same
+// store call the mem_merge_projects MCP tool makes. Without it the only way to
+// collapse two names for one project is the MCP surface, which a shell script
+// rolling out a reorganisation does not have.
+//
+// <from> takes one name or a comma-separated list, matching what the MCP tool
+// accepts, so a cluster of names that drifted apart collapses in a single
+// transaction instead of one call per name.
+func cmdProjectsMerge(cfg store.Config) {
+	positional, rest := projSplitPositional(os.Args[3:], 2)
+	f := projNewFlags("engram projects merge")
+	jsonOut := f.fs.Bool("json", false, "print the JSON envelope")
+	if !f.parse(rest) {
+		return
+	}
+	if len(positional) < 2 {
+		projFail(*jsonOut, "missing_field",
+			"usage: engram projects merge <from>[,<from>…] <to>", nil)
+		return
+	}
+
+	// Sources keep the bytes the caller typed: the "project" column is
+	// case-sensitive, so "Pipas" and "pipas" are two distinct sets of rows
+	// and normalizing a source here would ask the store to move the wrong
+	// one. The canonical name is normalized because that is what every
+	// write path stores.
+	var sources []string
+	for _, raw := range strings.Split(positional[0], ",") {
+		if trimmed := strings.TrimSpace(raw); trimmed != "" {
+			sources = append(sources, trimmed)
+		}
+	}
+	target, _ := store.NormalizeProject(positional[1])
+	if len(sources) == 0 {
+		projFail(*jsonOut, "missing_field", "no source project given", nil)
+		return
+	}
+	if target == "" {
+		projFail(*jsonOut, "invalid_slug", fmt.Sprintf("invalid target project %q", positional[1]), nil)
+		return
+	}
+	for _, src := range sources {
+		if src == target {
+			projFail(*jsonOut, "merge_into_self",
+				fmt.Sprintf("source %q is the target project; there is nothing to merge", src), nil)
+			return
+		}
+	}
+
+	s, err := storeNew(cfg)
+	if err != nil {
+		fatal(err)
+		return
+	}
+	defer s.Close()
+
+	// A source the store has never seen is a typo, not an empty merge: the
+	// store would report "no matching records found" and exit 0, which a
+	// rollout script reads as success.
+	for _, src := range sources {
+		normalized, _ := store.NormalizeProject(src)
+		if !projBackedProject(s, normalized) {
+			projFail(*jsonOut, "unknown_project",
+				fmt.Sprintf("source project %q is not backed by a card or memories", src), nil)
+			return
+		}
+	}
+
+	result, err := s.MergeProjects(sources, target)
+	if err != nil {
+		projFail(*jsonOut, "merge_failed", err.Error(), nil)
+		return
+	}
+
+	projPrintResult(*jsonOut, projScope{Slug: target, Source: project.SourceExplicitOverride}, result, func() {
+		fmt.Printf("Merged %d source(s) into %q:\n", len(result.SourcesMerged), result.Canonical)
+		for _, line := range result.TableSummaryLines() {
+			fmt.Printf("  %s\n", line)
+		}
+		for _, line := range result.SourcesSkippedLines() {
+			fmt.Printf("  skipped %s\n", line)
+		}
+	})
 }
 
 func cmdProjectsList(cfg store.Config) {
