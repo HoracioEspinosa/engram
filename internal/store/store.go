@@ -2296,6 +2296,56 @@ func (s *Store) GetSession(id string) (*Session, error) {
 	return &sess, nil
 }
 
+// SessionsByIDs loads the named sessions regardless of the project they belong
+// to. A push chunk needs it because a session can be cited by observations of a
+// project it does not itself belong to — the manual-save fallback row is shared
+// that way — and the cloud validates every citation against the sessions the
+// chunk carries plus the ones it already indexed for that project. Missing IDs
+// are skipped rather than reported: the caller is completing a chunk, and a
+// citation with no local row is not something the chunk can fix.
+func (s *Store) SessionsByIDs(ids []string) ([]Session, error) {
+	wanted := make([]any, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		wanted = append(wanted, id)
+	}
+	if len(wanted) == 0 {
+		return nil, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(wanted)), ",")
+	rows, err := s.queryItHook(s.db,
+		`SELECT id, project, directory, started_at, ended_at, summary
+		 FROM sessions WHERE id IN (`+placeholders+`) ORDER BY started_at ASC, id ASC`,
+		wanted...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load sessions by id: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := make([]Session, 0, len(wanted))
+	for rows.Next() {
+		var sess Session
+		if err := rows.Scan(&sess.ID, &sess.Project, &sess.Directory, &sess.StartedAt, &sess.EndedAt, &sess.Summary); err != nil {
+			return nil, fmt.Errorf("load sessions by id: scan: %w", err)
+		}
+		sessions = append(sessions, sess)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("load sessions by id: rows: %w", err)
+	}
+	return sessions, nil
+}
+
 // MostRecentActiveSession resolves the active (un-ended) session for a project
 // from the persisted sessions table. It returns the session ID and ok=true when
 // such a session exists, or ok=false when none does.
