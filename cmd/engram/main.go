@@ -2178,6 +2178,16 @@ func cmdProjects(cfg store.Config) {
 	}
 }
 
+// projectsSubcommandArgs returns what follows `engram projects <subcommand>`.
+// `engram projects` on its own routes to list with no subcommand word at all,
+// so the slice has to be taken defensively rather than assumed to exist.
+func projectsSubcommandArgs() []string {
+	if len(os.Args) <= 3 {
+		return nil
+	}
+	return os.Args[3:]
+}
+
 // cmdProjectsMerge implements `engram projects merge <from> <to>`: the command
 // the alias refusal and the CLI reference both send a reader to, over the same
 // store call the mem_merge_projects MCP tool makes. Without it the only way to
@@ -2188,7 +2198,7 @@ func cmdProjects(cfg store.Config) {
 // accepts, so a cluster of names that drifted apart collapses in a single
 // transaction instead of one call per name.
 func cmdProjectsMerge(cfg store.Config) {
-	positional, rest := projSplitPositional(os.Args[3:], 2)
+	positional, rest := projSplitPositional(projectsSubcommandArgs(), 2)
 	f := projNewFlags("engram projects merge")
 	jsonOut := f.fs.Bool("json", false, "print the JSON envelope")
 	if !f.parse(rest) {
@@ -2264,7 +2274,34 @@ func cmdProjectsMerge(cfg store.Config) {
 	})
 }
 
+// projectListCounts is the `counts` object of one `projects list --json` row.
+type projectListCounts struct {
+	Observations int `json:"observations"`
+	Sessions     int `json:"sessions"`
+	Prompts      int `json:"prompts"`
+}
+
+// projectListRow is one entry of the `projects list --json` array. Everything
+// below Name comes from the project card and is absent for a project that has
+// none, so a consumer can tell "no card" from "a card that says nothing".
+type projectListRow struct {
+	Name        string            `json:"name"`
+	Slug        string            `json:"slug,omitempty"`
+	DisplayName string            `json:"display_name,omitempty"`
+	Parent      *string           `json:"parent,omitempty"`
+	Kind        string            `json:"kind,omitempty"`
+	Counts      projectListCounts `json:"counts"`
+	Directories []string          `json:"directories,omitempty"`
+}
+
 func cmdProjectsList(cfg store.Config) {
+	jsonOut := false
+	for _, arg := range projectsSubcommandArgs() {
+		if arg == "--json" {
+			jsonOut = true
+		}
+	}
+
 	s, err := storeNew(cfg)
 	if err != nil {
 		fatal(err)
@@ -2274,6 +2311,11 @@ func cmdProjectsList(cfg store.Config) {
 	projects, err := s.ListProjectsWithStats()
 	if err != nil {
 		fatal(err)
+	}
+
+	if jsonOut {
+		printProjectsListJSON(s, projects)
+		return
 	}
 
 	if len(projects) == 0 {
@@ -2298,6 +2340,53 @@ func cmdProjectsList(cfg store.Config) {
 			p.PromptCount, promptWord,
 		)
 	}
+}
+
+// printProjectsListJSON writes the array `projects list --json` promises: one
+// object per project, in the order the table renders them, each carrying its
+// card identity when it has a card. It is an array rather than the envelope
+// the singular commands print because no single project is in scope here.
+//
+// An empty store prints `[]`, not prose: a script has to be able to read the
+// answer without branching on a sentence.
+func printProjectsListJSON(s *store.Store, projects []store.ProjectStats) {
+	cards, _, err := s.ListProjectCards(false)
+	if err != nil {
+		fatal(err)
+		return
+	}
+	bySlug := make(map[string]store.ProjectCardListItem, len(cards))
+	for _, card := range cards {
+		bySlug[card.Slug] = card
+	}
+
+	rows := make([]projectListRow, 0, len(projects))
+	for _, p := range projects {
+		row := projectListRow{
+			Name: p.Name,
+			Counts: projectListCounts{
+				Observations: p.ObservationCount,
+				Sessions:     p.SessionCount,
+				Prompts:      p.PromptCount,
+			},
+			Directories: p.Directories,
+		}
+		slug, _ := store.NormalizeProject(p.Name)
+		if card, ok := bySlug[slug]; ok {
+			row.Slug = card.Slug
+			row.DisplayName = card.DisplayName
+			row.Parent = card.ParentSlug
+			row.Kind = card.Kind
+		}
+		rows = append(rows, row)
+	}
+
+	out, err := jsonMarshalIndent(rows, "", "  ")
+	if err != nil {
+		fatal(err)
+		return
+	}
+	fmt.Fprintln(os.Stdout, string(out))
 }
 
 // projectGroup represents a set of project names that should be merged.

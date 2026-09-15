@@ -132,3 +132,83 @@ func TestProjectsMergeRefusesWhatWouldMoveNothing(t *testing.T) {
 		})
 	}
 }
+
+// TestProjectsListJSONHonoursTheFlag pins that --json is read rather than
+// ignored, and that a card's identity travels beside the counts.
+func TestProjectsListJSONHonoursTheFlag(t *testing.T) {
+	cfg := testConfig(t)
+	stubExit(t)
+	seedProjectMemory(t, cfg, "koi-garden", "s1", "a memory")
+	s := openTestStore(t, cfg)
+	display := "Koi Garden"
+	kind := "repo"
+	if _, _, err := s.UpsertProjectCard(store.UpsertProjectCardParams{
+		Slug: "koi-garden", DisplayName: &display, Kind: &kind,
+	}); err != nil {
+		t.Fatalf("UpsertProjectCard: %v", err)
+	}
+
+	stdout, _ := runProjects(t, cfg, "list", "--json")
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
+		t.Fatalf("stdout is not a JSON array: %v\n%s", err, stdout)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("listed %d project(s), want 1:\n%s", len(rows), stdout)
+	}
+	row := rows[0]
+	if row["name"] != "koi-garden" || row["slug"] != "koi-garden" {
+		t.Errorf("name/slug = %v/%v, want koi-garden", row["name"], row["slug"])
+	}
+	if row["display_name"] != display {
+		t.Errorf("display_name = %v, want %q", row["display_name"], display)
+	}
+	if row["kind"] != kind {
+		t.Errorf("kind = %v, want %q", row["kind"], kind)
+	}
+	counts, ok := row["counts"].(map[string]any)
+	if !ok {
+		t.Fatalf("row carries no counts:\n%s", stdout)
+	}
+	if counts["observations"] != float64(1) {
+		t.Errorf("observations = %v, want 1", counts["observations"])
+	}
+	if counts["sessions"] != float64(1) {
+		t.Errorf("sessions = %v, want 1", counts["sessions"])
+	}
+}
+
+// TestProjectsListJSONOmitsCardFieldsWithoutACard pins that a project with no
+// card still lists, with its counts and without inventing an identity for it.
+func TestProjectsListJSONOmitsCardFieldsWithoutACard(t *testing.T) {
+	cfg := testConfig(t)
+	stubExit(t)
+	seedProjectMemory(t, cfg, "koi-garden", "s1", "a memory")
+
+	stdout, _ := runProjects(t, cfg, "list", "--json")
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
+		t.Fatalf("stdout is not a JSON array: %v\n%s", err, stdout)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("listed %d project(s), want 1:\n%s", len(rows), stdout)
+	}
+	if _, ok := rows[0]["slug"]; ok {
+		t.Errorf("a project without a card reported a slug:\n%s", stdout)
+	}
+	if _, ok := rows[0]["counts"]; !ok {
+		t.Errorf("a project without a card lost its counts:\n%s", stdout)
+	}
+}
+
+// TestProjectsListJSONOnAnEmptyStoreIsAnEmptyArray pins that a script never
+// has to branch on prose: no projects is `[]`, not "No projects found."
+func TestProjectsListJSONOnAnEmptyStoreIsAnEmptyArray(t *testing.T) {
+	cfg := testConfig(t)
+	stubExit(t)
+
+	stdout, _ := runProjects(t, cfg, "list", "--json")
+	if strings.TrimSpace(stdout) != "[]" {
+		t.Fatalf("stdout = %q, want []", strings.TrimSpace(stdout))
+	}
+}

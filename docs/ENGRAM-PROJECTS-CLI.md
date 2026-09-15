@@ -123,7 +123,7 @@ Projects (2):
 ]
 ```
 
-`slug`, `display_name`, `parent` and `kind` come from the project card and are absent for a project that has none. `counts` is always present.
+`slug`, `display_name`, `parent` and `kind` come from the project card and are absent for a project that has none. `counts` is always present; `directories` lists the session directories the project was seen in, when there are any.
 
 ### `projects merge <from>[,<from>…] <to>`
 
