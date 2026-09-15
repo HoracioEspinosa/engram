@@ -244,16 +244,12 @@ func importTask(s *store.Store, root, project, dirName string, states map[string
 		}
 	}
 
-	// A dry run still has to report what the evidence and the benchmarks would
-	// do, and both are keyed by the task. Without a task row there is nothing
-	// to key them by, so a task the import would create is counted as
-	// everything-new rather than looked up.
-	if !found && !apply {
-		plan.Evidence.Added += countReadable(scanned.Files)
-		plan.Benchmarks.Added += countMetrics(scanned.BenchmarkRuns)
-		return nil
-	}
-
+	// A dry run reports the evidence and the benchmarks through the same
+	// walk an apply takes, with the task row it would have written standing
+	// in as an empty key. Counting everything readable as new instead — the
+	// shortcut a task with no row used to take — skipped the deduplication
+	// the apply then performed, so the plan a person reviews overstated the
+	// new rows by every file the run itself would fold together.
 	taskDir := filepath.Join(root, project, dirName)
 	report := ScanReport{Skipped: []Skip{}, BenchmarkCandidates: []string{}}
 	if err := recordFiles(s, task, root, taskDir, scanned.Files, !apply, &report); err != nil {
@@ -307,6 +303,11 @@ func writeTask(s *store.Store, action TaskAction, existing store.Task, found, ap
 // A foreign run is left alone: it is already registered as evidence, and
 // reading numbers out of it needs a pointer map somebody wrote on purpose.
 func importRuns(s *store.Store, task store.Task, root, taskDir string, runs []vault.RunFile, apply bool, plan *ImportPlan) error {
+	// planned mirrors AddBenchmark's idempotency key for the measurements
+	// this run would write but the store has not seen yet, for the same
+	// reason recordFiles keeps one: without it a dry run counts a repeated
+	// measurement as new where the apply counts it as a duplicate.
+	planned := make(map[string]bool)
 	for _, run := range runs {
 		if run.Format != vault.FormatV1 || run.Run == nil {
 			plan.Benchmarks.Skipped++
@@ -319,10 +320,15 @@ func importRuns(s *store.Store, task store.Task, root, taskDir string, runs []va
 		}
 		for _, m := range run.Run.Metrics {
 			if !apply {
-				known, err := benchmarkExists(s, task.SyncID, name, m.Metric, run.Run.CapturedAt)
-				if err != nil {
-					return err
+				key := name + "\x00" + m.Metric + "\x00" + run.Run.CapturedAt
+				known := planned[key]
+				if !known && task.SyncID != "" {
+					var err error
+					if known, err = benchmarkExists(s, task.SyncID, name, m.Metric, run.Run.CapturedAt); err != nil {
+						return err
+					}
 				}
+				planned[key] = true
 				if known {
 					plan.Benchmarks.Updated++
 					continue
@@ -422,29 +428,6 @@ func kindOf(dirName, title string) string {
 		}
 	}
 	return "feature"
-}
-
-// countReadable counts the files a scan actually read, which is what a dry run
-// reports as the evidence a create would add.
-func countReadable(files []vault.File) int {
-	n := 0
-	for _, f := range files {
-		if !f.Skipped {
-			n++
-		}
-	}
-	return n
-}
-
-// countMetrics counts the measurements a task's v1 runs would contribute.
-func countMetrics(runs []vault.RunFile) int {
-	n := 0
-	for _, run := range runs {
-		if run.Format == vault.FormatV1 && run.Run != nil {
-			n += len(run.Run.Metrics)
-		}
-	}
-	return n
 }
 
 // benchmarkExists is the read half of AddBenchmark's idempotency key, which a

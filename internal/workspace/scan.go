@@ -102,6 +102,13 @@ func scanCategories(category string) ([]vault.Category, error) {
 // report. It is shared with the vault import, which walks the whole tree once
 // and hands the files over rather than scanning each task twice.
 func recordFiles(s *store.Store, task store.Task, root, taskDir string, files []vault.File, dryRun bool, report *ScanReport) error {
+	// An apply deduplicates by (task_sync_id, sha256) against everything the
+	// task already holds, including the rows this very run just wrote: the
+	// same bytes filed under two paths register once and relocate. A dry run
+	// only asked the store, which knows nothing about the rows the run has
+	// not written yet, so it reported both paths as new work. planned is the
+	// half of the key the store cannot answer for yet.
+	planned := make(map[string]bool, len(files))
 	for _, f := range files {
 		full := filepath.Join(taskDir, filepath.FromSlash(f.RelPath))
 		inside, err := withinRoot(root, full)
@@ -123,10 +130,18 @@ func recordFiles(s *store.Store, task store.Task, root, taskDir string, files []
 		report.TotalBytes += f.Size
 		if dryRun {
 			// The plan still has to distinguish a new row from one that only
-			// moves, so the duplicate check runs; the write does not.
-			if known, err := evidenceExists(s, task.SyncID, f.SHA256); err != nil {
-				return err
-			} else if known {
+			// moves, so the duplicate check runs; the write does not. A task
+			// that does not exist yet holds no evidence, so it is answered
+			// from planned alone rather than by asking about an empty key.
+			known := planned[f.SHA256]
+			if !known && task.SyncID != "" {
+				var err error
+				if known, err = evidenceExists(s, task.SyncID, f.SHA256); err != nil {
+					return err
+				}
+			}
+			planned[f.SHA256] = true
+			if known {
 				report.Updated++
 			} else {
 				report.Added++

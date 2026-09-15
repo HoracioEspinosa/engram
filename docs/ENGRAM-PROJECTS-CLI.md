@@ -532,6 +532,8 @@ benchmarks: 3 new · 0 known · 1 skipped
 nothing was written; re-run with --apply
 ```
 
+The plan counts what the apply writes. Evidence is deduplicated by `(task_sync_id, sha256)` and benchmarks by `(task_sync_id, name, metric, captured_at)`, in the plan exactly as in the apply — including the duplicates the run itself would fold together, so the same bytes filed under two paths count once in both.
+
 ```bash
 engram project import-vault ~/.clarodrive --project nextcloud --apply --json
 ```

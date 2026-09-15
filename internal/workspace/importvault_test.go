@@ -271,3 +271,90 @@ func TestImportVaultUnresolvedRootCarriesItsCode(t *testing.T) {
 		t.Fatalf("got %v, want ErrVaultRootUnresolved", err)
 	}
 }
+
+// TestImportVaultPlanMatchesApply is the contract a person reviewing a plan
+// depends on: the numbers a dry run prints are the numbers the apply then
+// writes. Both halves walk the same tree, so a plan that counts every readable
+// file as a new row while the apply folds duplicates together overstates the
+// work the reviewer is approving.
+func TestImportVaultPlanMatchesApply(t *testing.T) {
+	root := newVault(t)
+
+	// The same bytes under two paths of one task folder. An apply registers
+	// them once, by (task_sync_id, sha256), and relocates the row.
+	const rootCause = "# Causa raíz\n\nEl token no expiraba.\n"
+	koi1042 := filepath.Join(root, "koi-garden", "KOI-1042-hardening-autologin")
+	writeFile(t, filepath.Join(koi1042, "analysis", "causa-raiz.md"), rootCause)
+	writeFile(t, filepath.Join(koi1042, "analysis", "causa-raiz-copia.md"), rootCause)
+
+	// The same benchmark run filed twice: duplicate bytes and, inside them,
+	// measurements that carry AddBenchmark's idempotency key twice over.
+	const baselineRun = `{
+  "engram_benchmark": "v1",
+  "task": "KOI-1099",
+  "name": "lookup-timeout",
+  "captured_at": "2026-08-20T10:00:00Z",
+  "config_stamp": "pond-02 / cache off",
+  "baseline": true,
+  "notes": "corrida base",
+  "metrics": [
+    { "metric": "lookup.p95", "unit": "ms", "value": 1512 },
+    { "metric": "lookup.errors", "unit": "count", "value": 3 }
+  ]
+}`
+	koi1099 := filepath.Join(root, "koi-garden", "KOI-1099-lookup-timeout")
+	writeFile(t, filepath.Join(koi1099, "benchmarks", "baseline-run1.json"), baselineRun)
+	writeFile(t, filepath.Join(koi1099, "benchmarks", "baseline-run1-copia.json"), baselineRun)
+
+	t.Run("on a store that has never seen the vault", func(t *testing.T) {
+		assertPlanMatchesApply(t, newStore(t), root)
+	})
+
+	t.Run("on a store that already holds part of it", func(t *testing.T) {
+		s := newStore(t)
+		if _, err := ImportVault(s, root, "koi-garden", true, true, false, vault.Options{}); err != nil {
+			t.Fatalf("seed apply: %v", err)
+		}
+		assertPlanMatchesApply(t, s, root)
+	})
+}
+
+// assertPlanMatchesApply plans the import, then applies it against the same
+// store, and requires the two reports to agree. A plan writes nothing, so the
+// apply starts from exactly the state the plan described.
+func assertPlanMatchesApply(t *testing.T, s *store.Store, root string) {
+	t.Helper()
+
+	plan, err := ImportVault(s, root, "", false, true, false, vault.Options{})
+	if err != nil {
+		t.Fatalf("plan ImportVault: %v", err)
+	}
+	applied, err := ImportVault(s, root, "", true, true, false, vault.Options{})
+	if err != nil {
+		t.Fatalf("apply ImportVault: %v", err)
+	}
+
+	if plan.Evidence != applied.Evidence {
+		t.Errorf("evidence: plan %+v, apply %+v", plan.Evidence, applied.Evidence)
+	}
+	if plan.Benchmarks != applied.Benchmarks {
+		t.Errorf("benchmarks: plan %+v, apply %+v", plan.Benchmarks, applied.Benchmarks)
+	}
+	if applied.Evidence.Updated == 0 {
+		t.Error("the fixture folded no duplicate evidence; the test proves nothing")
+	}
+	if applied.Benchmarks.Updated == 0 {
+		t.Error("the fixture folded no duplicate benchmark; the test proves nothing")
+	}
+
+	plannedActions := make(map[string]string, len(plan.Tasks))
+	for _, task := range plan.Tasks {
+		plannedActions[task.VaultPath] = task.Action
+	}
+	for _, task := range applied.Tasks {
+		if plannedActions[task.VaultPath] != task.Action {
+			t.Errorf("%s: plan said %q, apply did %q",
+				task.VaultPath, plannedActions[task.VaultPath], task.Action)
+		}
+	}
+}
