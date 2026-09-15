@@ -262,20 +262,21 @@
     No project is active. Press ctrl+p to pick one.                                                                     
   j/k move block • g/G top/bottom • enter open block • s sync graph                                           koi-pond  
                                                                                                                         
-═══ cloud-settings ═══
+═══ settings ═══
                                                                                                                         
-  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                                 
+  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph [⌘7 Settings]                               
                                                                                                                         
-    Cloud sync settings                                                                                                 
+    Settings                                                                                                            
                                                                                                                         
-  ─────────────────────                                                                                                 
+  ──────────                                                                                                            
                                                                                                                         
-                                                                                                                        
-      Configure server                                                                                                  
-      View status                                                                                                       
-   › Enroll projects                                                                                                    
-      Back                                                                                                              
-  j/k navigate • enter select • esc/q back                                                                    koi-pond  
+      theme            koi-pond                                                                                         
+      icons            unicode                                                                                          
+  ›  vault root       · not configured                                                                                  
+      evidence dir     /root/.clarodrive/evidence  ▲ missing                                                            
+      cloud            sync configuration                                                                               
+      doctor           no settings store bound                                                                          
+  j/k navigate • g/G top/bottom • enter change • esc/q back                                                   koi-pond  
                                                                                                                         
 ═══ unknown-screen ═══
                                                                                                                         

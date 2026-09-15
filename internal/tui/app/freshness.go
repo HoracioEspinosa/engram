@@ -27,7 +27,7 @@ type tabFreshness struct {
 // tabCount is how many IDs tabs declares. A tab added there without widening
 // this is caught by tabFreshness.index, which reports an unknown ID rather
 // than indexing past the end.
-const tabCount = int(tabs.Cloud) + 1
+const tabCount = int(tabs.Settings) + 1
 
 // index reports id's slot, and false when this build has never heard of it.
 func (tabFreshness) index(id tabs.ID) (int, bool) {

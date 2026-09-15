@@ -404,18 +404,89 @@
     rps                    412 ops        ⇓-17.6%                                                                     
                                                                                                                       
                                                                                                                       
-═══ s11-cloud ═══
+═══ settings ═══
                                                                                                                         
-  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph ⌘7 Settings                                 
+  ⌂0 Home ≣1 Memory ✓2 Tasks ▪3 Evidence ∿4 Benchmarks ▤5 Runbooks ⋈6 Graph [⌘7 Settings]                               
                                                                                                                         
-    Cloud sync settings                                                                                                 
+    Settings                                                                                                            
                                                                                                                         
-  ─────────────────────                                                                                                 
+  ──────────                                                                                                            
                                                                                                                         
+  ›  theme            koi-pond                                                                                          
+      icons            unicode                                                                                          
+      vault root       /fixtures/vault  ● exists                                                              
+      evidence dir     /fixtures/evidence  ▲ missing                                                                    
+      cloud            sync configuration                                                                               
+      doctor           nothing remembered yet                                                                           
+  ├ acme  ✓ ACME-1  j/k navigate • g/G top/bottom • enter change • esc/q back                                 koi-pond  
                                                                                                                         
-   › Configure server                                                                                                   
-      View status                                                                                                       
-      Enroll projects                                                                                                   
-      Back                                                                                                              
-  ├ acme  ✓ ACME-1  j/k navigate • enter select • esc/q back                                                  koi-pond  
-                                                                                                                        
+═══ theme-picker ═══
+                                                                                                                      
+  [⌂0 Home] ≣1 Memory ✓2 Ta╭──────────────────────────────────────────────────────────────╮                           
+                           │   Theme                                                      │                           
+  ┌────────────────────────│                                                              │                           
+  │                        │                                                              │                           
+  │  · Acme Corp           │ ›  koi-pond  dark                                            │                           
+  │  42 observations   1 op│     koi-day  light                                           │                           
+  │                        │   half-written  palette has no color roles                   │                           
+  └────────────────────────│                                                              │                           
+                           │                                                              │                           
+                           │                                                              │                           
+  › recent tasks           │                                                              │                           
+                           │                                                              │                           
+    ACME-1         ◕ review│                                                              │                           
+                           │                                                              │                           
+    latest evidence        │                                                              │                           
+                           │                                                              │                           
+    ACME-1/cold-start.png  │                                                              │               attached ●  
+                           │                                                              │                           
+    code graph             │                                                              │                           
+                           │                                                              │                           
+    ▲ code_changed         │                                                              │                           
+    1284 nodes  3901 edges │                                                              │                           
+    built 2026-01-14 08:00:│                                                              │                           
+                           │                                                              │                           
+    benchmarks             │                                                              │                           
+                           │                                                              │                           
+    p95                    │                                                              │                           
+    rps                    │                                                              │                           
+                           │                                                              │                           
+                           │                                                              │                           
+                           │   j/k preview • enter use • / filter • R reload • esc cancel │                           
+                           ╰──────────────────────────────────────────────────────────────╯                           
+                                                                                                                      
+═══ theme-picker-invalid ═══
+                                                                                                                      
+  [⌂0 Home] ≣1 Memory ✓2 Ta╭──────────────────────────────────────────────────────────────╮                           
+                           │   Theme                                                      │                           
+  ┌────────────────────────│                                                              │                           
+  │                        │                                                              │                           
+  │  · Acme Corp           │ ›  koi-pond  dark                                            │                           
+  │  42 observations   1 op│     koi-day  light                                           │                           
+  │                        │   half-written  palette has no color roles                   │                           
+  └────────────────────────│                                                              │                           
+                           │                                                              │                           
+                           │                                                              │                           
+  › recent tasks           │                                                              │                           
+                           │                                                              │                           
+    ACME-1         ◕ review│                                                              │                           
+                           │                                                              │                           
+    latest evidence        │                                                              │                           
+                           │                                                              │                           
+    ACME-1/cold-start.png  │                                                              │               attached ●  
+                           │                                                              │                           
+    code graph             │                                                              │                           
+                           │                                                              │                           
+    ▲ code_changed         │                                                              │                           
+    1284 nodes  3901 edges │                                                              │                           
+    built 2026-01-14 08:00:│                                                              │                           
+                           │                                                              │                           
+    benchmarks             │                                                              │                           
+                           │                                                              │                           
+    p95                    │                                                              │                           
+    rps                    │                                                              │                           
+                           │                                                              │                           
+                           │                                                              │                           
+                           │   j/k preview • enter use • / filter • R reload • esc cancel │                           
+                           ╰──────────────────────────────────────────────────────────────╯                           
+                                                                                                                      

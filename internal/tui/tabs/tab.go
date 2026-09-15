@@ -29,11 +29,9 @@ const (
 	Benchmarks
 	Runbooks
 	Graph
+	// Settings holds everything the workspace remembers about itself,
+	// including the sync configuration that used to be a tab of its own.
 	Settings
-	// Cloud is the sync configuration workspace. It owns no slot in the bar:
-	// its settings belong under Settings, where everything else the workspace
-	// remembers lives.
-	Cloud
 )
 
 // String names the tab for logs and test failures.
@@ -55,8 +53,6 @@ func (id ID) String() string {
 		return "graph"
 	case Settings:
 		return "settings"
-	case Cloud:
-		return "cloud"
 	}
 	return "unknown"
 }

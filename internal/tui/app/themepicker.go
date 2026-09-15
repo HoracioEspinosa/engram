@@ -136,9 +136,19 @@ func newThemePickerModel(styles theme.Styles) themePickerModel {
 // WithThemePicker binds the overlay to the store it reads themes from and
 // writes the chosen one to. A root built without it still opens; ctrl+t then
 // reports that there is nothing to read rather than doing nothing at all.
-func (m Model) WithThemePicker(themes data.ThemeReader, settings data.SettingsWriter) Model {
+//
+// The Settings tab writes through the same store: its own rows remember an
+// icon vocabulary next to the theme the picker remembers, and one store
+// keeps the two from drifting into separate notions of what was chosen.
+func (m Model) WithThemePicker(themes data.ThemeReader, writer data.SettingsWriter) Model {
 	m.themePicker.themes = themes
-	m.themePicker.settings = settings
+	m.themePicker.settings = writer
+	return m
+}
+
+// WithSettingsStore binds the Settings tab to what it reads and writes.
+func (m Model) WithSettingsStore(writer data.SettingsWriter, reader data.SettingsReader) Model {
+	m.settings = m.settings.WithSettings(writer, reader)
 	return m
 }
 

@@ -3,9 +3,8 @@ package tabs
 import "testing"
 
 func TestIDsAreDistinctAndOrdered(t *testing.T) {
-	// The order is the bar's order, and Cloud trails it: that tab owns no
-	// slot, because its settings belong under Settings.
-	ids := []ID{Home, Memory, Tasks, Evidence, Benchmarks, Runbooks, Graph, Settings, Cloud}
+	// The order is the bar's order, slot by slot.
+	ids := []ID{Home, Memory, Tasks, Evidence, Benchmarks, Runbooks, Graph, Settings}
 
 	seen := map[ID]bool{}
 	for _, id := range ids {
@@ -35,7 +34,6 @@ func TestIDString(t *testing.T) {
 		Runbooks:   "runbooks",
 		Graph:      "graph",
 		Settings:   "settings",
-		Cloud:      "cloud",
 		ID(99):     "unknown",
 	}
 	for id, want := range cases {
@@ -46,7 +44,7 @@ func TestIDString(t *testing.T) {
 }
 
 func TestNavigateEmitsNavigateMsg(t *testing.T) {
-	cmd := Navigate(Cloud)
+	cmd := Navigate(Settings)
 	if cmd == nil {
 		t.Fatal("Navigate should return a non-nil command")
 	}
@@ -55,8 +53,8 @@ func TestNavigateEmitsNavigateMsg(t *testing.T) {
 	if !ok {
 		t.Fatalf("command returned %T, want NavigateMsg", cmd())
 	}
-	if msg.Target != Cloud {
-		t.Fatalf("target = %v, want %v", msg.Target, Cloud)
+	if msg.Target != Settings {
+		t.Fatalf("target = %v, want %v", msg.Target, Settings)
 	}
 }
 

@@ -128,12 +128,12 @@ func TestOtherKeysAreSwallowedWhileHelpIsShowing(t *testing.T) {
 	// No project was resolved, so New opens the project tree over the
 	// workspace; this case is about the screen underneath it.
 	m.tree.open = false
-	m.active = tabs.Cloud
+	m.active = tabs.Settings
 	m, _ = step(t, m, questionMark())
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyDown})
-	if m.cloud.Cursor != 0 {
-		t.Fatalf("cloud cursor = %d, want 0: a key while help is open must not reach the tab underneath", m.cloud.Cursor)
+	if m.settings.Cursor != 0 {
+		t.Fatalf("cloud cursor = %d, want 0: a key while help is open must not reach the tab underneath", m.settings.Cursor)
 	}
 	if !m.showHelp {
 		t.Fatal("help should still be open")

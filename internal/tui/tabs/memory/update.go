@@ -135,7 +135,7 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			return m, nil
 		}
 		m.ErrorMsg = ""
-		return m, loadRecentSessions(m.reader)
+		return m, loadRecentSessions(m.reader, m.projectScope())
 
 	case linkTaskResultsMsg:
 		if msg.err != nil {
@@ -276,13 +276,13 @@ func (m Model) handleDashboardSelection() (tabs.Tab, tea.Cmd) {
 		m.Cursor = 0
 		m.Scroll = 0
 		m.RecentOffset = 0
-		return m, loadRecentObservations(m.reader, 0)
+		return m, loadRecentObservations(m.reader, m.projectScope(), 0)
 	case 2: // Sessions
 		m.PrevScreen = ScreenDashboard
 		m.Screen = ScreenSessions
 		m.Cursor = 0
 		m.Scroll = 0
-		return m, loadRecentSessions(m.reader)
+		return m, loadRecentSessions(m.reader, m.projectScope())
 	case 3: // Setup
 		m.PrevScreen = ScreenDashboard
 		m.Screen = ScreenSetup
@@ -300,7 +300,7 @@ func (m Model) handleDashboardSelection() (tabs.Tab, tea.Cmd) {
 		// exactly as leaving any other screen does.
 		m.PrevScreen = ScreenDashboard
 		m.Cursor = 0
-		return m, tabs.Navigate(tabs.Cloud)
+		return m, tabs.Navigate(tabs.Settings)
 	case 5: // Quit
 		return m, tea.Quit
 	}
@@ -316,7 +316,7 @@ func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 		if query != "" {
 			m.SearchInput.Blur()
 			m.SearchOffset = 0
-			return m, searchMemories(m.reader, query, 0)
+			return m, searchMemories(m.reader, query, m.projectScope(), 0)
 		}
 		return m, nil
 	case "esc":
@@ -367,6 +367,8 @@ func (m Model) handleSearchResultsKeys(key string) (tabs.Tab, tea.Cmd) {
 				m.Scroll = m.Cursor - visibleItems + 1
 			}
 		}
+	case "a":
+		return m.cycleScope()
 	case "g":
 		m.Cursor, m.Scroll = 0, 0
 	case "G":
@@ -402,7 +404,7 @@ func (m Model) handleSearchResultsKeys(key string) (tabs.Tab, tea.Cmd) {
 		if !m.HasNextSearchPage() {
 			return m, nil
 		}
-		return m, searchMemories(m.reader, m.SearchQuery, m.SearchOffset+memoryPageSize)
+		return m, searchMemories(m.reader, m.SearchQuery, m.projectScope(), m.SearchOffset+memoryPageSize)
 	case "p":
 		// Step one page back; the first page stays put.
 		if !m.HasPrevSearchPage() {
@@ -412,7 +414,7 @@ func (m Model) handleSearchResultsKeys(key string) (tabs.Tab, tea.Cmd) {
 		if offset < 0 {
 			offset = 0
 		}
-		return m, searchMemories(m.reader, m.SearchQuery, offset)
+		return m, searchMemories(m.reader, m.SearchQuery, m.projectScope(), offset)
 	case "/", "s":
 		m.PrevScreen = ScreenSearchResults
 		m.Screen = ScreenSearch
@@ -449,6 +451,8 @@ func (m Model) handleRecentKeys(key string) (tabs.Tab, tea.Cmd) {
 				m.Scroll = m.Cursor - visibleItems + 1
 			}
 		}
+	case "a":
+		return m.cycleScope()
 	case "g":
 		m.Cursor, m.Scroll = 0, 0
 	case "G":
@@ -483,7 +487,7 @@ func (m Model) handleRecentKeys(key string) (tabs.Tab, tea.Cmd) {
 		if !m.HasNextRecentPage() {
 			return m, nil
 		}
-		return m, loadRecentObservations(m.reader, m.RecentOffset+memoryPageSize)
+		return m, loadRecentObservations(m.reader, m.projectScope(), m.RecentOffset+memoryPageSize)
 	case "p":
 		// Step one page back; the first page stays put.
 		if !m.HasPrevRecentPage() {
@@ -493,7 +497,7 @@ func (m Model) handleRecentKeys(key string) (tabs.Tab, tea.Cmd) {
 		if offset < 0 {
 			offset = 0
 		}
-		return m, loadRecentObservations(m.reader, offset)
+		return m, loadRecentObservations(m.reader, m.projectScope(), offset)
 	case "esc", "q":
 		m.Screen = ScreenDashboard
 		m.Cursor = 0
@@ -594,6 +598,8 @@ func (m Model) handleSessionsKeys(key string) (tabs.Tab, tea.Cmd) {
 				m.Scroll = m.Cursor - visibleItems + 1
 			}
 		}
+	case "a":
+		return m.cycleScope()
 	case "g":
 		m.Cursor, m.Scroll = 0, 0
 	case "G":
@@ -667,7 +673,7 @@ func (m Model) handleSessionDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 		m.Screen = ScreenSessions
 		m.Cursor = m.SelectedSessionIdx
 		m.SessionDetailScroll = 0
-		return m, loadRecentSessions(m.reader)
+		return m, loadRecentSessions(m.reader, m.projectScope())
 	}
 	return m, nil
 }
@@ -833,9 +839,9 @@ func (m Model) refreshScreen(screen Screen) tea.Cmd {
 	case ScreenDashboard:
 		return loadStats(m.reader)
 	case ScreenRecent:
-		return loadRecentObservations(m.reader, m.RecentOffset)
+		return loadRecentObservations(m.reader, m.projectScope(), m.RecentOffset)
 	case ScreenSessions:
-		return loadRecentSessions(m.reader)
+		return loadRecentSessions(m.reader, m.projectScope())
 	default:
 		return nil
 	}

@@ -257,12 +257,29 @@ func teatestScreens() []teatestScreen {
 			},
 		},
 		{
-			name:           "s11-cloud",
+			name:           "settings",
 			initialProject: "acme",
 			steps: []teatestStep{
-				// Cloud owns no digit: it is last in the cycle, so shift+tab
-				// from Home (first) wraps straight onto it.
-				{key: tea.KeyMsg{Type: tea.KeyShiftTab}, waitFor: "Configure server"},
+				// The vault root's own presence marker: it appears only once
+				// the settings list is drawn.
+				{key: keyRune("7"), waitFor: "evidence dir"},
+			},
+		},
+		{
+			name:           "theme-picker",
+			initialProject: "acme",
+			steps: []teatestStep{
+				{key: tea.KeyMsg{Type: tea.KeyCtrlT}, waitFor: "koi-day"},
+			},
+		},
+		{
+			name:           "theme-picker-invalid",
+			initialProject: "acme",
+			steps: []teatestStep{
+				// A palette the store could not make sense of is listed, not
+				// hidden: the reason it cannot be used is the wait target,
+				// and it appears nowhere else.
+				{key: tea.KeyMsg{Type: tea.KeyCtrlT}, waitFor: "palette has no color roles"},
 			},
 		},
 	}
@@ -272,7 +289,7 @@ func teatestScreens() []teatestScreen {
 // reader the workspace consumes — the same data.Fake* seam every tabs/*
 // Update test already uses, just wired through the real root instead of a
 // leaf tab.
-func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook, tree *data.FakeProjectTree, graph *data.FakeGraph, bench *data.FakeBenchmark, search *data.FakeSearch) {
+func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook, tree *data.FakeProjectTree, graph *data.FakeGraph, bench *data.FakeBenchmark, search *data.FakeSearch, themes *data.FakeTheme) {
 	t.Helper()
 	seedVaultFixture(t)
 	// Evidence's detail screen (S7) renders an absolute filesystem path
@@ -410,7 +427,36 @@ func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakePro
 		{Kind: data.SearchKindRunbook, Slug: "RB-900", Project: "acme", Title: "Preview endpoint returns 503 under load"},
 	}}
 
-	return mem, projects, task, ev, rb, tree, graph, bench, search
+	// Two builtin palettes and one the store could not make sense of: the
+	// picker lists all three, because hiding the broken one would leave
+	// somebody hunting for a theme that simply never appears.
+	themes = &data.FakeTheme{Themes: []data.ThemeRecord{
+		{ThemeRecord: store.ThemeRecord{
+			Name: "koi-pond", Variant: "dark", Source: "builtin",
+			Palette: mustMarshalTheme(t, "koi-pond", "dark", theme.KoiPond()),
+		}},
+		{ThemeRecord: store.ThemeRecord{
+			Name: "koi-day", Variant: "light", Source: "builtin",
+			Palette: mustMarshalTheme(t, "koi-day", "light", theme.KoiDay()),
+		}},
+		{
+			ThemeRecord: store.ThemeRecord{Name: "half-written", Variant: "dark", Source: "sql", Palette: []byte("{}")},
+			Invalid:     "palette has no color roles",
+		},
+	}}
+
+	return mem, projects, task, ev, rb, tree, graph, bench, search, themes
+}
+
+// mustMarshalTheme encodes a palette the way `engram theme export` does, so
+// the picker decodes exactly what the store would have handed it.
+func mustMarshalTheme(t *testing.T, name, variant string, p theme.Palette) []byte {
+	t.Helper()
+	encoded, err := theme.MarshalTheme(name, variant, p)
+	if err != nil {
+		t.Fatalf("marshal %s: %v", name, err)
+	}
+	return encoded
 }
 
 func float64Ptr(v float64) *float64 { return &v }
@@ -422,7 +468,18 @@ func float64Ptr(v float64) *float64 { return &v }
 // cloned locally" instruction.
 func seedVaultFixture(t *testing.T) {
 	t.Helper()
-	dir := t.TempDir()
+	// A fixed directory, not t.TempDir(): the Settings scene prints the
+	// configured vault root, and lipgloss pads its block to the widest line
+	// in it — so a path whose length changes from run to run changes the
+	// trailing whitespace of every line around it. t.TempDir() names carry
+	// the test's own name and a counter, which differ between the update run
+	// and the comparison run. Found by rendering the scene twice and getting
+	// two frames that differed only in padding.
+	dir := filepath.Join(os.TempDir(), "engram-tui-e2e-vault")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("create vault fixture dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	t.Setenv(shared.VaultRootEnv, dir)
 
 	rel := filepath.Join("Runbooks", "RB-900.md")
@@ -491,14 +548,16 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 	t.Helper()
 	t.Setenv("ENGRAM_TIMEZONE", "UTC")
 
-	mem, projects, task, ev, rb, tree, graph, bench, search := teatestFixtures(t)
+	mem, projects, task, ev, rb, tree, graph, bench, search, themes := teatestFixtures(t)
 	m := app.New(mem, projects, task, ev, rb, e2eVersion, theme.Default(), screen.initialProject).
 		WithUpdateChecker(quietUpdateCheck).
 		WithProjectTree(tree).
 		WithGraph(graph, graph).
 		WithBenchmarks(bench).
 		WithSearch(search, &data.FakeSettings{}).
-		WithSearchHistory([]string{"cold start", "preview 503"})
+		WithSearchHistory([]string{"cold start", "preview 503"}).
+		WithThemePicker(themes, &data.FakeSettings{}).
+		WithSettingsStore(&data.FakeSettings{}, &data.FakeSettings{})
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(size.width, size.height))
 	var buf strings.Builder
@@ -524,7 +583,7 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 	if strings.ContainsRune(out, 0x1b) {
 		t.Fatalf("scene %q rendered ANSI escapes: the color profile is not Ascii, so the golden would not be portable", screen.name)
 	}
-	return normalizeContextPackBuiltAt(out)
+	return normalizeVaultRoot(normalizeContextPackBuiltAt(out))
 }
 
 // quietUpdateCheck stands in for version.CheckLatest, which reaches GitHub
@@ -535,6 +594,19 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 // message, so no banner is drawn and every run renders the same frame.
 func quietUpdateCheck(string) version.CheckResult {
 	return version.CheckResult{Status: version.StatusUpToDate}
+}
+
+// normalizeVaultRoot masks the per-run temporary directory the vault fixture
+// is seeded into. The Settings tab prints the configured vault root, and
+// t.TempDir() hands out a different path on every run — a second real
+// non-determinism of exactly the kind the context-pack clock was, found the
+// same way: the scene rendered twice and differed by one line.
+func normalizeVaultRoot(s string) string {
+	root := os.Getenv(shared.VaultRootEnv)
+	if root == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, root, "/fixtures/vault")
 }
 
 // contextPackBuiltAtPattern matches S5's "built HH:MM:SS" stamp

@@ -12,7 +12,7 @@ import (
 // TestQAndEscGoHomeFromEveryTabsRootScreen pins rfc-tui.md §7.1's
 // generalization of "q"/"Esc": "en la raíz de una pestaña vuelve al
 // Dashboard". This is a regression pin, not new behaviour this task adds —
-// Tasks, Evidence, Runbooks and Cloud already route their root screen's
+// Tasks, Evidence, Runbooks and Settings already route their root screen's
 // "esc"/"q" through tabs.Home() (measured by reading each tab's update.go
 // before writing this test; see this task's report), so none of these cases
 // had a red phase against unmodified code. What is being pinned is that
@@ -29,8 +29,8 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 		{"evidence-list-esc", tabs.Evidence, "esc"},
 		{"runbooks-index-q", tabs.Runbooks, "q"},
 		{"runbooks-index-esc", tabs.Runbooks, "esc"},
-		{"cloud-menu-q", tabs.Cloud, "q"},
-		{"cloud-menu-esc", tabs.Cloud, "esc"},
+		{"settings-list-q", tabs.Settings, "q"},
+		{"settings-list-esc", tabs.Settings, "esc"},
 	}
 
 	for _, tc := range cases {

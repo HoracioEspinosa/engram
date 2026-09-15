@@ -100,7 +100,7 @@ func TestNewWiresTheStoreIntoTheMemoryTab(t *testing.T) {
 	// Leaving and re-entering the Memory tab reloads the dashboard counters
 	// through whichever reader the tab was built with. A tab bound to a nil
 	// store panics inside the command exactly as it would at startup.
-	m, _ = m.Update(tabs.NavigateMsg{Target: tabs.Cloud})
+	m, _ = m.Update(tabs.NavigateMsg{Target: tabs.Settings})
 	m, cmd := m.Update(tabs.NavigateMsg{Target: tabs.Memory})
 	if cmd == nil {
 		t.Fatal("returning to the memory dashboard should reload its counters")

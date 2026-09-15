@@ -390,18 +390,83 @@
     rps                    412 ops        ⇓-17.6%                             
                                                                               
                                                                               
-═══ s11-cloud ═══
+═══ settings ═══
                                                                                 
-  ⌂0 ≣1 ✓2 ▪3 ∿4 ▤5 ⋈6 ⌘7                                                       
+  ⌂0 ≣1 ✓2 ▪3 ∿4 ▤5 ⋈6 [⌘7]                                                     
                                                                                 
-    Cloud sync settings                                                         
+    Settings                                                                    
                                                                                 
-  ─────────────────────                                                         
+  ──────────                                                                    
                                                                                 
+  ›  theme            koi-pond                                                  
+      icons            unicode                                                  
+      vault root       /fixtures/vault  ● exists                      
+      evidence dir     /fixtures/evidence  ▲ missing                            
+      cloud            sync configuration                                       
+      doctor           nothing remembered yet                                   
+  ├ acme  ✓ ACME-1  j/k navigate • g/G top/bottom • enter change • …  koi-pond  
                                                                                 
-   › Configure server                                                           
-      View status                                                               
-      Enroll projects                                                           
-      Back                                                                      
-  ├ acme  ✓ ACME-1  j/k navigate • enter select • esc/q back          koi-pond  
-                                                                                
+═══ theme-picker ═══
+                                                                              
+  [⌂0] ≣1 ✓2 ▪3 ∿4 ▤5 ⋈6 ⌘7                                                   
+                                                                              
+  ┌────────────────────────────────────────────────────────────┐              
+  │                                                            │              
+  │  · Acme Corp                                               │              
+  │  42 observations   1 open tasks   1 evidence   1 runbooks  │              
+  │    ╭──────────────────────────────────────────────────────────────╮       
+  └────│   Theme                                                      │       
+       │                                                              │       
+       │                                                              │       
+  › rec│ ›  koi-pond  dark                                            │       
+       │     koi-day  light                                           │       
+    ACM│   half-written  palette has no color roles                   │       
+       │                                                              │       
+    lat│                                                              │       
+       │                                                              │       
+    ACM│                                                              │hed ●  
+       │                                                              │       
+    cod│                                                              │       
+       │                                                              │       
+    ▲ c│   j/k preview • enter use • / filter • R reload • esc cancel │       
+    128╰──────────────────────────────────────────────────────────────╯       
+    built 2026-01-14 08:00:00                                                 
+                                                                              
+    benchmarks                                                                
+                                                                              
+    p95                    812 ms         ⇓-13.6%                             
+    rps                    412 ops        ⇓-17.6%                             
+                                                                              
+                                                                              
+═══ theme-picker-invalid ═══
+                                                                              
+  [⌂0] ≣1 ✓2 ▪3 ∿4 ▤5 ⋈6 ⌘7                                                   
+                                                                              
+  ┌────────────────────────────────────────────────────────────┐              
+  │                                                            │              
+  │  · Acme Corp                                               │              
+  │  42 observations   1 open tasks   1 evidence   1 runbooks  │              
+  │    ╭──────────────────────────────────────────────────────────────╮       
+  └────│   Theme                                                      │       
+       │                                                              │       
+       │                                                              │       
+  › rec│ ›  koi-pond  dark                                            │       
+       │     koi-day  light                                           │       
+    ACM│   half-written  palette has no color roles                   │       
+       │                                                              │       
+    lat│                                                              │       
+       │                                                              │       
+    ACM│                                                              │hed ●  
+       │                                                              │       
+    cod│                                                              │       
+       │                                                              │       
+    ▲ c│   j/k preview • enter use • / filter • R reload • esc cancel │       
+    128╰──────────────────────────────────────────────────────────────╯       
+    built 2026-01-14 08:00:00                                                 
+                                                                              
+    benchmarks                                                                
+                                                                              
+    p95                    812 ms         ⇓-13.6%                             
+    rps                    412 ops        ⇓-17.6%                             
+                                                                              
+                                                                              

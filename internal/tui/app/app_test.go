@@ -126,12 +126,12 @@ func TestKeysReachOnlyTheActiveTab(t *testing.T) {
 	// New now opens the project tree without a resolvable project (T-10.02);
 	// this case's premise is being on the Cloud tab already.
 	m.tree.open = false
-	m.active = tabs.Cloud
+	m.active = tabs.Settings
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyDown})
 
-	if m.cloud.Cursor != 1 {
-		t.Fatalf("cloud cursor = %d, want the key to have moved it", m.cloud.Cursor)
+	if m.settings.Cursor != 1 {
+		t.Fatalf("cloud cursor = %d, want the key to have moved it", m.settings.Cursor)
 	}
 	if m.memory.Cursor != 0 {
 		t.Fatalf("memory cursor = %d, want an inactive tab to be untouched", m.memory.Cursor)
@@ -167,7 +167,7 @@ func TestEvidenceDetailPCopiesPathInsteadOfOpeningTheSelector(t *testing.T) {
 func TestBroadcastReachesAnInactiveTab(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.memory.CopyFeedback = "Copied!"
-	m.active = tabs.Cloud
+	m.active = tabs.Settings
 
 	m, _ = step(t, m, shared.ClearFeedbackMsg{})
 
@@ -179,9 +179,9 @@ func TestBroadcastReachesAnInactiveTab(t *testing.T) {
 func TestNavigateSwitchesTabsAndRefreshesTheTarget(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 
-	m, cmd := step(t, m, tabs.NavigateMsg{Target: tabs.Cloud})
-	if m.active != tabs.Cloud {
-		t.Fatalf("active tab = %v, want %v", m.active, tabs.Cloud)
+	m, cmd := step(t, m, tabs.NavigateMsg{Target: tabs.Settings})
+	if m.active != tabs.Settings {
+		t.Fatalf("active tab = %v, want %v", m.active, tabs.Settings)
 	}
 	if cmd != nil {
 		t.Fatal("the cloud menu has nothing to reload")
@@ -298,14 +298,15 @@ func TestNavigateToAnUnimplementedTabIsANoOp(t *testing.T) {
 	}
 }
 
-func TestCloudRoundTripFromTheDashboard(t *testing.T) {
+func TestSettingsRoundTripFromTheMemoryDashboard(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	// New opens the project tree without a resolvable project; this case's
 	// premise is starting on Memory's own dashboard.
 	m.tree.open = false
 	m.active = tabs.Memory
 
-	// Walk the dashboard menu down to "Cloud sync settings".
+	// Walk the dashboard menu down to "Cloud sync settings", which now opens
+	// the Settings tab: sync configuration is a row there, not a tab.
 	for i := 0; i < 4; i++ {
 		m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyDown})
 	}
@@ -318,11 +319,11 @@ func TestCloudRoundTripFromTheDashboard(t *testing.T) {
 		t.Fatal("selecting the cloud entry should ask the root to switch tabs")
 	}
 	m, _ = step(t, m, cmd())
-	if m.active != tabs.Cloud {
-		t.Fatalf("active tab = %v, want %v", m.active, tabs.Cloud)
+	if m.active != tabs.Settings {
+		t.Fatalf("active tab = %v, want %v", m.active, tabs.Settings)
 	}
-	if !strings.Contains(m.View(), "Cloud sync settings") {
-		t.Fatal("the cloud tab should be on screen")
+	if !strings.Contains(m.View(), "Settings") {
+		t.Fatal("the settings tab should be on screen")
 	}
 
 	m, cmd = step(t, m, tea.KeyMsg{Type: tea.KeyEsc})
@@ -335,8 +336,8 @@ func TestCloudRoundTripFromTheDashboard(t *testing.T) {
 	if m.active != tabs.Home {
 		t.Fatalf("active tab = %v, want %v", m.active, tabs.Home)
 	}
-	if m.cloud.Cursor != 0 {
-		t.Fatalf("cloud cursor = %d, want it rewound for the next visit", m.cloud.Cursor)
+	if m.settings.Cursor != 0 {
+		t.Fatalf("cloud cursor = %d, want it rewound for the next visit", m.settings.Cursor)
 	}
 }
 
@@ -354,8 +355,8 @@ func TestViewWrapsTheActiveTabInTheApplicationFrame(t *testing.T) {
 	}
 	assertFramedBody(t, framed, body)
 
-	m.active = tabs.Cloud
-	assertFramedBody(t, m.View(), m.cloud.View())
+	m.active = tabs.Settings
+	assertFramedBody(t, m.View(), m.settings.View())
 	if strings.Contains(m.View(), "Actions") {
 		t.Fatal("switching tabs should switch the framed body")
 	}
@@ -438,7 +439,7 @@ func TestWithTabIgnoresAMismatchedSubModel(t *testing.T) {
 
 	// Storing the cloud sub-model under the memory id must be refused rather
 	// than silently corrupting the root.
-	updated := m.withTab(tabs.Memory, m.cloud)
+	updated := m.withTab(tabs.Memory, m.settings)
 
 	if updated.memory.Cursor != 3 {
 		t.Fatalf("memory cursor = %d, want the original sub-model preserved", updated.memory.Cursor)

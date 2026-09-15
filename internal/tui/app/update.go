@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/settings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -77,6 +78,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case treeLoadedMsg:
 		m.tree = m.tree.applyLoaded(msg)
 		return m, nil
+
+	case settings.OpenThemePickerMsg:
+		// The Settings tab's own "theme" row: the picker is root state, so
+		// the tab asks for it rather than owning a second copy.
+		m.themePicker.open = true
+		m.themePicker.original = m.styles.Palette
+		m.themePicker.notice = ""
+		return m, loadThemes(m.themePicker.themes)
 
 	case themesLoadedMsg, themePreviewMsg, themeAppliedMsg:
 		return m.updateThemeMessage(msg)

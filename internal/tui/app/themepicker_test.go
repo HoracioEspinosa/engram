@@ -278,7 +278,7 @@ func TestEveryTabRepaintsOnThemeSwap(t *testing.T) {
 		tabs.Benchmarks: func(m Model) string { return m.benchmarks.Styles().Palette.Name },
 		tabs.Runbooks:   func(m Model) string { return m.runbooks.Styles().Palette.Name },
 		tabs.Graph:      func(m Model) string { return m.graph.Styles().Palette.Name },
-		tabs.Cloud:      func(m Model) string { return m.cloud.Styles().Palette.Name },
+		tabs.Settings:   func(m Model) string { return m.settings.Styles().Palette.Name },
 	}
 
 	const swapped = "koi-day"

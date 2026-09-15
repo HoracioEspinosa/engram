@@ -12,12 +12,12 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/benchmarks"
-	"github.com/HoracioEspinosa/engram/internal/tui/tabs/cloud"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/evidence"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/graph"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/home"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/memory"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/runbooks"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/settings"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs/tasks"
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
@@ -28,7 +28,7 @@ import (
 // tabs declares but that no sub-model implements yet are simply absent.
 var registered = []tabs.ID{
 	tabs.Home, tabs.Memory, tabs.Tasks, tabs.Evidence,
-	tabs.Benchmarks, tabs.Runbooks, tabs.Graph, tabs.Cloud,
+	tabs.Benchmarks, tabs.Runbooks, tabs.Graph, tabs.Settings,
 }
 
 // Model is the root workspace model.
@@ -51,7 +51,7 @@ type Model struct {
 	benchmarks benchmarks.Model
 	runbooks   runbooks.Model
 	graph      graph.Model
-	cloud      cloud.Model
+	settings   settings.Model
 	projects   data.ProjectReader
 
 	// freshness decides whether switching to a tab reloads it: a tab whose
@@ -109,7 +109,7 @@ func New(mem data.MemorySource, projects data.ProjectReader, task data.TaskSourc
 		benchmarks:  benchmarks.New(nil).WithProject(initialProject),
 		runbooks:    runbooks.New(runbookReader, projects).WithProject(initialProject),
 		graph:       graph.New(nil, nil).WithProject(initialProject),
-		cloud:       cloud.New(),
+		settings:    settings.New(),
 		tree:        newTreeModel(nil),
 		themePicker: newThemePickerModel(styles),
 		palette:     newPaletteModel(styles),
@@ -169,7 +169,7 @@ func (m Model) withStyles(s theme.Styles) Model {
 	m.benchmarks = m.benchmarks.WithStyles(s)
 	m.runbooks = m.runbooks.WithStyles(s)
 	m.graph = m.graph.WithStyles(s)
-	m.cloud = m.cloud.WithStyles(s)
+	m.settings = m.settings.WithStyles(s)
 	m.themePicker = m.themePicker.withStyles(s)
 	m.palette.styles = s
 	return m
@@ -215,8 +215,8 @@ func (m Model) tab(id tabs.ID) tabs.Tab {
 		return m.runbooks
 	case tabs.Graph:
 		return m.graph
-	case tabs.Cloud:
-		return m.cloud
+	case tabs.Settings:
+		return m.settings
 	}
 	return nil
 }
@@ -254,9 +254,9 @@ func (m Model) withTab(id tabs.ID, t tabs.Tab) Model {
 		if updated, ok := t.(graph.Model); ok {
 			m.graph = updated
 		}
-	case tabs.Cloud:
-		if updated, ok := t.(cloud.Model); ok {
-			m.cloud = updated
+	case tabs.Settings:
+		if updated, ok := t.(settings.Model); ok {
+			m.settings = updated
 		}
 	}
 	return m

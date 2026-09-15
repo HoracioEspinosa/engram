@@ -221,7 +221,7 @@ func TestFooterMatchesHelp(t *testing.T) {
 		{"tasks", func() Model { return onTab(t, tabs.Tasks) }},
 		{"evidence", func() Model { return onTab(t, tabs.Evidence) }},
 		{"runbooks", func() Model { return onTab(t, tabs.Runbooks) }},
-		{"cloud", func() Model { return onTab(t, tabs.Cloud) }},
+		{"settings", func() Model { return onTab(t, tabs.Settings) }},
 	}
 
 	for _, sc := range screens {
