@@ -62,10 +62,26 @@ func (m Model) tableHeight() int {
 	return h
 }
 
-// columns is the table's shape at the current width: the full five, or the
-// three a narrow terminal can still read.
-func (m Model) columns() []table.Column {
-	if m.narrow() {
+// layout is the table's shape and its contents, read off the same width in
+// one pass: the full five columns, or the three a narrow terminal can still
+// read, with a row carrying exactly one cell per column.
+//
+// The two come back together because bubbles/table indexes the column list by
+// cell position when it renders a row, so a row and a column list built at
+// different widths crash it. Deriving one without the other is what lets them
+// drift apart, and there is no caller that needs only one.
+func (m Model) layout() ([]table.Column, []table.Row) {
+	narrow := m.narrow()
+
+	rows := make([]table.Row, 0, len(m.Items))
+	for _, b := range m.Items {
+		rows = append(rows, m.row(b, narrow))
+	}
+	return m.columns(narrow), rows
+}
+
+func (m Model) columns(narrow bool) []table.Column {
+	if narrow {
 		return []table.Column{
 			{Title: "metric", Width: metricCells},
 			{Title: "latest", Width: latestCells},
@@ -81,16 +97,11 @@ func (m Model) columns() []table.Column {
 	}
 }
 
-func (m Model) rows() []table.Row {
-	rows := make([]table.Row, 0, len(m.Items))
-	for _, b := range m.Items {
-		if m.narrow() {
-			rows = append(rows, table.Row{b.Metric, formatValue(b.Value, ""), m.delta(b)})
-			continue
-		}
-		rows = append(rows, table.Row{b.Metric, b.Unit, m.baseline(b), formatValue(b.Value, ""), m.delta(b)})
+func (m Model) row(b data.Benchmark, narrow bool) table.Row {
+	if narrow {
+		return table.Row{b.Metric, formatValue(b.Value, ""), m.delta(b)}
 	}
-	return rows
+	return table.Row{b.Metric, b.Unit, m.baseline(b), formatValue(b.Value, ""), m.delta(b)}
 }
 
 // baseline is the metric's own baseline, or a neutral marker when it has none

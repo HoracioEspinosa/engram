@@ -230,18 +230,35 @@ func (m Model) handlePromptKey(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 
 // resize rebuilds the table against the width and height the tab now has.
 //
-// The cursor is put back on the first row whenever it is out of range.
-// bubbles/table clamps its cursor to len(rows)-1 on SetRows, so emptying the
-// table — which scoping to another project does — leaves it at -1, and nothing
-// in the component moves it back when rows arrive. A table whose first row
-// cannot be selected looks like a table whose "enter" is broken.
+// The table is emptied before its columns change, because bubbles/table
+// re-renders the rows it is already holding on every SetColumns and indexes
+// the column list by cell position: a five-cell row left over from the wide
+// layout reads past the end of the narrow layout's three columns. Every load
+// and every size lands here, and the two arrive in either order — the root
+// puts each tab's first load in flight before the terminal reports its size —
+// so both crossings of the breakpoint have rows on screen to reshape.
+//
+// The cursor is carried across the rebuild: emptying the table drops it, and a
+// reader who had scrolled down expects to still be where they were. A cursor
+// out of range — which is where scoping to another project leaves it — lands
+// on the first row, since nothing in the component moves it back when rows
+// arrive and a table whose first row cannot be selected looks like a table
+// whose "enter" is broken.
 func (m Model) resize() Model {
-	m.table.SetColumns(m.columns())
-	m.table.SetRows(m.rows())
+	columns, rows := m.layout()
+	cursor := m.table.Cursor()
+
+	m.table.SetRows(nil)
+	m.table.SetColumns(columns)
+	m.table.SetRows(rows)
 	m.table.SetWidth(m.bodyWidth())
 	m.table.SetHeight(m.tableHeight())
-	if m.table.Cursor() < 0 && len(m.Items) > 0 {
-		m.table.SetCursor(0)
+
+	if len(rows) > 0 {
+		if cursor < 0 {
+			cursor = 0
+		}
+		m.table.SetCursor(cursor)
 	}
 	return m
 }

@@ -96,12 +96,13 @@ func TestTheTabIsScopedAndTitled(t *testing.T) {
 
 func TestTheTableShowsFiveColumnsWideAndThreeNarrow(t *testing.T) {
 	wide, _ := loaded(t, 140)
-	if got := len(wide.columns()); got != 5 {
+	wideCols, _ := wide.layout()
+	if got := len(wideCols); got != 5 {
 		t.Fatalf("a wide table has %d columns, want 5", got)
 	}
 
 	narrow, _ := loaded(t, 90)
-	cols := narrow.columns()
+	cols, rows := narrow.layout()
 	if len(cols) != 3 {
 		t.Fatalf("a narrow table has %d columns, want metric · latest · Δ", len(cols))
 	}
@@ -109,8 +110,132 @@ func TestTheTableShowsFiveColumnsWideAndThreeNarrow(t *testing.T) {
 	if strings.Join(titles, ",") != "metric,latest,Δ" {
 		t.Fatalf("narrow columns = %v", titles)
 	}
-	if got := len(narrow.rows()[0]); got != 3 {
+	if got := len(rows[0]); got != 3 {
 		t.Fatalf("a narrow row carries %d cells, want 3", got)
+	}
+}
+
+// assertTableInStep reads the shape out of the component itself rather than
+// out of the model, because the mismatch that panics lives in what
+// bubbles/table holds: it re-renders its rows on every SetColumns and indexes
+// the column list by cell position.
+func assertTableInStep(t *testing.T, m Model, wantColumns int) {
+	t.Helper()
+
+	if got := len(m.table.Columns()); got != wantColumns {
+		t.Fatalf("the table holds %d columns, want %d", got, wantColumns)
+	}
+	for i, row := range m.table.Rows() {
+		if len(row) != wantColumns {
+			t.Fatalf("row %d carries %d cells against %d columns", i, len(row), wantColumns)
+		}
+	}
+}
+
+// TestResizingAcrossTheBreakpointKeepsRowsAndColumnsInStep crosses the narrow
+// breakpoint in both directions with measurements already on screen. Either
+// crossing leaves the table holding rows built for the layout it is leaving,
+// and rendering those against the layout it is entering is a panic.
+func TestResizingAcrossTheBreakpointKeepsRowsAndColumnsInStep(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		from, to    int
+		wantColumns int
+	}{
+		{name: "wide to narrow", from: 140, to: 80, wantColumns: 3},
+		{name: "narrow to wide", from: 80, to: 140, wantColumns: 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _ := loaded(t, tc.from)
+			if len(m.Items) == 0 {
+				t.Fatal("the fixture loaded no measurements to resize")
+			}
+
+			m = step(t, m, tea.WindowSizeMsg{Width: tc.to, Height: 40})
+
+			assertTableInStep(t, m, tc.wantColumns)
+			if out := m.View(); !strings.Contains(out, "p95") {
+				t.Fatalf("the resized table lost its rows:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestTheTableSurvivesEitherOrderOfSizeAndData pins the ordering the root
+// leaves open: every tab's load is in flight before the first
+// tea.WindowSizeMsg arrives, so whichever lands first decides which layout the
+// table is built with and which one it is reshaped into.
+func TestTheTableSurvivesEitherOrderOfSizeAndData(t *testing.T) {
+	t.Run("data before the first size", func(t *testing.T) {
+		m := New(fixture()).WithStyles(theme.New(theme.KoiPond())).WithProject("clarodrive")
+
+		cmd := m.Refresh()
+		if cmd == nil {
+			t.Fatal("a scoped tab should have something to load")
+		}
+		// A tab with no size yet lays the table out wide.
+		m = step(t, m, cmd())
+		assertTableInStep(t, m, 5)
+
+		m = step(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+		assertTableInStep(t, m, 3)
+		if out := m.View(); !strings.Contains(out, "p95") {
+			t.Fatalf("the narrow table lost its rows:\n%s", out)
+		}
+	})
+
+	t.Run("size before the data", func(t *testing.T) {
+		m, _ := loaded(t, 80)
+
+		assertTableInStep(t, m, 3)
+		if out := m.View(); !strings.Contains(out, "p95") {
+			t.Fatalf("the narrow table lost its rows:\n%s", out)
+		}
+	})
+}
+
+// TestAResizeKeepsTheCursorWhereTheReaderLeftIt guards the rebuild: the table
+// is emptied to reshape it, which drops the cursor, and a reader who had
+// scrolled to the third measurement expects to still be on it afterwards.
+func TestAResizeKeepsTheCursorWhereTheReaderLeftIt(t *testing.T) {
+	m, _ := loaded(t, 140)
+
+	m = step(t, m, press("j"))
+	m = step(t, m, press("j"))
+	before, ok := m.Selected()
+	if !ok || before.Metric != "fcp" {
+		t.Fatalf("the cursor is on %+v, want the third measurement", before)
+	}
+
+	m = step(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	after, ok := m.Selected()
+	if !ok || after.Metric != before.Metric {
+		t.Fatalf("after the resize the cursor is on %+v, want %q", after, before.Metric)
+	}
+}
+
+// TestAnEmptyTableTakesTheFirstRowWhenMeasurementsArrive covers the other end:
+// scoping to another project empties the table, which leaves bubbles/table
+// with no row selected, and nothing in the component puts the cursor back when
+// rows arrive.
+func TestAnEmptyTableTakesTheFirstRowWhenMeasurementsArrive(t *testing.T) {
+	m, _ := loaded(t, 140)
+
+	m = m.WithProject("clarodrive")
+	if _, ok := m.Selected(); ok {
+		t.Fatal("an emptied table has nothing under its cursor")
+	}
+
+	cmd := m.Refresh()
+	if cmd == nil {
+		t.Fatal("a scoped tab should have something to load")
+	}
+	m = step(t, m, cmd())
+
+	selected, ok := m.Selected()
+	if !ok || selected.Metric != "p95" {
+		t.Fatalf("the cursor is on %+v, want the first measurement", selected)
 	}
 }
 
