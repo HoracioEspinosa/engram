@@ -485,6 +485,13 @@ type CloudUpgradeLegacyMutationReport struct {
 const (
 	UpgradeReasonRepairableLegacyMutationPayload = "upgrade_repairable_legacy_mutation_payload"
 	UpgradeReasonBlockedLegacyMutationManual     = "upgrade_blocked_legacy_mutation_manual"
+	// UpgradeReasonRepairableUnjournaledRows marks a project whose rows have no
+	// sync journal entry but where a backfill pass can still give them one.
+	UpgradeReasonRepairableUnjournaledRows = "upgrade_repairable_unjournaled_rows"
+	// UpgradeReasonBlockedUnjournaledRows marks rows that stay invisible to the
+	// push because the cloud upsert contract rejects them, so no backfill can
+	// journal them. The row itself has to be completed or removed.
+	UpgradeReasonBlockedUnjournaledRows = "upgrade_blocked_unjournaled_rows"
 )
 
 // EnrolledProject represents a project enrolled for cloud sync.
@@ -1538,11 +1545,24 @@ func (s *Store) RepairCloudUpgrade(project string, apply bool) (CloudUpgradeRepa
 		}, nil
 	}
 
-	requiresBackfill, err := s.projectSyncBackfillRequired(project)
+	gaps, err := s.ProjectJournalGaps(project)
 	if err != nil {
 		return CloudUpgradeRepairReport{}, err
 	}
-	if !requiresBackfill {
+	if gaps.Journalable() == 0 {
+		if gaps.Blocked > 0 {
+			// Nothing to enqueue and still rows the push cannot see: say so
+			// rather than reporting the project clean, which is how these rows
+			// stayed invisible in the first place.
+			return CloudUpgradeRepairReport{
+				Class:      UpgradeRepairClassBlocked,
+				ReasonCode: UpgradeReasonBlockedUnjournaledRows,
+				Message: fmt.Sprintf(
+					"manual-action-required: project %q has %d row(s) the cloud upsert contract rejects, so no backfill can journal them (%s)",
+					project, gaps.Blocked, gaps.Summary(),
+				),
+			}, nil
+		}
 		return CloudUpgradeRepairReport{
 			Class:      UpgradeRepairClassReady,
 			ReasonCode: "upgrade_repair_noop",
@@ -1553,7 +1573,7 @@ func (s *Store) RepairCloudUpgrade(project string, apply bool) (CloudUpgradeRepa
 	report := CloudUpgradeRepairReport{
 		Class:         UpgradeRepairClassRepairable,
 		ReasonCode:    "upgrade_repair_backfill_sync_journal",
-		Message:       fmt.Sprintf("project %q has deterministic local sync metadata gaps", project),
+		Message:       fmt.Sprintf("project %q has %d row(s) with no sync journal entry (%s)", project, gaps.Total(), gaps.Summary()),
 		PlannedAction: "backfill_sync_journal",
 		Applied:       false,
 	}
@@ -1567,10 +1587,23 @@ func (s *Store) RepairCloudUpgrade(project string, apply bool) (CloudUpgradeRepa
 		return CloudUpgradeRepairReport{}, fmt.Errorf("apply cloud upgrade repair: %w", err)
 	}
 	report.Applied = true
+
+	remaining, err := s.ProjectJournalGaps(project)
+	if err != nil {
+		return CloudUpgradeRepairReport{}, err
+	}
+	if remaining.Total() > 0 {
+		report.Class = UpgradeRepairClassBlocked
+		report.ReasonCode = UpgradeReasonBlockedUnjournaledRows
+		report.Message = fmt.Sprintf(
+			"manual-action-required: project %q still has %d row(s) with no sync journal entry after the backfill (%s)",
+			project, remaining.Total(), remaining.Summary(),
+		)
+	}
 	_ = s.SaveCloudUpgradeState(CloudUpgradeState{
 		Project:     project,
 		Stage:       UpgradeStageRepairApplied,
-		RepairClass: UpgradeRepairClassRepairable,
+		RepairClass: report.Class,
 	})
 	return report, nil
 }
@@ -2102,44 +2135,6 @@ func (s *Store) cloudUpgradeManualActionReport(project string) (bool, CloudUpgra
 		Message:    fmt.Sprintf("manual-action-required: %s", reasonMessage),
 		Applied:    false,
 	}, nil
-}
-
-func (s *Store) projectSyncBackfillRequired(project string) (bool, error) {
-	var missing int
-	err := s.db.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1
-			FROM sessions sess
-			WHERE sess.project = ?
-			  AND NOT EXISTS (
-				SELECT 1 FROM sync_mutations sm
-				WHERE sm.target_key = ?
-				  AND sm.entity = ?
-				  AND sm.entity_key = sess.id
-				  AND sm.source = ?
-			  )
-			UNION ALL
-			SELECT 1
-			FROM observations obs
-			LEFT JOIN sessions sess ON sess.id = obs.session_id
-			WHERE (
-				ifnull(obs.project, '') = ?
-				OR (ifnull(obs.project, '') = '' AND ifnull(sess.project, '') = ?)
-			)
-			  AND obs.deleted_at IS NULL
-			  AND NOT EXISTS (
-				SELECT 1 FROM sync_mutations sm
-				WHERE sm.target_key = ?
-				  AND sm.entity = ?
-				  AND sm.entity_key = obs.sync_id
-				  AND sm.source = ?
-			  )
-		)
-	`, project, DefaultSyncTargetKey, SyncEntitySession, SyncSourceLocal, project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncSourceLocal).Scan(&missing)
-	if err != nil {
-		return false, fmt.Errorf("detect project sync metadata gaps: %w", err)
-	}
-	return missing == 1, nil
 }
 
 func normalizeUpgradeStage(stage string) string {
@@ -4758,27 +4753,26 @@ SELECT 1 FROM (
 	return true, nil
 }
 
-// EnrollProject registers a project for cloud sync. Idempotent — re-enrolling
-// an already-enrolled project is a no-op.
+// EnrollProject registers a project for cloud sync and journals every row of it
+// that has no sync_mutations entry yet.
+//
+// Both halves are idempotent, and the second one runs even when the enrollment
+// row already exists. Skipping the backfill for an already-enrolled project —
+// treating the enrollment row as proof the journal was complete — left every
+// row written outside the journal (created before the project was enrolled, or
+// imported straight into the tables) permanently invisible to the push, with
+// nothing an operator could run to recover it.
 func (s *Store) EnrollProject(project string) error {
 	project, _ = NormalizeProject(project)
 	if project == "" {
 		return fmt.Errorf("project name must not be empty")
 	}
 	return s.withTx(func(tx *sql.Tx) error {
-		res, err := s.execHook(tx,
+		if _, err := s.execHook(tx,
 			`INSERT OR IGNORE INTO sync_enrolled_projects (project) VALUES (?)`,
 			project,
-		)
-		if err != nil {
+		); err != nil {
 			return err
-		}
-		rowsAffected, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if rowsAffected == 0 {
-			return nil
 		}
 		return s.backfillProjectSyncMutationsTx(tx, project)
 	})
@@ -6047,117 +6041,34 @@ func (s *Store) backfillProjectSyncMutationsTx(tx *sql.Tx, project string) error
 	return s.backfillRelationSyncMutationsTx(tx, project)
 }
 
-// projectNeedsBackfill returns true when a project has any sessions, live
-// observations, prompts, or relations that are missing a corresponding
-// sync_mutation row. It runs four lightweight COUNT queries — no cursor is
-// held open.
+// projectNeedsBackfill reports whether a backfill pass has anything to enqueue
+// for a project: a session, observation, prompt or relation of the project with
+// no matching sync_mutations row.
 //
-// "Missing" means no matching sync_mutations row exists for the row's
-// current project — not merely that some sync_mutations row exists for
-// that entity_key at all. A row can outlive its own project: MergeProjects
-// renames the entity in place, and any mutation enqueued before that rename
-// still carries the old name in its "project" column. Treating that stale
-// mutation as sufficient coverage — the guard before this comment was
-// written — would leave the entity backed only by an outbound intent that
-// still names a project that no longer applies to it, and nothing would
-// ever notice or correct that.
+// It delegates the counting to ProjectJournalGaps so the fast-path skip and the
+// write path can never drift apart — the guard used to restate the backfill's
+// predicates by hand and had no counterpart at all for the delete branches, so
+// a project whose only gap was a soft-deleted observation or a prompt tombstone
+// skipped the backfill on every store open, forever.
+//
+// "Missing" means no matching sync_mutations row exists for the row's current
+// project — not merely that some sync_mutations row exists for that entity_key
+// at all. A row can outlive its own project: MergeProjects renames the entity in
+// place, and any mutation enqueued before that rename still carries the old name
+// in its "project" column. Treating that stale mutation as sufficient coverage
+// would leave the entity backed only by an outbound intent that names a project
+// that no longer applies to it, and nothing would ever notice or correct that.
+//
+// Rows the cloud upsert contract would reject are deliberately NOT counted here:
+// no backfill can deliver them, so counting them would re-run the pass on every
+// store open for no gain. ProjectJournalGaps reports them separately, and the
+// upgrade doctor refuses to call a project ready while any remain.
 func (s *Store) projectNeedsBackfill(project string) (bool, error) {
-	type countQuery struct {
-		q    string
-		args []any
+	report, err := s.ProjectJournalGaps(project)
+	if err != nil {
+		return false, err
 	}
-	queries := []countQuery{
-		{
-			// Every session of the project counts, directory or not: cloud
-			// validation requires only the id, because a session saved against
-			// an explicit project was never opened in a checkout and has no
-			// directory to report. This predicate must stay identical to the
-			// SELECT in backfillSessionSyncMutationsTx, or the fast-path skip
-			// desyncs from the write path.
-			//
-			// project is compared folded, here and in every query below:
-			// enrollment normalizes the name to lower case and the rows keep
-			// whatever case they were written with, so exact equality finds
-			// nothing at all for a project named with capitals.
-			q: `SELECT COUNT(*) FROM sessions
-			    WHERE lower(project) = ?
-			      AND NOT EXISTS (
-			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = sessions.id AND sm.source = ? AND lower(sm.project) = ?
-			      )`,
-			args: []any{project, DefaultSyncTargetKey, SyncEntitySession, SyncSourceLocal, project},
-		},
-		{
-			// Same principle as above, for the observation upsert fields cloud
-			// validation requires (session_id, type, title, content, scope).
-			// This predicate must stay identical to the SELECT in
-			// backfillObservationSyncMutationsTx's live-observations query.
-			q: `SELECT COUNT(*) FROM observations o
-			    LEFT JOIN sessions s ON s.id = o.session_id
-			    WHERE (lower(ifnull(o.project, '')) = ? OR (ifnull(o.project, '') = '' AND lower(ifnull(s.project, '')) = ?))
-			      AND o.deleted_at IS NULL
-			      AND trim(ifnull(o.session_id, '')) != ''
-			      AND trim(ifnull(o.type, '')) != ''
-			      AND trim(ifnull(o.title, '')) != ''
-			      AND trim(ifnull(o.content, '')) != ''
-			      AND trim(ifnull(o.scope, '')) != ''
-			      AND NOT EXISTS (
-			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = o.sync_id AND sm.source = ? AND lower(sm.project) = ?
-			      )`,
-			args: []any{project, project, DefaultSyncTargetKey, SyncEntityObservation, SyncSourceLocal, project},
-		},
-		{
-			// Same principle as above, for the prompt upsert fields cloud
-			// validation requires (session_id, content). This predicate must
-			// stay identical to the SELECT in backfillPromptSyncMutationsTx's
-			// live-prompts query.
-			q: `SELECT COUNT(*) FROM user_prompts p
-			    LEFT JOIN sessions s ON s.id = p.session_id
-			    WHERE (lower(ifnull(p.project, '')) = ? OR (ifnull(p.project, '') = '' AND lower(ifnull(s.project, '')) = ?))
-			      AND trim(ifnull(p.session_id, '')) != ''
-			      AND trim(ifnull(p.content, '')) != ''
-			      AND NOT EXISTS (
-			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = p.sync_id AND sm.source = ? AND lower(sm.project) = ?
-			      )`,
-			args: []any{project, project, DefaultSyncTargetKey, SyncEntityPrompt, SyncSourceLocal, project},
-		},
-		{
-			// Count only fully-judged relations (not orphaned, not pending, with
-			// marked_by_actor/kind populated) whose source and target observations
-			// are locally available and that have no local upsert sync_mutations row.
-			// Mirrors the SELECT in backfillRelationSyncMutationsTx exactly — any
-			// divergence causes the fast-path skip to desync from the write path.
-			// Pending/unmarked rows lack marked_by_* and would be rejected by cloud
-			// validation (HTTP 400), so we exclude them from both the count and the
-			// backfill to avoid polluting the sync journal with undeliverable mutations.
-			q: `SELECT COUNT(*)
-			    FROM memory_relations r
-			    JOIN observations src ON src.sync_id = r.source_id AND src.deleted_at IS NULL
-			    JOIN observations tgt ON tgt.sync_id = r.target_id AND tgt.deleted_at IS NULL
-			    LEFT JOIN sessions src_s ON src_s.id = src.session_id
-			    WHERE r.judgment_status NOT IN (?, ?)
-			      AND ifnull(r.marked_by_actor, '') != ''
-			      AND ifnull(r.marked_by_kind, '') != ''
-			      AND lower(coalesce(nullif(src.project, ''), src_s.project, '')) = ?
-			      AND NOT EXISTS (
-			        SELECT 1 FROM sync_mutations sm
-			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = r.sync_id AND sm.source = ? AND lower(sm.project) = ?
-			      )`,
-			args: []any{JudgmentStatusOrphaned, JudgmentStatusPending, project, DefaultSyncTargetKey, SyncEntityRelation, SyncSourceLocal, project},
-		},
-	}
-	for _, cq := range queries {
-		var n int
-		if err := s.db.QueryRow(cq.q, cq.args...).Scan(&n); err != nil {
-			return false, err
-		}
-		if n > 0 {
-			return true, nil
-		}
-	}
-	return false, nil
+	return report.Journalable() > 0, nil
 }
 
 func (s *Store) repairEnrolledProjectSyncMutations() error {

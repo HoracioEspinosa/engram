@@ -405,6 +405,34 @@ func cmdCloudUpgradeDoctor(cfg store.Config) {
 		}
 	}
 
+	// A row with no sync journal entry never enters a push, and the pending
+	// counters say nothing about it — a project could report zero pending
+	// mutations and `ready` while hundreds of its observations had never been
+	// offered to the cloud at all. Count them and refuse `ready` while any
+	// remain.
+	gaps, err := s.ProjectJournalGaps(project)
+	if err != nil {
+		fatal(fmt.Errorf("cloud upgrade doctor journal gap check: %w", err))
+		return
+	}
+	if report.Status == engramsync.UpgradeStatusReady && gaps.Total() > 0 {
+		if gaps.Journalable() > 0 {
+			report = engramsync.UpgradeDiagnosisReport{
+				Status:  engramsync.UpgradeStatusBlocked,
+				Class:   engramsync.UpgradeReasonClassRepairable,
+				Code:    store.UpgradeReasonRepairableUnjournaledRows,
+				Message: fmt.Sprintf("project %q has %d row(s) with no sync journal entry; run `engram cloud upgrade repair --project %s --apply`", project, gaps.Total(), project),
+			}
+		} else {
+			report = engramsync.UpgradeDiagnosisReport{
+				Status:  engramsync.UpgradeStatusBlocked,
+				Class:   engramsync.UpgradeReasonClassBlocked,
+				Code:    store.UpgradeReasonBlockedUnjournaledRows,
+				Message: fmt.Sprintf("manual-action-required: project %q has %d row(s) the cloud upsert contract rejects, so no backfill can journal them", project, gaps.Blocked),
+			}
+		}
+	}
+
 	stage := store.UpgradeStageDoctorBlocked
 	if report.Status == engramsync.UpgradeStatusReady {
 		stage = store.UpgradeStageDoctorReady
@@ -422,6 +450,8 @@ func cmdCloudUpgradeDoctor(cfg store.Config) {
 	fmt.Printf("class: %s\n", report.Class)
 	fmt.Printf("reason_code: %s\n", report.Code)
 	fmt.Printf("message: %s\n", report.Message)
+	fmt.Printf("unjournaled_rows: %d\n", gaps.Total())
+	fmt.Printf("unjournaled_detail: %s\n", gaps.Summary())
 }
 
 func cloudUpgradePolicyDenied(s *store.Store, project string) (bool, error) {
