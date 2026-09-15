@@ -218,6 +218,22 @@ func TestCanonicalizeForProject_UpstreamEntitiesAreUntouched(t *testing.T) {
 	}
 }
 
+// TestCanonicalizeForProject_AcceptsASessionWithoutADirectory pins the session
+// contract to what the local store actually writes. A directory says where a
+// session was opened; a session saved against an explicit project was never
+// opened anywhere, and the store creates those on purpose.
+func TestCanonicalizeForProject_AcceptsASessionWithoutADirectory(t *testing.T) {
+	raw := chunkWith(store.SyncEntitySession, "", store.SyncOpUpsert,
+		`{"id":"manual-save-mailing","project":"wrong","started_at":"2026-04-10T12:00:00Z"}`)
+	mutation := canonicalMutation(t, raw, "mailing")
+	if mutation.EntityKey != "manual-save-mailing" || mutation.Project != "mailing" {
+		t.Fatalf("unexpected canonicalized session: %+v", mutation)
+	}
+	if got := payloadField(t, mutation, "directory"); got != nil {
+		t.Fatalf("an absent directory must stay absent, got %v", got)
+	}
+}
+
 // TestCanonicalizeForProject_CarriesTheWorkspaceEntities pins the two entities
 // the workspace writes and the fields the hierarchy added.
 //

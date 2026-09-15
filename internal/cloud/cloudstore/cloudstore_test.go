@@ -723,7 +723,11 @@ func TestBackfillMutationChunksSkipsInvalidLegacyMutationPayloads(t *testing.T) 
 	project := uniqueCloudstoreTestProject("mutation-backfill-invalid")
 	cleanupCloudstoreProject(t, cs, project)
 
-	insertLegacyCloudMutation(t, cs, project, store.SyncEntitySession, "manual-save-engram", store.SyncOpUpsert, `{"id":"manual-save-engram"}`)
+	// A session payload with no id at all: the canonicalizer cannot derive an
+	// entity key from it, so it has no identity to materialize under. (A
+	// session with no *directory* is valid and materializes like any other —
+	// see TestBackfillMutationChunksMaterializesSessionsWithoutADirectory.)
+	insertLegacyCloudMutation(t, cs, project, store.SyncEntitySession, "sess-nameless", store.SyncOpUpsert, `{"directory":"/work/nameless"}`)
 	insertLegacyCloudMutation(t, cs, project, store.SyncEntityObservation, "obs-valid", store.SyncOpUpsert, `{"sync_id":"obs-valid","session_id":"sess-valid","type":"decision","title":"Valid observation","content":"materialize this one","scope":"project","created_at":"2026-05-04T01:49:52Z"}`)
 
 	report, err := cs.BackfillMutationChunks(ctx, project, true)
@@ -742,10 +746,47 @@ func TestBackfillMutationChunksSkipsInvalidLegacyMutationPayloads(t *testing.T) 
 		t.Fatalf("decode repair chunk: %v", err)
 	}
 	if len(chunk.Sessions) != 0 {
-		t.Fatalf("invalid legacy session without directory must not be materialized, got %+v", chunk.Sessions)
+		t.Fatalf("a session with no id has no identity to materialize under, got %+v", chunk.Sessions)
 	}
 	if len(chunk.Observations) != 1 || chunk.Observations[0].SyncID != "obs-valid" {
 		t.Fatalf("expected valid observation to materialize, got %+v", chunk.Observations)
+	}
+}
+
+// TestBackfillMutationChunksMaterializesSessionsWithoutADirectory is the
+// counterpart: a session saved against an explicit project has no directory and
+// is perfectly deliverable, so the repair path must carry it rather than count
+// it as an invalid legacy payload.
+func TestBackfillMutationChunksMaterializesSessionsWithoutADirectory(t *testing.T) {
+	cs := openTestCloudStore(t)
+	ctx := context.Background()
+	project := uniqueCloudstoreTestProject("mutation-backfill-no-directory")
+	cleanupCloudstoreProject(t, cs, project)
+
+	insertLegacyCloudMutation(t, cs, project, store.SyncEntitySession, "manual-save-engram", store.SyncOpUpsert,
+		`{"id":"manual-save-engram"}`)
+
+	report, err := cs.BackfillMutationChunks(ctx, project, true)
+	if err != nil {
+		t.Fatalf("BackfillMutationChunks: %v", err)
+	}
+	if report.InvalidMutations != 0 {
+		t.Fatalf("a session with no directory is deliverable, not invalid: %+v", report)
+	}
+	if report.ChunksInserted != 1 {
+		t.Fatalf("expected the session to materialize into one chunk: %+v", report)
+	}
+
+	chunks := readCloudChunksForProject(t, cs, project)
+	if len(chunks) != 1 {
+		t.Fatalf("expected one repair chunk, got %d", len(chunks))
+	}
+	var chunk engramsync.ChunkData
+	if err := json.Unmarshal(chunks[0], &chunk); err != nil {
+		t.Fatalf("decode repair chunk: %v", err)
+	}
+	if len(chunk.Sessions) != 1 || chunk.Sessions[0].ID != "manual-save-engram" {
+		t.Fatalf("expected the directory-less session in the repair chunk, got %+v", chunk.Sessions)
 	}
 }
 

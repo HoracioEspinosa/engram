@@ -1746,17 +1746,21 @@ func (s *Store) evaluateCloudUpgradeLegacyMutationTx(tx *sql.Tx, mutation SyncMu
 		if strings.TrimSpace(mutation.EntityKey) != "" && strings.TrimSpace(mutation.EntityKey) != body.ID {
 			return blocked(UpgradeReasonBlockedLegacyMutationManual, fmt.Sprintf("session entity_key %q does not match payload id %q", mutation.EntityKey, body.ID)), nil
 		}
+		// A payload that dropped the directory is filled back in from the live
+		// row when there is one to copy. When there is not, the mutation is
+		// left exactly as it is: cloud validation requires only the id, and
+		// calling this a manual repair asked an operator to invent a directory
+		// for a session that was never opened in one.
 		if op == SyncOpUpsert && body.Directory == "" {
 			var directory string
 			err := tx.QueryRow(`SELECT ifnull(directory, '') FROM sessions WHERE id = ?`, body.ID).Scan(&directory)
-			if errors.Is(err, sql.ErrNoRows) || strings.TrimSpace(directory) == "" {
-				return blocked(UpgradeReasonBlockedLegacyMutationManual, "session payload directory is required and cannot be inferred from local state"), nil
-			}
-			if err != nil {
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return cloudUpgradeLegacyMutationEvaluation{}, err
 			}
-			body.Directory = strings.TrimSpace(directory)
-			changed = true
+			if directory = strings.TrimSpace(directory); directory != "" {
+				body.Directory = directory
+				changed = true
+			}
 		}
 		if !changed {
 			return cloudUpgradeLegacyMutationEvaluation{}, nil
@@ -5968,17 +5972,14 @@ func (s *Store) projectNeedsBackfill(project string) (bool, error) {
 	}
 	queries := []countQuery{
 		{
-			// Cloud validation hard-rejects a session upsert whose directory is
-			// still empty after inferring it from the live row (see
-			// evaluateCloudUpgradeLegacyMutationTx). Backfilling such a row would
-			// enqueue a mutation the server is certain to reject; since
-			// repairEnrolledProjectSyncMutations runs on every store open, the
-			// rejected mutation would be re-enqueued forever. Exclude it from
-			// both the count and the backfill — this predicate must stay
-			// identical to the SELECT in backfillSessionSyncMutationsTx.
+			// Every session of the project counts, directory or not: cloud
+			// validation requires only the id, because a session saved against
+			// an explicit project was never opened in a checkout and has no
+			// directory to report. This predicate must stay identical to the
+			// SELECT in backfillSessionSyncMutationsTx, or the fast-path skip
+			// desyncs from the write path.
 			q: `SELECT COUNT(*) FROM sessions
 			    WHERE project = ?
-			      AND trim(ifnull(directory, '')) != ''
 			      AND NOT EXISTS (
 			        SELECT 1 FROM sync_mutations sm
 			        WHERE sm.target_key = ? AND sm.entity = ? AND sm.entity_key = sessions.id AND sm.source = ? AND sm.project = ?
@@ -6099,15 +6100,13 @@ func (s *Store) repairEnrolledProjectSyncMutations() error {
 }
 
 func (s *Store) backfillSessionSyncMutationsTx(tx *sql.Tx, project string) error {
-	// See the matching comment on the session COUNT query in projectNeedsBackfill:
-	// a session with an empty directory is certain to be rejected by cloud
-	// validation, so it is excluded here too to avoid enqueueing an
-	// undeliverable mutation that would just be re-created on the next backfill.
+	// See the matching comment on the session COUNT query in
+	// projectNeedsBackfill: every session of the project is enqueued, with or
+	// without a directory, because cloud validation requires only the id.
 	rows, err := s.queryItHook(tx, `
 		SELECT id, project, directory, started_at, ended_at, summary
 		FROM sessions
 		WHERE project = ?
-		  AND trim(ifnull(directory, '')) != ''
 		  AND NOT EXISTS (
 			SELECT 1
 			FROM sync_mutations sm

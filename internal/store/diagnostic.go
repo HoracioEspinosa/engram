@@ -171,11 +171,11 @@ func ValidateSyncMutationPayload(entity, op, payload, entityKey string) SyncMuta
 
 	switch entity {
 	case SyncEntitySession:
+		// The id is the whole requirement. A directory says where the session
+		// was opened, and a session saved against an explicit project was
+		// never opened in one — the cloud accepts it without.
 		if field("id") == "" && entityKey == "" {
 			missing = append(missing, "id")
-		}
-		if op == SyncOpUpsert {
-			require("directory")
 		}
 	case SyncEntityObservation:
 		if field("sync_id") == "" && entityKey == "" {

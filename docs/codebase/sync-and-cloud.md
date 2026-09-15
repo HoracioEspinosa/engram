@@ -64,6 +64,8 @@ Business rule: **if sync is blocked, fail loudly and visibly**. No silent drops.
 
 `POST /sync/push` and `POST /sync/mutations/push` enforce the server-side push request body limit from `ENGRAM_CLOUD_MAX_PUSH_BYTES` (default 8 MiB).
 
+A pushed session requires an `id` and nothing else. `directory` records where a session was opened, and a session saved against an explicit project was never opened in a checkout — the local store writes those on purpose, so the codec, the server and the local backfill all carry them as they are. A push rejection is chunk-wide, so every required-field rule on this path has to match a rule the local schema actually enforces.
+
 For complete route details, use [DOCS.md — HTTP API Endpoints](../../DOCS.md#http-api-endpoints).
 
 ## Cloud store: `internal/cloud/cloudstore`

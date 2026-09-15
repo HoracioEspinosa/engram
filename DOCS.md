@@ -1714,7 +1714,7 @@ Note: when the cloud server returns 404 on mutation endpoints, the transport log
 
 ### Troubleshooting
 
-For a step-by-step recovery guide covering `chunk_id does not match payload content hash`, `session payload directory is required`, and the temporary missing-directory repair helper, see [Engram Cloud Troubleshooting](docs/engram-cloud/troubleshooting.md).
+For a step-by-step recovery guide covering `chunk_id does not match payload content hash`, missing observation payload fields, and the temporary repair helper, see [Engram Cloud Troubleshooting](docs/engram-cloud/troubleshooting.md).
 
 **`transport_failed` with `server_unsupported` in logs**: Older pre-mutation cloud server deployments may not implement `POST /sync/mutations/push` or `GET /sync/mutations/pull`, causing 404 responses from those endpoints. Deploy a server version that includes these routes before enabling `ENGRAM_CLOUD_AUTOSYNC=1`. Check logs for the line containing `server_unsupported`.
 

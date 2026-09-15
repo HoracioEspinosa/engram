@@ -9043,11 +9043,14 @@ func TestRepairDoesNotBackfillPromptsCloudWouldReject(t *testing.T) {
 	}
 }
 
-// TestRepairDoesNotBackfillSessionsCloudWouldReject mirrors
-// TestRepairDoesNotBackfillObservationsCloudWouldReject for sessions: a
-// session with an empty directory stays unqueued, a session with a real
-// directory is backfilled.
-func TestRepairDoesNotBackfillSessionsCloudWouldReject(t *testing.T) {
+// TestRepairBackfillsSessionsWithoutADirectory is the counterpart to
+// TestRepairDoesNotBackfillObservationsCloudWouldReject: an observation missing
+// a required field is genuinely unusable, but a session with no directory is a
+// session that was never opened in one — mem_save against an explicit project
+// creates those — and the cloud accepts it. Excluding it here left the doctor
+// reporting `ready` and repair reporting `applied: true` for a project whose
+// push kept failing on exactly those rows.
+func TestRepairBackfillsSessionsWithoutADirectory(t *testing.T) {
 	s := newTestStoreRaw(t)
 
 	if _, err := s.db.Exec(`INSERT OR IGNORE INTO sync_enrolled_projects (project) VALUES (?)`, "engram"); err != nil {
@@ -9055,9 +9058,9 @@ func TestRepairDoesNotBackfillSessionsCloudWouldReject(t *testing.T) {
 	}
 	if _, err := s.db.Exec(
 		`INSERT INTO sessions (id, project, directory, started_at) VALUES (?, ?, ?, datetime('now'))`,
-		"s-empty-directory", "engram", "", // empty directory
+		"manual-save-engram", "engram", "", // no directory: saved against a project, not a checkout
 	); err != nil {
-		t.Fatalf("insert session with empty directory: %v", err)
+		t.Fatalf("insert session without a directory: %v", err)
 	}
 	if _, err := s.db.Exec(
 		`INSERT INTO sessions (id, project, directory, started_at) VALUES (?, ?, ?, datetime('now'))`,
@@ -9066,30 +9069,67 @@ func TestRepairDoesNotBackfillSessionsCloudWouldReject(t *testing.T) {
 		t.Fatalf("insert valid session: %v", err)
 	}
 
+	needs, err := s.projectNeedsBackfill("engram")
+	if err != nil {
+		t.Fatalf("projectNeedsBackfill: %v", err)
+	}
+	if !needs {
+		t.Fatal("a project whose sessions have no mutations yet must need a backfill")
+	}
+
 	if err := s.repairEnrolledProjectSyncMutations(); err != nil {
 		t.Fatalf("repair: %v", err)
 	}
 
-	var emptyCount int
-	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM sync_mutations WHERE entity = ? AND entity_key = ? AND source = ?`,
-		SyncEntitySession, "s-empty-directory", SyncSourceLocal,
-	).Scan(&emptyCount); err != nil {
-		t.Fatalf("count empty-directory session mutations: %v", err)
-	}
-	if emptyCount != 0 {
-		t.Fatalf("expected the empty-directory session to stay unqueued, got %d mutation(s)", emptyCount)
+	for _, sessionID := range []string{"manual-save-engram", "s-valid-directory"} {
+		var count int
+		if err := s.db.QueryRow(
+			`SELECT COUNT(*) FROM sync_mutations WHERE entity = ? AND entity_key = ? AND source = ?`,
+			SyncEntitySession, sessionID, SyncSourceLocal,
+		).Scan(&count); err != nil {
+			t.Fatalf("count mutations for %s: %v", sessionID, err)
+		}
+		if count == 0 {
+			t.Fatalf("expected session %s to be backfilled, got 0 mutations", sessionID)
+		}
 	}
 
-	var validCount int
-	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM sync_mutations WHERE entity = ? AND entity_key = ? AND source = ?`,
-		SyncEntitySession, "s-valid-directory", SyncSourceLocal,
-	).Scan(&validCount); err != nil {
-		t.Fatalf("count valid session mutations: %v", err)
+	// And the repair is idempotent: the second pass must find nothing left to do,
+	// or every store open would re-enqueue the same rows forever.
+	needs, err = s.projectNeedsBackfill("engram")
+	if err != nil {
+		t.Fatalf("projectNeedsBackfill (second pass): %v", err)
 	}
-	if validCount == 0 {
-		t.Fatalf("expected the valid session to be backfilled, got 0 mutations")
+	if needs {
+		t.Fatal("the backfill left work behind: it would re-enqueue on every store open")
+	}
+}
+
+// TestCloudUpgradeDoctorDoesNotBlockOnAMissingSessionDirectory is the doctor
+// half of the same rule: a session mutation whose directory cannot be inferred
+// used to be reported as needing manual action, which is a repair no operator
+// can make — there is no real directory to name.
+func TestCloudUpgradeDoctorDoesNotBlockOnAMissingSessionDirectory(t *testing.T) {
+	s := newTestStoreRaw(t)
+
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO sync_enrolled_projects (project) VALUES (?)`, "engram"); err != nil {
+		t.Fatalf("enroll project: %v", err)
+	}
+	if _, err := s.db.Exec(`
+		INSERT INTO sync_mutations (target_key, entity, entity_key, op, payload, source, project, occurred_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+		DefaultSyncTargetKey, SyncEntitySession, "manual-save-engram", SyncOpUpsert,
+		`{"id":"manual-save-engram","project":"engram"}`, SyncSourceLocal, "engram",
+	); err != nil {
+		t.Fatalf("seed session mutation: %v", err)
+	}
+
+	report, err := s.DiagnoseCloudUpgradeLegacyMutations("engram")
+	if err != nil {
+		t.Fatalf("DiagnoseCloudUpgradeLegacyMutations: %v", err)
+	}
+	if report.BlockedCount != 0 {
+		t.Fatalf("a session with no directory is not a manual repair: %+v", report.Findings)
 	}
 }
 
