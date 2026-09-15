@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -161,6 +162,76 @@ func TestHandlerMountsDashboardAndHealth(t *testing.T) {
 	}
 	if loc := dashboardRec.Header().Get("Location"); !strings.Contains(loc, "/dashboard/login") {
 		t.Fatalf("expected redirect to /dashboard/login, got %q", loc)
+	}
+}
+
+type versionBody struct {
+	Service string `json:"service"`
+	Version string `json:"version"`
+	Go      string `json:"go"`
+}
+
+func requestVersion(t *testing.T, srv *CloudServer) versionBody {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	// No Authorization header: /version must answer like /health does.
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/version", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected /version=200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if contentType := rec.Header().Get("Content-Type"); contentType != "application/json" {
+		t.Fatalf("expected JSON content type, got %q", contentType)
+	}
+	var body versionBody
+	if err := json.Unmarshal(bytes.TrimSpace(rec.Body.Bytes()), &body); err != nil {
+		t.Fatalf("decode /version payload: %v body=%q", err, rec.Body.String())
+	}
+	return body
+}
+
+func TestHandlerVersionReportsStampedBuildWithoutAuth(t *testing.T) {
+	srv := New(&fakeStore{}, strictBearerAuth{token: "secret"}, 0, WithVersion("1.4.2"))
+
+	body := requestVersion(t, srv)
+	if body.Service != "engram-cloud" {
+		t.Fatalf("expected service=engram-cloud, got %q", body.Service)
+	}
+	if body.Version != "1.4.2" {
+		t.Fatalf("expected version=1.4.2, got %q", body.Version)
+	}
+	if body.Go != runtime.Version() {
+		t.Fatalf("expected go=%q, got %q", runtime.Version(), body.Go)
+	}
+
+	// A protected route still rejects the same unauthenticated request, so the
+	// public /version is not a hole in the auth wiring.
+	protected := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(protected, httptest.NewRequest(http.MethodGet, "/sync/pull?project=proj-a", nil))
+	if protected.Code != http.StatusUnauthorized {
+		t.Fatalf("expected /sync/pull=401 without a bearer token, got %d", protected.Code)
+	}
+}
+
+func TestHandlerVersionFallsBackToDev(t *testing.T) {
+	cases := map[string]*CloudServer{
+		"no version option": New(&fakeStore{}, fakeAuth{}, 0),
+		"blank version":     New(&fakeStore{}, fakeAuth{}, 0, WithVersion("   ")),
+	}
+	for name, srv := range cases {
+		t.Run(name, func(t *testing.T) {
+			if body := requestVersion(t, srv); body.Version != "dev" {
+				t.Fatalf("expected version=dev, got %q", body.Version)
+			}
+		})
+	}
+}
+
+func TestServerVersionFallsBackWhenFieldIsBlank(t *testing.T) {
+	// A zero-value CloudServer never went through New, so the default is not
+	// applied by construction; serverVersion still has to answer "dev".
+	srv := &CloudServer{}
+	if got := srv.serverVersion(); got != "dev" {
+		t.Fatalf("expected dev for an unset version, got %q", got)
 	}
 }
 

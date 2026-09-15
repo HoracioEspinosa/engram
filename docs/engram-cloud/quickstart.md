@@ -47,6 +47,26 @@ Open:
 
 In compose smoke mode, `/dashboard/login` redirects to `/dashboard/` (no bearer login needed).
 
+### 6) Check liveness and running build
+
+`GET /health` and `GET /version` are the two public endpoints of the cloud runtime.
+Neither requires a bearer token, so both answer before any client is configured.
+
+```bash
+curl -fsS http://127.0.0.1:18080/health
+curl -fsS http://127.0.0.1:18080/version
+```
+
+```json
+{"service":"engram-cloud","status":"ok"}
+{"go":"go1.25.0","service":"engram-cloud","version":"1.4.2"}
+```
+
+`version` is the build the binary was stamped with at release time. A deploy that
+pins an image tag reports the version of the image actually running, which is how
+you confirm a rollout landed without shell access to the host. Builds compiled
+outside the release pipeline report `dev`.
+
 ---
 
 ## Existing Project Upgrade Path (recommended)
@@ -97,6 +117,7 @@ Dokploy guidance:
 3. Configure the env vars above (with strong secrets).
 4. Expose container port `18080`.
 5. Avoid build-from-source mode unless you are actively developing Engram itself.
+6. After each rollout, hit `GET /version` on the published host to confirm which build is serving the pinned tag.
 
 ### VPS / self-hosted Compose
 
