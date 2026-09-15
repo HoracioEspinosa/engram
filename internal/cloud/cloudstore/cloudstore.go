@@ -502,19 +502,6 @@ func typedChunkRowKey(entity, entityKey string) string {
 	return strings.TrimSpace(entity) + "\x00" + strings.TrimSpace(entityKey)
 }
 
-// hasTypedChunkCollection reports whether a chunk carries this entity in an
-// array of its own (ChunkData.Sessions / .Observations / .Prompts) as well as
-// in ChunkData.Mutations. Which rows that array holds is a separate question,
-// answered by typedChunkRows.
-func hasTypedChunkCollection(entity string) bool {
-	switch strings.TrimSpace(entity) {
-	case store.SyncEntitySession, store.SyncEntityObservation, store.SyncEntityPrompt:
-		return true
-	default:
-		return false
-	}
-}
-
 func insertMaterializedMutations(ctx context.Context, tx *sql.Tx, entries []MutationEntry) error {
 	for _, entry := range entries {
 		payload := entry.Payload

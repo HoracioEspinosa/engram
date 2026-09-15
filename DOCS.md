@@ -549,7 +549,7 @@ Inspect or replay the `sync_apply_deferred` queue.
 - `engram cloud upgrade status --project <project>` — show upgrade stage/class/reason
 - `engram cloud upgrade rollback --project <project>` — restore pre-upgrade local snapshot before `bootstrap_verified`; blocked afterwards
 - `engram cloud repair materialize-mutations --project <project> (--dry-run|--apply)` — explicit server-side Postgres repair that backfills existing `cloud_mutations` into compatible `cloud_chunks` without deleting remote data
-- `engram cloud repair materialize-chunks [--project <project>] (--dry-run|--apply)` — the opposite direction: writes into `cloud_mutations` the entity mutations that only ever reached `cloud_chunks`, so a pulling replica can see them. Without `--project` it covers every project that has chunks. `engram cloud serve` runs the same pass at start
+- `engram cloud repair materialize-chunks [--project <project>] (--dry-run|--apply)` — the opposite direction: writes into `cloud_mutations` the mutations that only ever reached `cloud_chunks`, so a pulling replica can see them. That includes the sessions, observations and prompts a chunk's typed collection never carried. Reports `materialized_by_entity`. Without `--project` it covers every project that has chunks. `engram cloud serve` runs the same pass at start
 - `engram cloud bootstrap admin --username <name> [--email <email>] [--grant-project <project>]... [--issue-token [name]]` — create the first managed admin (see [Managed users, tokens, and CLI bootstrap](#managed-users-tokens-and-cli-bootstrap))
 
 Cloud auth token is provided at runtime via `ENGRAM_CLOUD_TOKEN` (not by a dedicated CLI subcommand).

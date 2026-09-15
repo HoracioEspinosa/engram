@@ -332,11 +332,15 @@ Rows counted under `blocked=` cannot be journaled at all: the cloud upsert contr
 
 ---
 
-## The dashboard shows a project card the pulling replica never receives
+## A row the client acked never appears in the pull stream
 
-An entity with no typed collection — `project_card`, `project_alias`, `task`, `evidence`, `benchmark`, `task_link`, `observation_ref`, `relation` — travels only as a mutation inside the chunk. Chunks pushed before the server materialized those entities still hold theirs, and `GET /sync/mutations/pull` reads `cloud_mutations`, so a replica pulling the stream sees nothing while the dashboard, which counts chunks, shows the data as present. Re-pushing does not help: the server already holds the chunk.
+`GET /sync/mutations/pull` reads `cloud_mutations`, so anything that reached `cloud_chunks` and stopped there is invisible to every replica while the dashboard, which counts chunks, shows it as present. Re-pushing does not help: the server already holds the chunk. Two kinds of row end up there.
 
-`engram cloud serve` drains that backlog at start. To run it against a live database without restarting:
+An entity with no typed collection — `project_card`, `project_alias`, `task`, `evidence`, `benchmark`, `task_link`, `observation_ref`, `relation` — travels only as a mutation inside the chunk, and chunks pushed before the server materialized those entities still hold theirs.
+
+A session, observation or prompt can end up there too. A chunk's typed collections hold what a timestamp window selected; its mutation array holds what the journal owes the server, and the second is not a subset of the first. Chunks written while ingestion deduplicated by entity instead of by row dropped every one of those the collection did not happen to carry — so the counts are lopsided, such as 56 session mutations against 20 typed sessions in one chunk.
+
+`engram cloud serve` drains both backlogs at start and logs what it recovered per entity. To run it against a live database without restarting:
 
 ```bash
 ENGRAM_DATABASE_URL='postgres://...' engram cloud repair materialize-chunks --dry-run

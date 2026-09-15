@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -214,11 +215,12 @@ func backfillAllowedProjectMutationChunks(ctx context.Context, cs *cloudstore.Cl
 	return nil
 }
 
-// materializeStoredChunkMutations drains, on every server start, the entity
-// mutations that reached cloud_chunks before the push materialized them. Those
-// entities have no typed collection, so the pull stream — which reads
-// cloud_mutations — never carried them, and no amount of re-pushing from a
-// client brings back a chunk the server already holds.
+// materializeStoredChunkMutations drains, on every server start, the mutations
+// that reached cloud_chunks and never cloud_mutations: the entities that have
+// no typed collection at all, and the sessions, observations and prompts a
+// chunk's typed collection did not happen to carry. The pull stream reads
+// cloud_mutations, and no amount of re-pushing from a client brings back a
+// chunk the server already holds.
 func materializeStoredChunkMutations(ctx context.Context, cs *cloudstore.CloudStore) error {
 	reports, err := cs.MaterializeAllChunkMutations(ctx, true)
 	if err != nil {
@@ -229,11 +231,30 @@ func materializeStoredChunkMutations(ctx context.Context, cs *cloudstore.CloudSt
 			continue
 		}
 		fmt.Fprintf(os.Stderr,
-			"engram cloud repair materialize-chunks: project=%s chunks_scanned=%d candidates=%d already_present=%d materialized=%d\n",
+			"engram cloud repair materialize-chunks: project=%s chunks_scanned=%d candidates=%d already_present=%d materialized=%d by_entity=%s\n",
 			report.Project, report.ChunksScanned, report.Candidates, report.AlreadyPresent, report.Materialized,
+			formatMaterializedByEntity(report.MaterializedByEntity),
 		)
 	}
 	return nil
+}
+
+// formatMaterializedByEntity renders the per-entity recovery in a stable order,
+// so two server starts that recovered the same rows print the same line.
+func formatMaterializedByEntity(counts map[string]int) string {
+	if len(counts) == 0 {
+		return "none"
+	}
+	entities := make([]string, 0, len(counts))
+	for entity := range counts {
+		entities = append(entities, entity)
+	}
+	sort.Strings(entities)
+	parts := make([]string, 0, len(entities))
+	for _, entity := range entities {
+		parts = append(parts, fmt.Sprintf("%s=%d", entity, counts[entity]))
+	}
+	return strings.Join(parts, ",")
 }
 
 var runUpgradeBootstrap = func(s *store.Store, project string, cc *cloudConfig) (*engramsync.UpgradeBootstrapResult, error) {
