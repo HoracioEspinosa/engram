@@ -78,6 +78,8 @@ Enrollment normalizes a project name to lower case (`store.NormalizeProject`); t
 
 `internal/cloud/cloudstore/cloudstore.go` persists to Postgres, materializes chunks/mutations, and feeds dashboard read models. If an organizational policy matters, state lives here or is enforced from `cloudserver` against data from here.
 
+A chunk carries three entities in typed arrays — `sessions`, `observations`, `prompts` — and everything else only inside `mutations`. `WriteChunk` materializes the typed three from their arrays and every other entity from its mutation, so `relation` and all seven engram-projects entities reach `cloud_mutations`. That table is what `ListMutationsSince` serves, so an entity missing from it is invisible to every pulling replica while the pushing client still acks the chunk — a silent, reason-code-less hole. The predicate is the complement (`hasTypedChunkCollection`) rather than a list of entities to carry, so a newly replicated entity is carried by default.
+
 `ENGRAM_CLOUD_ALLOWED_PROJECTS=*` is a wildcard, never a project name: nothing is ever stored, authorized or materialized under `*`. Every consumer of the allowlist asks `cloud.AllowsAllProjects` before it iterates the list — the project authorizer, the dashboard scope, and the startup materialization in `cmd/engram/cloud.go`, which expands the wildcard through `CloudStore.ListMutationProjects`. Iterating the list literally means running per-project work against one project that holds nothing, which is invisible: no error, and only the dashboard's `cloud_chunks` count reads short of `cloud_mutations`.
 
 ## engram-projects replication: `internal/store/projects_sync.go`

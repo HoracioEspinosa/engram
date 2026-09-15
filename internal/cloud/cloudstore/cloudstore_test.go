@@ -593,6 +593,118 @@ func TestWriteChunkMaterializesRelationMutationIntoCloudMutations(t *testing.T) 
 	}
 }
 
+// TestWriteChunkMaterializesProjectEntitiesIntoCloudMutations covers the rest
+// of the entities that have no typed collection in the chunk. Sessions,
+// observations and prompts are materialized from their own arrays; everything
+// else travels only as a mutation, and only `relation` was being carried
+// across. A card, an alias, a task or a piece of evidence therefore landed in
+// cloud_chunks and never in cloud_mutations, so a replica that pulls — which
+// reads cloud_mutations — received none of them and acked the push anyway,
+// with no reason_code to show for it.
+func TestWriteChunkMaterializesProjectEntitiesIntoCloudMutations(t *testing.T) {
+	cs := openTestCloudStore(t)
+	ctx := context.Background()
+	project := uniqueCloudstoreTestProject("chunk-project-entities")
+	cleanupCloudstoreProject(t, cs, project)
+
+	cardPayload := `{\"slug\":\"` + project + `\",\"sync_id\":\"card-1\",\"display_name\":\"Card\",` +
+		`\"default_branch\":\"master\",\"jira_project\":\"PROJ\",\"graph_path\":\"graphify-out/graph.json\",` +
+		`\"created_at\":\"2026-04-29 10:00:00\",\"updated_at\":\"2026-04-29 10:00:00\"}`
+	taskPayload := `{\"sync_id\":\"task-1\",\"title\":\"t\",\"kind\":\"bugfix\",\"state\":\"open\",` +
+		`\"slug\":\"mantenimiento-del-fork\",\"created_at\":\"2026-04-29 10:00:00\",\"updated_at\":\"2026-04-29 10:00:00\"}`
+	aliasPayload := `{\"alias\":\"card_1\",\"sync_id\":\"card-1\",\"slug\":\"` + project + `\",` +
+		`\"source\":\"manual\",\"created_at\":\"2026-04-29 10:00:00\",\"updated_at\":\"2026-04-29 10:00:00\"}`
+
+	payload, err := chunkcodec.CanonicalizeForProject([]byte(`{
+		"mutations":[
+			{"entity":"project_card","entity_key":"card-1","op":"upsert","payload":"`+cardPayload+`"},
+			{"entity":"task","entity_key":"task-1","op":"upsert","payload":"`+taskPayload+`"},
+			{"entity":"project_alias","entity_key":"card_1","op":"upsert","payload":"`+aliasPayload+`"}
+		]
+	}`), project)
+	if err != nil {
+		t.Fatalf("canonicalize chunk: %v", err)
+	}
+	chunkID := chunkIDFromPayload(payload)
+
+	if err := cs.WriteChunk(ctx, project, chunkID, "tester", "2026-04-29T10:03:00Z", payload); err != nil {
+		t.Fatalf("WriteChunk: %v", err)
+	}
+
+	mutations, _, _, err := cs.ListMutationsSince(ctx, 0, 100, []string{project})
+	if err != nil {
+		t.Fatalf("ListMutationsSince: %v", err)
+	}
+	want := map[string]string{
+		store.SyncEntityProjectCard:  "card-1",
+		store.SyncEntityTask:         "task-1",
+		store.SyncEntityProjectAlias: "card_1",
+	}
+	found := make(map[string]int, len(want))
+	for _, m := range mutations {
+		if key, ok := want[m.Entity]; ok && m.EntityKey == key {
+			found[m.Entity]++
+			if m.Project != project || m.Op != store.SyncOpUpsert {
+				t.Fatalf("unexpected %s mutation: %+v", m.Entity, m)
+			}
+		}
+	}
+	for entity := range want {
+		if found[entity] == 0 {
+			t.Fatalf("%s never reached cloud_mutations, so no replica can pull it: %+v", entity, mutations)
+		}
+	}
+
+	// Replay stays idempotent, exactly as it does for relation.
+	if err := cs.WriteChunk(ctx, project, chunkID, "tester", "2026-04-29T10:03:00Z", payload); err != nil {
+		t.Fatalf("replay WriteChunk: %v", err)
+	}
+	after, _, _, err := cs.ListMutationsSince(ctx, 0, 100, []string{project})
+	if err != nil {
+		t.Fatalf("ListMutationsSince after replay: %v", err)
+	}
+	replayed := make(map[string]int, len(want))
+	for _, m := range after {
+		if key, ok := want[m.Entity]; ok && m.EntityKey == key {
+			replayed[m.Entity]++
+		}
+	}
+	for entity := range want {
+		if replayed[entity] != 1 {
+			t.Fatalf("expected exactly one %s row after replay, got %d", entity, replayed[entity])
+		}
+	}
+}
+
+// TestMaterializedChunkMutationsCoversEveryProjectsEntity keeps the rule
+// honest as entities are added: the store's own list of engram-projects
+// entities is the source of truth, not a second list copied into this package.
+func TestMaterializedChunkMutationsCoversEveryProjectsEntity(t *testing.T) {
+	chunk := engramsync.ChunkData{}
+	for _, entity := range store.ProjectsSyncEntities() {
+		chunk.Mutations = append(chunk.Mutations, store.SyncMutation{
+			Entity:    entity,
+			EntityKey: "key-" + entity,
+			Op:        store.SyncOpUpsert,
+			Payload:   `{"sync_id":"key-` + entity + `"}`,
+		})
+	}
+
+	entries, err := materializedChunkMutations("proj-a", chunk)
+	if err != nil {
+		t.Fatalf("materializedChunkMutations: %v", err)
+	}
+	materialized := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		materialized[entry.Entity] = struct{}{}
+	}
+	for _, entity := range store.ProjectsSyncEntities() {
+		if _, ok := materialized[entity]; !ok {
+			t.Fatalf("entity %q has no typed chunk collection and was not materialized either", entity)
+		}
+	}
+}
+
 func TestWriteChunkMaterializesMutationsAndIsReplayIdempotent(t *testing.T) {
 	cs := openTestCloudStore(t)
 	project := "test-chunk-materialize-" + strings.ReplaceAll(time.Now().UTC().Format("20060102150405.000000000"), ".", "-")
