@@ -99,6 +99,9 @@ var newCloudRuntime = func(cfg cloud.Config) (cloudServerRuntime, error) {
 	}
 	options := []cloudserver.Option{
 		cloudserver.WithHost(cfg.BindHost),
+		// The binary's stamped version travels into the server so GET /version
+		// answers with the build a deployment is actually running.
+		cloudserver.WithVersion(version),
 		cloudserver.WithProjectAuthorizer(projectAuth),
 		cloudserver.WithAdminIdentityStore(cs),
 		cloudserver.WithManagedTokenHasher(managedHasher),

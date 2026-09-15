@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -79,6 +80,7 @@ type CloudServer struct {
 	dashboardAdmin      string
 	port                int
 	host                string
+	version             string
 	maxPushBodyBytes    int64
 	mux                 *http.ServeMux
 	syncStatus          dashboard.SyncStatusProvider
@@ -86,6 +88,7 @@ type CloudServer struct {
 }
 
 const defaultHost = "127.0.0.1"
+const defaultVersion = "dev"
 const defaultMaxPushBodyBytes int64 = 8 * 1024 * 1024
 const maxDashboardLoginBodyBytes int64 = 16 * 1024
 const dashboardSessionCookieName = "engram_dashboard_token"
@@ -95,6 +98,17 @@ var ErrDashboardSessionCodecRequired = errors.New("dashboard session codec is re
 func WithSyncStatusProvider(provider dashboard.SyncStatusProvider) Option {
 	return func(s *CloudServer) {
 		s.syncStatus = provider
+	}
+}
+
+// WithVersion records the build the binary was stamped with so GET /version can
+// report it. An empty or blank value keeps the "dev" default, which is what an
+// unstamped local build reports.
+func WithVersion(version string) Option {
+	return func(s *CloudServer) {
+		if trimmed := strings.TrimSpace(version); trimmed != "" {
+			s.version = trimmed
+		}
 	}
 }
 
@@ -151,6 +165,7 @@ func New(store ChunkStore, authSvc Authenticator, port int, opts ...Option) *Clo
 		auth:             authSvc,
 		port:             port,
 		host:             defaultHost,
+		version:          defaultVersion,
 		maxPushBodyBytes: defaultMaxPushBodyBytes,
 		syncStatus: staticStatusProvider{status: dashboard.SyncStatus{
 			Phase:         "degraded",
@@ -202,6 +217,7 @@ func (s *CloudServer) pushBodyLimit() int64 {
 func (s *CloudServer) routes() {
 	s.mux = http.NewServeMux()
 	s.mux.HandleFunc("GET /health", s.handleHealth)
+	s.mux.HandleFunc("GET /version", s.handleVersion)
 	var dashboardStore dashboard.DashboardStore
 	if store, ok := s.store.(dashboard.DashboardStore); ok {
 		dashboardStore = store
@@ -410,6 +426,25 @@ func dashboardCookieSecure(r *http.Request) bool {
 
 func (s *CloudServer) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	jsonResponse(w, http.StatusOK, map[string]any{"status": "ok", "service": "engram-cloud"})
+}
+
+// handleVersion reports the build the running server was compiled from. It is
+// public like /health because an operator pinning an image tag needs to confirm
+// which build answers the port before any token exists, and the payload carries
+// no tenant data.
+func (s *CloudServer) handleVersion(w http.ResponseWriter, _ *http.Request) {
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"service": "engram-cloud",
+		"version": s.serverVersion(),
+		"go":      runtime.Version(),
+	})
+}
+
+func (s *CloudServer) serverVersion() string {
+	if trimmed := strings.TrimSpace(s.version); trimmed != "" {
+		return trimmed
+	}
+	return defaultVersion
 }
 
 func (s *CloudServer) isDashboardAdmin(r *http.Request) bool {
