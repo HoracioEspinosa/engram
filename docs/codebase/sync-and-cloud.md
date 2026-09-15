@@ -95,6 +95,12 @@ The rule is cloud-only, and `internal/sync/pushcontract.go` says why: a local fi
 
 `engram cloud upgrade doctor` prints `unjournaled_rows` and `unjournaled_detail`, and never answers `ready` while either number is above zero.
 
+### The doctor answers with the push contract, not with a copy of it
+
+Both counters above only see rows with **no** journal entry. A row that was journaled and later lost a field the cloud requires has one, so nothing counted it — and it still travels in the next chunk, where a chunk-wide 400 strands every other pending row of the project. That is how the doctor came to report `ready` for projects whose push was being rejected.
+
+`ValidateChunkRows`, `ChunkRowRejections` and `PendingPushRowRejections` in `internal/sync/pushcontract.go` are the one definition of the row contract. `cloudserver` accepts a push with it, the exporter keeps rows out with it, and the doctor predicts with it: `PendingPushRowRejections` runs the exporter's own selection (`filterByPendingMutations`) and validates what comes out, so `ready` means the next push is accepted. Anything not pending is not offered and does not block, and a tombstone the collections drop does not block either. Rejections print as `push_contract_rejections` plus one `push_contract_row` line per row, named by `sync_id` so the row can be completed or removed — the only two things that clear it. Restating the field list in any of the three callers puts the doctor back to guessing.
+
 ## Cloud store: `internal/cloud/cloudstore`
 
 `internal/cloud/cloudstore/cloudstore.go` persists to Postgres, materializes chunks/mutations, and feeds dashboard read models. If an organizational policy matters, state lives here or is enforced from `cloudserver` against data from here.

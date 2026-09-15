@@ -500,6 +500,27 @@ func cmdCloudUpgradeDoctor(cfg store.Config) {
 		}
 	}
 
+	// The gap counters only see rows with no journal entry at all. A row that
+	// was journaled and later lost a field the cloud requires is counted
+	// nowhere, still travels in the next chunk, and still answers 400 — and a
+	// push rejection is chunk-wide, so it strands every other pending row of
+	// the project. Build the chunk the next push would carry and validate it
+	// with the function the server accepts a push with, so `ready` means the
+	// push goes through instead of predicting it from a different rule.
+	rejections, err := engramsync.PendingPushRowRejections(s, project)
+	if err != nil {
+		fatal(fmt.Errorf("cloud upgrade doctor push contract check: %w", err))
+		return
+	}
+	if report.Status == engramsync.UpgradeStatusReady && len(rejections) > 0 {
+		report = engramsync.UpgradeDiagnosisReport{
+			Status:  engramsync.UpgradeStatusBlocked,
+			Class:   engramsync.UpgradeReasonClassBlocked,
+			Code:    store.UpgradeReasonBlockedPushContractRows,
+			Message: fmt.Sprintf("manual-action-required: project %q has %d row(s) the cloud push contract rejects: %s", project, len(rejections), rejections[0]),
+		}
+	}
+
 	stage := store.UpgradeStageDoctorBlocked
 	if report.Status == engramsync.UpgradeStatusReady {
 		stage = store.UpgradeStageDoctorReady
@@ -519,6 +540,10 @@ func cmdCloudUpgradeDoctor(cfg store.Config) {
 	fmt.Printf("message: %s\n", report.Message)
 	fmt.Printf("unjournaled_rows: %d\n", gaps.Total())
 	fmt.Printf("unjournaled_detail: %s\n", gaps.Summary())
+	fmt.Printf("push_contract_rejections: %d\n", len(rejections))
+	for _, rejection := range rejections {
+		fmt.Printf("push_contract_row: %s\n", rejection)
+	}
 }
 
 func cloudUpgradePolicyDenied(s *store.Store, project string) (bool, error) {

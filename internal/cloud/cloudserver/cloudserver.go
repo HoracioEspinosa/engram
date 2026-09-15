@@ -699,59 +699,14 @@ func validateImportableChunkPayload(payload []byte) (engramsync.ChunkData, error
 	if err := json.Unmarshal(payload, &chunk); err != nil {
 		return engramsync.ChunkData{}, fmt.Errorf("chunk schema: %w", err)
 	}
-	if err := validateDirectChunkArrayEntries(chunk); err != nil {
+	// The same function the exporter filters with and the upgrade doctor
+	// predicts with. Restating the field list here is how the doctor came to
+	// answer `ready` for a project whose next push this rejects.
+	if err := engramsync.ValidateChunkRows(chunk); err != nil {
 		return engramsync.ChunkData{}, err
 	}
 	return chunk, nil
 
-}
-
-func validateDirectChunkArrayEntries(chunk engramsync.ChunkData) error {
-	// The id is the identity and is required. The directory is not: it records
-	// where a session was opened, and a session saved against an explicit
-	// project — mem_save with a project name — was never opened in a checkout.
-	// The local store writes those legitimately, so demanding a directory here
-	// rejected the whole chunk over rows that had nothing wrong with them.
-	for i, session := range chunk.Sessions {
-		if strings.TrimSpace(session.ID) == "" {
-			return fmt.Errorf("sessions[%d].id is required", i)
-		}
-	}
-
-	for i, observation := range chunk.Observations {
-		if strings.TrimSpace(observation.SyncID) == "" {
-			return fmt.Errorf("observations[%d].sync_id is required", i)
-		}
-		if strings.TrimSpace(observation.SessionID) == "" {
-			return fmt.Errorf("observations[%d].session_id is required", i)
-		}
-		if strings.TrimSpace(observation.Type) == "" {
-			return fmt.Errorf("observations[%d].type is required", i)
-		}
-		if strings.TrimSpace(observation.Title) == "" {
-			return fmt.Errorf("observations[%d].title is required", i)
-		}
-		if strings.TrimSpace(observation.Content) == "" {
-			return fmt.Errorf("observations[%d].content is required", i)
-		}
-		if strings.TrimSpace(observation.Scope) == "" {
-			return fmt.Errorf("observations[%d].scope is required", i)
-		}
-	}
-
-	for i, prompt := range chunk.Prompts {
-		if strings.TrimSpace(prompt.SyncID) == "" {
-			return fmt.Errorf("prompts[%d].sync_id is required", i)
-		}
-		if strings.TrimSpace(prompt.SessionID) == "" {
-			return fmt.Errorf("prompts[%d].session_id is required", i)
-		}
-		if strings.TrimSpace(prompt.Content) == "" {
-			return fmt.Errorf("prompts[%d].content is required", i)
-		}
-	}
-
-	return nil
 }
 
 func validateChunkSessionReferences(chunk engramsync.ChunkData, knownSessionIDs map[string]struct{}) error {
