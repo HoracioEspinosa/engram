@@ -74,7 +74,9 @@ For a direct registry-based deploy example, use:
 ### Cloud runtime: `engram cloud serve`
 - `GET /health`
 - `GET /version`
-- `GET /sync/pull`, `POST /sync/push`
+- `GET /sync/pull` (a project's chunk manifest), `GET /sync/pull/{chunkID}` (one chunk, by id — the segment is not a cursor)
+- `POST /sync/push`, `POST /sync/mutations/push`
+- `GET /sync/mutations/pull?since_seq=<n>&limit=<n>` (the global materialized mutation stream; `project` is ignored there)
 - `GET /dashboard/*` (browser surfaces)
 
 ---

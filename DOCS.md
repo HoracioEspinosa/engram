@@ -549,6 +549,7 @@ Inspect or replay the `sync_apply_deferred` queue.
 - `engram cloud upgrade status --project <project>` — show upgrade stage/class/reason
 - `engram cloud upgrade rollback --project <project>` — restore pre-upgrade local snapshot before `bootstrap_verified`; blocked afterwards
 - `engram cloud repair materialize-mutations --project <project> (--dry-run|--apply)` — explicit server-side Postgres repair that backfills existing `cloud_mutations` into compatible `cloud_chunks` without deleting remote data
+- `engram cloud repair materialize-chunks [--project <project>] (--dry-run|--apply)` — the opposite direction: writes into `cloud_mutations` the entity mutations that only ever reached `cloud_chunks`, so a pulling replica can see them. Without `--project` it covers every project that has chunks. `engram cloud serve` runs the same pass at start
 - `engram cloud bootstrap admin --username <name> [--email <email>] [--grant-project <project>]... [--issue-token [name]]` — create the first managed admin (see [Managed users, tokens, and CLI bootstrap](#managed-users-tokens-and-cli-bootstrap))
 
 Cloud auth token is provided at runtime via `ENGRAM_CLOUD_TOKEN` (not by a dedicated CLI subcommand).
@@ -642,6 +643,26 @@ ENGRAM_DATABASE_URL='postgres://...' engram cloud repair materialize-mutations -
 ```
 
 The backfill is project-scoped, non-destructive, and idempotent: it inserts missing compatible chunks and leaves existing `cloud_mutations` and chunks in place.
+
+For the opposite gap — entities that reached `cloud_chunks` before the push materialized them, so `GET /sync/mutations/pull` never carried them — `engram cloud serve` runs a pass over every stored chunk at start. Run it on demand with:
+
+```bash
+ENGRAM_DATABASE_URL='postgres://...' engram cloud repair materialize-chunks --dry-run
+ENGRAM_DATABASE_URL='postgres://...' engram cloud repair materialize-chunks --apply
+```
+
+Add `--project <project>` to scope it. It is idempotent on entity, key and op, so a later push carrying a newer payload is still applied as an update and never duplicated.
+
+### Rows that never entered the sync journal
+
+`engram cloud status` reporting zero pending mutations means the journal is drained, not that every row reached the cloud: a row with no `sync_mutations` entry never enters a push at all. `engram cloud upgrade doctor --project <project>` reports them:
+
+```
+unjournaled_rows: 12
+unjournaled_detail: sessions=0 observations=11 prompts=1 relations=0 blocked=0
+```
+
+Doctor never answers `ready` while that count is above zero. `engram cloud enroll <project>` (safe to re-run on an already-enrolled project) and `engram cloud upgrade repair --project <project> --apply` both journal every row a push can carry. Rows counted under `blocked=` are ones the cloud upsert contract rejects — an observation missing `session_id`, `type`, `title`, `content` or `scope`, a prompt missing `session_id` or `content` — and no backfill can deliver them: complete or delete the row.
 
 `engram cloud serve` also runs this materialization repair automatically for every configured `ENGRAM_CLOUD_ALLOWED_PROJECTS` entry at startup. The explicit repair command remains available for operator verification, dry-runs, and re-running a project after an upgrade.
 
