@@ -138,8 +138,6 @@ type UpsertProjectCardParams struct {
 	Tags             *string
 }
 
-// UpsertProjectCard creates or updates a project_cards row. It is idempotent:
-// omitted fields are never overwritten on an existing card.
 // DefaultJiraProject is the Jira project key applied when a card does not
 // carry one. It is read from the environment so a deployment is not tied to
 // one Jira project: set ENGRAM_JIRA_PROJECT to your own key.
@@ -150,6 +148,10 @@ func DefaultJiraProject() string {
 	return "PROJ"
 }
 
+// UpsertProjectCard creates or updates a project_cards row. It is idempotent
+// in both directions: a field the caller omits is never overwritten, and a
+// field whose value the card already carries is not rewritten either, so a
+// repeated upsert leaves updated_at where it was and journals nothing.
 func (s *Store) UpsertProjectCard(p UpsertProjectCardParams) (ProjectCard, bool, error) {
 	existing, err := s.GetProjectCard(p.Slug)
 	created := false
@@ -206,28 +208,40 @@ func (s *Store) UpsertProjectCard(p UpsertProjectCardParams) (ProjectCard, bool,
 			return ProjectCard{}, false, err
 		}
 	} else {
-		sets := []string{"updated_at = ?"}
-		args := []any{now}
-		addSet := func(col string, v *string) {
-			if v == nil {
+		// Only the columns whose value actually differs are written. An
+		// upsert that restates what the card already says is a no-op, and a
+		// no-op must not move updated_at or journal a mutation: under
+		// last-writer-wins a fresh updated_at carrying no change outranks a
+		// real edit another replica made a moment earlier, and the rollout
+		// scripts that re-run the same upsert would keep producing cloud
+		// traffic for cards nobody touched.
+		var sets []string
+		var args []any
+		addSet := func(col string, v *string, current string) {
+			if v == nil || *v == current {
 				return
 			}
 			sets = append(sets, col+" = ?")
 			args = append(args, *v)
 		}
-		addSet("display_name", p.DisplayName)
-		addSet("repo_url", p.RepoURL)
-		addSet("default_branch", p.DefaultBranch)
-		addSet("jira_project", p.JiraProject)
-		addSet("jira_component", p.JiraComponent)
-		addSet("knowledge_hub_path", p.KnowledgeHubPath)
-		addSet("graph_path", p.GraphPath)
-		addSet("owner", p.Owner)
-		addSet("kind", p.Kind)
-		addSet("description", p.Description)
-		addSet("icon", p.Icon)
-		addSet("color", p.Color)
-		addSet("tags", p.Tags)
+		addSet("display_name", p.DisplayName, existing.DisplayName)
+		addSet("repo_url", p.RepoURL, derefString(existing.RepoURL))
+		addSet("default_branch", p.DefaultBranch, existing.DefaultBranch)
+		addSet("jira_project", p.JiraProject, existing.JiraProject)
+		addSet("jira_component", p.JiraComponent, derefString(existing.JiraComponent))
+		addSet("knowledge_hub_path", p.KnowledgeHubPath, derefString(existing.KnowledgeHubPath))
+		addSet("graph_path", p.GraphPath, existing.GraphPath)
+		addSet("owner", p.Owner, derefString(existing.Owner))
+		addSet("kind", p.Kind, existing.Kind)
+		addSet("description", p.Description, derefString(existing.Description))
+		addSet("icon", p.Icon, derefString(existing.Icon))
+		addSet("color", p.Color, derefString(existing.Color))
+		addSet("tags", p.Tags, derefString(existing.Tags))
+		if len(sets) == 0 {
+			return existing, false, nil
+		}
+		sets = append([]string{"updated_at = ?"}, sets...)
+		args = append([]any{now}, args...)
 		args = append(args, p.Slug)
 		if err := s.withTx(func(tx *sql.Tx) error {
 			if _, err := s.execHook(tx,
@@ -240,7 +254,6 @@ func (s *Store) UpsertProjectCard(p UpsertProjectCardParams) (ProjectCard, bool,
 			return ProjectCard{}, false, err
 		}
 	}
-	_ = existing
 
 	card, err := s.GetProjectCard(p.Slug)
 	if err != nil {

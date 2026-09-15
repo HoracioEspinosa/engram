@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -39,6 +40,97 @@ func TestUpsertProjectCard_CreateAndIdempotentUpdate(t *testing.T) {
 	}
 	if card2.RepoURL == nil || *card2.RepoURL != "https://example/repo" {
 		t.Fatalf("expected repo_url updated, got %+v", card2.RepoURL)
+	}
+}
+
+// cardMutationSeqs lists the sequence numbers of the project_card mutations
+// waiting in the outbox. Counting rows is not enough: the enqueue supersedes
+// the pending mutation of the same row, so a journalled no-op leaves the
+// count at one and only the sequence number betrays it.
+func cardMutationSeqs(t *testing.T, s *Store) []int64 {
+	t.Helper()
+	rows, err := s.db.Query(
+		`SELECT seq FROM sync_mutations WHERE entity = ? ORDER BY seq`, SyncEntityProjectCard)
+	if err != nil {
+		t.Fatalf("list card mutations: %v", err)
+	}
+	defer rows.Close()
+	var seqs []int64
+	for rows.Next() {
+		var seq int64
+		if err := rows.Scan(&seq); err != nil {
+			t.Fatalf("scan mutation: %v", err)
+		}
+		seqs = append(seqs, seq)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("list card mutations: %v", err)
+	}
+	return seqs
+}
+
+// TestUpsertProjectCardIsIdempotent pins that restating what a card already
+// says costs nothing. A rollout script re-running the same upsert used to move
+// updated_at and journal a sync mutation for every card it touched — and under
+// last-writer-wins a fresh updated_at carrying no change outranks a real edit
+// another replica made just before it.
+func TestUpsertProjectCardIsIdempotent(t *testing.T) {
+	t.Setenv(projectsSyncEnvVar, "1")
+	s := newProjectsSchemaTestStore(t)
+
+	params := UpsertProjectCardParams{
+		Slug:        "nextcloud",
+		DisplayName: strp("Nextcloud"),
+		RepoURL:     strp("git@example:clarodrive.git"),
+		JiraProject: strp("CDBS"),
+		Owner:       strp("dev-nextcloud"),
+		Kind:        strp("repo"),
+		Description: strp("Nextcloud server and its apps"),
+	}
+	if _, created, err := s.UpsertProjectCard(params); err != nil || !created {
+		t.Fatalf("UpsertProjectCard: created=%v, err=%v", created, err)
+	}
+
+	// Backdate the row so a rewrite cannot hide behind the one-second
+	// resolution updated_at is stored at.
+	const backdated = "2020-01-01 00:00:00"
+	if _, err := s.db.Exec(`UPDATE project_cards SET updated_at = ? WHERE slug = ?`, backdated, "nextcloud"); err != nil {
+		t.Fatalf("backdate the card: %v", err)
+	}
+	before := cardMutationSeqs(t, s)
+	if len(before) == 0 {
+		t.Fatal("creating the card journalled nothing; the outbox probe is not measuring anything")
+	}
+
+	card, created, err := s.UpsertProjectCard(params)
+	if err != nil {
+		t.Fatalf("second UpsertProjectCard: %v", err)
+	}
+	if created {
+		t.Error("the second upsert reported the card as created")
+	}
+	if card.UpdatedAt != backdated {
+		t.Errorf("updated_at moved to %q on an upsert that changed nothing, want %q", card.UpdatedAt, backdated)
+	}
+	if after := cardMutationSeqs(t, s); !slices.Equal(after, before) {
+		t.Errorf("the outbox holds %v after an upsert that changed nothing, want %v", after, before)
+	}
+
+	// The guard must not swallow a real edit.
+	changed := params
+	changed.Owner = strp("dev-platform")
+	edited, _, err := s.UpsertProjectCard(changed)
+	if err != nil {
+		t.Fatalf("UpsertProjectCard (real edit): %v", err)
+	}
+	if edited.Owner == nil || *edited.Owner != "dev-platform" {
+		t.Fatalf("owner = %v, want dev-platform", edited.Owner)
+	}
+	if edited.UpdatedAt == backdated {
+		t.Error("updated_at stayed backdated across a real edit")
+	}
+	if after := cardMutationSeqs(t, s); slices.Equal(after, before) {
+		t.Error("a real edit journalled no mutation")
 	}
 }
 

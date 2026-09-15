@@ -6,7 +6,7 @@ Two commands, one letter apart, do different things:
 
 | Command | Scope |
 | --- | --- |
-| `engram projects …` (plural) | Project **names**: `list`, `consolidate`, `prune` |
+| `engram projects …` (plural) | Project **names**: `list`, `merge`, `consolidate`, `prune` |
 | `engram project …` (singular) | One project's **engram-projects data**: card, tasks, evidence, runbooks, graph, context |
 
 ## Which project a command acts on
@@ -90,6 +90,65 @@ engram project nextcloud card --graph-summary --json \
 | `unknown_theme` | No theme answers to that name (`engram theme`) |
 | `invalid_theme` | The document is not a theme: a missing role, a bad name, a short gradient |
 | `invalid_palette` | The palette parses but fails validation; `--force` stores it anyway |
+| `merge_into_self` | `projects merge` was given a source that is already the target |
+| `merge_failed` | The store refused the merge (`projects merge`) |
+
+## `engram projects` — the plural family
+
+`engram projects …` acts on project **names**, not on one project's data. It shares the `--json` contract above: `--json` prints machine-readable output on stdout, an error prints `{"error","code"}` and exits non-zero.
+
+### `projects list`
+
+Lists every project the store holds memories for, with its card details when it has a card.
+
+```
+$ engram projects list
+Projects (2):
+  nextcloud                       412 obs    18 sessions    7 prompts
+  drive-argentina                  96 obs     4 sessions    1 prompt
+```
+
+`--json` prints an array — one object per project, in the same order — rather than the envelope the singular commands use, because there is no single project in scope:
+
+```json
+[
+  {
+    "name": "nextcloud",
+    "slug": "nextcloud",
+    "display_name": "Nextcloud server + apps amx_*",
+    "parent": "clarodrive",
+    "kind": "repo",
+    "counts": { "observations": 412, "sessions": 18, "prompts": 7 }
+  }
+]
+```
+
+`slug`, `display_name`, `parent` and `kind` come from the project card and are absent for a project that has none. `counts` is always present; `directories` lists the session directories the project was seen in, when there are any.
+
+### `projects merge <from>[,<from>…] <to>`
+
+Moves every row of each source project into `<to>`, in one transaction, across every table with a `project` column — the same store call `mem_merge_projects` makes. This is the command `alias add` points at when a name already holds memories of its own.
+
+```
+$ engram projects merge nextcloud_00 nextcloud
+Merged 1 source(s) into "nextcloud":
+  observations: 118 moved
+  project_cards: 1 moved
+  sessions: 4 moved
+  tasks: 2 moved
+```
+
+`<from>` also takes a comma-separated list, so a cluster of names that drifted apart collapses in one call. A source name is matched byte-for-byte, which is what makes `Engram` and `engram` mergeable; `<to>` is normalized the way every write path normalizes a project name.
+
+The command exits non-zero when a source is not backed by a card or memories (`unknown_project`), when a source is already the target (`merge_into_self`), and when the store refuses the merge (`merge_failed`). A merge that moves nothing is never reported as success.
+
+| Flag | Effect |
+| --- | --- |
+| `--json` | JSON envelope, with the full `MergeResult` — `table_rows_moved`, `table_rows_dropped`, `sources_merged`, `sources_skipped` — as its `result` |
+
+### `projects consolidate` / `projects prune`
+
+Interactive helpers that find similar names (`consolidate`) and empty projects (`prune`). Both accept `--dry-run`; `consolidate` also accepts `--all`. They are prompts, not scripts: a rollout drives `projects merge` instead.
 
 ## Subcommands
 
@@ -472,6 +531,8 @@ evidence:   14 new · 0 known · 0 skipped
 benchmarks: 3 new · 0 known · 1 skipped
 nothing was written; re-run with --apply
 ```
+
+The plan counts what the apply writes. Evidence is deduplicated by `(task_sync_id, sha256)` and benchmarks by `(task_sync_id, name, metric, captured_at)`, in the plan exactly as in the apply — including the duplicates the run itself would fold together, so the same bytes filed under two paths count once in both.
 
 ```bash
 engram project import-vault ~/.clarodrive --project nextcloud --apply --json
