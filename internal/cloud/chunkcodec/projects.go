@@ -213,7 +213,54 @@ func trimmedPtr(v *string) *string {
 // the caller must match. The project is always overwritten with the chunk's
 // project: the server derives scope from the authenticated push, so a payload
 // claiming a different project would be a scope escape, not a hint.
+//
+// A rejection aborts the whole chunk, so the error names the entity and the row
+// it came from. The caller only knows the index of the mutation inside a chunk
+// that may hold hundreds, and an index is not something an operator can look up
+// in the local database.
 func normalizeProjectsMutationPayload(entity, op, payload, project string) (string, string, error) {
+	normalized, entityKey, err := validateProjectsMutationPayload(entity, op, payload, project)
+	if err != nil {
+		return "", "", fmt.Errorf("%s %s: %w", strings.TrimSpace(entity), projectsPayloadIdentity(entity, payload), err)
+	}
+	return normalized, entityKey, nil
+}
+
+// projectsPayloadIdentity names the offending row the way its own entity does,
+// in the same order entity_key is derived: an alias is known by its alias, a
+// link and a reference by the pair they join, and everything else by its
+// sync_id. A payload too broken to decode has no identity to report, and says
+// so rather than inventing one.
+func projectsPayloadIdentity(entity, payload string) string {
+	var body struct {
+		SyncID            string `json:"sync_id"`
+		Alias             string `json:"alias"`
+		TaskSyncID        string `json:"task_sync_id"`
+		ObservationSyncID string `json:"observation_sync_id"`
+	}
+	if err := DecodeSyncMutationPayload(payload, &body); err != nil {
+		return "(undecodable payload)"
+	}
+	var candidates []string
+	switch strings.TrimSpace(entity) {
+	case store.SyncEntityProjectAlias:
+		candidates = []string{body.Alias, body.SyncID}
+	case store.SyncEntityTaskLink:
+		candidates = []string{body.TaskSyncID, body.ObservationSyncID}
+	case store.SyncEntityObservationRef:
+		candidates = []string{body.ObservationSyncID}
+	default:
+		candidates = []string{body.SyncID, body.TaskSyncID, body.ObservationSyncID, body.Alias}
+	}
+	for _, candidate := range candidates {
+		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+			return trimmed
+		}
+	}
+	return "(no identity in payload)"
+}
+
+func validateProjectsMutationPayload(entity, op, payload, project string) (string, string, error) {
 	switch strings.TrimSpace(entity) {
 	case store.SyncEntityProjectCard:
 		var body mutationProjectCardPayload
@@ -258,6 +305,7 @@ func normalizeProjectsMutationPayload(entity, op, payload, project string) (stri
 		body.State = strings.TrimSpace(body.State)
 		body.JiraKey = trimmedPtr(body.JiraKey)
 		body.SDDChange = trimmedPtr(body.SDDChange)
+		body.Slug = trimmedPtr(body.Slug)
 		if body.SyncID == "" {
 			return "", "", fmt.Errorf("task payload sync_id is required")
 		}
@@ -274,8 +322,12 @@ func normalizeProjectsMutationPayload(entity, op, payload, project string) (stri
 			if strings.TrimSpace(body.UpdatedAt) == "" {
 				return "", "", fmt.Errorf("task payload updated_at is required for upsert")
 			}
-			if body.JiraKey == nil && body.SDDChange == nil {
-				return "", "", fmt.Errorf("task payload requires jira_key or sdd_change")
+			// The same identity rule the tasks table enforces: a Jira key, an
+			// SDD change, or a slug of its own. The vault importer writes tasks
+			// that carry only the third, and the wire contract has to accept
+			// the rows the store is willing to hold.
+			if body.JiraKey == nil && body.SDDChange == nil && body.Slug == nil {
+				return "", "", fmt.Errorf("task payload requires jira_key, sdd_change or slug")
 			}
 		}
 		body.Project = project

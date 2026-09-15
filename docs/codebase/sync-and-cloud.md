@@ -88,6 +88,8 @@ Five entities travel besides the upstream four: `project_card`, `task`, `evidenc
 
 Ties on any clock are broken by the SHA-256 of that group's own fields, never of the whole payload — the local side of a comparison may already carry another group's values merged in from a third replica.
 
+**The wire contract accepts exactly the rows the store accepts.** `internal/cloud/chunkcodec/projects.go` keeps its own copy of the payload structs, so its required-field rules have to be read against the store's CHECK constraints rather than assumed to follow them. A task is identified by `jira_key`, `sdd_change` **or** `slug` — the vault importer writes tasks carrying only the last one. A rejection here aborts the whole chunk, not just the offending mutation, so the error names the entity and the row's own identity (`sync_id`, or the alias for `project_alias`, or the observation for `observation_ref`) instead of only its index inside the chunk.
+
 A projects mutation whose parent row has not arrived is parked in `sync_apply_deferred` and the chunk still succeeds; upstream entities keep their strict behavior. Parked rows are keyed by entity plus payload digest, because several distinct payloads for one task can be in flight and keying them by entity alone loses whichever arrived first.
 
 The push splits each project's batch in two: upstream entities first, engram-projects second. A cloud image that predates these entities rejects the second chunk with `400 unsupported mutation`; the client keeps them pending under `reason_code = unsupported_entity` and the first chunk stays acked.
