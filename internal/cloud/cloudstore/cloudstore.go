@@ -426,23 +426,32 @@ func materializedChunkMutations(project string, chunk engramsync.ChunkData) ([]M
 		entries = append(entries, MutationEntry{Project: project, Entity: store.SyncEntityPrompt, EntityKey: entityKey, Op: store.SyncOpUpsert, Payload: payload})
 	}
 
-	// Session, observation and prompt mutations are already materialized from
-	// the typed collections above, so they are skipped here to avoid duplicate
-	// cloud_mutations rows. Every other entity — relation, and each of the
-	// engram-projects entities: cards, aliases, tasks, evidence, benchmarks,
-	// task links, observation references — has no typed collection at all and
-	// travels only as a mutation. Skipping those meant they reached
+	// A mutation is skipped only when this same chunk already materialized that
+	// exact row from a typed collection above. The dedupe is per row, never per
+	// entity: the two halves of a chunk are built from different sources — the
+	// typed collections from a timestamp window over the local tables, the
+	// mutation array from the journal — so the collection is not a superset of
+	// the array. A session, observation or prompt the window left out travels
+	// only as a mutation, and dropping it by entity meant it reached
 	// cloud_chunks and never cloud_mutations, which is what ListMutationsSince
-	// reads: a pulling replica received none of them, and the pushing client
-	// acked the chunk with nothing to report.
+	// reads: the pushing client acked the chunk and no pulling replica ever saw
+	// the row. Every other entity — relation, and each of the engram-projects
+	// entities: cards, aliases, tasks, evidence, benchmarks, task links,
+	// observation references — has no typed collection at all, so nothing here
+	// ever covers it and it is always carried.
+	//
+	// Order is the array's own, which is the journal's seq order, so the
+	// cloud_mutations seq a replica replays keeps the order the writes happened
+	// in and last-writer-wins still resolves to the last write.
+	typed := typedChunkRows(chunk)
 	for i, mutation := range chunk.Mutations {
 		entity := strings.TrimSpace(mutation.Entity)
-		if hasTypedChunkCollection(entity) {
-			continue
-		}
 		entityKey := strings.TrimSpace(mutation.EntityKey)
 		if entityKey == "" {
 			return nil, fmt.Errorf("cloudstore: materialize chunk: mutations[%d].entity_key is required for %s", i, entity)
+		}
+		if _, covered := typed[typedChunkRowKey(entity, entityKey)]; covered {
+			continue
 		}
 		op := strings.TrimSpace(mutation.Op)
 		if op == "" {
@@ -458,23 +467,39 @@ func materializedChunkMutations(project string, chunk engramsync.ChunkData) ([]M
 	return entries, nil
 }
 
-// hasTypedChunkCollection reports whether a chunk carries this entity in an
-// array of its own (ChunkData.Sessions / .Observations / .Prompts) as well as
-// in ChunkData.Mutations. Those three are materialized from the array, so
-// materializing the mutation too would duplicate the row; every other entity is
-// materialized from the mutation, because that is the only place it appears.
+// typedChunkRows indexes the rows a chunk materializes from its typed
+// collections — ChunkData.Sessions, .Observations and .Prompts — so a mutation
+// for one of those entities is skipped only when its own row is in there.
 //
-// The predicate is deliberately the complement rather than a list of the
-// entities that do need materializing: a new replicated entity has no typed
-// collection, so it is carried by default instead of being silently dropped
-// until someone remembers to extend a second list.
-func hasTypedChunkCollection(entity string) bool {
-	switch strings.TrimSpace(entity) {
-	case store.SyncEntitySession, store.SyncEntityObservation, store.SyncEntityPrompt:
-		return true
-	default:
-		return false
+// Membership is the question, not the entity: a chunk carries whichever rows
+// its export window selected, and the mutations it owes the server are drawn
+// from the journal instead, so the same chunk routinely holds session
+// mutations for sessions no collection of its carries.
+func typedChunkRows(chunk engramsync.ChunkData) map[string]struct{} {
+	rows := make(map[string]struct{}, len(chunk.Sessions)+len(chunk.Observations)+len(chunk.Prompts))
+	for _, session := range chunk.Sessions {
+		if key := strings.TrimSpace(session.ID); key != "" {
+			rows[typedChunkRowKey(store.SyncEntitySession, key)] = struct{}{}
+		}
 	}
+	for _, observation := range chunk.Observations {
+		if key := strings.TrimSpace(observation.SyncID); key != "" {
+			rows[typedChunkRowKey(store.SyncEntityObservation, key)] = struct{}{}
+		}
+	}
+	for _, prompt := range chunk.Prompts {
+		if key := strings.TrimSpace(prompt.SyncID); key != "" {
+			rows[typedChunkRowKey(store.SyncEntityPrompt, key)] = struct{}{}
+		}
+	}
+	return rows
+}
+
+// typedChunkRowKey names one row inside a single chunk. It carries no op: the
+// typed collections are always upserts, and a delete mutation for the same key
+// is a different fact that still has to be materialized.
+func typedChunkRowKey(entity, entityKey string) string {
+	return strings.TrimSpace(entity) + "\x00" + strings.TrimSpace(entityKey)
 }
 
 func insertMaterializedMutations(ctx context.Context, tx *sql.Tx, entries []MutationEntry) error {

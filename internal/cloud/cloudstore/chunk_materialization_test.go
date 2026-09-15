@@ -2,6 +2,8 @@ package cloudstore
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -135,6 +137,109 @@ func TestMaterializeChunkMutationsSkipsTypedCollections(t *testing.T) {
 	}
 	if len(mutations) != 1 || mutations[0].Entity != store.SyncEntitySession {
 		t.Fatalf("expected the single session upsert the chunk write already materialized, got %+v", mutations)
+	}
+}
+
+// TestMaterializeChunkMutationsRecoversRowsOlderChunksLeftOut is the repair
+// side of the ingestion gap.
+//
+// Chunks written while the dedupe was per entity kept every session,
+// observation and prompt mutation their typed collection did not happen to
+// carry. Those rows are in cloud_chunks and nowhere else, the client that
+// pushed them acked them, and no client can re-push a chunk the server already
+// holds, so only a pass over stored chunks gets them back.
+func TestMaterializeChunkMutationsRecoversRowsOlderChunksLeftOut(t *testing.T) {
+	cs := openTestCloudStore(t)
+	ctx := context.Background()
+	project := uniqueCloudstoreTestProject("chunk-materialization-gap")
+	cleanupCloudstoreProject(t, cs, project)
+
+	// The shape of a real chunk: 56 session mutations, 20 of which the typed
+	// collection carries. Those 20 were materialized when the chunk landed;
+	// the other 36 were dropped.
+	const (
+		mutationSessions = 56
+		typedSessions    = 20
+	)
+	sessions := make([]string, 0, typedSessions)
+	mutations := make([]string, 0, mutationSessions)
+	for i := 1; i <= mutationSessions; i++ {
+		sessionID := fmt.Sprintf("sess-%02d", i)
+		mutations = append(mutations,
+			`{"entity":"session","entity_key":"`+sessionID+`","op":"upsert","project":"`+project+`","payload":"{\"id\":\"`+sessionID+`\"}"}`)
+		if i > typedSessions {
+			continue
+		}
+		sessions = append(sessions,
+			`{"id":"`+sessionID+`","project":"`+project+`","directory":"/work/x","started_at":"2026-04-29T10:00:00Z"}`)
+		insertLegacyCloudMutation(t, cs, project, store.SyncEntitySession, sessionID, store.SyncOpUpsert, `{"id":"`+sessionID+`"}`)
+	}
+	insertRawCloudChunk(t, cs, project, "legacy-typed-gap", `{
+		"sessions": [`+strings.Join(sessions, ",")+`],
+		"observations": [],
+		"prompts": [],
+		"mutations": [`+strings.Join(mutations, ",")+`]
+	}`)
+
+	countStreamSessions := func(t *testing.T, stage string) int {
+		t.Helper()
+		total := 0
+		var sinceSeq int64
+		for {
+			page, hasMore, latestSeq, err := cs.ListMutationsSince(ctx, sinceSeq, 100, []string{project})
+			if err != nil {
+				t.Fatalf("ListMutationsSince %s: %v", stage, err)
+			}
+			for _, mutation := range page {
+				if mutation.Entity == store.SyncEntitySession {
+					total++
+				}
+			}
+			if !hasMore {
+				return total
+			}
+			sinceSeq = latestSeq
+		}
+	}
+
+	if before := countStreamSessions(t, "before"); before != typedSessions {
+		t.Fatalf("expected only the typed sessions in the stream before the pass, got %d", before)
+	}
+
+	dryRun, err := cs.MaterializeChunkMutations(ctx, project, false)
+	if err != nil {
+		t.Fatalf("MaterializeChunkMutations dry run: %v", err)
+	}
+	if dryRun.Candidates != mutationSessions-typedSessions || dryRun.Materialized != 0 {
+		t.Fatalf("unexpected dry-run report: %+v", dryRun)
+	}
+
+	report, err := cs.MaterializeChunkMutations(ctx, project, true)
+	if err != nil {
+		t.Fatalf("MaterializeChunkMutations apply: %v", err)
+	}
+	if report.Materialized != mutationSessions-typedSessions {
+		t.Fatalf("expected the sessions the typed collection never carried, got %+v", report)
+	}
+	if report.MaterializedByEntity[store.SyncEntitySession] != mutationSessions-typedSessions {
+		t.Fatalf("the report must say what it recovered per entity, got %+v", report.MaterializedByEntity)
+	}
+	if after := countStreamSessions(t, "after"); after != mutationSessions {
+		t.Fatalf("expected every session mutation the chunk carried in the stream, got %d", after)
+	}
+
+	second, err := cs.MaterializeChunkMutations(ctx, project, true)
+	if err != nil {
+		t.Fatalf("MaterializeChunkMutations second pass: %v", err)
+	}
+	if second.Materialized != 0 || second.AlreadyPresent != mutationSessions-typedSessions {
+		t.Fatalf("expected the second pass to be a no-op, got %+v", second)
+	}
+	if len(second.MaterializedByEntity) != 0 {
+		t.Fatalf("a no-op pass recovered nothing, so it reports nothing: %+v", second.MaterializedByEntity)
+	}
+	if final := countStreamSessions(t, "final"); final != mutationSessions {
+		t.Fatalf("expected no duplicates after a second pass, got %d", final)
 	}
 }
 

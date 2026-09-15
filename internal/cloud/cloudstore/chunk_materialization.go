@@ -19,18 +19,25 @@ type ChunkMutationMaterializationReport struct {
 	AlreadyPresent int    `json:"already_present"`
 	Invalid        int    `json:"invalid"`
 	Materialized   int    `json:"materialized"`
+	// MaterializedByEntity breaks Materialized down per entity, because the
+	// size of the recovery is not the interesting part: which entity was being
+	// dropped says which rule dropped it.
+	MaterializedByEntity map[string]int `json:"materialized_by_entity,omitempty"`
 }
 
 // MaterializeChunkMutations walks the stored chunks of a project and writes into
-// cloud_mutations every entity mutation that has no typed collection of its own
-// and is not there yet.
+// cloud_mutations every mutation the chunk's own typed collections did not
+// already materialize and that is not there yet.
 //
-// A push materializes those entities as it writes the chunk, but only for chunks
-// written after that behavior existed. Everything a client pushed earlier still
-// sits inside cloud_chunks alone — project cards, aliases, tasks, evidence,
-// relations — and ListMutationsSince reads cloud_mutations, so a replica pulling
-// the stream receives none of it while the dashboard, which counts chunks, shows
-// the data as present. This pass closes that gap without touching chunk storage.
+// A push materializes those mutations as it writes the chunk, but only under the
+// rule in force when the chunk landed. Chunks written earlier left behind both
+// the entities that have no typed collection at all — project cards, aliases,
+// tasks, evidence, relations — and the sessions, observations and prompts their
+// typed collection did not happen to carry, which the per-entity dedupe treated
+// as covered. Either way the row sits inside cloud_chunks alone while
+// ListMutationsSince reads cloud_mutations, so a replica pulling the stream
+// receives none of it and no client can re-push a chunk the server already
+// holds. This pass closes that gap without touching chunk storage.
 //
 // It is idempotent: a mutation already present for the project under the same
 // entity, key and op is left alone, so running it on every server start costs a
@@ -72,14 +79,21 @@ func (cs *CloudStore) MaterializeChunkMutations(ctx context.Context, project str
 			report.Invalid++
 			continue
 		}
+		// Same rule ingestion uses: a mutation is covered only when this chunk's
+		// typed collections carry that exact row, never because some other row
+		// of the same entity is in there.
+		typed := typedChunkRows(chunk)
 		for _, mutation := range chunk.Mutations {
 			entity := strings.TrimSpace(mutation.Entity)
-			if entity == "" || hasTypedChunkCollection(entity) {
+			if entity == "" {
 				continue
 			}
 			entityKey := strings.TrimSpace(mutation.EntityKey)
 			if entityKey == "" {
 				report.Invalid++
+				continue
+			}
+			if _, covered := typed[typedChunkRowKey(entity, entityKey)]; covered {
 				continue
 			}
 			op := strings.TrimSpace(mutation.Op)
@@ -118,6 +132,10 @@ func (cs *CloudStore) MaterializeChunkMutations(ctx context.Context, project str
 		}
 		return report, nil
 	}
+	materializedByEntity := make(map[string]int, 4)
+	for _, entry := range missing {
+		materializedByEntity[strings.TrimSpace(entry.Entity)]++
+	}
 
 	tx, err := cs.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -136,6 +154,7 @@ func (cs *CloudStore) MaterializeChunkMutations(ctx context.Context, project str
 	}
 	tx = nil
 	report.Materialized = len(missing)
+	report.MaterializedByEntity = materializedByEntity
 	cs.invalidateDashboardReadModel()
 	return report, nil
 }
