@@ -14,6 +14,9 @@
 #     is still chrome — the tab bar, or the top edge of the panel covering it.
 #     A frame taller than its terminal is cut from the top by the renderer, so
 #     that pair is what "the layout does not break at 24 rows" measures;
+#   * the same scene captured twice is the same picture. The workspace
+#     remembers what a session does to it, so every capture starts from the
+#     rows cleared rather than from whatever the scene before it left behind;
 #   * every colour the frame emits, foreground and background alike, is a role
 #     of the palette the run asked for. That is both the proof that the right
 #     palette drew the frame — the koi palettes share no colour — and the
@@ -110,6 +113,27 @@ ACTIVE_THEME=""
 
 kill_session() {
   in_container tmux kill-session -t "$1" >/dev/null 2>&1 || true
+}
+
+# SETTINGS_THE_RUN_WRITES are the rows a capture session leaves behind: the tab
+# it was last on, the width the scoped-Memory scene narrows to, and the icon
+# vocabulary the Settings tab would cycle. The theme is deliberately not among
+# them — use_theme sets it, and it is what the run is capturing.
+SETTINGS_THE_RUN_WRITES="'tui.last_tab', 'tui.memory_scope', 'tui.icons'"
+
+# reset_remembered_state puts the workspace's own memory back where every scene
+# starts from.
+#
+# A capture session is a user session like any other: the scene that narrows
+# Memory writes the width down, and every scene after it — in this run and in
+# the next — then opens at whatever the last one left behind. The tab bar
+# carries that width in Memory's own title, so the same scene captured twice
+# produces two different pictures. Clearing the rows rather than setting them
+# is what makes each capture a capture of the workspace's default.
+reset_remembered_state() {
+  in_container sqlite3 /data/engram.db \
+    "DELETE FROM settings WHERE key IN (${SETTINGS_THE_RUN_WRITES});" ||
+    fail "could not clear the remembered TUI settings"
 }
 
 # hex_to_triplet turns "#ff9e5e" into "255;158;94", which is how a true-colour
@@ -355,6 +379,7 @@ shot() {
   local stderr_path="/out/tui/${label}.stderr"
 
   kill_session "$session"
+  reset_remembered_state
 
   # COLORTERM is what tells lipgloss the terminal takes 24-bit colour. Without
   # it the palette is quantised to 256 indexed colours on its way out and the
