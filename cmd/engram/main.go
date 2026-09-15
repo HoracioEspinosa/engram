@@ -1009,16 +1009,23 @@ const mouseSettingKey = "tui.mouse"
 
 // tuiProgramOptions are the Bubble Tea options `engram tui` opens with.
 //
+// The alternate screen is an option rather than a command the model returns
+// from Init, and that is the whole difference: the program writes its first
+// frame before it processes its first message, so a switch asked for as a
+// command arrives one frame late and leaves that frame printed in the shell
+// the user comes back to.
+//
 // Cell motion is what makes a click land on a cell rather than on a pixel the
 // program cannot reason about, and it is the mode the tab bar's hitboxes and
 // the wheel both assume. It is a separate function from cmdTUI so the decision
 // can be tested: a tea.ProgramOption is an opaque closure, so what a test can
 // check is that the option is there at all, or that it is not.
 func tuiProgramOptions(mouse bool) []tea.ProgramOption {
-	if !mouse {
-		return nil
+	options := []tea.ProgramOption{tea.WithAltScreen()}
+	if mouse {
+		options = append(options, tea.WithMouseCellMotion())
 	}
-	return []tea.ProgramOption{tea.WithMouseCellMotion()}
+	return options
 }
 
 // resolveTUIMouse answers whether the workspace opens with the mouse enabled:

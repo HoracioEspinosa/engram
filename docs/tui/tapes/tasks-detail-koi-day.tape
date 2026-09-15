@@ -5,11 +5,10 @@
 # here would drift from the palette the binary actually resolves.
 #
 # The window is 1200x900 rather than the 1200x700 a still frame would
-# suggest, and the padding is cut to 20px, because the workspace is drawn
-# inline rather than into the alternate screen: the shell prompt and the typed
-# command stay in the buffer above it and push the frame up, so a window sized
-# to the frame loses its tab bar off the top. The extra rows are what keep the
-# whole workspace in the picture.
+# suggest, and the padding is cut to 20px. The workspace runs in the alternate
+# screen, so the shell prompt and the typed command are not in the picture —
+# what the extra rows buy is a terminal tall enough for the screens that have
+# the most to say, drawn at the font size below.
 #
 # The .gif named by Output is a by-product. VHS records into the file Output
 # names and writes a Screenshot out of the recording, so a tape that only

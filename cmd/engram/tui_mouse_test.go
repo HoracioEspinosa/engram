@@ -15,22 +15,44 @@ func TestTheMouseIsOnByDefault(t *testing.T) {
 	if !resolveTUIMouse(nil) {
 		t.Fatalf("the mouse is off with no flag and no store")
 	}
-	if got := len(tuiProgramOptions(true)); got != 1 {
-		t.Fatalf("tuiProgramOptions(true) returned %d options, want 1", got)
+	if got := len(tuiProgramOptions(true)); got != 2 {
+		t.Fatalf("tuiProgramOptions(true) returned %d options, want the mouse and the alternate screen", got)
 	}
 }
 
-// TestNoMouseDropsTheProgramOption is the escape hatch: enabling the mouse
-// takes the terminal's own selection away, so the flag has to reach all the
-// way to the program options rather than only to a field nothing reads.
-func TestNoMouseDropsTheProgramOption(t *testing.T) {
+// TestNoMouseDropsTheMouseProgramOption is the escape hatch: enabling the
+// mouse takes the terminal's own selection away, so the flag has to reach all
+// the way to the program options rather than only to a field nothing reads.
+func TestNoMouseDropsTheMouseProgramOption(t *testing.T) {
 	withArgs(t, "engram", "tui", "--no-mouse")
 
 	if resolveTUIMouse(nil) {
 		t.Fatalf("--no-mouse left the mouse on")
 	}
-	if got := len(tuiProgramOptions(resolveTUIMouse(nil))); got != 0 {
-		t.Fatalf("--no-mouse still registered %d program options", got)
+	if got := len(tuiProgramOptions(resolveTUIMouse(nil))); got != 1 {
+		t.Fatalf("--no-mouse registered %d program options, want the alternate screen alone", got)
+	}
+}
+
+// TestTheAlternateScreenIsNotOptional: the workspace opens into the alternate
+// screen buffer whatever else is turned on or off.
+//
+// It has to be a program option and not a command the model returns from Init.
+// bubbletea writes the first frame before it processes the first message, so a
+// switch asked for as a command arrives one frame late — and that frame stays
+// printed in the shell the user comes back to, a whole workspace deep.
+func TestTheAlternateScreenIsNotOptional(t *testing.T) {
+	for _, mouse := range []bool{true, false} {
+		withArgs(t, "engram", "tui")
+		// The mouse accounts for exactly one option, so the count with it off
+		// is what says the alternate screen is still there on its own.
+		want := 1
+		if mouse {
+			want = 2
+		}
+		if got := len(tuiProgramOptions(mouse)); got != want {
+			t.Fatalf("tuiProgramOptions(%v) returned %d options, want %d", mouse, got, want)
+		}
 	}
 }
 

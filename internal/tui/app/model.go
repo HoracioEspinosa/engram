@@ -185,10 +185,9 @@ func (m Model) withStyles(s theme.Styles) Model {
 	return m
 }
 
-// Init loads every tab's first screen and switches the terminal to the
-// alternate screen buffer.
+// Init loads every tab's first screen.
 func (m Model) Init() tea.Cmd {
-	cmds := make([]tea.Cmd, 0, len(registered)+3)
+	cmds := make([]tea.Cmd, 0, len(registered)+2)
 	for _, id := range registered {
 		if tab := m.tab(id); tab != nil {
 			cmds = append(cmds, tab.Init())
@@ -203,7 +202,6 @@ func (m Model) Init() tea.Cmd {
 	if m.tree.open {
 		cmds = append(cmds, loadTree(m.tree.reader))
 	}
-	cmds = append(cmds, tea.EnterAltScreen)
 	return tea.Batch(cmds...)
 }
 
