@@ -6,6 +6,7 @@ import (
 
 	"github.com/HoracioEspinosa/engram/internal/setup"
 	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui/shared"
 	"github.com/HoracioEspinosa/engram/internal/version"
 )
 
@@ -27,7 +28,7 @@ func TestRenderObservationListItem(t *testing.T) {
 		true,
 	)
 
-	if !strings.Contains(line, "▸") {
+	if !strings.Contains(line, shared.RowCursor(m.styles, true)) {
 		t.Fatal("selected item should include cursor marker")
 	}
 	if !strings.Contains(line, "Title here") {
@@ -75,6 +76,7 @@ func TestViewSearchResultsAndScrollIndicator(t *testing.T) {
 		{Observation: store.Observation{ID: 3, Type: "bugfix", Title: "three", Content: "c", CreatedAt: "2026-01-01"}},
 		{Observation: store.Observation{ID: 4, Type: "bugfix", Title: "four", Content: "d", CreatedAt: "2026-01-01"}},
 	}
+	m.SearchTotal = len(m.SearchResults)
 
 	out := m.viewSearchResults()
 	if !strings.Contains(out, "Search: \"needle\"") {
@@ -85,6 +87,7 @@ func TestViewSearchResultsAndScrollIndicator(t *testing.T) {
 	}
 
 	m.SearchResults = nil
+	m.SearchTotal = 0
 	out = m.viewSearchResults()
 	if !strings.Contains(out, "No memories found") {
 		t.Fatal("empty result state missing")
@@ -172,6 +175,7 @@ func TestViewDashboardSearchAndRecent(t *testing.T) {
 		{ID: 3, Type: "bugfix", Title: "three", Content: "c", CreatedAt: "2026-01-01"},
 		{ID: 4, Type: "bugfix", Title: "four", Content: "d", CreatedAt: "2026-01-01"},
 	}
+	m.RecentTotal = len(m.RecentObservations)
 	out = m.viewRecent()
 	if !strings.Contains(out, "Recent Observations") {
 		t.Fatal("recent view should render title")
@@ -181,6 +185,7 @@ func TestViewDashboardSearchAndRecent(t *testing.T) {
 	}
 
 	m.RecentObservations = nil
+	m.RecentTotal = 0
 	out = m.viewRecent()
 	if !strings.Contains(out, "No observations yet") {
 		t.Fatal("recent view should render empty state")
@@ -258,7 +263,10 @@ func TestViewObservationDetailTimelineSessionsAndSessionDetail(t *testing.T) {
 	}
 
 	summary := "session summary"
-	m.Height = 14
+	// One row short of fitting all seven: the frame gives a row back now
+	// that the footer is a single status bar line, so the window that used
+	// to overflow at 14 rows needs 13.
+	m.Height = 13
 	m.Sessions = []store.SessionSummary{
 		{ID: "s1", Project: "engram", StartedAt: "2026-01-01", Summary: &summary, ObservationCount: 2},
 		{ID: "s2", Project: "engram", StartedAt: "2026-01-02", ObservationCount: 1},
@@ -321,8 +329,11 @@ func TestViewSessionsDeletePrompt(t *testing.T) {
 	if !strings.Contains(out, "session-1") || !strings.Contains(out, "engram") {
 		t.Fatal("delete prompt should render selected session context")
 	}
-	if !strings.Contains(out, "[y] Delete") || !strings.Contains(out, "[n] Cancel") || !strings.Contains(out, "[esc] Cancel") {
-		t.Fatal("delete prompt should render y/n/esc options")
+	// The prompt's own keys are declared, not printed: the root renders the
+	// footer from Help(), so the prompt cannot advertise a key it does not
+	// answer.
+	if got := helpKeys(m.Help()); got != "y delete • n/esc cancel" {
+		t.Fatalf("delete prompt declares %q, want the y/n/esc options", got)
 	}
 
 	m.SessionDeleteState = SessionDeleteStateDeleting
@@ -401,9 +412,8 @@ func TestViewSetupRemainingBranches(t *testing.T) {
 
 	m.SetupResult = nil
 	m.SetupError = ""
-	out = m.viewSetup()
-	if !strings.Contains(out, "enter/esc back to dashboard") {
-		t.Fatal("setup done without result/error should still render return help")
+	if got := helpKeys(m.Help()); got != "esc/q/enter back to dashboard" {
+		t.Fatalf("setup done without result/error declares %q, want the way back", got)
 	}
 }
 
@@ -424,8 +434,8 @@ func TestViewSetupAllowlistPrompt(t *testing.T) {
 		if !strings.Contains(out, "settings.json") {
 			t.Fatal("prompt should mention settings.json")
 		}
-		if !strings.Contains(out, "[y] Yes") || !strings.Contains(out, "[n] No") {
-			t.Fatal("prompt should show y/n options")
+		if got := helpKeys(m.Help()); got != "y allowlist • n/esc skip" {
+			t.Fatalf("allowlist prompt declares %q, want the y/n options", got)
 		}
 	})
 

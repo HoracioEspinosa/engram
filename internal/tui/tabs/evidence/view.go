@@ -6,6 +6,9 @@ import (
 
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/shared"
+
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
+	"github.com/charmbracelet/bubbles/spinner"
 )
 
 // View renders the active screen followed by the transient banners the tab
@@ -21,23 +24,24 @@ func (m Model) View() string {
 		content = m.viewList()
 	}
 
-	if m.ErrorMsg != "" {
-		content += "\n" + m.styles.Error.Render("Error: "+m.ErrorMsg)
+	if notice := shared.Error(m.ErrorMsg); !notice.Empty() {
+		content += "\n" + notice.Render(m.styles)
 	}
-	if m.CopyFeedback != "" {
-		content += "\n" + m.styles.Notice.Render(m.CopyFeedback)
+	if notice := shared.Info(m.CopyFeedback); !notice.Empty() {
+		content += "\n" + notice.Render(m.styles)
 	}
 	return content
 }
 
-// ─── List (S6) ───────────────────────────────────────────────────────────────
+// ─── List ────────────────────────────────────────────────────────────────────
 
 func (m Model) viewList() string {
 	var b strings.Builder
 
+	sep := m.styles.Icons.Separator()
 	b.WriteString(m.styles.SectionHeading.Render(fmt.Sprintf(
-		"  Evidence (%d shown · task: %s · %s)",
-		len(m.Items), taskFilterLabel(m.Items, m.Filter), attachedFilterLabel(m.Filter))))
+		"  Evidence (%d shown%stask: %s%s%s)",
+		len(m.Items), sep, taskFilterLabel(m.Items, m.Filter), sep, attachedFilterLabel(m.Filter))))
 	b.WriteString("\n")
 
 	if len(m.Items) == 0 {
@@ -49,15 +53,43 @@ func (m Model) viewList() string {
 		if end > len(m.Items) {
 			end = len(m.Items)
 		}
+		widths := evidenceColumns(m.masterWidth())
 		for i := m.Scroll; i < end; i++ {
-			b.WriteString(m.viewEvidenceRow(m.Items[i], i == m.Cursor))
+			b.WriteString(m.viewEvidenceRow(m.Items[i], i == m.Cursor, widths))
 		}
-		b.WriteString(shared.RangeIndicator(m.styles, "files", m.Scroll+1, end, len(m.Items)))
+		b.WriteString(shared.RangeIndicator(m.styles, "files", m.Filter.Offset+m.Scroll+1, m.Filter.Offset+end, m.Total))
 		b.WriteString("\n")
 	}
 
-	b.WriteString(m.styles.Help.Render(
-		"  j/k move • enter detail • c copy path • o open file • t filter task • a toggle attached • r refresh • esc dashboard"))
+	return shared.SplitPanes(m.styles, m.regions(), b.String(), m.viewRowDetail())
+}
+
+// viewRowDetail is the right-hand pane at the split breakpoint: the fields of
+// the row under the cursor the list's columns had no room for.
+func (m Model) viewRowDetail() string {
+	if m.Cursor < 0 || m.Cursor >= len(m.Items) {
+		return ""
+	}
+	item := m.Items[m.Cursor]
+
+	var b strings.Builder
+	b.WriteString(m.styles.Title.Render(filepathBase(item.Path)))
+	b.WriteString("\n\n")
+
+	row := func(label, value string) {
+		if value == "" {
+			return
+		}
+		b.WriteString(m.styles.DetailLabel.Render(label) + m.styles.DetailValue.Render(value) + "\n")
+	}
+	row("path   ", item.Path)
+	row("sha256 ", item.SHA256)
+	row("size   ", formatBytes(item.SizeBytes))
+	row("kind   ", item.Kind)
+	row("proves ", item.Proves)
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.Help.Render("enter opens the file's detail, m its manifest"))
 	return b.String()
 }
 
@@ -86,11 +118,23 @@ func attachedFilterLabel(f store.EvidenceListFilter) string {
 	return "all attached states"
 }
 
-func (m Model) viewEvidenceRow(item store.EvidenceListItem, selected bool) string {
-	cursor := "  "
+// evidenceColumns solves the list row against the width it is drawn in.
+// The name and what the capture proves are the two fields worth stretching;
+// the kind, the task key and the timestamp never grow past their content.
+func evidenceColumns(width int) []int {
+	return shared.SolveColumns(width-evidenceRowFixed, 1, []shared.Column{
+		{Min: 12, Weight: 3},
+		{Min: 3, Max: evidenceKindCells},
+		{Min: 8, Max: evidenceTaskCells},
+		{Min: 8, Weight: 2},
+		{Min: evidenceAttachedCells, Max: evidenceAttachedCells},
+		{Min: 10, Max: 19},
+	})
+}
+
+func (m Model) viewEvidenceRow(item store.EvidenceListItem, selected bool, widths []int) string {
 	titleStyle := m.styles.ListItem
 	if selected {
-		cursor = "▸ "
 		titleStyle = m.styles.ListSelected
 	}
 
@@ -99,26 +143,28 @@ func (m Model) viewEvidenceRow(item store.EvidenceListItem, selected bool) strin
 		task = *item.JiraKey
 	}
 
-	attached := m.styles.DangerInline.Render("✗ jira")
+	attached := m.styles.DangerInline.Render(shared.Cell(m.styles.Icons.Glyph(theme.IconTaskCancelled)+" jira", widths[4]))
 	if item.AttachedJira {
-		attached = m.styles.AttachedBadge.Render("✓ jira")
+		attached = m.styles.AttachedBadge.Render(shared.Cell(m.styles.Icons.Glyph(theme.IconFresh)+" jira", widths[4]))
 	}
 
-	return fmt.Sprintf("%s%s %s %s %s %s %s\n",
-		cursor,
-		titleStyle.Render(fmt.Sprintf("%-46s", shared.Truncate(filepathBase(item.Path), 46))),
-		m.styles.TypeBadge.Render(fmt.Sprintf("[%-4s]", item.Kind)),
-		m.styles.ID.Render(fmt.Sprintf("%-12s", task)),
-		m.styles.DetailValue.Render(shared.Truncate(item.Proves, 40)),
+	row := fmt.Sprintf("%s%s %s %s %s %s %s",
+		shared.RowCursor(m.styles, selected),
+		titleStyle.Render(shared.Field(filepathBase(item.Path), widths[0])),
+		m.styles.TypeBadge.Render("["+shared.Cell(item.Kind, widths[1])+"]"),
+		m.styles.ID.Render(shared.Cell(task, widths[2])),
+		m.styles.DetailValue.Render(shared.Field(item.Proves, widths[3])),
 		attached,
-		m.styles.Timestamp.Render(shared.LocalTime(item.CapturedAt)))
+		m.styles.Timestamp.Render(shared.Cell(shared.LocalTime(item.CapturedAt), widths[5])))
+
+	return strings.TrimRight(row, " ") + "\n"
 }
 
-// ─── Detail (S7) ─────────────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────────────────────
 
 func (m Model) viewDetail() string {
 	if m.Selected == nil {
-		return m.styles.StatCard.Render("Loading evidence...")
+		return shared.Loading(m.styles, spinner.Model{}, "the evidence")
 	}
 	item := *m.Selected
 	var b strings.Builder
@@ -126,11 +172,15 @@ func (m Model) viewDetail() string {
 	b.WriteString(m.styles.Title.Render(filepathBase(item.Path)))
 	b.WriteString("\n")
 
+	// The card sits inside a border, so a value is cut to what is left of
+	// the body once the frame and the label are paid — an absolute evidence
+	// path is longer than any terminal and used to run straight off it.
+	valueWidth := m.bodyWidth() - detailCardFrame - detailLabelCells
 	detail := func(label, value string) string {
 		if value == "" {
 			return ""
 		}
-		return m.styles.DetailLabel.Render(label) + m.styles.DetailValue.Render(value) + "\n"
+		return m.styles.DetailLabel.Render(label) + m.styles.DetailValue.Render(shared.Truncate(value, valueWidth)) + "\n"
 	}
 
 	task := item.TaskSyncID
@@ -149,30 +199,28 @@ func (m Model) viewDetail() string {
 	b.WriteString(m.styles.StatCard.Render(strings.TrimRight(meta, "\n")))
 	b.WriteString("\n")
 
-	attachedJira := m.styles.DangerInline.Render("✗ run capture-evidence --attach")
+	attachedJira := m.styles.DangerInline.Render(m.styles.Icons.Glyph(theme.IconTaskCancelled) + " run capture-evidence --attach")
 	if item.AttachedJira {
-		attachedJira = m.styles.AttachedBadge.Render("✓ attached")
+		attachedJira = m.styles.AttachedBadge.Render(m.styles.Icons.Glyph(theme.IconFresh) + " attached")
 	}
 	confluence := "not needed"
 	if item.AttachedConfluenceURL != nil && *item.AttachedConfluenceURL != "" {
 		confluence = *item.AttachedConfluenceURL
 	}
 	b.WriteString(m.styles.DetailLabel.Render("attached_jira        ") + attachedJira + "\n")
-	b.WriteString(m.styles.DetailLabel.Render("attached_confluence  ") + m.styles.DetailValue.Render(confluence) + "\n")
+	b.WriteString(m.styles.DetailLabel.Render("attached_confluence  ") + m.styles.DetailValue.Render(shared.Truncate(confluence, valueWidth)) + "\n")
 	b.WriteString("\n")
 
 	b.WriteString(m.viewManifestSection())
 
-	b.WriteString(m.styles.Help.Render(
-		"  o open with system viewer • c copy sha256 • p copy path • m manifest • enter task • esc back"))
 	return b.String()
 }
 
 // viewManifestSection renders whatever readManifestEntry found next to the
-// selected file (rfc-tui.md §9.3): the positive/negative control pair when a
-// manifest.json exists and names this file, a plain notice when it does not
-// exist yet (today's real evidence, see manifest.go), and the parse error
-// when it exists but is not valid JSON.
+// selected file: the positive/negative control pair when a manifest.json
+// exists and names this file, a plain notice when it does not exist yet
+// (today's real evidence, see manifest.go), and the parse error when it
+// exists but is not valid JSON.
 func (m Model) viewManifestSection() string {
 	if !m.ManifestChecked {
 		return ""
@@ -192,15 +240,18 @@ func (m Model) viewManifestSection() string {
 		entry := m.Manifest
 		b.WriteString(m.styles.DetailContent.Render(fmt.Sprintf(
 			"  positive_control: %s\n  negative_control: %s",
-			orDash(entry.PositiveControl), orDash(entry.NegativeControl))))
+			m.orDash(entry.PositiveControl), m.orDash(entry.NegativeControl))))
 	}
 	b.WriteString("\n\n")
 	return b.String()
 }
 
-func orDash(v string) string {
+// orDash renders a field the capture never recorded. The mark comes from the
+// icon vocabulary so it degrades with the resolved mode like every other
+// glyph.
+func (m Model) orDash(v string) string {
 	if v == "" {
-		return "—"
+		return m.styles.Icons.Glyph(theme.IconUnknown)
 	}
 	return v
 }
@@ -212,8 +263,8 @@ func orEmptyStr(v *string) string {
 	return *v
 }
 
-// formatBytes renders size_bytes the way the dashboard and S7's wireframe
-// do: a human count, or "unknown" when the capture never recorded one.
+// formatBytes renders size_bytes the way the dashboard does: a human count,
+// or "unknown" when the capture never recorded one.
 func formatBytes(v *int64) string {
 	if v == nil {
 		return "unknown"
@@ -240,3 +291,31 @@ func filepathBase(path string) string {
 	}
 	return path
 }
+
+// bodyWidth is how many cells this tab's rows may occupy: the terminal less
+// what the app frame spends either side. A screen that has not received a
+// tea.WindowSizeMsg yet falls back to a conventional 80-column terminal.
+func (m Model) bodyWidth() int {
+	if m.Width <= 0 {
+		return defaultBodyWidth
+	}
+	if w := m.Width - bodyMargin; w >= minBodyWidth {
+		return w
+	}
+	return minBodyWidth
+}
+
+// regions is the tab's master/detail split for its current width.
+func (m Model) regions() shared.Regions {
+	// The split depends on the width alone; a screen that has not learned
+	// its height yet still has to know how wide its columns are.
+	height := m.Height
+	if height < 1 {
+		height = 1
+	}
+	return shared.Layout(m.bodyWidth(), height)
+}
+
+// masterWidth is how wide the list itself is: the whole body below the split
+// breakpoint, the left pane above it.
+func (m Model) masterWidth() int { return m.regions().Master.Dx() }

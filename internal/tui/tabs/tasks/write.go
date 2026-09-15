@@ -14,8 +14,8 @@ import (
 
 // writeContextPack saves the loaded context pack to
 // ${CD_EVIDENCE_DIR:-~/.clarodrive/evidence}/<project>/<KEY>/context-pack.md
-// (rfc-tui.md §3.1 S5, key "w"), creating the task's evidence directory if it
-// does not exist yet.
+// when "w" is pressed on the context pack, creating the task's evidence
+// directory if it does not exist yet.
 func (m Model) writeContextPack() (tabs.Tab, tea.Cmd) {
 	if m.Detail == nil || m.ContextPack == "" {
 		return m, nil
@@ -30,6 +30,6 @@ func (m Model) writeContextPack() (tabs.Tab, tea.Cmd) {
 		m.ErrorMsg = "could not write " + path + ": " + err.Error()
 		return m, nil
 	}
-	m.CopyFeedback = "✓ Saved " + path
+	m.CopyFeedback = "Saved " + path
 	return m, shared.ClearFeedbackAfter(2 * time.Second)
 }

@@ -8,18 +8,16 @@ import (
 	"path/filepath"
 )
 
-// manifestFileName is the sibling file rfc-tui.md §9.3 reads controls from:
-// "si junto al archivo existe manifest.json se leen positive_control y
-// negative_control". ADR-029 §2 and the capture-evidence SKILL.md (its
-// envelope's `files[]`, which scripts/evidence-manifest.sh mirrors into the
-// manifest itself per ADR-029's "Corregido" note) agree it is one file per
-// task directory — not one per captured file — with one entry per file.
+// manifestFileName is the sibling file the controls are read from: when a
+// manifest.json sits next to a captured file, positive_control and
+// negative_control come from it. It is one file per task directory — not one
+// per captured file — carrying one entry per file.
 const manifestFileName = "manifest.json"
 
-// ManifestEntry is one captured file's row inside a task's manifest.json
-// (ADR-029 §2, D-06): the config_stamp and positive/negative control pair
-// that make a capture self-certifying, matched by filename against the
-// evidence row S7 is showing.
+// ManifestEntry is one captured file's row inside a task's manifest.json:
+// the config_stamp and positive/negative control pair that make a capture
+// self-certifying, matched by filename against the evidence row the detail
+// screen is showing.
 type ManifestEntry struct {
 	File            string `json:"file"`
 	SHA256          string `json:"sha256"`
@@ -49,10 +47,9 @@ func manifestPath(evidencePath string) string {
 // A missing manifest.json is not an error — registered evidence rows
 // routinely have manifest_path NULL and no manifest.json on disk next to it,
 // `.snapshot.json` sidecars with an unrelated shape instead — it is reported
-// through exists=false so S7 can say so plainly instead of silently showing
-// nothing. A manifest.json
-// that exists but carries no entry for this file is likewise not an error:
-// exists is true, entry is nil.
+// through exists=false so the detail screen can say so plainly instead of
+// silently showing nothing. A manifest.json that exists but carries no entry
+// for this file is likewise not an error: exists is true, entry is nil.
 func readManifestEntry(evidencePath string) (entry *ManifestEntry, exists bool, err error) {
 	raw, err := os.ReadFile(manifestPath(evidencePath))
 	if err != nil {

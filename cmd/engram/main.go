@@ -918,31 +918,166 @@ func cmdTUI(cfg store.Config) {
 	}
 	defer s.Close()
 
-	themeFlag, themeEnv, themeConfig := resolveTUITheme(cfg)
-	if unknown := theme.UnknownName(themeFlag, themeEnv, themeConfig); unknown != "" {
+	// The binary's own palettes are seeded on every start, not at install
+	// time, so a palette a later version ships appears without anybody
+	// re-running a setup step. Seeding leaves an edited row alone, and a
+	// failure here is not worth refusing to open the workspace over: the
+	// compiled registry answers on its own.
+	if err := themeSeed(s); err != nil {
+		fmt.Fprintf(os.Stderr, "engram: could not seed the built-in themes: %v\n", err)
+	}
+
+	selection := resolveTUITheme(s, cfg)
+	if unknown := selection.UnknownName(); unknown != "" {
 		fmt.Fprintf(os.Stderr, "engram: unknown theme %q, falling back to %s\n", unknown, theme.DefaultThemeName)
 	}
-	palette := theme.Resolve(themeFlag, themeEnv, themeConfig)
-	model := newTUIModel(s, resolveTUIProject(), palette)
-	p := newTeaProgram(model)
+	palette := selection.Resolve()
+	project := resolveTUIProject(s)
+	model := newTUIModel(s, project, palette).
+		WithIcons(resolveTUIIcons(s)).
+		WithLastTab(resolveTUITab(s, project))
+	p := newTeaProgram(model, tuiProgramOptions(resolveTUIMouse(s))...)
 	if _, err := runTeaProgram(p); err != nil {
 		fatal(err)
 	}
 }
 
-// resolveTUIProject resolves the project `engram tui` opens on, following a
-// fixed precedence for --project: an explicit --project (or --project=)
-// flag first, then ENGRAM_PROJECT, then cwd detection. An empty result means
-// no project was resoluble, so the workspace opens on its no-project home
-// instead of a Dashboard.
+// Settings keys `engram tui` reads to reopen where it was left. They are
+// spelled here and again in internal/tui/app, the way tui.theme already is:
+// internal/tui is reached through one facade, and a settings key is not part
+// of that facade's surface.
+const (
+	lastProjectSettingKey = "tui.last_project"
+	lastTabSettingKey     = "tui.last_tab"
+	iconsSettingKey       = "tui.icons"
+)
+
+// tuiSetting reads one remembered value, or "" when there is none and when
+// the store will not answer. Nothing here is worth refusing to open the
+// workspace over: every caller has a default that is exactly the state a fresh
+// installation is in.
+func tuiSetting(s *store.Store, key string) string {
+	if s == nil {
+		return ""
+	}
+	value, ok, err := s.Setting(key)
+	if err != nil {
+		log.Printf("[engram] ignoring the remembered %s: %v", key, err)
+		return ""
+	}
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+// resolveTUIIcons picks the glyph vocabulary the workspace draws with:
+// ENGRAM_TUI_ICONS, then settings['tui.icons'], then whatever TERM and the
+// locale say the terminal can be trusted to render. Nerd Font icons are never
+// inferred — see theme.ResolveIconMode.
+func resolveTUIIcons(s *store.Store) theme.IconMode {
+	return theme.ResolveIconMode(
+		os.Getenv("ENGRAM_TUI_ICONS"),
+		tuiSetting(s, iconsSettingKey),
+		os.Getenv("TERM"),
+		os.Getenv("LANG"),
+	)
+}
+
+// resolveTUITab names the tab the workspace reopens on, and "" for the tab
+// New would have chosen on its own.
+//
+// The remembered tab only applies to the project it was remembered against.
+// Opening a different project on the last one's tab shows a screen about
+// somebody else's work, which is worse than the predictable landing screen: a
+// tab is a place inside a project, not a global preference.
+func resolveTUITab(s *store.Store, project string) string {
+	if project == "" {
+		return ""
+	}
+	if tuiSetting(s, lastProjectSettingKey) != project {
+		return ""
+	}
+	return tuiSetting(s, lastTabSettingKey)
+}
+
+// mouseSettingKey is where the pointer is turned off for good. It is the same
+// key theme_cmd.go's themeSettingKey pattern establishes: the literal is
+// spelled in cmd/engram because internal/tui is reached through one facade
+// and a settings key is not part of that facade's surface.
+const mouseSettingKey = "tui.mouse"
+
+// tuiProgramOptions are the Bubble Tea options `engram tui` opens with.
+//
+// The alternate screen is an option rather than a command the model returns
+// from Init, and that is the whole difference: the program writes its first
+// frame before it processes its first message, so a switch asked for as a
+// command arrives one frame late and leaves that frame printed in the shell
+// the user comes back to.
+//
+// Cell motion is what makes a click land on a cell rather than on a pixel the
+// program cannot reason about, and it is the mode the tab bar's hitboxes and
+// the wheel both assume. It is a separate function from cmdTUI so the decision
+// can be tested: a tea.ProgramOption is an opaque closure, so what a test can
+// check is that the option is there at all, or that it is not.
+func tuiProgramOptions(mouse bool) []tea.ProgramOption {
+	options := []tea.ProgramOption{tea.WithAltScreen()}
+	if mouse {
+		options = append(options, tea.WithMouseCellMotion())
+	}
+	return options
+}
+
+// resolveTUIMouse answers whether the workspace opens with the mouse enabled:
+// --no-mouse on the command line first, then settings['tui.mouse'] = "off".
+//
+// Enabling the mouse takes the terminal's own selection away — every drag
+// becomes an event the program consumes — so both a one-off escape hatch and a
+// remembered one are needed. Everything but an explicit "off" leaves the mouse
+// on: a settings row nobody wrote, or a value nobody recognises, must not
+// quietly disable a feature.
+func resolveTUIMouse(s *store.Store) bool {
+	for i := 2; i < len(os.Args); i++ {
+		if os.Args[i] == "--no-mouse" {
+			return false
+		}
+	}
+	if s == nil {
+		return true
+	}
+	value, ok, err := s.Setting(mouseSettingKey)
+	if err != nil {
+		log.Printf("[engram] ignoring the remembered mouse setting: %v", err)
+		return true
+	}
+	if !ok {
+		return true
+	}
+	return strings.ToLower(strings.TrimSpace(value)) != "off"
+}
+
+// resolveTUIProject resolves the project `engram tui` opens on, following
+// a fixed precedence for --project: an explicit --project
+// (or --project=) flag first, then ENGRAM_PROJECT, then cwd detection, then
+// the project the last run was left on. An empty result means no project was
+// resoluble, so the workspace opens on its no-project home instead of a
+// Dashboard.
 //
 // cwd detection only counts as resoluble when project.DetectProjectFull backs
 // it with a fact (a git-derived source or repo config) — a directory-name
 // guess (project.SourceDirBasename) is deliberately treated the same as no
 // detection at all: without this, DetectProject's bare string never came
-// back empty, so a non-git directory always looked resoluble and the TUI's
-// project selector fallback could never be reached.
-func resolveTUIProject() string {
+// back empty, so a non-git directory always looked resoluble and the
+// workspace's project tree fallback could never be reached.
+//
+// The remembered project sits below that detection and never above it. Opening
+// a terminal inside a repository and being shown a different project's
+// workspace is the one failure a remembered choice must not cause: where the
+// user is standing is a fact, and a fact outranks a habit. It sits above the
+// empty selector, which is what the tier is for — a workspace opened from a
+// directory that is nobody's project reopens on the project it was last doing
+// work in, rather than on a list to pick from again.
+func resolveTUIProject(s *store.Store) string {
 	resolved := ""
 	for i := 2; i < len(os.Args); i++ {
 		switch {
@@ -964,6 +1099,9 @@ func resolveTUIProject() string {
 		}
 	}
 	if resolved == "" {
+		resolved = tuiSetting(s, lastProjectSettingKey)
+	}
+	if resolved == "" {
 		return ""
 	}
 	normalized, warning := store.NormalizeProject(resolved)
@@ -983,28 +1121,58 @@ func isGuessedProjectSource(source string) bool {
 	return project.IsGuessedSource(source)
 }
 
-// resolveTUITheme extracts the three raw candidates the TUI theme's
-// precedence chain resolves between, following the same shape as
-// resolveTUIProject: an explicit --theme (or --theme=) flag, then
-// ENGRAM_TUI_THEME, then the tui.theme key in <data-dir>/config.json.
-// Picking the winner and falling back to the default is theme.Resolve's
-// job, not this function's — resolveTUIProject inlines that choice because
-// it has no registry to validate against, but theme.Resolve is exactly
-// that registry-aware chooser, so this stays a plain three-value extractor
-// and calls straight into it: theme.Resolve(resolveTUITheme(cfg)).
-func resolveTUITheme(cfg store.Config) (flag, env, config string) {
+// resolveTUITheme gathers everything that has an opinion about which palette
+// the TUI opens on: an explicit --theme (or --theme=) flag, ENGRAM_TUI_THEME,
+// the tui.theme setting, the tui.theme key in <data-dir>/config.json, and the
+// palettes the themes table holds.
+//
+// Picking the winner and falling back to the default is theme.Selection's job,
+// not this function's — resolveTUIProject inlines that choice because it has
+// no registry to validate against, but Selection is exactly that
+// registry-aware chooser, so this stays a plain gatherer.
+//
+// Neither the setting nor the stored palettes are worth failing over. A store
+// that will not answer means the compiled registry answers alone, which is the
+// same state a fresh installation is in.
+func resolveTUITheme(s *store.Store, cfg store.Config) theme.Selection {
+	selection := theme.Selection{
+		Env:    strings.TrimSpace(os.Getenv("ENGRAM_TUI_THEME")),
+		Config: readTUIThemeConfig(cfg),
+	}
 	for i := 2; i < len(os.Args); i++ {
 		switch {
 		case os.Args[i] == "--theme" && i+1 < len(os.Args):
-			flag = os.Args[i+1]
+			selection.Flag = os.Args[i+1]
 			i++
 		case strings.HasPrefix(os.Args[i], "--theme="):
-			flag = strings.TrimPrefix(os.Args[i], "--theme=")
+			selection.Flag = strings.TrimPrefix(os.Args[i], "--theme=")
 		}
 	}
-	env = strings.TrimSpace(os.Getenv("ENGRAM_TUI_THEME"))
-	config = readTUIThemeConfig(cfg)
-	return flag, env, config
+	if s == nil {
+		return selection
+	}
+
+	if value, ok, err := s.Setting(themeSettingKey); err != nil {
+		log.Printf("[engram] ignoring the remembered theme: %v", err)
+	} else if ok {
+		selection.Setting = strings.TrimSpace(value)
+	}
+
+	records, err := s.ListThemes()
+	if err != nil {
+		log.Printf("[engram] ignoring the stored themes: %v", err)
+		return selection
+	}
+	documents := make(map[string][]byte, len(records))
+	for _, record := range records {
+		documents[record.Name] = record.Palette
+	}
+	stored, unreadable := theme.PalettesFromDocuments(documents)
+	for _, name := range unreadable {
+		fmt.Fprintf(os.Stderr, "engram: theme %q is not a readable theme document, ignoring it\n", name)
+	}
+	selection.Stored = stored
+	return selection
 }
 
 // tuiConfigFile is the shape of <data-dir>/config.json's "tui" section.
@@ -2830,13 +2998,20 @@ Commands:
                        Example: engram mcp --tools=agent,projects
                        --project NAME  Set process-level default project (overrides cwd detection).
                                        Also accepted as ENGRAM_PROJECT=NAME env var.
-  tui [--project NAME] [--theme NAME]
-                     Launch interactive terminal UI
-                       --project NAME  Open directly on a project's Dashboard, else the Selector.
+  tui [--project NAME] [--theme NAME] [--no-mouse]
+                     Launch the terminal workspace: eight tabs over the project's
+                     memory, tasks, evidence, benchmarks, runbooks and graph.
+                       --project NAME  Scope the workspace to a project. Without one it opens
+                                       on the project tree, which ctrl+p reopens at any time.
                                        Also accepted as ENGRAM_PROJECT=NAME env var.
-                       --theme NAME    Palette: catppuccin-mocha (default) | kanagawa | elephant.
+                       --theme NAME    Palette: koi-pond (default) | koi-day | showa | ogon |
+                                       catppuccin-mocha | kanagawa | elephant. Run
+                                       "engram theme list" for what this build ships.
                                        Also accepted as ENGRAM_TUI_THEME=NAME env var, or the
                                        tui.theme key in <data-dir>/config.json.
+                       --no-mouse      Leave the mouse to the terminal, so a drag selects text
+                                       the way it does everywhere else. Also settings['tui.mouse']
+                                       = "off".
   search <query>     Search memories [--type TYPE] [--project PROJECT] [--scope SCOPE] [--limit N]
   save <title> <msg> Save a memory  [--type TYPE] [--project PROJECT] [--scope SCOPE]
   delete <obs_id>    Delete an observation [--hard] (soft-delete by default; --hard removes permanently)
@@ -2927,7 +3102,8 @@ Environment:
   ENGRAM_PROJECT     Process-level default project override.
                      For "engram serve": fallback for GET /sync/status with no project param.
                      For "engram mcp": sets DefaultProject, overriding cwd detection for all tools.
-  ENGRAM_TUI_THEME   Palette for "engram tui": catppuccin-mocha (default) | kanagawa | elephant.
+  ENGRAM_TUI_THEME   Palette for "engram tui": koi-pond (default) | koi-day | showa | ogon |
+                     catppuccin-mocha | kanagawa | elephant.
                      Precedence: --theme flag, then this var, then tui.theme in
                      <data-dir>/config.json, then the default.
   ENGRAM_HTTP_TOKEN  Optional Bearer auth for local HTTP server (engram serve).

@@ -2,8 +2,8 @@ package runbooks
 
 import "github.com/charmbracelet/bubbles/key"
 
-// Help lists whichever screen is on display's own bindings (rfc-tui.md
-// §7.2), the same ones each screen's view.go footer already prints, plus
+// Help lists whichever screen is on display's own bindings, the same ones
+// each screen's view.go footer already prints, plus
 // "g"/"G" — real bindings both handleIndexKeys and handleViewKeys already
 // answer to, just not named in that footer's hand-written text.
 func (m Model) Help() []key.Binding {
@@ -28,14 +28,15 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all/project")),
 			key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "executions")),
+			key.NewBinding(key.WithKeys("p", "n"), key.WithHelp("p/n", "page")),
 			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
 	}
 }
 
-// CapturingText reports whether the search box is focused (rfc-tui.md §7.1's
-// textinput suspension rule): while true, digits typed into a runbook search
+// CapturingText reports whether the search box is focused, which suspends
+// the root's own key handling: while true, digits typed into a runbook search
 // must reach SearchInput, never the root's tab-switch keys.
 func (m Model) CapturingText() bool {
 	return m.Searching && m.SearchInput.Focused()

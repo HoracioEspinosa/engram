@@ -22,56 +22,41 @@ func (k rootHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{k.global, k.screen}
 }
 
-// selectorHelp lists S1's own bindings (rfc-tui.md §7.2), the same ones
-// viewSelector's footer already prints, plus "g"/"G".
-func selectorHelp() []key.Binding {
-	return []key.Binding{
-		key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("j/k", "move")),
-		key.NewBinding(key.WithKeys("g", "G"), key.WithHelp("g/G", "top/bottom")),
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
-		key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
-		key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "sort by health")),
-		key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
-		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
-	}
-}
-
-// dashboardHelp lists S2's own bindings (rfc-tui.md §7.2), the same ones
-// viewDashboard's footer already prints, plus "g"/"G".
-func dashboardHelp() []key.Binding {
-	return []key.Binding{
-		key.NewBinding(key.WithKeys("up", "k", "down", "j", "h", "l"), key.WithHelp("j/k/h/l", "move block")),
-		key.NewBinding(key.WithKeys("g", "G"), key.WithHelp("g/G", "top/bottom")),
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open block")),
-		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
-	}
-}
-
-// activeScreenHelp returns whichever screen is on display's own bindings:
-// the Selector's and the Dashboard's own lists for those two root screens,
-// or the active tab's Help() for every other one (rfc-tui.md §7.1: "lista
-// los atajos que esa pantalla declara, no una lista fija").
+// activeScreenHelp returns the bindings of whatever currently answers the
+// keyboard: the overlay holding it, in the order the overlays take it, and the
+// active tab's Help() when none is open. The list is whatever that screen
+// declares, never a fixed one.
+//
+// An overlay is modal, so the hints under it name its keys and not the
+// screen's: the body stays visible behind the panel, and hints naming keys
+// that currently do nothing would be the one part of it that lies.
 func (m Model) activeScreenHelp() []key.Binding {
-	switch m.screen {
-	case screenSelector:
-		return selectorHelp()
-	case screenDashboard:
-		return dashboardHelp()
-	default:
-		if tab := m.tab(m.active); tab != nil {
-			return tab.Help()
-		}
-		return nil
+	if m.themePicker.open {
+		return themePickerHelp()
 	}
+	if m.palette.open {
+		return paletteHelp(m.styles.Icons)
+	}
+	if m.tree.open {
+		return treeHelp()
+	}
+	if tab := m.tab(m.active); tab != nil {
+		return tab.Help()
+	}
+	return nil
 }
 
-// viewHelpOverlay renders the "?" overlay (rfc-tui.md §7.1) with
-// bubbles/help: the chrome's own global bindings alongside whichever screen
-// is active's own, styled from the resolved palette rather than a default
-// one.
+// viewHelpOverlay renders the "?" overlay with bubbles/help: the chrome's own
+// global bindings alongside whichever screen is active's own, styled from the
+// resolved palette rather than a default one.
 func (m Model) viewHelpOverlay() string {
 	h := help.New()
 	h.ShowAll = true
+	// The overlay is composited over the body, so it has to fit inside the
+	// frame drawn around it.
+	if width := m.width - overlayChromeCells; width > 0 {
+		h.Width = width
+	}
 	h.Styles.FullKey = m.styles.TabActive
 	h.Styles.FullDesc = m.styles.DetailValue
 	h.Styles.FullSeparator = m.styles.Help

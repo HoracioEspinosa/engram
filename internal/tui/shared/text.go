@@ -4,7 +4,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/HoracioEspinosa/engram/internal/timeutil"
+	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 )
 
 // dateLayout is the display form of a review deadline: the day, without a
@@ -15,6 +18,13 @@ const dateLayout = "2006-01-02"
 // display timezone.
 func LocalTime(utc string) string {
 	return timeutil.FormatLocal(utc)
+}
+
+// LocalDate is LocalTime without the clock — the form a narrow row falls
+// back to when the full timestamp no longer leaves the title room to say
+// anything.
+func LocalDate(utc string) string {
+	return FormatReviewDate(LocalTime(utc))
 }
 
 // FormatReviewDate reduces a stored review deadline to its calendar day. Input
@@ -34,14 +44,14 @@ func FormatReviewDate(value string) string {
 	return trimmed
 }
 
-// Truncate flattens s to a single line and caps it at max runes, appending an
-// ellipsis when it had to cut. Counting runes, not bytes, keeps accented and
-// emoji titles from being sliced mid-character.
+// Truncate flattens s to a single line and caps it at max terminal cells,
+// marking the cut with an ellipsis that is itself paid for out of the budget.
+//
+// Cells, not runes: an ideograph and an emoji each occupy two columns while an
+// SGR sequence occupies none, so a rune count either overflows the column it
+// was meant to fit or leaves a ragged edge. The result never exceeds max cells
+// and never ends mid-character or mid-escape.
 func Truncate(s string, max int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
-	runes := []rune(s)
-	if len(runes) <= max {
-		return s
-	}
-	return string(runes[:max]) + "..."
+	return ansi.Truncate(s, max, theme.Ellipsis)
 }

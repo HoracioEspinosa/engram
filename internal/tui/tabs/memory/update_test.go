@@ -2,11 +2,13 @@ package memory
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/setup"
 	"github.com/HoracioEspinosa/engram/internal/store"
+	"github.com/HoracioEspinosa/engram/internal/tui/data"
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
 	"github.com/HoracioEspinosa/engram/internal/version"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -237,7 +239,7 @@ func TestCloudSettingsNavigation(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("enter on Cloud sync settings should ask the root to switch tabs")
 	}
-	if nav, ok := cmd().(tabs.NavigateMsg); !ok || nav.Target != tabs.Cloud {
+	if nav, ok := cmd().(tabs.NavigateMsg); !ok || nav.Target != tabs.Settings {
 		t.Fatalf("enter on Cloud sync settings should emit NavigateMsg{Cloud}, got %#v", cmd())
 	}
 	if updated.Screen != ScreenDashboard {
@@ -528,7 +530,7 @@ func TestUpdateDataMessageBranches(t *testing.T) {
 	}
 
 	results := []store.SearchResult{{Observation: store.Observation{ID: 9}}}
-	updatedModel, _ = m.Update(searchResultsMsg{results: results, query: "needle"})
+	updatedModel, _ = m.Update(searchResultsMsg{page: data.Page[store.SearchResult]{Items: results, Total: len(results), Limit: memoryPageSize}, query: "needle"})
 	updated = updatedModel.(Model)
 	if updated.Screen != ScreenSearchResults || updated.Cursor != 0 || updated.Scroll != 0 {
 		t.Fatal("search results message should switch to results screen and reset cursor/scroll")
@@ -541,7 +543,7 @@ func TestUpdateDataMessageBranches(t *testing.T) {
 	}
 
 	obsList := []store.Observation{{ID: 1}}
-	updatedModel, _ = m.Update(recentObservationsMsg{observations: obsList})
+	updatedModel, _ = m.Update(recentObservationsMsg{page: data.Page[store.Observation]{Items: obsList, Total: len(obsList), Limit: memoryPageSize}})
 	updated = updatedModel.(Model)
 	if len(updated.RecentObservations) != 1 {
 		t.Fatal("recent observations should be updated")
@@ -1285,4 +1287,92 @@ func TestSetupAllowlistPromptFlow(t *testing.T) {
 			t.Fatal("should clear SetupAllowlistError")
 		}
 	})
+}
+
+// apply feeds msg to m's Update and casts the result back to Model.
+func apply(t *testing.T, m Model, msg tea.Msg) Model {
+	t.Helper()
+	updated, _ := m.Update(msg)
+	next, ok := updated.(Model)
+	if !ok {
+		t.Fatalf("Update returned %T, want memory.Model", updated)
+	}
+	return next
+}
+
+// TestRangeIndicatorShowsStoreTotal: both paged Memory screens report the
+// count the store found, not the slice that fits on the page.
+func TestRangeIndicatorShowsStoreTotal(t *testing.T) {
+	fake := &data.FakeMemory{}
+	for i := 0; i < memoryPageSize+6; i++ {
+		obs := store.Observation{ID: int64(i + 1), Type: "bugfix", Title: "row", Content: "c", CreatedAt: "2026-01-01"}
+		fake.Observations = append(fake.Observations, obs)
+		fake.SearchResults = append(fake.SearchResults, store.SearchResult{Observation: obs})
+	}
+	total := memoryPageSize + 6
+
+	m := New(fake, "")
+	m.Height = 40
+	m.Screen = ScreenRecent
+	m = apply(t, m, run(t, loadRecentObservations(fake, data.ProjectScope{}, 0)))
+	if m.RecentTotal != total {
+		t.Fatalf("RecentTotal = %d, want the store's own %d", m.RecentTotal, total)
+	}
+	if got := m.viewRecent(); !strings.Contains(got, fmt.Sprintf("of %d", total)) {
+		t.Fatalf("recent range indicator does not report %d:\n%s", total, got)
+	}
+
+	m.Screen = ScreenSearchResults
+	m = apply(t, m, run(t, searchMemories(fake, "row", data.ProjectScope{}, 0)))
+	if m.SearchTotal != total {
+		t.Fatalf("SearchTotal = %d, want the store's own %d", m.SearchTotal, total)
+	}
+	if got := m.viewSearchResults(); !strings.Contains(got, fmt.Sprintf("of %d", total)) {
+		t.Fatalf("search range indicator does not report %d:\n%s", total, got)
+	}
+}
+
+func TestPrevPageIsDisabledOnTheFirstPage(t *testing.T) {
+	fake := &data.FakeMemory{}
+	for i := 0; i < memoryPageSize+6; i++ {
+		fake.Observations = append(fake.Observations, store.Observation{ID: int64(i + 1), Type: "bugfix", Title: "row", CreatedAt: "2026-01-01"})
+	}
+	m := New(fake, "")
+	m.Screen = ScreenRecent
+	m = apply(t, m, run(t, loadRecentObservations(fake, data.ProjectScope{}, 0)))
+
+	updated, cmd := m.handleRecentKeys("p")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("p on the first page should not re-query the store")
+	}
+	if m.RecentOffset != 0 {
+		t.Fatalf("RecentOffset = %d, want the first page to stay put", m.RecentOffset)
+	}
+}
+
+func TestNextPageStopsAtTheLastPage(t *testing.T) {
+	fake := &data.FakeMemory{}
+	for i := 0; i < memoryPageSize+6; i++ {
+		fake.Observations = append(fake.Observations, store.Observation{ID: int64(i + 1), Type: "bugfix", Title: "row", CreatedAt: "2026-01-01"})
+	}
+	m := New(fake, "")
+	m.Screen = ScreenRecent
+	m = apply(t, m, run(t, loadRecentObservations(fake, data.ProjectScope{}, 0)))
+
+	updated, cmd := m.handleRecentKeys("n")
+	m = updated.(Model)
+	m = apply(t, m, run(t, cmd))
+	if m.RecentOffset != memoryPageSize || len(m.RecentObservations) != 6 {
+		t.Fatalf("second page = offset %d with %d rows, want %d and 6", m.RecentOffset, len(m.RecentObservations), memoryPageSize)
+	}
+
+	updated, cmd = m.handleRecentKeys("n")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("n on the last page should not re-query the store")
+	}
+	if m.RecentOffset != memoryPageSize {
+		t.Fatalf("RecentOffset = %d, want the last page to stay put", m.RecentOffset)
+	}
 }

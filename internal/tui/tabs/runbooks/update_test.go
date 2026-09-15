@@ -2,6 +2,7 @@ package runbooks
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,14 +56,14 @@ func sampleRunbook(id, project, title string, stale bool) store.RunbookIndexRow 
 	}
 }
 
-func newModel(reader data.RunbookReader, projects data.ProjectReader) Model {
+func newModel(reader data.RunbookSource, projects data.ProjectReader) Model {
 	if projects == nil {
 		projects = &data.FakeProject{}
 	}
 	return New(reader, projects)
 }
 
-// ─── Index (S8) ──────────────────────────────────────────────────────────────
+// ─── Index ───────────────────────────────────────────────────────────────────
 
 func TestNewStartsOnTheIndexScreenWithNoProject(t *testing.T) {
 	m := newModel(&data.FakeRunbook{}, nil)
@@ -163,10 +164,10 @@ func TestAllToggleWhileSearchingReRunsTheSameSearch(t *testing.T) {
 		t.Fatal("a should reload")
 	}
 	run(t, cmd)
-	if fake.LastSearch.Query != "preview" {
-		t.Fatalf("LastSearch.Query = %q, want the active search re-issued, not dropped", fake.LastSearch.Query)
+	if fake.LastSearch().Query != "preview" {
+		t.Fatalf("LastSearch.Query = %q, want the active search re-issued, not dropped", fake.LastSearch().Query)
 	}
-	if !fake.LastSearch.All {
+	if !fake.LastSearch().All {
 		t.Fatal("LastSearch.All should reflect the toggle just applied")
 	}
 }
@@ -224,7 +225,7 @@ func TestSearchEscCancelsWithoutClearingTheActiveQuery(t *testing.T) {
 		t.Fatal("esc should cancel typing, not reload")
 	}
 	if m.Query != "preview" {
-		t.Fatalf("Query = %q, want the previously committed search left untouched", m.Query)
+		t.Fatalf("Query = %q, want the committed search left untouched", m.Query)
 	}
 	if m.SearchInput.Value() != "preview" {
 		t.Fatalf("SearchInput value = %q, want it reset to the active query", m.SearchInput.Value())
@@ -273,8 +274,8 @@ func TestEscFromTheIndexGoesHome(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("esc should navigate home")
 	}
-	if _, ok := run(t, cmd).(tabs.HomeMsg); !ok {
-		t.Fatalf("esc produced %T, want tabs.HomeMsg", run(t, cmd))
+	if _, ok := run(t, cmd).(tabs.NavigateMsg); !ok {
+		t.Fatalf("esc produced %T, want tabs.NavigateMsg{Target: tabs.Home}", run(t, cmd))
 	}
 }
 
@@ -282,7 +283,7 @@ func TestRunbooksLoadedIgnoresAResponseForAnAbandonedProject(t *testing.T) {
 	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")
 	m.Items = []store.RunbookIndexRow{sampleRunbook("RB-900", "acme", "Stale runbook", true)}
 
-	m, _ = step(t, m, runbooksLoadedMsg{project: "other", items: nil})
+	m, _ = step(t, m, runbooksLoadedMsg{project: "other"})
 
 	if len(m.Items) != 1 {
 		t.Fatal("a load response for a project the user left must not clobber the current list")
@@ -299,7 +300,7 @@ func TestErrorFromTheIndexLoadIsSurfaced(t *testing.T) {
 	}
 }
 
-// ─── Markdown view (S9) ──────────────────────────────────────────────────────
+// ─── Markdown view ───────────────────────────────────────────────────────────
 
 func TestEnterOpensTheMarkdownViewAndRendersAnExistingFile(t *testing.T) {
 	dir := t.TempDir()
@@ -363,8 +364,9 @@ func TestMarkdownViewReportsWhenTheFileIsNotClonedLocally(t *testing.T) {
 	}
 }
 
-// TestMarkdownViewReportsWhenVaultRootIsNotSet pins ADR-053 §6: with
-// ENGRAM_VAULT_ROOT unset, S9 must name the variable instead of concluding
+// TestMarkdownViewReportsWhenVaultRootIsNotSet pins the unconfigured-vault
+// rule: with ENGRAM_VAULT_ROOT unset, the Markdown view must name the
+// variable instead of concluding
 // "not cloned locally" — the same on-disk absence (FileExists false) as
 // TestMarkdownViewReportsWhenTheFileIsNotClonedLocally, but with a message
 // that reads differently because the two situations need different fixes.
@@ -445,8 +447,8 @@ func TestEditorKeyUsesTheInjectableExecEditor(t *testing.T) {
 	}
 }
 
-// TestEditorKeyReportsWhenVaultRootIsNotSet pins ADR-053 §6 on the "e" path:
-// with no checkout configured there is no path to hand $EDITOR, so it must
+// TestEditorKeyReportsWhenVaultRootIsNotSet pins the same rule on the "e"
+// path: with no checkout configured there is no path to hand $EDITOR, so it must
 // name the variable instead of either opening a bogus relative path or
 // invoking execEditor at all.
 func TestEditorKeyReportsWhenVaultRootIsNotSet(t *testing.T) {
@@ -527,7 +529,7 @@ func TestOKeyOpensTheHubViaTheInjectableExecEditor(t *testing.T) {
 	}
 }
 
-// TestOKeyReportsWhenVaultRootIsNotSet pins ADR-053 §6 on the "o" path: a
+// TestOKeyReportsWhenVaultRootIsNotSet pins the same rule on the "o" path: a
 // project with a knowledge_hub_path configured is not enough to open it
 // without a vault checkout to resolve that path against.
 func TestOKeyReportsWhenVaultRootIsNotSet(t *testing.T) {
@@ -577,8 +579,8 @@ func TestOKeyReportsWhenTheProjectHasNoHubConfigured(t *testing.T) {
 }
 
 // TestViewScrollKeysMoveAndClamp pins handleViewKeys' up/down/g/G branches,
-// none of which any test before this task drove: every existing S9 test
-// only exercised e/t/c/o/r/esc.
+// the ones the other Markdown-view tests leave alone: they only exercise
+// e/t/c/o/r/esc.
 func TestViewScrollKeysMoveAndClamp(t *testing.T) {
 	item := sampleRunbook("RB-003", "acme", "Preview endpoint slow", true)
 	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")
@@ -612,20 +614,20 @@ func TestViewScrollKeysMoveAndClamp(t *testing.T) {
 // TestReloadKeyInTheViewReloadsMarkdown pins handleViewKeys' "r" branch,
 // distinct from Refresh() (model_test.go's own
 // TestRefreshReloadsTheMarkdownOnTheView): this is the key press path, the
-// one a user on S9 actually presses.
+// one a user in the Markdown view actually presses.
 func TestReloadKeyInTheViewReloadsMarkdown(t *testing.T) {
 	item := sampleRunbook("RB-003", "acme", "Preview endpoint slow", true)
 	m := newModel(&data.FakeRunbook{}, nil).WithProject("acme")
 	m.Screen = ScreenView
 	m.Selected = &item
 
-	_, cmd := m.handleViewKeys("r")
+	cmd := m.Refresh()
 	if cmd == nil {
-		t.Fatal("r should reload the markdown")
+		t.Fatal("Refresh on the view screen should reload the markdown")
 	}
 	msg, ok := run(t, cmd).(markdownLoadedMsg)
 	if !ok || msg.id != "RB-003" {
-		t.Fatalf("r produced %+v (ok=%v), want a markdownLoadedMsg for RB-003", run(t, cmd), ok)
+		t.Fatalf("Refresh produced %+v (ok=%v), want a markdownLoadedMsg for RB-003", run(t, cmd), ok)
 	}
 }
 
@@ -676,4 +678,87 @@ func TestEscFromTheViewReturnsToTheIndexAndReloads(t *testing.T) {
 
 func containsFold(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
+// TestRangeIndicatorShowsStoreTotal: the footer counts every runbook the
+// scope matched, not the page on screen.
+func TestRangeIndicatorShowsStoreTotal(t *testing.T) {
+	items := make([]store.RunbookIndexRow, pageSize+3)
+	for i := range items {
+		items[i] = sampleRunbook(fmt.Sprintf("RB-%03d", i+1), "acme", "runbook", false)
+	}
+	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": items}}
+	m := withHeight(newModel(fake, nil).WithProject("acme"), 40)
+	m, _ = step(t, m, run(t, m.Init()))
+
+	if m.Total != len(items) {
+		t.Fatalf("Total = %d, want the store's own %d", m.Total, len(items))
+	}
+	if got := m.View(); !strings.Contains(got, fmt.Sprintf("of %d", len(items))) {
+		t.Fatalf("range indicator does not report the store total %d:\n%s", len(items), got)
+	}
+}
+
+func TestPrevPageIsDisabledOnTheFirstPage(t *testing.T) {
+	items := make([]store.RunbookIndexRow, pageSize+3)
+	for i := range items {
+		items[i] = sampleRunbook(fmt.Sprintf("RB-%03d", i+1), "acme", "runbook", false)
+	}
+	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": items}}
+	m := newModel(fake, nil).WithProject("acme")
+	m, _ = step(t, m, run(t, m.Init()))
+
+	updated, cmd := m.handleIndexKeys("p")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("p on the first page should not re-query the store")
+	}
+	if m.Filter.Offset != 0 {
+		t.Fatalf("Offset = %d, want the first page to stay put", m.Filter.Offset)
+	}
+}
+
+func TestNextPageStopsAtTheLastPage(t *testing.T) {
+	items := make([]store.RunbookIndexRow, pageSize+3)
+	for i := range items {
+		items[i] = sampleRunbook(fmt.Sprintf("RB-%03d", i+1), "acme", "runbook", false)
+	}
+	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": items}}
+	m := newModel(fake, nil).WithProject("acme")
+	m, _ = step(t, m, run(t, m.Init()))
+
+	updated, cmd := m.handleIndexKeys("n")
+	m = updated.(Model)
+	m, _ = step(t, m, run(t, cmd))
+	if m.Filter.Offset != pageSize || len(m.Items) != 3 {
+		t.Fatalf("second page = offset %d with %d items, want %d and 3", m.Filter.Offset, len(m.Items), pageSize)
+	}
+
+	updated, cmd = m.handleIndexKeys("n")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("n on the last page should not re-query the store")
+	}
+	if m.Filter.Offset != pageSize {
+		t.Fatalf("Offset = %d, want the last page to stay put", m.Filter.Offset)
+	}
+}
+
+// TestASearchIsNeverPaged: SearchRunbooks takes a limit and no offset, so
+// the page keys have nowhere to step while a query is active.
+func TestASearchIsNeverPaged(t *testing.T) {
+	items := make([]store.RunbookIndexRow, pageSize+3)
+	for i := range items {
+		items[i] = sampleRunbook(fmt.Sprintf("RB-%03d", i+1), "acme", "runbook", false)
+	}
+	fake := &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": items}}
+	m := newModel(fake, nil).WithProject("acme")
+	m, _ = step(t, m, run(t, searchRunbooks(fake, "acme", false, "runbook", searchLimit)))
+
+	if m.Query != "runbook" {
+		t.Fatalf("Query = %q, want the search to be active", m.Query)
+	}
+	if m.HasNextPage() || m.HasPrevPage() {
+		t.Fatal("a ranked search reports pages it cannot fetch")
+	}
 }

@@ -105,6 +105,19 @@ evidence() {
     --json >"$SEED_OUT/evidence-$project-$task.json"
 }
 
+# observation saves one memory against a project. The Memory tab, the search
+# palette and the workspace-wide scope are all navigators over this table, and
+# a fixture with no rows makes every one of them look broken rather than empty:
+# a reviewer cannot tell a screen that found nothing from a screen that cannot
+# find anything.
+observation() {
+  local project="$1" type="$2" title="$3" body="$4"
+  log "observation: $project $title"
+  in_container env "ENGRAM_PROJECT=$project" \
+    engram save "$title" "$body" --type "$type" --project "$project" \
+    >"$SEED_OUT/observation-$project-$(printf '%s' "$title" | tr -cs '[:alnum:]' '-').json" 2>&1
+}
+
 # knowledge_hub_path names the hub document, not the project folder; the doctor
 # treats a directory as dangling. The three koi-garden cards share one hub, the
 # way a set of sibling deployments shares the page that documents all of them.
@@ -126,6 +139,31 @@ task tsukimi-bridge --jira TSU-204 "migración de thumbnails" migration in_progr
 evidence koi-garden KOI-1042 "koi-garden/KOI-1042/01-pantalla-login.png" "la pantalla de login responde tras el hardening"
 evidence koi-garden KOI-1099 "koi-garden/KOI-1099/01-traza.png" "la traza muestra el timeout del lookup"
 evidence tsukimi-bridge TSU-204 "tsukimi-bridge/TSU-204/01-galeria.png" "la galería carga los thumbnails migrados"
+
+observation koi-garden decision "Autologin token TTL raised to five minutes" \
+  "The remembered-session token was issued with a five-second TTL, so anyone with a couple of seconds of latency between loading the app and calling /api/autologin got a token that had already expired. The issuer now uses five minutes and the endpoint's error rate is back under 0.5%."
+observation koi-garden bugfix "Lookup timeout inherited the transport default" \
+  "The cross-pond lookup client had no timeout of its own and inherited the HTTP transport default, far above what a reader tolerates. A two-second client timeout replaces it, and the p95 dropped from 30s to 1.2s."
+observation koi-garden discovery "Cross-pond lookup only fails from pond-02" \
+  "Reproducing the timeout from pond-01 never fails. The route from pond-02 crosses an extra hop, which is what pushes the request past the old limit."
+observation koi-garden architecture "Evidence is addressed by sha256, never by path" \
+  "Two captures of the same screen under different task folders are the same bytes. Keying on the digest is what lets a reviewer see that, and what makes a re-upload idempotent."
+observation koi-garden pattern "Every mitigation step names the file that proves it" \
+  "A runbook step without a path is a step nobody can check. The vault layout gives each step a document under analysis/, patches/ or benchmarks/."
+observation koi-garden learning "Thumbnail regeneration is not idempotent under load" \
+  "Two workers regenerating the same thumbnail race on the temporary file. The second write wins and leaves a truncated image behind."
+observation koi-garden config "Pond deployments share one knowledge hub" \
+  "koi-garden, pond-01 and pond-02 point at the same hub document. A directory would read as dangling to the doctor; a document does not."
+observation koi-garden-pond-02 bugfix "Timeout reproduced end to end on pond-02" \
+  "Running the cross-pond search against pond-02 with the old client reproduces the 30-second timeout on every attempt. With the new one it resolves in under two seconds."
+observation koi-garden-pond-02 decision "Keep the retry budget at two attempts" \
+  "Raising retries never improved the success rate while the timeout was wrong, and it tripled the load. Two attempts stay."
+observation tsukimi-bridge migration "Thumbnail migration needs a checksum pass" \
+  "The migration copies rows before the files land, so a gallery can point at a thumbnail that does not exist yet. A checksum pass after the copy is what catches it."
+observation tsukimi-bridge learning "The gallery caches a corrupt thumbnail for an hour" \
+  "A corrupt thumbnail is cached with the same TTL as a good one, so a fix is invisible until the entry expires. Busting the key by digest is the way out."
+observation tsukimi-bridge discovery "Bridge traffic peaks at the top of the hour" \
+  "Scheduled syncs all fire on the hour, which is also when the migration was running. Spreading them is cheaper than scaling for the peak."
 
 # Runbooks are seeded from the prepared entries file rather than by scanning
 # the vault, once per project that owns entries. The sync drops an entry whose

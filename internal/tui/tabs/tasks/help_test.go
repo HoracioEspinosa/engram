@@ -6,9 +6,9 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 )
 
-// TestHelpVariesAcrossScreens pins that the "?" overlay (rfc-tui.md §7.1)
-// tracks whichever screen is on display: S3's filters, S4's task actions and
-// S5's context-pack actions are not interchangeable.
+// TestHelpVariesAcrossScreens pins that the "?" overlay tracks whichever
+// screen is on display: the list's filters, the detail screen's task actions
+// and the context pack's actions are not interchangeable.
 func TestHelpVariesAcrossScreens(t *testing.T) {
 	m := New(nil)
 
@@ -40,7 +40,7 @@ func bindingKeys(bindings []key.Binding) string {
 	return s
 }
 
-// TestCapturingTextCoversSearchLinkAndStatePicker pins rfc-tui.md §7.1's
+// TestCapturingTextCoversSearchLinkAndStatePicker pins the global-key
 // suspension rule across the three modal inputs Tasks can have focused: the
 // root must not steal a digit meant for any of them.
 func TestCapturingTextCoversSearchLinkAndStatePicker(t *testing.T) {

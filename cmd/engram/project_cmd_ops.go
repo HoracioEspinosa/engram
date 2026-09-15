@@ -518,16 +518,10 @@ func cmdProjectTasksList(cfg store.Config, slug string, args []string) {
 	})
 }
 
-// projTaskKey is the human identifier of a task: its Jira key, else its SDD
-// change, else its sync id.
+// projTaskKey is the human identifier of a task. The store owns the
+// precedence so the CLI table and the TUI label a task the same way.
 func projTaskKey(t store.Task) string {
-	if k := projStrVal(t.JiraKey); k != "" {
-		return k
-	}
-	if c := projStrVal(t.SDDChange); c != "" {
-		return "change:" + c
-	}
-	return t.SyncID
+	return t.Key()
 }
 
 func cmdProjectTasksUpsert(cfg store.Config, slug string, args []string) {

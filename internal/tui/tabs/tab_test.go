@@ -3,7 +3,8 @@ package tabs
 import "testing"
 
 func TestIDsAreDistinctAndOrdered(t *testing.T) {
-	ids := []ID{Memory, Tasks, Evidence, Runbooks, Cloud}
+	// The order is the bar's order, slot by slot.
+	ids := []ID{Home, Memory, Tasks, Evidence, Benchmarks, Runbooks, Graph, Settings}
 
 	seen := map[ID]bool{}
 	for _, id := range ids {
@@ -13,8 +14,8 @@ func TestIDsAreDistinctAndOrdered(t *testing.T) {
 		seen[id] = true
 	}
 
-	if Memory != 0 {
-		t.Fatalf("Memory = %d, want 0: it is the tab the workspace opens on", Memory)
+	if Home != 0 {
+		t.Fatalf("Home = %d, want 0: it is the tab the workspace opens on", Home)
 	}
 	for i := 1; i < len(ids); i++ {
 		if ids[i] <= ids[i-1] {
@@ -25,12 +26,15 @@ func TestIDsAreDistinctAndOrdered(t *testing.T) {
 
 func TestIDString(t *testing.T) {
 	cases := map[ID]string{
-		Memory:   "memory",
-		Tasks:    "tasks",
-		Evidence: "evidence",
-		Runbooks: "runbooks",
-		Cloud:    "cloud",
-		ID(99):   "unknown",
+		Home:       "home",
+		Memory:     "memory",
+		Tasks:      "tasks",
+		Evidence:   "evidence",
+		Benchmarks: "benchmarks",
+		Runbooks:   "runbooks",
+		Graph:      "graph",
+		Settings:   "settings",
+		ID(99):     "unknown",
 	}
 	for id, want := range cases {
 		if got := id.String(); got != want {
@@ -40,7 +44,7 @@ func TestIDString(t *testing.T) {
 }
 
 func TestNavigateEmitsNavigateMsg(t *testing.T) {
-	cmd := Navigate(Cloud)
+	cmd := Navigate(Settings)
 	if cmd == nil {
 		t.Fatal("Navigate should return a non-nil command")
 	}
@@ -49,15 +53,15 @@ func TestNavigateEmitsNavigateMsg(t *testing.T) {
 	if !ok {
 		t.Fatalf("command returned %T, want NavigateMsg", cmd())
 	}
-	if msg.Target != Cloud {
-		t.Fatalf("target = %v, want %v", msg.Target, Cloud)
+	if msg.Target != Settings {
+		t.Fatalf("target = %v, want %v", msg.Target, Settings)
 	}
 }
 
 // TestNavigateToTaskEvidenceEmitsAnEvidenceTargetWithTheTaskID pins the
-// dependency T-10.03's S4 "e" key left declared: rfc-tui.md §3.1 S6 filters
-// by task_id when reached from a task's detail, which needs a field
-// NavigateMsg did not have (only ObservationID, for the Memory deep link).
+// dependency the task detail screen's "e" key declares: the Evidence list
+// filters by task_id when reached from a task's detail, which is what TaskID
+// carries — ObservationID only serves the Memory deep link.
 func TestNavigateToTaskEvidenceEmitsAnEvidenceTargetWithTheTaskID(t *testing.T) {
 	cmd := NavigateToTaskEvidence(42)
 	if cmd == nil {
@@ -76,9 +80,9 @@ func TestNavigateToTaskEvidenceEmitsAnEvidenceTargetWithTheTaskID(t *testing.T) 
 	}
 }
 
-// TestNavigateToTaskEmitsATasksTargetWithTheTaskID pins rfc-tui.md §3.1 S7's
-// "Enter" on an evidence file, which opens that file's task inside Tasks —
-// the mirror image of NavigateToTaskEvidence.
+// TestNavigateToTaskEmitsATasksTargetWithTheTaskID pins the evidence detail
+// screen's "Enter" on an evidence file, which opens that file's task inside
+// Tasks — the mirror image of NavigateToTaskEvidence.
 func TestNavigateToTaskEmitsATasksTargetWithTheTaskID(t *testing.T) {
 	cmd := NavigateToTask(7)
 	if cmd == nil {
@@ -97,9 +101,10 @@ func TestNavigateToTaskEmitsATasksTargetWithTheTaskID(t *testing.T) {
 	}
 }
 
-// TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery pins rfc-tui.md
-// §3.1 S8/S9's "t" key: it needs a field none of the above cover, since
-// ObservationID and TaskID both name an id, not a search string.
+// TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery pins the "t" key
+// on the Runbooks index and on the runbook Markdown view: it needs a field
+// none of the above cover, since ObservationID and TaskID both name an id,
+// not a search string.
 func TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery(t *testing.T) {
 	cmd := NavigateToMemorySearch("runbook/RB-003")
 	if cmd == nil {
@@ -118,11 +123,10 @@ func TestNavigateToMemorySearchEmitsAMemoryTargetWithTheQuery(t *testing.T) {
 	}
 }
 
-// TestNavigateToObservationEmitsAMemoryTargetWithTheObservationID pins
-// rfc-tui.md §3.1 S4's "Enter" on a task's linked observation, the one
-// NavigateMsg constructor no test exercised: app/update.go's own NavigateMsg
-// branch for it is covered through app's tests, but the constructor itself,
-// in isolation, was not.
+// TestNavigateToObservationEmitsAMemoryTargetWithTheObservationID pins the
+// task detail screen's "Enter" on a task's linked observation. app/update.go's
+// NavigateMsg branch for it is covered through app's tests; this covers the
+// constructor on its own.
 func TestNavigateToObservationEmitsAMemoryTargetWithTheObservationID(t *testing.T) {
 	cmd := NavigateToObservation(101)
 	if cmd == nil {
@@ -141,15 +145,19 @@ func TestNavigateToObservationEmitsAMemoryTargetWithTheObservationID(t *testing.
 	}
 }
 
-// TestHomeEmitsHomeMsg pins the "go home" command the root's HomeMsg branch
-// answers to (the Dashboard when a project is active, Memory otherwise):
-// same gap as NavigateToObservation, a real command nothing called directly.
-func TestHomeEmitsHomeMsg(t *testing.T) {
-	cmd := Home()
+// TestGoingHomeIsAPlainNavigation pins that "go home" needs no message of its
+// own any more: Home is a tab, so the tabs that offer a way back name it the
+// same way every other cross-tab jump does.
+func TestGoingHomeIsAPlainNavigation(t *testing.T) {
+	cmd := Navigate(Home)
 	if cmd == nil {
-		t.Fatal("Home should return a non-nil command")
+		t.Fatal("Navigate should return a non-nil command")
 	}
-	if _, ok := cmd().(HomeMsg); !ok {
-		t.Fatalf("command returned %T, want HomeMsg", cmd())
+	msg, ok := cmd().(NavigateMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want NavigateMsg", cmd())
+	}
+	if msg.Target != Home {
+		t.Fatalf("Target = %v, want Home", msg.Target)
 	}
 }

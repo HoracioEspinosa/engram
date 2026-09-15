@@ -2,7 +2,6 @@ package memory
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -21,9 +20,9 @@ func sampleLinkTasks() map[string][]store.TaskListItem {
 	}
 }
 
-// TestLKeyOpensLinkPickerFromObservationDetail pins rfc-tui.md §5's only
-// addition to the memory screens: "L" on Observation Detail opens the
-// shared task selector for the observation currently on screen.
+// TestLKeyOpensLinkPickerFromObservationDetail pins the "L" binding: on
+// Observation Detail it opens the shared task selector for the observation
+// currently on screen.
 func TestLKeyOpensLinkPickerFromObservationDetail(t *testing.T) {
 	m := New(nil, "").WithTasks(&data.FakeTask{}).WithProject("nextcloud")
 	m.Screen = ScreenObservationDetail
@@ -61,7 +60,7 @@ func TestLKeyIsANoOpOnObservationDetailWithoutAnObservation(t *testing.T) {
 }
 
 // TestLKeyOpensLinkPickerFromSearchResults pins the second of the three
-// screens rfc-tui.md §5 names: Search Results.
+// screens the picker opens from: Search Results.
 func TestLKeyOpensLinkPickerFromSearchResults(t *testing.T) {
 	m := New(nil, "").WithTasks(&data.FakeTask{}).WithProject("nextcloud")
 	m.Screen = ScreenSearchResults
@@ -119,8 +118,8 @@ func TestLinkQuerySubmitLoadsMatchingTasks(t *testing.T) {
 
 	updatedModel, _ = m.Update(cmd())
 	m = updatedModel.(Model)
-	if fake.LastListFilter.Query != "previews" || fake.LastListFilter.Limit != 20 {
-		t.Fatalf("LastListFilter = %+v, want Query=previews Limit=20", fake.LastListFilter)
+	if fake.LastListFilter().Query != "previews" || fake.LastListFilter().Limit != 20 {
+		t.Fatalf("LastListFilter = %+v, want Query=previews Limit=20", fake.LastListFilter())
 	}
 	if len(m.LinkResults) != 1 || m.LinkResults[0].ID != 7 {
 		t.Fatalf("LinkResults = %+v, want the one task matching \"previews\"", m.LinkResults)
@@ -149,10 +148,9 @@ func TestLinkQuerySubmitReportsAnError(t *testing.T) {
 }
 
 // TestLinkPickerEnterLinksTheObservationAndNavigatesToTheTask is the whole
-// round trip rfc-tui.md §5 describes: pick a task from the shared selector,
-// write the task_observations row (what mem_task_link does over MCP today),
-// and land on that task's detail — the MEM -->|L link| TD edge in §7.3's
-// navigation diagram.
+// round trip: pick a task from the shared selector, write the
+// task_observations row (what mem_task_link does over MCP), and land on that
+// task's detail.
 func TestLinkPickerEnterLinksTheObservationAndNavigatesToTheTask(t *testing.T) {
 	fake := &data.FakeTask{ItemsByProject: sampleLinkTasks()}
 	m := New(nil, "").WithTasks(fake).WithProject("nextcloud")
@@ -181,8 +179,8 @@ func TestLinkPickerEnterLinksTheObservationAndNavigatesToTheTask(t *testing.T) {
 	}
 
 	linkedMsg := run(t, cmd)
-	if len(fake.LinkCalls) != 1 || fake.LinkCalls[0].TaskID != 9 || fake.LinkCalls[0].ObservationID != 99 {
-		t.Fatalf("LinkCalls = %+v, want one call linking observation 99 to task 9", fake.LinkCalls)
+	if len(fake.LinkCalls()) != 1 || fake.LinkCalls()[0].TaskID != 9 || fake.LinkCalls()[0].ObservationID != 99 {
+		t.Fatalf("LinkCalls = %+v, want one call linking observation 99 to task 9", fake.LinkCalls())
 	}
 
 	_, cmd2 := m.Update(linkedMsg)
@@ -215,8 +213,8 @@ func TestLinkPickerEscCancelsFromTheQueryBox(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("esc should not issue a write")
 	}
-	if len(fake.LinkCalls) != 0 {
-		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls)
+	if len(fake.LinkCalls()) != 0 {
+		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls())
 	}
 }
 
@@ -245,10 +243,10 @@ func TestLinkPickerEscCancelsFromTheResultsList(t *testing.T) {
 	}
 }
 
-// TestCapturingTextIncludesTheLinkPicker extends rfc-tui.md §7.1's
-// suspension rule to "L": while the picker is open — typing a query or
-// browsing its results — the root must not steal 0, p, a digit or Tab out
-// from under it, the same guard T-10.09 added for the search box.
+// TestCapturingTextIncludesTheLinkPicker extends the suspension rule to "L":
+// while the picker is open — typing a query or browsing its results — the
+// root must not steal 0, p, a digit or Tab out from under it, the same guard
+// the search box has.
 func TestCapturingTextIncludesTheLinkPicker(t *testing.T) {
 	m := New(nil, "").WithTasks(&data.FakeTask{})
 	m.Screen = ScreenObservationDetail
@@ -271,29 +269,25 @@ func TestCapturingTextIncludesTheLinkPicker(t *testing.T) {
 	}
 }
 
-// TestFootersAdvertiseTheLinkToTaskKey pins rfc-tui.md §5's S10 wireframe,
-// which lists "L link to task" in Search Results' footer alongside its
-// other keys — the same always-on hint line "c copy" and "t timeline"
-// already get, not only the "?" overlay's Help().
-func TestFootersAdvertiseTheLinkToTaskKey(t *testing.T) {
-	m := New(nil, "")
+// TestHelpAdvertisesTheLinkToTaskKey pins that the Memory screens list
+// "L link to task" alongside their other keys. The root
+// renders the footer from this declaration, so declaring it is what puts it
+// on the always-on hint line as well as in the "?" overlay.
+func TestHelpAdvertisesTheLinkToTaskKey(t *testing.T) {
+	for _, screen := range []Screen{ScreenSearchResults, ScreenRecent, ScreenObservationDetail} {
+		m := New(nil, "")
+		m.Screen = screen
 
-	m.Screen = ScreenSearchResults
-	m.SearchResults = []store.SearchResult{{Observation: store.Observation{ID: 1}}}
-	if out := m.View(); !strings.Contains(out, "L link to task") {
-		t.Fatalf("search results footer = %q, want it to mention L", out)
-	}
-
-	m.Screen = ScreenRecent
-	m.RecentObservations = []store.Observation{{ID: 1}}
-	if out := m.View(); !strings.Contains(out, "L link to task") {
-		t.Fatalf("recent footer = %q, want it to mention L", out)
-	}
-
-	m.Screen = ScreenObservationDetail
-	m.SelectedObservation = &store.Observation{ID: 1}
-	if out := m.View(); !strings.Contains(out, "L link to task") {
-		t.Fatalf("observation detail footer = %q, want it to mention L", out)
+		found := false
+		for _, b := range m.Help() {
+			if b.Help().Key == "L" && b.Help().Desc == "link to task" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("screen %v answers \"L\" but does not declare it", screen)
+		}
 	}
 }
 

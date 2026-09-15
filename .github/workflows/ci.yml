@@ -40,6 +40,28 @@ jobs:
       - name: Enforce internal/tui coverage threshold
         run: bash scripts/tui-coverage-gate.sh
 
+  golden-captures:
+    name: Golden Captures
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # The guard diffs the pull request's own range, so the base commit
+          # has to be in the clone.
+          fetch-depth: 0
+
+      # A .golden file is ASCII with the colour stripped and the layout
+      # flattened: nobody can tell from it whether the screen it froze is one a
+      # person would want to look at. The capture in docs/tui/img/ is what
+      # makes a regenerated golden reviewable.
+      #
+      # Armed: docs/tui/img/ holds a capture of every screen, so a
+      # regenerated golden always has a picture to be reviewed against.
+      - name: Require a capture beside every regenerated golden
+        run: bash scripts/dev/golden-guard.sh "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest

@@ -2,8 +2,8 @@ package memory
 
 import "github.com/charmbracelet/bubbles/key"
 
-// Help lists whichever screen is on display's own bindings (rfc-tui.md
-// §7.2), the same ones each screen's view.go footer already prints. Memory
+// Help lists whichever screen is on display's own bindings, the same ones
+// each screen's view.go footer already prints. Memory
 // predates every other tab and keeps its own screen router (Screen, not a
 // shared one), so this switches on it directly rather than delegating.
 func (m Model) Help() []key.Binding {
@@ -21,6 +21,8 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
 			key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "link to task")),
+			key.NewBinding(key.WithKeys("p", "n"), key.WithHelp("p/n", "page")),
+			m.scopeBinding(),
 			key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search again")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
@@ -32,6 +34,8 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy")),
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
 			key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "link to task")),
+			key.NewBinding(key.WithKeys("p", "n"), key.WithHelp("p/n", "page")),
+			m.scopeBinding(),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
 	case ScreenObservationDetail:
@@ -59,6 +63,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("g", "G"), key.WithHelp("g/G", "top/bottom")),
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "view session")),
 			key.NewBinding(key.WithKeys("d", "D"), key.WithHelp("d", "delete")),
+			m.scopeBinding(),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
 	case ScreenSessionDetail:
@@ -97,12 +102,25 @@ func (m Model) Help() []key.Binding {
 }
 
 // CapturingText reports whether the search box is focused, or the "L"
-// link-to-task picker is open (rfc-tui.md §7.1's textinput suspension
-// rule): while true, digits and letters typed into either must reach the
+// link-to-task picker is open, either of which suspends the root's own key
+// handling: while true, digits and letters typed into either must reach the
 // tab, never the root's tab-switch keys. The picker counts for its whole
 // lifetime, not only while its own query box has focus — browsing its
 // results with j/k must not have "1" jump to the Tasks tab out from under
 // the cursor either.
 func (m Model) CapturingText() bool {
 	return (m.Screen == ScreenSearch && m.SearchInput.Focused()) || m.Linking
+}
+
+// scopeBinding names the "a" key with the width it would move to, so the hint
+// says what pressing it does rather than only that it does something.
+//
+// Without a project there is nothing to narrow to, and the binding is
+// returned disabled: shared.HintsFrom skips a disabled binding, so the hint
+// disappears rather than advertising a key that answers nothing.
+func (m Model) scopeBinding() key.Binding {
+	if m.project == "" {
+		return key.NewBinding(key.WithKeys("a"), key.WithDisabled())
+	}
+	return key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "scope: "+m.Scope.label()))
 }

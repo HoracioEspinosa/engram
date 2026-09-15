@@ -101,6 +101,29 @@ func (p Palette) Role(name string) (lipgloss.Color, bool) {
 	return *colour, true
 }
 
+// ResolveColor turns a colour somebody chose for one of their own entities —
+// a project card's `color`, today — into a colour to draw with.
+//
+// It accepts either a role token, which follows whichever palette is active
+// so a project keeps its place in the theme, or an #rrggbb triple, which is
+// the user pinning an exact shade and is honoured as given. Anything else
+// reports false, and the caller falls back to a role of its own rather than
+// rendering an unpainted string.
+//
+// It lives here because this package is the only one allowed to know what a
+// colour literal looks like: a caller elsewhere matching "#rrggbb" itself
+// would be a second, drifting definition of the same rule.
+func ResolveColor(p Palette, value string) (lipgloss.Color, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "", false
+	}
+	if hexPattern.MatchString(value) {
+		return lipgloss.Color(value), true
+	}
+	return p.Role(value)
+}
+
 // BuiltinTheme is a palette the binary ships, with the variant it was built
 // for. It is what a caller seeds the themes table from.
 type BuiltinTheme struct {
@@ -110,10 +133,19 @@ type BuiltinTheme struct {
 }
 
 // builtinVariants records which variant each registered palette was built for.
-// A palette that is not listed is dark: every palette the binary ships today
-// is, and a light one that forgot to say so would open a light terminal on a
-// dark theme, which is the failure worth defaulting away from.
-var builtinVariants = map[string]string{}
+// A palette that is not listed is dark: all but one of the palettes the binary
+// ships are, and a light one that forgot to say so would open a light terminal
+// on a dark theme, which is the failure worth defaulting away from.
+var builtinVariants = map[string]string{
+	"koi-day": ThemeVariantLight,
+}
+
+// The two variants a theme document may declare. They are the same two strings
+// the themes table's CHECK constraint admits.
+const (
+	ThemeVariantDark  = "dark"
+	ThemeVariantLight = "light"
+)
 
 // Builtins returns every registered palette, by name, so a caller can seed all
 // of them without knowing which ones exist.
@@ -128,7 +160,7 @@ func Builtins() []BuiltinTheme {
 	for _, name := range names {
 		variant := builtinVariants[name]
 		if variant == "" {
-			variant = "dark"
+			variant = ThemeVariantDark
 		}
 		out = append(out, BuiltinTheme{Name: name, Variant: variant, Palette: registry[name]()})
 	}
@@ -137,13 +169,17 @@ func Builtins() []BuiltinTheme {
 
 // Builtin returns one registered palette by name.
 func Builtin(name string) (BuiltinTheme, bool) {
-	ctor, ok := registry[strings.ToLower(strings.TrimSpace(name))]
+	// The name is folded once and then used for both lookups. Looking the
+	// registry up folded and the variant up raw is how a palette answers to
+	// "KOI-DAY" and comes back claiming to be dark.
+	name = strings.ToLower(strings.TrimSpace(name))
+	ctor, ok := registry[name]
 	if !ok {
 		return BuiltinTheme{}, false
 	}
 	variant := builtinVariants[name]
 	if variant == "" {
-		variant = "dark"
+		variant = ThemeVariantDark
 	}
 	return BuiltinTheme{Name: name, Variant: variant, Palette: ctor()}, true
 }
@@ -164,9 +200,9 @@ func MarshalTheme(name, variant string, p Palette) ([]byte, error) {
 	}
 	variant = strings.ToLower(strings.TrimSpace(variant))
 	if variant == "" {
-		variant = "dark"
+		variant = ThemeVariantDark
 	}
-	if variant != "dark" && variant != "light" {
+	if variant != ThemeVariantDark && variant != ThemeVariantLight {
 		return nil, fmt.Errorf("theme: variant %q is neither dark nor light", variant)
 	}
 
@@ -210,9 +246,9 @@ func UnmarshalTheme(data []byte) (string, string, Palette, error) {
 	}
 	variant := strings.ToLower(strings.TrimSpace(doc.Variant))
 	if variant == "" {
-		variant = "dark"
+		variant = ThemeVariantDark
 	}
-	if variant != "dark" && variant != "light" {
+	if variant != ThemeVariantDark && variant != ThemeVariantLight {
 		return "", "", Palette{}, fmt.Errorf("theme: variant %q is neither dark nor light", variant)
 	}
 	if len(doc.LogoGradient) != logoRows {

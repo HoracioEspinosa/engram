@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/HoracioEspinosa/engram/internal/store"
@@ -69,7 +70,7 @@ func withHeight(m Model, h int) Model {
 	return m
 }
 
-// ─── List (S3) ───────────────────────────────────────────────────────────────
+// ─── List ────────────────────────────────────────────────────────────────────
 
 func TestNewStartsOnTheListScreenWithNoProject(t *testing.T) {
 	m := New(&data.FakeTask{})
@@ -97,8 +98,8 @@ func TestInitLoadsTasksWhenAProjectIsAlreadyActive(t *testing.T) {
 	}
 }
 
-// TestOpenTaskLoadsTheGivenTasksDetail pins rfc-tui.md §3.1 S7's "Enter" on
-// an evidence file: the root drives this the same way it drives
+// TestOpenTaskLoadsTheGivenTasksDetail pins "Enter" on an evidence file, from
+// the evidence detail screen: the root drives this the same way it drives
 // memory.Model.OpenObservation for the Memory deep link, so a message from
 // outside this package (tabs.NavigateMsg.TaskID) can open a task's detail
 // without the Tasks tab importing tabs/evidence.
@@ -257,12 +258,15 @@ func TestListSearchEnterAppliesTheQuery(t *testing.T) {
 		t.Fatal("search input should blur once submitted")
 	}
 	m, _ = step(t, m, run(t, cmd))
-	if fake.LastListFilter.Query != "api" {
-		t.Fatalf("reader saw query %q, want %q", fake.LastListFilter.Query, "api")
+	if fake.LastListFilter().Query != "api" {
+		t.Fatalf("reader saw query %q, want %q", fake.LastListFilter().Query, "api")
 	}
 }
 
-func TestListNextPageAdvancesOffsetThenWrapsOnAShortPage(t *testing.T) {
+// TestNextPageStopsAtTheLastPage: with the store's own total in hand there
+// is nothing left to infer from a short page, so the last page stays put
+// instead of wrapping round to the first.
+func TestNextPageStopsAtTheLastPage(t *testing.T) {
 	items := make([]store.TaskListItem, pageSize+5)
 	for i := range items {
 		items[i] = store.TaskListItem{Task: sampleTask(int64(i+1), fmt.Sprintf("ACME-%d", i+1), "open")}
@@ -286,9 +290,50 @@ func TestListNextPageAdvancesOffsetThenWrapsOnAShortPage(t *testing.T) {
 
 	updated, cmd = m.handleListKeys("n")
 	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("n on the last page should not re-query the store")
+	}
+	if m.Filter.Offset != pageSize {
+		t.Fatalf("offset after n on the last page = %d, want it to stay at %d", m.Filter.Offset, pageSize)
+	}
+}
+
+// TestPrevPageIsDisabledOnTheFirstPage covers the other half of the page
+// pair: the offset alone says whether there is a page behind this one, so
+// the first page stays put and issues no query.
+func TestPrevPageIsDisabledOnTheFirstPage(t *testing.T) {
+	items := make([]store.TaskListItem, pageSize+5)
+	for i := range items {
+		items[i] = store.TaskListItem{Task: sampleTask(int64(i+1), fmt.Sprintf("ACME-%d", i+1), "open")}
+	}
+	fake := &data.FakeTask{ItemsByProject: map[string][]store.TaskListItem{"acme": items}}
+	m := New(fake).WithProject("acme")
+	m, _ = step(t, m, run(t, m.Init()))
+
+	updated, cmd := m.handleListKeys("n")
+	m = updated.(Model)
+	m, _ = step(t, m, run(t, cmd))
+	if m.Filter.Offset != pageSize {
+		t.Fatalf("offset after n = %d, want %d", m.Filter.Offset, pageSize)
+	}
+
+	updated, cmd = m.handleListKeys("p")
+	m = updated.(Model)
 	m, _ = step(t, m, run(t, cmd))
 	if m.Filter.Offset != 0 {
-		t.Fatalf("offset after a short page = %d, want wrapped back to 0", m.Filter.Offset)
+		t.Fatalf("offset after p = %d, want back on the first page", m.Filter.Offset)
+	}
+	if len(m.Items) != pageSize {
+		t.Fatalf("first page = %d items, want the full %d back", len(m.Items), pageSize)
+	}
+
+	updated, cmd = m.handleListKeys("p")
+	m = updated.(Model)
+	if cmd != nil {
+		t.Fatal("p on the first page should not re-query the store")
+	}
+	if m.Filter.Offset != 0 {
+		t.Fatalf("offset = %d, want the first page left alone", m.Filter.Offset)
 	}
 }
 
@@ -296,14 +341,14 @@ func TestListEscGoesHome(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")
 	_, cmd := m.handleListKeys("esc")
 	if cmd == nil {
-		t.Fatal("esc from the list root should emit HomeMsg")
+		t.Fatal("esc from the list root should navigate to Home")
 	}
-	if _, ok := run(t, cmd).(tabs.HomeMsg); !ok {
-		t.Fatalf("esc produced %T, want tabs.HomeMsg", run(t, cmd))
+	if _, ok := run(t, cmd).(tabs.NavigateMsg); !ok {
+		t.Fatalf("esc produced %T, want tabs.NavigateMsg{Target: tabs.Home}", run(t, cmd))
 	}
 }
 
-// ─── Detail (S4) ─────────────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────────────────────
 
 func TestDetailEnterOnAnObservationNavigatesToMemory(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
@@ -325,10 +370,10 @@ func TestDetailEnterOnAnObservationNavigatesToMemory(t *testing.T) {
 	}
 }
 
-// TestDetailEvidenceKeyNavigatesToEvidenceFilteredByTheTask pins T-10.04's
-// dependency: rfc-tui.md §3.1 S4's "e" must filter the Evidence tab down to
-// the task under view (S6's task_id filter), which needs TaskID on
-// tabs.NavigateMsg — until T-10.04 the key only switched tabs with no filter.
+// TestDetailEvidenceKeyNavigatesToEvidenceFilteredByTheTask pins that the
+// task detail screen's "e" filters the Evidence tab down to the task under
+// view rather than merely switching to it, which is what TaskID on
+// tabs.NavigateMsg carries.
 func TestDetailEvidenceKeyNavigatesToEvidenceFilteredByTheTask(t *testing.T) {
 	task := sampleTask(9, "ACME-9", "open")
 	m := New(&data.FakeTask{}).WithProject("acme")
@@ -403,8 +448,8 @@ func TestDetailStateChangeWritesThroughTheReaderAndReloads(t *testing.T) {
 		t.Fatal("enter in the state picker should write the new state")
 	}
 	m, cmd = step(t, m, run(t, cmd))
-	if len(fake.UpdateStateCalls) != 1 || fake.UpdateStateCalls[0].ID != 1 || fake.UpdateStateCalls[0].State != stateOptions[1] {
-		t.Fatalf("UpdateStateCalls = %+v, want one call for task 1 with state %q", fake.UpdateStateCalls, stateOptions[1])
+	if len(fake.UpdateStateCalls()) != 1 || fake.UpdateStateCalls()[0].ID != 1 || fake.UpdateStateCalls()[0].State != stateOptions[1] {
+		t.Fatalf("UpdateStateCalls = %+v, want one call for task 1 with state %q", fake.UpdateStateCalls(), stateOptions[1])
 	}
 	if m.ChangingState {
 		t.Fatal("the picker should close once the write completes")
@@ -432,8 +477,8 @@ func TestDetailStateChangeEscCancelsWithoutWriting(t *testing.T) {
 	if m.ChangingState {
 		t.Fatal("esc should close the picker")
 	}
-	if len(fake.UpdateStateCalls) != 0 {
-		t.Fatalf("UpdateStateCalls = %+v, want none", fake.UpdateStateCalls)
+	if len(fake.UpdateStateCalls()) != 0 {
+		t.Fatalf("UpdateStateCalls = %+v, want none", fake.UpdateStateCalls())
 	}
 }
 
@@ -462,8 +507,8 @@ func TestDetailLinkObservationFlow(t *testing.T) {
 	// observation, the same two-hop chain TestDetailStateChangeWritesThrough
 	// TheReaderAndReloads exercises for the state mirror write.
 	m, cmd = step(t, m, run(t, cmd))
-	if len(fake.LinkCalls) != 1 || fake.LinkCalls[0].TaskID != 1 || fake.LinkCalls[0].ObservationID != 42 {
-		t.Fatalf("LinkCalls = %+v, want one call linking observation 42 to task 1", fake.LinkCalls)
+	if len(fake.LinkCalls()) != 1 || fake.LinkCalls()[0].TaskID != 1 || fake.LinkCalls()[0].ObservationID != 42 {
+		t.Fatalf("LinkCalls = %+v, want one call linking observation 42 to task 1", fake.LinkCalls())
 	}
 	if m.Linking {
 		t.Fatal("the link input should close once the write completes")
@@ -492,8 +537,8 @@ func TestDetailLinkObservationRejectsNonNumericInput(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("an invalid observation id must not issue a write")
 	}
-	if len(fake.LinkCalls) != 0 {
-		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls)
+	if len(fake.LinkCalls()) != 0 {
+		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls())
 	}
 	if m.ErrorMsg == "" {
 		t.Fatal("an invalid observation id should surface an error")
@@ -601,7 +646,7 @@ func TestDetailEscReturnsToListAndReloadsIt(t *testing.T) {
 	}
 }
 
-// ─── Context pack (S5) ───────────────────────────────────────────────────────
+// ─── Context pack ────────────────────────────────────────────────────────────
 
 func TestContextPackLoadsAndRendersFromDetail(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
@@ -736,7 +781,7 @@ func TestUpdateOnCopiedMsgSetsFeedbackAndSchedulesItsClear(t *testing.T) {
 
 func TestUpdateOnClearFeedbackMsgClearsTheBanner(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")
-	m.CopyFeedback = "✓ Copied!"
+	m.CopyFeedback = "Copied!"
 
 	m, _ = step(t, m, shared.ClearFeedbackMsg{})
 	if m.CopyFeedback != "" {
@@ -748,7 +793,7 @@ func TestTasksLoadedClampsAnOutOfRangeCursor(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")
 	m.Cursor, m.Scroll = 5, 3
 
-	m, _ = step(t, m, tasksLoadedMsg{items: []store.TaskListItem{{Task: sampleTask(1, "ACME-1", "open")}}})
+	m, _ = step(t, m, tasksLoadedMsg{page: data.Page[store.TaskListItem]{Items: []store.TaskListItem{{Task: sampleTask(1, "ACME-1", "open")}}, Total: 1, Limit: 20}})
 	if m.Cursor != 0 || m.Scroll != 0 {
 		t.Fatalf("Cursor/Scroll = %d/%d, want reset to 0/0 once the reload is shorter", m.Cursor, m.Scroll)
 	}
@@ -833,7 +878,7 @@ func TestContextPackLoadedSurfacesAnError(t *testing.T) {
 	}
 }
 
-// ─── Search input (S3 overlay) ────────────────────────────────────────────────
+// ─── Search input (list overlay) ─────────────────────────────────────────────
 
 func TestHandleSearchInputKeysEscBlursAndClearsTheQuery(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")
@@ -867,7 +912,7 @@ func TestHandleSearchInputKeysTypingUpdatesTheValue(t *testing.T) {
 	}
 }
 
-// ─── Link input (S4 overlay) ─────────────────────────────────────────────────
+// ─── Link input (detail overlay) ─────────────────────────────────────────────
 
 func TestHandleLinkInputKeysEscBlursAndClearsTheValue(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
@@ -921,12 +966,12 @@ func TestHandleLinkInputKeysEnterWithNoDetailClosesWithoutLinking(t *testing.T) 
 	if m.Linking {
 		t.Fatal("the input should still close")
 	}
-	if len(fake.LinkCalls) != 0 {
-		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls)
+	if len(fake.LinkCalls()) != 0 {
+		t.Fatalf("LinkCalls = %+v, want none", fake.LinkCalls())
 	}
 }
 
-// ─── State picker (S4 overlay) ────────────────────────────────────────────────
+// ─── State picker (detail overlay) ───────────────────────────────────────────
 
 func TestHandleStatePickerKeysUpClampsAtZero(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
@@ -968,7 +1013,7 @@ func TestHandleStatePickerKeysEnterWithNoDetailClosesWithoutWriting(t *testing.T
 	}
 }
 
-// ─── Detail (S4) — remaining keys ─────────────────────────────────────────────
+// ─── Detail — remaining keys ─────────────────────────────────────────────────
 
 func TestDetailUKeyOpensThePR(t *testing.T) {
 	task := sampleTask(1, "ACME-1", "open")
@@ -1040,9 +1085,9 @@ func TestDetailRKeyReloadsTheTask(t *testing.T) {
 	m.Detail = &detail
 	m.Screen = ScreenDetail
 
-	_, cmd := m.handleDetailKeys("r")
+	cmd := m.Refresh()
 	if cmd == nil {
-		t.Fatal("r should reload the task detail")
+		t.Fatal("Refresh on the detail should reload the task")
 	}
 	m, _ = step(t, m, run(t, cmd))
 	if m.Detail == nil || len(m.Detail.Observations) != 1 {
@@ -1050,7 +1095,7 @@ func TestDetailRKeyReloadsTheTask(t *testing.T) {
 	}
 }
 
-// ─── Context pack (S5) — remaining keys ───────────────────────────────────────
+// ─── Context pack — remaining keys ───────────────────────────────────────────
 
 func TestHandleContextPackKeysScrolls(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")
@@ -1085,9 +1130,9 @@ func TestHandleContextPackKeysRRebuildsWhenDetailIsPresent(t *testing.T) {
 	m.Screen = ScreenContextPack
 	m.ContextPack = "# stale"
 
-	_, cmd := m.handleContextPackKeys("r")
+	cmd := m.Refresh()
 	if cmd == nil {
-		t.Fatal("r with a task loaded should rebuild the context pack")
+		t.Fatal("Refresh with a task loaded should rebuild the context pack")
 	}
 	m, _ = step(t, m, run(t, cmd))
 	if m.ContextPack != "# rebuilt" {
@@ -1206,5 +1251,35 @@ func TestWithProjectResetsListAndDetailState(t *testing.T) {
 
 	if m.Screen != ScreenList || len(m.Items) != 0 || m.Cursor != 0 || m.Filter.State != "" || m.Detail != nil || m.ErrorMsg != "" {
 		t.Fatalf("WithProject left stale state: %+v", m)
+	}
+}
+
+// TestRangeIndicatorShowsStoreTotal: the footer counts what the filter
+// matched in the store, not what fits on the page. Seeding more rows than
+// one page holds is what makes the two numbers differ — an adapter that
+// dropped the total would render "of 20" here.
+func TestRangeIndicatorShowsStoreTotal(t *testing.T) {
+	items := make([]store.TaskListItem, pageSize+7)
+	for i := range items {
+		items[i] = store.TaskListItem{Task: sampleTask(int64(i+1), fmt.Sprintf("ACME-%d", i+1), "open")}
+	}
+	fake := &data.FakeTask{ItemsByProject: map[string][]store.TaskListItem{"acme": items}}
+	m := New(fake).WithProject("acme")
+	m.Height = 40
+	m, _ = step(t, m, run(t, m.Init()))
+
+	if m.Total != len(items) {
+		t.Fatalf("Total = %d, want the store's own %d", m.Total, len(items))
+	}
+	if got := m.View(); !strings.Contains(got, fmt.Sprintf("of %d", len(items))) {
+		t.Fatalf("range indicator does not report the store total %d:\n%s", len(items), got)
+	}
+
+	// On the second page the range is absolute, not page-relative.
+	updated, cmd := m.handleListKeys("n")
+	m = updated.(Model)
+	m, _ = step(t, m, run(t, cmd))
+	if got := m.View(); !strings.Contains(got, fmt.Sprintf("tasks %d-%d of %d", pageSize+1, len(items), len(items))) {
+		t.Fatalf("second page range is not absolute:\n%s", got)
 	}
 }

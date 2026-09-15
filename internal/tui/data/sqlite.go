@@ -40,6 +40,13 @@ func NewScopedMemoryReader(s *store.Store) ScopedMemoryReader {
 	return sqliteMemory{store: s}
 }
 
+// NewMemorySource wraps an engram store as everything the Memory tab reads
+// through: the original MemoryReader plus the scoped, paged surface the
+// range indicator and the page keys need.
+func NewMemorySource(s *store.Store) MemorySource {
+	return sqliteMemory{store: s}
+}
+
 func (r sqliteMemory) Stats() (*store.Stats, error) {
 	return r.store.Stats()
 }
@@ -368,6 +375,12 @@ func NewTaskPageReader(s *store.Store) TaskPageReader {
 	return sqliteTask{store: s}
 }
 
+// NewTaskSource wraps an engram store as everything the Tasks tab reads
+// through: TaskReader's method set plus TaskPageReader's.
+func NewTaskSource(s *store.Store) TaskSource {
+	return sqliteTask{store: s}
+}
+
 func (r sqliteTask) ListTasks(taskProject string, f store.TaskListFilter) ([]store.TaskListItem, error) {
 	if r.store == nil {
 		return nil, ErrStoreUnavailable
@@ -528,8 +541,8 @@ func (r sqliteTask) LinkObservation(taskID, observationID int64) error {
 // ContextPack resolves the task by id to find its project, then delegates to
 // internal/project.BuildContextPack — the same function mem_context_pack
 // calls — addressing the task by its numeric id ("#<id>", ResolveTaskRef's
-// local-id form) so the rendered pack always reflects the exact row S4 has
-// on screen.
+// local-id form) so the rendered pack always reflects the exact row the task
+// detail screen has on screen.
 func (r sqliteTask) ContextPack(taskID int64) (string, error) {
 	if r.store == nil {
 		return "", ErrStoreUnavailable
@@ -564,6 +577,12 @@ func NewEvidenceReader(s *store.Store) EvidenceReader {
 //
 // A nil store yields a reader whose queries report ErrStoreUnavailable.
 func NewEvidencePageReader(s *store.Store) EvidencePageReader {
+	return sqliteEvidence{store: s}
+}
+
+// NewEvidenceSource wraps an engram store as everything the Evidence tab
+// reads through: EvidenceReader's method set plus EvidencePageReader's.
+func NewEvidenceSource(s *store.Store) EvidenceSource {
 	return sqliteEvidence{store: s}
 }
 
@@ -660,6 +679,12 @@ func NewRunbookPageReader(s *store.Store) RunbookPageReader {
 	return sqliteRunbook{store: s}
 }
 
+// NewRunbookSource wraps an engram store as everything the Runbooks tab
+// reads through: RunbookReader's method set plus RunbookPageReader's.
+func NewRunbookSource(s *store.Store) RunbookSource {
+	return sqliteRunbook{store: s}
+}
+
 func (r sqliteRunbook) ListRunbooks(project string, all bool) ([]store.RunbookIndexRow, error) {
 	if r.store == nil {
 		return nil, ErrStoreUnavailable
@@ -695,15 +720,11 @@ func (r sqliteRunbook) SearchRunbooks(project string, all bool, query string, li
 	return r.store.SearchRunbookIndex(query, project, limit)
 }
 
-// TaskKey returns the label a task is identified by everywhere in the TUI:
-// its Jira key, falling back to its SDD change slug, falling back to its
-// sync_id. It is the same precedence internal/project.BuildContextPack uses
-// for the context pack's own header, exported through data (rather than
-// tabs/tasks importing internal/project directly) so every tab stays on the
-// dependency rule in rfc-tui.md §4.1: a tab imports only data, theme and
-// shared.
+// TaskKey returns the label a task is identified by everywhere in the TUI.
+// The store owns the precedence; data re-exports it so every tab stays on the
+// dependency rule: a tab imports only data, theme and shared.
 func TaskKey(t store.Task) string {
-	return project.TaskKey(t)
+	return t.Key()
 }
 
 // JiraURL returns the browse URL for a Jira key, using the same
@@ -756,8 +777,8 @@ func (r sqliteProjectTree) ProjectTree() ([]ProjectNode, error) {
 	}
 	// One store call: includeCounts=true batches the counters internally
 	// (store.ProjectCardCountsBatch, one grouped query per counted table),
-	// so this is the "ProjectTree con counts en lote" the reader is
-	// specified to cost at most two store calls for.
+	// so this is the batched "tree with counts" read the reader is specified
+	// to cost at most two store calls for.
 	flat, err := r.store.ProjectTree("", true)
 	if err != nil {
 		return nil, err
@@ -1208,14 +1229,14 @@ type sqliteSettings struct {
 	store *store.Store
 }
 
-// NewSettingsReader wraps an engram store as Ajustes's settings reader.
+// NewSettingsReader wraps an engram store as the Settings tab's settings reader.
 //
 // A nil store yields a reader whose queries report ErrStoreUnavailable.
 func NewSettingsReader(s *store.Store) SettingsReader {
 	return sqliteSettings{store: s}
 }
 
-// NewSettingsWriter wraps an engram store as Ajustes's settings writer.
+// NewSettingsWriter wraps an engram store as the Settings tab's settings writer.
 //
 // A nil store yields a writer whose calls report ErrStoreUnavailable.
 func NewSettingsWriter(s *store.Store) SettingsWriter {

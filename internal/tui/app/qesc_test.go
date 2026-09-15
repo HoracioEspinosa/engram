@@ -9,14 +9,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// TestQAndEscGoHomeFromEveryTabsRootScreen pins rfc-tui.md §7.1's
-// generalization of "q"/"Esc": "en la raíz de una pestaña vuelve al
-// Dashboard". This is a regression pin, not new behaviour this task adds —
-// Tasks, Evidence, Runbooks and Cloud already route their root screen's
-// "esc"/"q" through tabs.Home() (measured by reading each tab's update.go
-// before writing this test; see this task's report), so none of these cases
-// had a red phase against unmodified code. What is being pinned is that
-// restructuring updateActive around CapturingText did not disturb it.
+// TestQAndEscGoHomeFromEveryTabsRootScreen pins the generalized "q"/"Esc":
+// on a tab's root screen either key returns to Home. Tasks, Evidence,
+// Runbooks and Settings each route their root screen's "esc"/"q" through
+// tabs.Home(), and this holds that contract against changes to how
+// updateActive dispatches around CapturingText.
 func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -29,8 +26,8 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 		{"evidence-list-esc", tabs.Evidence, "esc"},
 		{"runbooks-index-q", tabs.Runbooks, "q"},
 		{"runbooks-index-esc", tabs.Runbooks, "esc"},
-		{"cloud-menu-q", tabs.Cloud, "q"},
-		{"cloud-menu-esc", tabs.Cloud, "esc"},
+		{"settings-list-q", tabs.Settings, "q"},
+		{"settings-list-esc", tabs.Settings, "esc"},
 	}
 
 	for _, tc := range cases {
@@ -38,11 +35,10 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 			m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 			m.project = "nextcloud"
 			m.active = tc.active
-			// New now opens the selector without a resolvable project
-			// (T-10.02); this case's premise is being on tc.active's root
-			// screen already, so that is set explicitly rather than relied
-			// on as New's default.
-			m.screen = screenTab
+			// New opens the project tree when no project resolves; this
+			// case's premise is being on tc.active's root screen already,
+			// so that is set explicitly rather than relied on as a default.
+			m.tree.open = false
 
 			var msg tea.KeyMsg
 			if tc.key == "esc" {
@@ -56,48 +52,40 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 				t.Fatalf("%v's root screen should emit tabs.Home() on %q", tc.active, tc.key)
 			}
 			m, _ = step(t, m, cmd())
-			if m.screen != screenDashboard {
-				t.Fatalf("screen = %v, want screenDashboard: a project is active, so home is the Project Dashboard", m.screen)
+			if m.active != tabs.Home {
+				t.Fatalf("active = %v, want Home: a project is active, so home is its own tab", m.active)
 			}
 		})
 	}
 }
 
-// TestQQuitsFromTheDashboardAndSelector pins rfc-tui.md §7.1's other half:
-// "en el Dashboard sale" — and S1's own footer, "q quit", the same one
-// place a project workspace has nowhere further "back" to go. Regression,
-// not new: both already returned tea.Quit before this task.
-func TestQQuitsFromTheDashboardAndSelector(t *testing.T) {
-	dash := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	dash.project = "nextcloud"
-	dash.screen = screenDashboard
-	if _, cmd := step(t, dash, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd == nil {
-		t.Fatal("q on the dashboard should quit")
-	}
-
-	sel := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	sel.screen = screenSelector
-	if _, cmd := step(t, sel, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd == nil {
-		t.Fatal("q on the selector should quit")
+// TestQDoesNotQuitFromAnOverlay pins that "q" belongs to the screen, not to
+// the chrome. Home answers neither "q" nor "esc": it is where the other
+// tabs send the reader back to, so there is nothing further back to go.
+func TestQDoesNotQuitFromAnOverlay(t *testing.T) {
+	// The project tree overlay does not answer "q": with it open the letter is
+	// a filter candidate, and quitting from the one screen that can give the
+	// workspace a project would strand the reader.
+	tree := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	if _, cmd := step(t, tree, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd != nil {
+		t.Fatal("q on the project tree should not quit: esc closes the overlay and ctrl+c leaves")
 	}
 }
 
 // TestMemorysOwnDashboardQuitsDirectlyNotHome documents a deliberate
-// exception rather than a bug: Memory's internal ScreenDashboard predates
-// the project workspace and lists "Quit" as its own sixth menu item (S10,
-// existente/referencia per rfc-tui.md §5) — "q" there is that menu
-// shortcut, not the chrome's generalized "back one level". Left unchanged:
-// Memory is out of this task's scope (T-10.01/T-10.02 own it), and folding
-// it into tabs.Home() would repurpose a menu action nothing in this task's
-// brief asked to touch. See this task's report.
+// exception rather than a bug: the Memory tab's own ScreenDashboard lists
+// "Quit" as its sixth menu item, so "q" there is that menu shortcut and not
+// the chrome's generalized "back one level". Folding it into tabs.Home()
+// would repurpose a menu action the chrome does not own.
 func TestMemorysOwnDashboardQuitsDirectlyNotHome(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
 	m.active = tabs.Memory
-	// New now opens the selector without a resolvable project (T-10.02);
-	// this case's premise is being on Memory's own dashboard already, so
-	// that is set explicitly rather than relied on as New's default.
-	m.screen = screenTab
+	// New opens the project tree without a resolvable project; this case's
+	// premise is being on Memory's own dashboard already, so that is set
+	// explicitly rather than relied on as New's default.
+	m.tree.open = false
+	m.tree.open = false
 
 	if _, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd == nil {
 		t.Fatal("q on Memory's own dashboard should still quit directly, unchanged by this task")

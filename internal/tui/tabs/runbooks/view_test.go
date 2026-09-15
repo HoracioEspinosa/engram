@@ -52,7 +52,7 @@ func TestViewIndexRendersEveryStateWithoutPanicking(t *testing.T) {
 		{"error-and-copy-banner", func() Model {
 			m := withHeight(newModel(&data.FakeRunbook{}, nil).WithProject("acme"), 30)
 			m.ErrorMsg = "database is locked"
-			m.CopyFeedback = "✓ Copied!"
+			m.CopyFeedback = "Copied!"
 			return m
 		}},
 	}
@@ -78,8 +78,8 @@ func TestViewIndexShowsTheRunbookIdentity(t *testing.T) {
 	}
 }
 
-// TestViewRunbookPreviewShowsTheSymptoms pins the strip rfc-tui.md §5's S8
-// wireframe puts under the cursor, the one viewRunbookPreview renders.
+// TestViewRunbookPreviewShowsTheSymptoms pins the strip the index puts under
+// the cursor, the one viewRunbookPreview renders.
 func TestViewRunbookPreviewShowsTheSymptoms(t *testing.T) {
 	item := sampleRunbook("RB-900", "acme", "Stale runbook", true)
 	item.Symptoms = []string{"returns HTTP 503"}

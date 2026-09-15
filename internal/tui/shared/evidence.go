@@ -14,9 +14,10 @@ import (
 // evidence add` never looks.
 //
 // Within internal/tui, though, every tab that touches captured evidence —
-// Tasks (S5's "w" writes context-pack.md here) and Evidence (S6/S7 resolve
-// a row's stored path against this same root) — shares this one copy rather
-// than each keeping its own, which is exactly what shared exists for.
+// Tasks (the context pack's "w" writes context-pack.md here) and Evidence
+// (the list and the detail screen resolve a row's stored path against this
+// same root) — shares this one copy rather than each keeping its own, which
+// is exactly what shared exists for.
 const (
 	EvidenceDirEnv     = "CD_EVIDENCE_DIR"
 	EvidenceDirDefault = ".clarodrive/evidence"

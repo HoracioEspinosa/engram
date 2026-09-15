@@ -8,14 +8,18 @@ import (
 	"github.com/HoracioEspinosa/engram/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func questionMark() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")} }
 
-// TestQuestionMarkOpensTheHelpOverlay pins rfc-tui.md §7.1: "?" opens the
-// help overlay from a tab screen.
+// TestQuestionMarkOpensTheHelpOverlay pins that "?" opens the help overlay
+// from a tab screen.
 func TestQuestionMarkOpensTheHelpOverlay(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// No project was resolved, so New opens the project tree over the
+	// workspace; this case is about the screen underneath it.
+	m.tree.open = false
 	m.active = tabs.Tasks
 
 	m, cmd := step(t, m, questionMark())
@@ -27,16 +31,16 @@ func TestQuestionMarkOpensTheHelpOverlay(t *testing.T) {
 	}
 }
 
-// TestHelpOverlayContentTracksTheActiveScreen pins rfc-tui.md §7.1: "?" abre
-// la ayuda en cada pantalla y lista los atajos que **esa** pantalla
-// declara, no una lista fija" — Tasks' list and Evidence's list advertise
-// different keys, so the overlay must differ between them.
+// TestHelpOverlayContentTracksTheActiveScreen pins that "?" opens help on
+// every screen and lists the shortcuts that screen declares, never a fixed
+// list — Tasks' list and Evidence's list advertise different keys, so the
+// overlay must differ between them.
 func TestHelpOverlayContentTracksTheActiveScreen(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Tasks
-	// New now opens the selector without a resolvable project (T-10.02);
-	// this case's premise is being on a tab already.
-	m.screen = screenTab
+	// New opens the project tree when no project resolves; this case's
+	// premise is being on a tab already.
+	m.tree.open = false
 	m, _ = step(t, m, questionMark())
 	tasksHelp := m.View()
 	if !strings.Contains(tasksHelp, "state filter") {
@@ -56,19 +60,24 @@ func TestHelpOverlayContentTracksTheActiveScreen(t *testing.T) {
 }
 
 // TestHelpOverlayIncludesTheGlobalBindings pins that the overlay shows the
-// chrome-level keys (rfc-tui.md §7.1) alongside whatever the screen adds,
-// not just the screen's own.
+// chrome-level keys alongside whatever the screen adds, not just the
+// screen's own.
 func TestHelpOverlayIncludesTheGlobalBindings(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// No project was resolved, so New opens the project tree over the
+	// workspace; this case is about the screen underneath it.
+	m.tree.open = false
 	m.active = tabs.Tasks
 	m, _ = step(t, m, questionMark())
 
 	out := m.View()
-	if !strings.Contains(out, "next tab") {
-		t.Fatalf("expected the global Tab binding in the overlay, got:\n%s", out)
-	}
-	if !strings.Contains(out, "dashboard") {
-		t.Fatalf("expected the global \"0\" binding in the overlay, got:\n%s", out)
+	// Every global is checked, not a chosen two: a binding added to the
+	// keymap and forgotten here is a key the overlay never tells anyone about.
+	for _, b := range globalHelpBindings() {
+		h := b.Help()
+		if !strings.Contains(out, h.Key) || !strings.Contains(out, h.Desc) {
+			t.Fatalf("expected the global %q binding in the overlay, got:\n%s", h.Key+" "+h.Desc, out)
+		}
 	}
 }
 
@@ -76,6 +85,9 @@ func TestHelpOverlayIncludesTheGlobalBindings(t *testing.T) {
 // one-way switch.
 func TestQuestionMarkTogglesTheOverlayClosed(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	// No project was resolved, so New opens the project tree over the
+	// workspace; this case is about the screen underneath it.
+	m.tree.open = false
 
 	m, _ = step(t, m, questionMark())
 	if !m.showHelp {
@@ -113,12 +125,15 @@ func TestEscAndQAlsoCloseTheHelpOverlay(t *testing.T) {
 // help — e.g. "j" must not move a list's cursor behind the overlay.
 func TestOtherKeysAreSwallowedWhileHelpIsShowing(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.active = tabs.Cloud
+	// No project was resolved, so New opens the project tree over the
+	// workspace; this case is about the screen underneath it.
+	m.tree.open = false
+	m.active = tabs.Settings
 	m, _ = step(t, m, questionMark())
 
 	m, _ = step(t, m, tea.KeyMsg{Type: tea.KeyDown})
-	if m.cloud.Cursor != 0 {
-		t.Fatalf("cloud cursor = %d, want 0: a key while help is open must not reach the tab underneath", m.cloud.Cursor)
+	if m.settings.Cursor != 0 {
+		t.Fatalf("cloud cursor = %d, want 0: a key while help is open must not reach the tab underneath", m.settings.Cursor)
 	}
 	if !m.showHelp {
 		t.Fatal("help should still be open")
@@ -126,8 +141,7 @@ func TestOtherKeysAreSwallowedWhileHelpIsShowing(t *testing.T) {
 }
 
 // TestCtrlCStillQuitsWhileHelpIsShowing pins that Ctrl+C is the one key that
-// is never suspended, matching rfc-tui.md §7.1's textinput rule applied to
-// the overlay too.
+// is never suspended: the textinput rule applies to the overlay too.
 func TestCtrlCStillQuitsWhileHelpIsShowing(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m, _ = step(t, m, questionMark())
@@ -137,16 +151,16 @@ func TestCtrlCStillQuitsWhileHelpIsShowing(t *testing.T) {
 	}
 }
 
-// TestHelpIsSuspendedWhileCapturingText pins rfc-tui.md §7.1's textinput
-// suspension rule for "?" too: typing a literal "?" into a focused search
-// box must not pop the overlay.
+// TestHelpIsSuspendedWhileCapturingText pins the textinput suspension rule
+// for "?" too: typing a literal "?" into a focused search box must not pop
+// the overlay.
 func TestHelpIsSuspendedWhileCapturingText(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.active = tabs.Tasks
-	// New now opens the selector without a resolvable project (T-10.02);
-	// this case's premise is being on the Tasks tab already, so that is set
-	// explicitly rather than relied on as New's default.
-	m.screen = screenTab
+	// New opens the project tree when no project resolves; this case's
+	// premise is being on the Tasks tab already, so that is set explicitly
+	// rather than relied on as a default.
+	m.tree.open = false
 	m.tasks.Searching = true
 	m.tasks.SearchInput.Focus()
 
@@ -159,21 +173,72 @@ func TestHelpIsSuspendedWhileCapturingText(t *testing.T) {
 	}
 }
 
-// TestHelpOverlayOpensFromTheDashboardAndSelector pins that "?" is not
-// tab-only: rfc-tui.md §5's S1 and S2 footers both advertise it.
-func TestHelpOverlayOpensFromTheDashboardAndSelector(t *testing.T) {
+// TestHelpOverlayOpensFromTheDashboard pins that "?" is not tab-only: the
+// Home tab's footer advertises it too.
+func TestHelpOverlayOpensFromTheDashboard(t *testing.T) {
 	dash := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	dash.project = "nextcloud"
-	dash.screen = screenDashboard
+	dash.tree.open, dash.active = false, tabs.Home
 	dash, _ = step(t, dash, questionMark())
 	if !dash.showHelp {
 		t.Fatal("\"?\" should open help from the Dashboard")
 	}
+}
 
-	sel := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	sel.screen = screenSelector
-	sel, _ = step(t, sel, questionMark())
-	if !sel.showHelp {
-		t.Fatal("\"?\" should open help from the Selector")
+// TestAnOpenOverlayKeepsTheQuestionMark pins the layering rule the theme
+// picker already plays by: whichever overlay has the keyboard answers every
+// key, so "?" does not stack a second panel on top of the first. The project
+// tree advertises its own keys in the status bar instead.
+func TestAnOpenOverlayKeepsTheQuestionMark(t *testing.T) {
+	tree := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	tree.tree.open = true
+	tree, _ = step(t, tree, questionMark())
+	if tree.showHelp {
+		t.Fatal("\"?\" opened the help overlay on top of the project tree")
 	}
+}
+
+// TestHelpOverlayKeepsTheBodyVisible pins the layering contract: the overlay
+// is composited over the screen it describes, so the tab bar and the list
+// underneath stay on screen around the panel instead of being erased by it.
+func TestHelpOverlayKeepsTheBodyVisible(t *testing.T) {
+	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.KoiPond()), "")
+	m.active = tabs.Tasks
+	m.tree.open = false
+	m.width, m.height = 120, 40
+
+	beneath := ansi.Strip(m.View())
+	withOverlay := ansi.Strip(m.mustToggleHelp(t).View())
+
+	// The tab bar is the least ambiguous landmark: it is drawn by the frame
+	// on every tab screen and has nothing to do with the help panel itself.
+	// Both ends of it are checked, so the panel is shown to be sitting in
+	// the middle of a row the body still owns rather than on top of the lot.
+	for _, mark := range []string{"0 Home", "6 Graph"} {
+		if !strings.Contains(beneath, mark) {
+			t.Fatalf("the screen under the overlay has no %q to begin with:\n%s", mark, beneath)
+		}
+		if !strings.Contains(withOverlay, mark) {
+			t.Fatalf("the overlay erased %q instead of compositing over the body:\n%s", mark, withOverlay)
+		}
+	}
+	if !strings.Contains(withOverlay, "Help") {
+		t.Fatalf("the overlay itself is missing:\n%s", withOverlay)
+	}
+
+	// Composite replaces cells, it does not insert rows: an overlay that
+	// pushed the body down would change the frame's height.
+	if got, want := len(strings.Split(withOverlay, "\n")), len(strings.Split(beneath, "\n")); got < want {
+		t.Fatalf("the frame lost %d rows under the overlay", want-got)
+	}
+}
+
+// mustToggleHelp presses "?" and returns the model that came back.
+func (m Model) mustToggleHelp(t *testing.T) Model {
+	t.Helper()
+	next, _ := step(t, m, questionMark())
+	if !next.showHelp {
+		t.Fatal("\"?\" did not open the overlay")
+	}
+	return next
 }

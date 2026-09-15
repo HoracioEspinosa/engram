@@ -27,9 +27,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 
 	case tea.KeyMsg:
 		// The "L" link-to-task picker is a modal overlay independent of
-		// Screen (rfc-tui.md §7.1's textinput suspension rule extends to
-		// its whole lifetime, not just while its query box is focused —
-		// see CapturingText), so it is checked before the search input and
+		// Screen; it suspends the root's own key handling for its whole
+		// lifetime, not just while its query box is focused (see
+		// CapturingText), so it is checked before the search input and
 		// before the per-screen router.
 		if m.Linking {
 			return m.handleLinkingKeys(msg)
@@ -59,7 +59,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			m.ErrorMsg = msg.err.Error()
 			return m, nil
 		}
-		m.SearchResults = msg.results
+		m.SearchResults = msg.page.Items
+		m.SearchTotal = msg.page.Total
+		m.SearchOffset = msg.page.Offset
 		m.SearchQuery = msg.query
 		m.Screen = ScreenSearchResults
 		m.Cursor = 0
@@ -71,7 +73,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			m.ErrorMsg = msg.err.Error()
 			return m, nil
 		}
-		m.RecentObservations = msg.observations
+		m.RecentObservations = msg.page.Items
+		m.RecentTotal = msg.page.Total
+		m.RecentOffset = msg.page.Offset
 		return m, nil
 
 	case observationDetailMsg:
@@ -131,7 +135,7 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			return m, nil
 		}
 		m.ErrorMsg = ""
-		return m, loadRecentSessions(m.reader)
+		return m, loadRecentSessions(m.reader, m.projectScope())
 
 	case linkTaskResultsMsg:
 		if msg.err != nil {
@@ -169,7 +173,7 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 	case shared.CopiedMsg:
 		// Emit the OSC 52 sequence to stdout so the terminal copies the content,
 		// set the feedback label, and schedule its removal after 2 seconds.
-		m.CopyFeedback = "✓ Copied!"
+		m.CopyFeedback = "Copied!"
 		return m, tea.Batch(
 			tea.Println(msg.Sequence),
 			shared.ClearFeedbackAfter(2*time.Second),
@@ -271,13 +275,14 @@ func (m Model) handleDashboardSelection() (tabs.Tab, tea.Cmd) {
 		m.Screen = ScreenRecent
 		m.Cursor = 0
 		m.Scroll = 0
-		return m, loadRecentObservations(m.reader)
+		m.RecentOffset = 0
+		return m, loadRecentObservations(m.reader, m.projectScope(), 0)
 	case 2: // Sessions
 		m.PrevScreen = ScreenDashboard
 		m.Screen = ScreenSessions
 		m.Cursor = 0
 		m.Scroll = 0
-		return m, loadRecentSessions(m.reader)
+		return m, loadRecentSessions(m.reader, m.projectScope())
 	case 3: // Setup
 		m.PrevScreen = ScreenDashboard
 		m.Screen = ScreenSetup
@@ -290,12 +295,12 @@ func (m Model) handleDashboardSelection() (tabs.Tab, tea.Cmd) {
 		m.SetupInstallingName = ""
 		return m, nil
 	case 4: // Cloud sync settings
-		// Cloud lives in its own tab; ask the root to activate it. The cursor
-		// is reset here so returning to the dashboard lands on the first item,
-		// exactly as leaving any other screen does.
+		// Cloud sync is configured from the Settings tab; ask the root to
+		// activate it. The cursor is reset here so returning to the dashboard
+		// lands on the first item, exactly as leaving any other screen does.
 		m.PrevScreen = ScreenDashboard
 		m.Cursor = 0
-		return m, tabs.Navigate(tabs.Cloud)
+		return m, tabs.Navigate(tabs.Settings)
 	case 5: // Quit
 		return m, tea.Quit
 	}
@@ -310,7 +315,8 @@ func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 		query := m.SearchInput.Value()
 		if query != "" {
 			m.SearchInput.Blur()
-			return m, searchMemories(m.reader, query)
+			m.SearchOffset = 0
+			return m, searchMemories(m.reader, query, m.projectScope(), 0)
 		}
 		return m, nil
 	case "esc":
@@ -361,6 +367,8 @@ func (m Model) handleSearchResultsKeys(key string) (tabs.Tab, tea.Cmd) {
 				m.Scroll = m.Cursor - visibleItems + 1
 			}
 		}
+	case "a":
+		return m.cycleScope()
 	case "g":
 		m.Cursor, m.Scroll = 0, 0
 	case "G":
@@ -391,6 +399,22 @@ func (m Model) handleSearchResultsKeys(key string) (tabs.Tab, tea.Cmd) {
 		if len(m.SearchResults) > 0 && m.Cursor < len(m.SearchResults) {
 			return m.startLinking(m.SearchResults[m.Cursor].ID)
 		}
+	case "n":
+		// Advance one page of hits, and stop on the last one.
+		if !m.HasNextSearchPage() {
+			return m, nil
+		}
+		return m, searchMemories(m.reader, m.SearchQuery, m.projectScope(), m.SearchOffset+memoryPageSize)
+	case "p":
+		// Step one page back; the first page stays put.
+		if !m.HasPrevSearchPage() {
+			return m, nil
+		}
+		offset := m.SearchOffset - memoryPageSize
+		if offset < 0 {
+			offset = 0
+		}
+		return m, searchMemories(m.reader, m.SearchQuery, m.projectScope(), offset)
 	case "/", "s":
 		m.PrevScreen = ScreenSearchResults
 		m.Screen = ScreenSearch
@@ -427,6 +451,8 @@ func (m Model) handleRecentKeys(key string) (tabs.Tab, tea.Cmd) {
 				m.Scroll = m.Cursor - visibleItems + 1
 			}
 		}
+	case "a":
+		return m.cycleScope()
 	case "g":
 		m.Cursor, m.Scroll = 0, 0
 	case "G":
@@ -456,6 +482,22 @@ func (m Model) handleRecentKeys(key string) (tabs.Tab, tea.Cmd) {
 		if len(m.RecentObservations) > 0 && m.Cursor < len(m.RecentObservations) {
 			return m.startLinking(m.RecentObservations[m.Cursor].ID)
 		}
+	case "n":
+		// Advance one page, and stop on the last one.
+		if !m.HasNextRecentPage() {
+			return m, nil
+		}
+		return m, loadRecentObservations(m.reader, m.projectScope(), m.RecentOffset+memoryPageSize)
+	case "p":
+		// Step one page back; the first page stays put.
+		if !m.HasPrevRecentPage() {
+			return m, nil
+		}
+		offset := m.RecentOffset - memoryPageSize
+		if offset < 0 {
+			offset = 0
+		}
+		return m, loadRecentObservations(m.reader, m.projectScope(), offset)
 	case "esc", "q":
 		m.Screen = ScreenDashboard
 		m.Cursor = 0
@@ -556,6 +598,8 @@ func (m Model) handleSessionsKeys(key string) (tabs.Tab, tea.Cmd) {
 				m.Scroll = m.Cursor - visibleItems + 1
 			}
 		}
+	case "a":
+		return m.cycleScope()
 	case "g":
 		m.Cursor, m.Scroll = 0, 0
 	case "G":
@@ -629,7 +673,7 @@ func (m Model) handleSessionDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 		m.Screen = ScreenSessions
 		m.Cursor = m.SelectedSessionIdx
 		m.SessionDetailScroll = 0
-		return m, loadRecentSessions(m.reader)
+		return m, loadRecentSessions(m.reader, m.projectScope())
 	}
 	return m, nil
 }
@@ -704,7 +748,7 @@ func (m Model) handleSetupKeys(key string) (tabs.Tab, tea.Cmd) {
 
 // ─── Link to Task (L) ────────────────────────────────────────────────────────
 
-// startLinking opens the "L" picker (rfc-tui.md §5) for obsID: the
+// startLinking opens the "L" picker for obsID: the
 // observation the cursor was on, or the one Observation Detail is showing,
 // when the key was pressed.
 func (m Model) startLinking(obsID int64) (tabs.Tab, tea.Cmd) {
@@ -795,9 +839,9 @@ func (m Model) refreshScreen(screen Screen) tea.Cmd {
 	case ScreenDashboard:
 		return loadStats(m.reader)
 	case ScreenRecent:
-		return loadRecentObservations(m.reader)
+		return loadRecentObservations(m.reader, m.projectScope(), m.RecentOffset)
 	case ScreenSessions:
-		return loadRecentSessions(m.reader)
+		return loadRecentSessions(m.reader, m.projectScope())
 	default:
 		return nil
 	}

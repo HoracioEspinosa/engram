@@ -68,8 +68,8 @@ func newTestFixture(t *testing.T) testFixture {
 }
 
 // reader wraps the fixture store in the interface the tab consumes.
-func (f testFixture) reader() data.MemoryReader {
-	return data.NewMemoryReader(f.store)
+func (f testFixture) reader() data.MemorySource {
+	return data.NewMemorySource(f.store)
 }
 
 func TestNewInitializesModelDefaults(t *testing.T) {
@@ -123,7 +123,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	fx := newTestFixture(t)
 
 	t.Run("checkForUpdate", func(t *testing.T) {
-		msg := checkForUpdate("dev")()
+		msg := checkForUpdate(nil, "dev")()
 		loaded, ok := msg.(updateCheckMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -148,7 +148,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("searchMemories", func(t *testing.T) {
-		msg := searchMemories(fx.reader(), "needle")()
+		msg := searchMemories(fx.reader(), "needle", data.ProjectScope{}, 0)()
 		loaded, ok := msg.(searchResultsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -159,13 +159,13 @@ func TestDataLoadingCommands(t *testing.T) {
 		if loaded.query != "needle" {
 			t.Fatalf("query = %q", loaded.query)
 		}
-		if len(loaded.results) == 0 {
+		if len(loaded.page.Items) == 0 {
 			t.Fatal("expected at least one search result")
 		}
 	})
 
 	t.Run("loadRecentObservations", func(t *testing.T) {
-		msg := loadRecentObservations(fx.reader())()
+		msg := loadRecentObservations(fx.reader(), data.ProjectScope{}, 0)()
 		loaded, ok := msg.(recentObservationsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -173,8 +173,8 @@ func TestDataLoadingCommands(t *testing.T) {
 		if loaded.err != nil {
 			t.Fatalf("unexpected error: %v", loaded.err)
 		}
-		if len(loaded.observations) < 2 {
-			t.Fatalf("observations = %d, want >= 2", len(loaded.observations))
+		if len(loaded.page.Items) < 2 {
+			t.Fatalf("observations = %d, want >= 2", len(loaded.page.Items))
 		}
 	})
 
@@ -207,7 +207,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("loadRecentSessions", func(t *testing.T) {
-		msg := loadRecentSessions(fx.reader())()
+		msg := loadRecentSessions(fx.reader(), data.ProjectScope{})()
 		loaded, ok := msg.(recentSessionsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -277,7 +277,7 @@ func TestInstallAgentCommand(t *testing.T) {
 }
 
 // TestSearchForLandsOnSearchResultsRegardlessOfWhoAskedForIt pins the deep
-// link rfc-tui.md §3.1 S8/S9's "t" key needs: another tab (Runbooks) driving
+// link the Runbooks tab's "t" key needs: another tab (Runbooks) driving
 // a search through SearchFor must land on the exact same screen the "/" key
 // reaches from ScreenSearch, since searchResultsMsg's own handler — not
 // SearchFor — is what switches the screen.
@@ -300,5 +300,37 @@ func TestSearchForLandsOnSearchResultsRegardlessOfWhoAskedForIt(t *testing.T) {
 	}
 	if len(next.SearchResults) == 0 {
 		t.Fatal("expected at least one search result for the seeded needle observation")
+	}
+}
+
+// TestUpdateCheckerSeamReplacesTheNetworkCall covers the seam a golden suite
+// needs: without it the banner's content, and whether it appears at all,
+// depend on a GitHub HTTP call racing tea.Quit.
+func TestUpdateCheckerSeamReplacesTheNetworkCall(t *testing.T) {
+	var asked string
+	m := New(newTestFixture(t).reader(), "1.2.3").WithUpdateChecker(func(current string) version.CheckResult {
+		asked = current
+		return version.CheckResult{Status: version.StatusUpdateAvailable, Message: "v9 is out"}
+	})
+
+	msg := checkForUpdate(m.updateCheck, m.Version)()
+	loaded, ok := msg.(updateCheckMsg)
+	if !ok {
+		t.Fatalf("message type = %T", msg)
+	}
+	if asked != "1.2.3" {
+		t.Fatalf("checker asked about %q, want the running version", asked)
+	}
+	if loaded.result.Message != "v9 is out" {
+		t.Fatalf("result = %+v, want the injected one", loaded.result)
+	}
+}
+
+// TestUpdateCheckerKeepsTheDefaultWhenNil lets a caller forward an unset
+// checker without having to branch on it.
+func TestUpdateCheckerKeepsTheDefaultWhenNil(t *testing.T) {
+	m := New(newTestFixture(t).reader(), "dev").WithUpdateChecker(nil)
+	if m.updateCheck == nil {
+		t.Fatal("a nil checker cleared the default instead of keeping it")
 	}
 }

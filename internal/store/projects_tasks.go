@@ -62,6 +62,25 @@ type Task struct {
 	ParentTaskSyncID *string `json:"parent_task_sync_id,omitempty"`
 }
 
+// Key is the identifier a surface shows for a task: the Jira key when the task
+// has one, else the slug the vault filed it under, else the SDD change, else
+// the sync id. The sync id is a last resort because it names the row, not the
+// work — a reader who sees it learns nothing about the task.
+//
+// Every surface that labels a task calls this, so the CLI table, the dashboard
+// and the tasks list cannot drift into naming the same task differently.
+func (t Task) Key() string {
+	for _, candidate := range []*string{t.JiraKey, t.Slug, t.SDDChange} {
+		if candidate == nil {
+			continue
+		}
+		if value := strings.TrimSpace(*candidate); value != "" {
+			return value
+		}
+	}
+	return t.SyncID
+}
+
 // UpsertTaskParams holds the optional fields of mem_task_upsert. A nil
 // pointer means "omitted" and is left untouched on update.
 type UpsertTaskParams struct {

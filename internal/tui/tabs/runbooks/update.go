@@ -2,6 +2,7 @@ package runbooks
 
 import (
 	"fmt"
+	"image"
 	"strings"
 	"time"
 
@@ -13,9 +14,8 @@ import (
 )
 
 // hubResolvedMsg carries openHub's result: the absolute path to open in
-// $EDITOR, already resolved against shared.VaultRoot() (rfc-tui.md §9.4's
-// "o abre el hub del servicio... en $EDITOR"), or the reason there is
-// nothing to open.
+// $EDITOR, already resolved against shared.VaultRoot() — "o" opens the
+// service's hub — or the reason there is nothing to open.
 type hubResolvedMsg struct {
 	path string // "" means the project has no knowledge_hub_path configured
 	err  error
@@ -64,6 +64,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			return m.handleIndexKeys(msg.String())
 		}
 
+	case tea.MouseMsg:
+		return m.handleWheel(msg)
+
 	case runbooksLoadedMsg:
 		if msg.project != m.project {
 			// A slow load for a project the user has since switched away
@@ -78,7 +81,14 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 		m.ErrorMsg = ""
 		m.All = msg.all
 		m.Query = msg.query
-		m.Items = msg.items
+		m.Items = msg.page.Items
+		m.Total = msg.page.Total
+		m.Filter.Offset = msg.page.Offset
+		if msg.query == "" {
+			// A ranked search echoes its own limit, which is the search cap
+			// rather than a page size; only the index page sets the filter's.
+			m.Filter.Limit = msg.page.Limit
+		}
 		if m.Cursor >= len(m.Items) {
 			m.Cursor = 0
 			m.Scroll = 0
@@ -123,7 +133,7 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 		return m, nil
 
 	case shared.CopiedMsg:
-		m.CopyFeedback = "✓ Copied!"
+		m.CopyFeedback = "Copied!"
 		return m, tea.Batch(
 			tea.Println(msg.Sequence),
 			shared.ClearFeedbackAfter(2*time.Second),
@@ -137,38 +147,105 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 	return m, nil
 }
 
-// ─── Index (S8) ──────────────────────────────────────────────────────────────
+// ─── Mouse ───────────────────────────────────────────────────────────────────
+
+// handleWheel translates a wheel notch into the movement the arrow keys
+// already make, so the pointer and the keyboard can never disagree about
+// where the reader ends up.
+//
+// The markdown screen is one long body and scrolls wherever the pointer is;
+// on the index only the list answers, because the preview beside it is the
+// same preview the list already shows below itself at a narrower width. The
+// coordinates arrive in the tab's own space; the root translates them out of
+// the frame before delivering.
+func (m Model) handleWheel(msg tea.MouseMsg) (tabs.Tab, tea.Cmd) {
+	rows, ok := shared.WheelDelta(msg)
+	if !ok {
+		return m, nil
+	}
+	key := "down"
+	if rows < 0 {
+		key, rows = "up", -rows
+	}
+
+	if m.Screen == ScreenView {
+		return repeatKey(m, rows, Model.handleViewKeys, key)
+	}
+	if m.Searching && m.SearchInput.Focused() {
+		return m, nil
+	}
+	if pane, ok := shared.PaneAt(m.regions(), image.Pt(msg.X, msg.Y)); !ok || pane != shared.PaneMaster {
+		return m, nil
+	}
+	return repeatKey(m, rows, Model.handleIndexKeys, key)
+}
+
+// repeatKey applies one of the tab's key handlers n times, threading the model
+// through each step. A wheel notch is several rows, and the handlers move one.
+func repeatKey(m Model, n int, handle func(Model, string) (tabs.Tab, tea.Cmd), key string) (tabs.Tab, tea.Cmd) {
+	cmds := make([]tea.Cmd, 0, n)
+	for i := 0; i < n; i++ {
+		next, cmd := handle(m, key)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		updated, ok := next.(Model)
+		if !ok {
+			return next, tea.Batch(cmds...)
+		}
+		m = updated
+	}
+	return m, tea.Batch(cmds...)
+}
+
+// ─── Index ───────────────────────────────────────────────────────────────────
 
 func (m Model) handleIndexKeys(key string) (tabs.Tab, tea.Cmd) {
 	visible := shared.VisibleItems(m.Height, indexChrome, runbookItemLines, minVisibleItems)
 
+	cursor := shared.ListCursor{Index: m.Cursor, Offset: m.Scroll}
+
 	switch key {
 	case "up", "k":
-		if m.Cursor > 0 {
-			m.Cursor--
-			if m.Cursor < m.Scroll {
-				m.Scroll = m.Cursor
-			}
-		}
+		m.Cursor, m.Scroll = cursor.Move(-1, len(m.Items), visible).Unpack()
 	case "down", "j":
-		if m.Cursor < len(m.Items)-1 {
-			m.Cursor++
-			if m.Cursor >= m.Scroll+visible {
-				m.Scroll = m.Cursor - visible + 1
-			}
-		}
+		m.Cursor, m.Scroll = cursor.Move(1, len(m.Items), visible).Unpack()
+	case "h":
+		// The list is always there; "h" brings the focus back to it.
+		m.Focus = shared.FocusLeft()
+	case "l":
+		// Inert below the split breakpoint: there is no second pane to
+		// move to, and a focus the reader cannot see is worse than none.
+		m.Focus = shared.FocusRight(m.regions())
 	case "g":
-		m.Cursor, m.Scroll = 0, 0
+		m.Cursor, m.Scroll = cursor.Top().Unpack()
 	case "G":
-		if len(m.Items) > 0 {
-			m.Cursor = len(m.Items) - 1
-			if m.Cursor >= visible {
-				m.Scroll = m.Cursor - visible + 1
-			}
-		}
+		m.Cursor, m.Scroll = cursor.Bottom(len(m.Items), visible).Unpack()
 	case "a":
 		m.All = !m.All
+		m.Filter.Offset = 0
 		return m, m.reload()
+	case "n":
+		// Advance one page, and stop on the last one.
+		if !m.HasNextPage() {
+			return m, nil
+		}
+		limit := m.pageLimit()
+		m.Filter.Offset += limit
+		m.Filter.Limit = limit
+		return m, loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
+	case "p":
+		// Step one page back; the first page stays put.
+		if !m.HasPrevPage() {
+			return m, nil
+		}
+		limit := m.pageLimit()
+		m.Filter.Offset -= limit
+		if m.Filter.Offset < 0 {
+			m.Filter.Offset = 0
+		}
+		m.Filter.Limit = limit
+		return m, loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
 	case "/":
 		m.Searching = true
 		m.SearchInput.SetValue(m.Query)
@@ -194,10 +271,8 @@ func (m Model) handleIndexKeys(key string) (tabs.Tab, tea.Cmd) {
 		if len(m.Items) > 0 && m.Cursor < len(m.Items) {
 			return m, tabs.NavigateToMemorySearch("runbook/" + m.Items[m.Cursor].ID)
 		}
-	case "r":
-		return m, m.reload()
 	case "esc", "q":
-		return m, tabs.Home()
+		return m, tabs.Navigate(tabs.Home)
 	}
 	return m, nil
 }
@@ -210,7 +285,7 @@ func (m Model) reload() tea.Cmd {
 	if m.Query != "" {
 		return searchRunbooks(m.reader, m.project, m.All, m.Query, searchLimit)
 	}
-	return loadRunbookIndex(m.reader, m.project, m.All)
+	return loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
 }
 
 func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
@@ -221,7 +296,8 @@ func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 		query := strings.TrimSpace(m.SearchInput.Value())
 		if query == "" {
 			m.Query = ""
-			return m, loadRunbookIndex(m.reader, m.project, m.All)
+			m.Filter.Offset = 0
+			return m, loadRunbookIndex(m.reader, m.project, m.All, m.Filter)
 		}
 		return m, searchRunbooks(m.reader, m.project, m.All, query, searchLimit)
 	case tea.KeyEsc:
@@ -235,7 +311,7 @@ func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 	return m, cmd
 }
 
-// ─── Markdown view (S9) ──────────────────────────────────────────────────────
+// ─── Markdown view ───────────────────────────────────────────────────────────
 
 func (m Model) handleViewKeys(key string) (tabs.Tab, tea.Cmd) {
 	if m.Selected == nil {
@@ -278,8 +354,6 @@ func (m Model) handleViewKeys(key string) (tabs.Tab, tea.Cmd) {
 		return m, shared.Copy(item.VaultPath)
 	case "o":
 		return m, openHub(m.projects, m.project)
-	case "r":
-		return m, loadMarkdown(item, m.Width, m.styles.Palette)
 	case "esc", "q":
 		m.Screen = ScreenIndex
 		m.Selected = nil

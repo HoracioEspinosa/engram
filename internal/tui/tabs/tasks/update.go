@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"image"
 	"strconv"
 	"strings"
 	"time"
@@ -43,13 +44,23 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			return m.handleListKeys(msg.String())
 		}
 
+	case tea.MouseMsg:
+		return m.handleWheel(msg)
+
 	case tasksLoadedMsg:
 		if msg.err != nil {
 			m.ErrorMsg = msg.err.Error()
 			return m, nil
 		}
 		m.ErrorMsg = ""
-		m.Items = msg.items
+		m.Items = msg.page.Items
+		m.Total = msg.page.Total
+		// The page echoes back the window the store actually applied, so the
+		// filter carries the limit it defaulted to rather than the zero the
+		// caller may have sent — otherwise the page keys and the footer
+		// would each be reasoning about a different page size.
+		m.Filter.Offset = msg.page.Offset
+		m.Filter.Limit = msg.page.Limit
 		if m.Cursor >= len(m.Items) {
 			m.Cursor = 0
 			m.Scroll = 0
@@ -110,7 +121,7 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 		return m, nil
 
 	case shared.CopiedMsg:
-		m.CopyFeedback = "✓ Copied!"
+		m.CopyFeedback = "Copied!"
 		return m, tea.Batch(
 			tea.Println(msg.Sequence),
 			shared.ClearFeedbackAfter(2*time.Second),
@@ -124,35 +135,93 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 	return m, nil
 }
 
-// ─── List (S3) ───────────────────────────────────────────────────────────────
+// ─── Mouse ───────────────────────────────────────────────────────────────────
+
+// handleWheel translates a wheel notch into the movement the arrow keys
+// already make.
+//
+// Going through the key handlers rather than touching the cursor directly is
+// what keeps the pointer and the keyboard from drifting apart: the window
+// arithmetic, the clamps and the page bounds are declared once, for both.
+//
+// Which pane the pointer is over decides what moves. Over the list it is the
+// cursor; over the panel beside it there is nothing to move, because that
+// panel shows what the row already carries rather than a body of its own. The
+// coordinates arrive in the tab's own space — the root translates them out of
+// the frame before delivering.
+func (m Model) handleWheel(msg tea.MouseMsg) (tabs.Tab, tea.Cmd) {
+	rows, ok := shared.WheelDelta(msg)
+	if !ok {
+		return m, nil
+	}
+	key := "down"
+	if rows < 0 {
+		key, rows = "up", -rows
+	}
+
+	switch m.Screen {
+	case ScreenContextPack:
+		// One long body: the whole screen scrolls, wherever the pointer is.
+		return repeatKey(m, rows, Model.handleContextPackKeys, key)
+	case ScreenDetail:
+		if m.ChangingState || m.Linking {
+			// A prompt is up; the list behind it is not the thing being
+			// navigated.
+			return m, nil
+		}
+		return repeatKey(m, rows, Model.handleDetailKeys, key)
+	}
+
+	if m.Searching && m.SearchInput.Focused() {
+		return m, nil
+	}
+	if pane, ok := shared.PaneAt(m.regions(), image.Pt(msg.X, msg.Y)); !ok || pane != shared.PaneMaster {
+		return m, nil
+	}
+	return repeatKey(m, rows, Model.handleListKeys, key)
+}
+
+// repeatKey applies one of the tab's key handlers n times, threading the model
+// through each step. A wheel notch is several rows, and the handlers move one.
+func repeatKey(m Model, n int, handle func(Model, string) (tabs.Tab, tea.Cmd), key string) (tabs.Tab, tea.Cmd) {
+	cmds := make([]tea.Cmd, 0, n)
+	for i := 0; i < n; i++ {
+		next, cmd := handle(m, key)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		updated, ok := next.(Model)
+		if !ok {
+			return next, tea.Batch(cmds...)
+		}
+		m = updated
+	}
+	return m, tea.Batch(cmds...)
+}
+
+// ─── List ────────────────────────────────────────────────────────────────────
 
 func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 	visible := shared.VisibleItems(m.Height, listChrome, taskItemLines, minVisibleItems)
 
+	cursor := shared.ListCursor{Index: m.Cursor, Offset: m.Scroll}
+
 	switch key {
 	case "up", "k":
-		if m.Cursor > 0 {
-			m.Cursor--
-			if m.Cursor < m.Scroll {
-				m.Scroll = m.Cursor
-			}
-		}
+		m.Cursor, m.Scroll = cursor.Move(-1, len(m.Items), visible).Unpack()
 	case "down", "j":
-		if m.Cursor < len(m.Items)-1 {
-			m.Cursor++
-			if m.Cursor >= m.Scroll+visible {
-				m.Scroll = m.Cursor - visible + 1
-			}
-		}
+		m.Cursor, m.Scroll = cursor.Move(1, len(m.Items), visible).Unpack()
+	case "h":
+		// The list is always there; "h" brings the focus back to it.
+		m.Focus = shared.FocusLeft()
+	case "l":
+		// Inert below the split breakpoint: there is no second pane to
+		// move to, and a focus the reader cannot see is worse than none.
+		m.Focus = shared.FocusRight(m.regions())
 	case "g":
-		m.Cursor, m.Scroll = 0, 0
+		m.Cursor, m.Scroll = cursor.Top().Unpack()
 	case "G":
-		if len(m.Items) > 0 {
-			m.Cursor = len(m.Items) - 1
-			if m.Cursor >= visible {
-				m.Scroll = m.Cursor - visible + 1
-			}
-		}
+		m.Cursor, m.Scroll = cursor.Bottom(len(m.Items), visible).Unpack()
 	case "enter":
 		if len(m.Items) > 0 && m.Cursor < len(m.Items) {
 			return m, loadTaskDetail(m.reader, m.Items[m.Cursor].ID)
@@ -178,37 +247,41 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 		m.SearchInput.Focus()
 		return m, nil
 	case "n":
-		// Advance one page; wrap back to the start once a page comes back
-		// short, since that is the only "was this the last page" signal
-		// store.ListTasks gives back through TaskReader (rfc-tui.md §9.2's
-		// list query carries no total, only LIMIT/OFFSET).
-		limit := m.Filter.Limit
-		if limit <= 0 {
-			limit = pageSize
+		// Advance one page, and stop on the last one. The store's own total
+		// says where the list ends, so there is nothing left to infer from a
+		// short page and no reason to wrap round to the start.
+		if !m.HasNextPage() {
+			return m, nil
 		}
-		if len(m.Items) < limit {
+		limit := m.pageLimit()
+		m.Filter.Offset += limit
+		m.Filter.Limit = limit
+		return m, loadTasks(m.reader, m.project, m.Filter)
+	case "p":
+		// Step one page back; the first page stays put.
+		if !m.HasPrevPage() {
+			return m, nil
+		}
+		limit := m.pageLimit()
+		m.Filter.Offset -= limit
+		if m.Filter.Offset < 0 {
 			m.Filter.Offset = 0
-		} else {
-			m.Filter.Offset += limit
 		}
 		m.Filter.Limit = limit
 		return m, loadTasks(m.reader, m.project, m.Filter)
-	case "r":
-		return m, loadTasks(m.reader, m.project, m.Filter)
 	case "esc", "q":
-		return m, tabs.Home()
+		return m, tabs.Navigate(tabs.Home)
 	}
 	return m, nil
 }
 
-// nextState cycles S3's state filter: the active-tasks default ("", which
-// store.TaskListFilter treats as "every state but done/cancelled" — see its
-// doc comment), then each concrete value in stateOptions, then back to "".
+// nextState cycles the list's state filter: the active-tasks default ("",
+// which store.TaskListFilter treats as "every state but done/cancelled" — see
+// its doc comment), then each concrete value in stateOptions, then back to "".
 // The store exposes no single value meaning "every state including done and
 // cancelled at once", so this filter's default is honestly labelled "active"
-// in the footer rather than the wireframe's "all" (rfc-tui.md §5 S3 also
-// shows "(7 open ...)" for that same default, which only an active-only
-// count explains).
+// in the footer rather than "all": the count beside it only ever covers the
+// open tasks.
 func nextState(current string) string {
 	if current == "" {
 		return stateOptions[0]
@@ -224,9 +297,9 @@ func nextState(current string) string {
 	return ""
 }
 
-// nextKind cycles S3's kind filter through kindOptions, wrapping back to ""
-// (every kind) — unlike state, "" genuinely means "no filter" here, since
-// store.ListTasks only applies a kind clause when f.Kind is non-empty.
+// nextKind cycles the list's kind filter through kindOptions, wrapping back
+// to "" (every kind) — unlike state, "" genuinely means "no filter" here,
+// since store.ListTasks only applies a kind clause when f.Kind is non-empty.
 func nextKind(current string) string {
 	for i, k := range kindOptions {
 		if k == current {
@@ -255,7 +328,7 @@ func (m Model) handleSearchInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 	return m, cmd
 }
 
-// ─── Detail (S4) ─────────────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────────────────────
 
 func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 	if m.Detail == nil {
@@ -290,8 +363,8 @@ func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 			return m, tabs.NavigateToObservation(obsID)
 		}
 	case "e":
-		// rfc-tui.md §3.1: S4's "e" opens Evidence filtered to this task
-		// (S6's task_id filter), carried through tabs.NavigateMsg.TaskID.
+		// "e" opens the Evidence list filtered to this task, the task_id
+		// filter carried through tabs.NavigateMsg.TaskID.
 		return m, tabs.NavigateToTaskEvidence(task.ID)
 	case "x":
 		return m, loadContextPack(m.reader, task.ID)
@@ -328,8 +401,6 @@ func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 			return m, nil
 		}
 		return m, shared.Copy(*task.Branch)
-	case "r":
-		return m, loadTaskDetail(m.reader, task.ID)
 	case "esc", "q":
 		m.Screen = ScreenList
 		return m, loadTasks(m.reader, m.project, m.Filter)
@@ -338,8 +409,8 @@ func (m Model) handleDetailKeys(key string) (tabs.Tab, tea.Cmd) {
 }
 
 // openJira opens the task's Jira issue, or records why it could not when the
-// task has no jira_key at all (an sdd-only task) or the OS has no registered
-// URL handler (rfc-tui.md §10.2: "open/xdg-open ausentes").
+// task has no jira_key at all (an sdd-only task) or the OS has neither `open`
+// nor `xdg-open` to hand the URL to.
 func (m Model) openJira(task store.Task) (tabs.Tab, tea.Cmd) {
 	if task.JiraKey == nil || strings.TrimSpace(*task.JiraKey) == "" {
 		m.ErrorMsg = "this task has no jira_key"
@@ -399,7 +470,7 @@ func (m Model) handleLinkInputKeys(msg tea.KeyMsg) (tabs.Tab, tea.Cmd) {
 	return m, cmd
 }
 
-// ─── Context pack (S5) ───────────────────────────────────────────────────────
+// ─── Context pack ────────────────────────────────────────────────────────────
 
 func (m Model) handleContextPackKeys(key string) (tabs.Tab, tea.Cmd) {
 	switch key {
@@ -413,10 +484,6 @@ func (m Model) handleContextPackKeys(key string) (tabs.Tab, tea.Cmd) {
 		return m, shared.Copy(m.ContextPack)
 	case "w":
 		return m.writeContextPack()
-	case "r":
-		if m.Detail != nil {
-			return m, loadContextPack(m.reader, m.Detail.Task.ID)
-		}
 	case "esc", "q":
 		m.Screen = ScreenDetail
 	}
