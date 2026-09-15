@@ -9,6 +9,7 @@
 - [Memory Hygiene](#memory-hygiene)
 - [Topic Key Workflow](#topic-key-workflow-recommended)
 - [Project Structure](#project-structure)
+- [Terminal UI](#terminal-ui)
 - [CLI Reference](#cli-reference)
 
 ---
@@ -221,11 +222,15 @@ engram/
 │   ├── project/                     # Project name detection + similarity matching
 │   │   └── detect.go               # DetectProject, DetectProjectFull, 5-case algorithm
 │   ├── sync/sync.go                # Git sync: manifest + compressed chunks
-│   └── tui/                        # Bubbletea terminal UI
-│       ├── model.go                # Screen constants, Model, Init()
-│       ├── styles.go               # Lipgloss styles (Catppuccin Mocha)
-│       ├── update.go               # Input handling, per-screen handlers
-│       └── view.go                 # Rendering, per-screen views
+│   └── tui/                        # Bubbletea terminal UI — see docs/TUI.md
+│       ├── tui.go                  # Facade cmd/engram depends on; binds every reader
+│       ├── app/                    # Root model: chrome, tab bar, global keys, mouse,
+│       │                           #   project tree, search palette, theme picker
+│       ├── tabs/                   # One package per tab: home, memory, tasks, evidence,
+│       │                           #   benchmarks, runbooks, graph, settings
+│       ├── data/                   # Read-only adapters over store.Store
+│       ├── shared/                 # Layout, columns, hints, fuzzy match, clipboard
+│       └── theme/                  # Palettes, the 13 roles, icon modes, contrast
 ├── plugin/
 │   ├── opencode/engram.ts          # OpenCode adapter plugin
 │   └── claude-code/                # Claude Code plugin (hooks + skill)
@@ -245,13 +250,32 @@ engram/
 
 ---
 
+## Terminal UI
+
+`engram tui` is a project workspace of eight tabs — Home, Memory, Tasks, Evidence, Benchmarks,
+Runbooks, Graph, Settings — over the same SQLite store the CLI, the HTTP API and the MCP server
+read. The root model (`internal/tui/app`) owns the chrome: the tab bar, the global keys, the mouse
+hitboxes, and three overlays that work on every tab — the project tree (`ctrl+p`), the workspace
+search palette (`ctrl+k`) and the theme picker (`ctrl+t`). Each tab is an isolated Elm sub-model
+behind the `tabs.Tab` interface; tabs never import each other, and cross-tab navigation travels as
+a `NavigateMsg` through the root.
+
+Data reaches a tab only through the read-only adapters in `internal/tui/data`, never through
+`*store.Store` directly, and colour only through `internal/tui/theme` — the one package allowed to
+spell a hex value or a glyph.
+
+Every tab, the full keymap, mouse behaviour, theming and icon modes → [TUI.md](TUI.md)
+
+---
+
 ## CLI Reference
 
 ```
 engram setup [agent]      Install/setup agent integration (opencode, claude-code, gemini-cli, codex)
 engram serve [port]       Start HTTP API server (default: 7437)
 engram mcp                Start MCP server (stdio transport)
-engram tui                Launch interactive terminal UI
+engram tui                Launch the 8-tab terminal workspace [--project NAME] [--theme NAME] [--no-mouse]
+engram theme <sub>        Manage TUI palettes (list, show, use, import, export, reset)
 engram search <query>     Search memories
 engram save <title> <msg> Save a memory
 engram delete <obs_id>    Delete an observation [--hard] (soft-delete by default; --hard removes permanently)

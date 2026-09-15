@@ -173,21 +173,23 @@ Full tool reference with parameters → [DOCS.md#mcp-tools](DOCS.md#mcp-tools)
 engram tui
 ```
 
-A project workspace, not just a memory browser: a project selector and per-project dashboard, plus
-five tabs — Memory, Tasks, Evidence, Runbooks, Cloud — over the same SQLite store.
+A project workspace, not just a memory browser: eight tabs — Home, Memory, Tasks, Evidence,
+Benchmarks, Runbooks, Graph, Settings — over the same SQLite store.
 
 <p align="center">
-  <img src="assets/tui-s2-project-dashboard.png" alt="TUI Project Dashboard" width="400" />
-  <img src="assets/tui-s3-tasks-list.png" alt="TUI Tasks List" width="400" />
+  <img src="docs/tui/img/home-koi-pond.png" alt="TUI Home tab" width="400" />
+  <img src="docs/tui/img/tasks-detail-koi-pond.png" alt="TUI task detail" width="400" />
 </p>
 
-**Navigation**: `1`–`5` jump to a tab, `Tab`/`Shift+Tab` cycle them, `0` returns to the Dashboard,
-`p` opens the project selector, `j/k` move, `Enter` drills in, `c` copies to clipboard (OSC 52),
-`/` searches, `?` shows the current screen's keys, `Esc`/`q` go back. Three themes —
-`catppuccin-mocha` (default), `kanagawa`, `elephant` — via `--theme`, `ENGRAM_TUI_THEME`, or
-`tui.theme` in `~/.engram/config.json`.
+**Navigation**: `0`–`7` jump to a tab, `Tab`/`Shift+Tab` cycle them, `ctrl+p` opens the project
+tree, `ctrl+k` the workspace search palette, `ctrl+t` the theme picker, `j/k` move, `Enter` drills
+in, `c` copies to clipboard (OSC 52), `r` refreshes, `?` shows the current screen's keys, `Esc`/`q`
+go back, `ctrl+c` quits. The mouse is on by default: click a tab, scroll the list under the
+pointer, `shift`+drag to select text. Seven themes — `koi-pond` (default), `koi-day`, `showa`,
+`ogon`, `catppuccin-mocha`, `kanagawa`, `elephant` — via `--theme`, `ENGRAM_TUI_THEME`,
+`engram theme use`, or `tui.theme` in `~/.engram/config.json`.
 
-Full walkthrough, every screen, and the two things that aren't obvious the first time → [docs/TUI.md](docs/TUI.md)
+Every tab, the full keymap, theming and icon modes → [docs/TUI.md](docs/TUI.md)
 
 ## Git Sync
 

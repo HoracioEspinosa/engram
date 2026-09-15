@@ -2991,15 +2991,20 @@ Commands:
                        Example: engram mcp --tools=agent,projects
                        --project NAME  Set process-level default project (overrides cwd detection).
                                        Also accepted as ENGRAM_PROJECT=NAME env var.
-  tui [--project NAME] [--theme NAME]
-                     Launch interactive terminal UI
-                       --project NAME  Open directly on a project's Dashboard, else the Selector.
+  tui [--project NAME] [--theme NAME] [--no-mouse]
+                     Launch the terminal workspace: eight tabs over the project's
+                     memory, tasks, evidence, benchmarks, runbooks and graph.
+                       --project NAME  Scope the workspace to a project. Without one it opens
+                                       on the project tree, which ctrl+p reopens at any time.
                                        Also accepted as ENGRAM_PROJECT=NAME env var.
                        --theme NAME    Palette: koi-pond (default) | koi-day | showa | ogon |
                                        catppuccin-mocha | kanagawa | elephant. Run
                                        "engram theme list" for what this build ships.
                                        Also accepted as ENGRAM_TUI_THEME=NAME env var, or the
                                        tui.theme key in <data-dir>/config.json.
+                       --no-mouse      Leave the mouse to the terminal, so a drag selects text
+                                       the way it does everywhere else. Also settings['tui.mouse']
+                                       = "off".
   search <query>     Search memories [--type TYPE] [--project PROJECT] [--scope SCOPE] [--limit N]
   save <title> <msg> Save a memory  [--type TYPE] [--project PROJECT] [--scope SCOPE]
   delete <obs_id>    Delete an observation [--hard] (soft-delete by default; --hard removes permanently)
