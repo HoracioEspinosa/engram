@@ -34,6 +34,20 @@ la app y la llamada al endpoint recibía un token ya vencido. El detalle
 completo de la causa raíz vive en
 `koi-garden/KOI-1042-hardening-autologin/analysis/causa-raiz.md`.
 
+El emisor queda así una vez corregido el TTL:
+
+```go
+// autologinTTL is how long a remembered-session token stays valid.
+const autologinTTL = 5 * time.Minute
+
+func issueAutologinToken(userID string, now time.Time) (Token, error) {
+	if userID == "" {
+		return Token{}, errors.New("autologin: empty user id")
+	}
+	return Token{Subject: userID, ExpiresAt: now.Add(autologinTTL)}, nil
+}
+```
+
 ## Pasos de mitigación
 
 1. Confirmar el TTL configurado del token de autologin en el servicio de sesiones.
