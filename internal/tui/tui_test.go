@@ -31,11 +31,13 @@ func TestNewSatisfiesTheBubbleteaModelContract(t *testing.T) {
 		t.Fatalf("without a resolvable project the TUI should open on the project tree (rfc-tui.md §9.1), got:\n%s", out)
 	}
 
-	// The tree is composited over the workspace rather than replacing it, so
-	// reach a tab screen — via the same NavigateMsg every cross-tab jump in
-	// the app uses — to confirm the version and the store New was given still
-	// reach what is underneath.
-	tabbed, _ := sized.Update(tabs.NavigateMsg{Target: tabs.Memory})
+	// The tree is composited over the workspace rather than replacing it, but
+	// the panel is centred on the terminal and covers the middle of the body,
+	// so it is closed before reading what is underneath: this case is about
+	// the version and the store New was given reaching the tab, not about how
+	// much of a covered screen shows around a panel.
+	closed, _ := sized.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	tabbed, _ := closed.Update(tabs.NavigateMsg{Target: tabs.Memory})
 	out = tabbed.View()
 	if !strings.Contains(out, "engram 1.0.0-test") {
 		t.Fatalf("the memory dashboard should render the version it was built with, got:\n%s", out)

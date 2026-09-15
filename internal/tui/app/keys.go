@@ -92,7 +92,7 @@ var globalKeys = globalKeyMap{
 // of globalKeyMap.
 var nativeSelection = key.NewBinding(
 	key.WithKeys("shift+drag"),
-	key.WithHelp("shift", "drag/copy"),
+	key.WithHelp("shift", "select"),
 )
 
 // globalHelpBindings is what the "?" overlay shows for every screen,

@@ -1,31 +1,85 @@
 ═══ project-tree ═══
-                                                                                                            
-  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮  
-  │ Projects                                                                                             │  
-  │                                                                                                      │  
-  │                                                                                                      │  
-  │       slug                     display name                                         obs    open   ev │  
-  │ › ⌄ ▲ acme                     Acme Corp                                            42     1      1  │  
-  │     ⊞   acme-api               Acme API                                             18     1      4  │  
-  │     ◆   acme-web               Acme Web                                             7      0      2  │  
-  │                                                                                                      │  
-  │   j/k move • g/G top/bottom • space fold • enter open • / filter • i sort by health • r refresh • …  │  
-  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯  
-                                                                                                            
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+        ╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮        
+        │ Projects                                                                                             │        
+        │                                                                                                      │        
+        │                                                                                                      │        
+        │       slug                     display name                                         obs    open   ev │        
+        │ › ⌄ ▲ acme                     Acme Corp                                            42     1      1  │        
+        │     ⊞   acme-api               Acme API                                             18     1      4  │        
+        │     ◆   acme-web               Acme Web                                             7      0      2  │        
+        │                                                                                                      │        
+        │   j/k move • g/G top/bottom • space fold • enter open • / filter • i sort by health • r refresh • …  │        
+        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  j/k move • g/G top/bottom • space fold • enter open • / filter • i sort by health • r refresh • esc close   koi-pond  
+                                                                                                                        
 ═══ project-tree-filtered ═══
-                                                                                                            
-  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮  
-  │ Projects                                                                                             │  
-  │                                                                                                      │  
-  │ ⌕ > thunder                                                                                          │  
-  │                                                                                                      │  
-  │       slug                     display name                                         obs    open   ev │  
-  │ › ⌄ ▲ acme                     Acme Corp                                            42     1      1  │  
-  │     ⊞   acme-api               Acme API                                             18     1      4  │  
-  │                                                                                                      │  
-  │   j/k move • g/G top/bottom • space fold • enter open • / filter • i sort by health • r refresh • …  │  
-  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯  
-                                                                                                            
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+                                                                                                                        
+    No project is active. Press ctrl+p to pick one.                                                                     
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+        ╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮        
+        │ Projects                                                                                             │        
+        │                                                                                                      │        
+        │ ⌕ > thunder                                                                                          │        
+        │                                                                                                      │        
+        │       slug                     display name                                         obs    open   ev │        
+        │ › ⌄ ▲ acme                     Acme Corp                                            42     1      1  │        
+        │     ⊞   acme-api               Acme API                                             18     1      4  │        
+        │                                                                                                      │        
+        │   j/k move • g/G top/bottom • space fold • enter open • / filter • i sort by health • r refresh • …  │        
+        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  j/k move • g/G top/bottom • space fold • enter open • / filter • i sort by health • r refresh • esc close   koi-pond  
+                                                                                                                        
 ═══ home ═══
                                                                                                                         
   [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
@@ -309,101 +363,128 @@
   ├ acme  ✓ ACME-1  j/k navigate • enter select • s search • q quit                                           koi-pond  
                                                                                                                         
 ═══ palette-empty ═══
-                                                                                                                      
-  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                      
-                                                                                                                      
-  ┌────────────────────────────────────────────────────────────┐                                                      
-  │                                                            │                                                      
-  │  · Acme Corp                                               │                                                      
-  │  42 observations   1 open tasks   1 evidence   1 runbooks  │                                                      
-  │                                                            │                                                      
-  └────────────────────────────╭──────────────────────────────────────────────────────╮                               
-                               │ Search                                               │                               
-                               │                                                      │                               
-  › recent tasks               │ ⌕ > Search the workspace (t: e: m: r: p: b:)         │                               
-                               │                                                      │                               
-    ACME-1         ◕ review    │   Type at least 2 characters.                        │                               
-                               │                                                      │                               
-    latest evidence            │   recent searches                                    │                               
-                               │                                                      │                               
-    ACME-1/cold-start.png      │   cold start                                         │                   attached ●  
-                               │   preview 503                                        │                               
-    code graph                 │                                                      │                               
-                               │   ↑/↓ move • tab next group • enter open • esc close │                               
-    ▲ code_changed             ╰──────────────────────────────────────────────────────╯                               
-    1284 nodes  3901 edges  17 communities                                                                            
-    built 2026-01-14 08:00:00                                                                                         
-                                                                                                                      
-    benchmarks                                                                                                        
-                                                                                                                      
-    p95                    812 ms         ⇓-13.6%                                                                     
-    rps                    412 ops        ⇓-17.6%                                                                     
-                                                                                                                      
-                                                                                                                      
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+  ┌────────────────────────────────────────────────────────────┐                                                        
+  │                                                            │                                                        
+  │  · Acme Corp                                               │                                                        
+  │  42 observations   1 open tasks   1 evidence   1 runbooks  │                                                        
+  │                                                            │                                                        
+  └────────────────────────────────────────────────────────────┘                                                        
+                                                                                                                        
+                                                                                                                        
+  › recent tasks                                                                                                        
+                                                                                                                        
+    ACME-1         ◕ review     ╭──────────────────────────────────────────────────────╮                                
+                                │ Search                                               │                                
+    latest evidence             │                                                      │                                
+                                │ ⌕ > Search the workspace (t: e: m: r: p: b:)         │                                
+    ACME-1/cold-start.png       │                                                      │                  attached ●    
+                                │   Type at least 2 characters.                        │                                
+    code graph                  │                                                      │                                
+                                │   recent searches                                    │                                
+    ▲ code_changed              │                                                      │                                
+    1284 nodes  3901 edges  17 c│   cold start                                         │                                
+    built 2026-01-14 08:00:00   │   preview 503                                        │                                
+                                │                                                      │                                
+    benchmarks                  │   ↑/↓ move • tab next group • enter open • esc close │                                
+                                ╰──────────────────────────────────────────────────────╯                                
+    p95                    812 ms         ⇓-13.6%                                                                       
+    rps                    412 ops        ⇓-17.6%                                                                       
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  ├ acme  ✓ ACME-1  ↑/↓ move • tab next group • enter open • esc close                                        koi-pond  
+                                                                                                                        
 ═══ palette-results ═══
-                                                                                                                      
-  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                      
-                                                                                                                      
-  ┌────────────────────────────────────────────────────────────┐                                                      
-  │                                                            │                                                      
-  │  · Acme Corp                                               │                                                      
-  │  42 observations   1 open tasks   1 evidence   1 runbooks  │                                                      
-  │                                                            │                                                      
-  └────────────────────────────────────────────────────────────┘                                                      
-                                                                                                                      
-                                                                                                                      
-  › recent tasks              ╭───────────────────────────────────────────────────────╮                               
-                              │ Search                                                │                               
-    ACME-1         ◕ review   │                                                       │                               
-                              │ ⌕ > preview                                           │                               
-    latest evidence           │   searching…                                          │                               
-                              │                                                       │                               
-    ACME-1/cold-start.png     │   ↑/↓ move • tab next group • enter open • esc close  │                   attached ●  
-                              ╰───────────────────────────────────────────────────────╯                               
-    code graph                                                                                                        
-                                                                                                                      
-    ▲ code_changed                                                                                                    
-    1284 nodes  3901 edges  17 communities                                                                            
-    built 2026-01-14 08:00:00                                                                                         
-                                                                                                                      
-    benchmarks                                                                                                        
-                                                                                                                      
-    p95                    812 ms         ⇓-13.6%                                                                     
-    rps                    412 ops        ⇓-17.6%                                                                     
-                                                                                                                      
-                                                                                                                      
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+  ┌────────────────────────────────────────────────────────────┐                                                        
+  │                            ╭───────────────────────────────────────────────────────╮                                
+  │  · Acme Corp               │ Search                                                │                                
+  │  42 observations   1 open t│                                                       │                                
+  │                            │ ⌕ > preview                                           │                                
+  └────────────────────────────│                                                       │                                
+                               │   ◆ projects                                          │                                
+                               │                                                       │                                
+  › recent tasks               │ › Acme Corp  acme  umbrella                           │                                
+                               │                                                       │                                
+    ACME-1         ◕ review    │   ✓ tasks                                             │                                
+                               │                                                       │                                
+    latest evidence            │   Fix the preview timeout  acme  ACME-1 · review      │                                
+                               │                                                       │                                
+    ACME-1/cold-start.png      │   ≣ memory                                            │                  attached ●    
+                               │                                                       │                                
+    code graph                 │   Root cause: preview worker pool exhausted  acme     │                                
+                               │                                                       │                                
+    ▲ code_changed             │   ▪ evidence                                          │                                
+    1284 nodes  3901 edges  17 │                                                       │                                
+    built 2026-01-14 08:00:00  │   ACME-1/cold-start.png  acme                         │                                
+                               │                                                       │                                
+    benchmarks                 │   ∿ benchmarks                                        │                                
+                               │                                                       │                                
+    p95                    812 │   preview p95  acme  812 ms                           │                                
+    rps                    412 │                                                       │                                
+                               │   ▤ runbooks                                          │                                
+                               │                                                       │                                
+                               │   Preview endpoint returns 503 under load  acme       │                                
+                               │                                                       │                                
+                               │   ↑/↓ move • tab next group • enter open • esc close  │                                
+                               ╰───────────────────────────────────────────────────────╯                                
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  ├ acme  ✓ ACME-1  ↑/↓ move • tab next group • enter open • esc close                                        koi-pond  
+                                                                                                                        
 ═══ palette-prefix ═══
-                                                                                                                      
-  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                      
-                                                                                                                      
-  ┌────────────────────────────────────────────────────────────┐                                                      
-  │                                                            │                                                      
-  │  · Acme Corp                                               │                                                      
-  │  42 observations   1 open tasks   1 evidence   1 runbooks  │                                                      
-  │                                                            │                                                      
-  └────────────────────────────────────────────────────────────┘                                                      
-                                                                                                                      
-                                                                                                                      
-  › recent tasks          ╭────────────────────────────────────────────────────────────────╮                          
-                          │ Search                                                         │                          
-    ACME-1         ◕ revie│                                                                │                          
-                          │ ⌕ > t:preview                                          [tasks] │                          
-    latest evidence       │   searching…                                                   │                          
-                          │                                                                │                          
-    ACME-1/cold-start.png │   ↑/↓ move • tab next group • enter open • esc close           │              attached ●  
-                          ╰────────────────────────────────────────────────────────────────╯                          
-    code graph                                                                                                        
-                                                                                                                      
-    ▲ code_changed                                                                                                    
-    1284 nodes  3901 edges  17 communities                                                                            
-    built 2026-01-14 08:00:00                                                                                         
-                                                                                                                      
-    benchmarks                                                                                                        
-                                                                                                                      
-    p95                    812 ms         ⇓-13.6%                                                                     
-    rps                    412 ops        ⇓-17.6%                                                                     
-                                                                                                                      
-                                                                                                                      
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+  ┌────────────────────────────────────────────────────────────┐                                                        
+  │                                                            │                                                        
+  │  · Acme Corp                                               │                                                        
+  │  42 observations   1 open tasks   1 evidence   1 runbooks  │                                                        
+  │                                                            │                                                        
+  └────────────────────────────────────────────────────────────┘                                                        
+                                                                                                                        
+                                                                                                                        
+  › recent tasks                                                                                                        
+                                                                                                                        
+    ACME-1         ◕ review     Fix the preview timeout                                                                 
+                                                                                                                        
+    latest evidence                                                                                                     
+                           ╭────────────────────────────────────────────────────────────────╮                           
+    ACME-1/cold-start.png  │ Search                                                         │             attached ●    
+                           │                                                                │                           
+    code graph             │ ⌕ > t:preview                                          [tasks] │                           
+                           │   searching…                                                   │                           
+    ▲ code_changed         │                                                                │                           
+    1284 nodes  3901 edges │   ↑/↓ move • tab next group • enter open • esc close           │                           
+    built 2026-01-14 08:00:╰────────────────────────────────────────────────────────────────╯                           
+                                                                                                                        
+    benchmarks                                                                                                          
+                                                                                                                        
+    p95                    812 ms         ⇓-13.6%                                                                       
+    rps                    412 ops        ⇓-17.6%                                                                       
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  ├ acme  ✓ ACME-1  ↑/↓ move • tab next group • enter open • esc close                                        koi-pond  
+                                                                                                                        
 ═══ settings ═══
                                                                                                                         
   ⌂0 Home  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  [⌘7 Settings]                        
@@ -421,72 +502,84 @@
   ├ acme  ✓ ACME-1  j/k navigate • g/G top/bottom • enter change • esc/q back                                 koi-pond  
                                                                                                                         
 ═══ theme-picker ═══
-                                                                                                                      
-  [⌂0 Home]  ≣1 Memory  ✓2 ╭──────────────────────────────────────────────────────────────╮tings                      
-                           │   Theme                                                      │                           
-  ┌────────────────────────│                                                              │                           
-  │                        │                                                              │                           
-  │  · Acme Corp           │ ›  koi-pond  dark                                            │                           
-  │  42 observations   1 op│     koi-day  light                                           │                           
-  │                        │   half-written  palette has no color roles                   │                           
-  └────────────────────────│                                                              │                           
-                           │                                                              │                           
-                           │                                                              │                           
-  › recent tasks           │                                                              │                           
-                           │                                                              │                           
-    ACME-1         ◕ review│                                                              │                           
-                           │                                                              │                           
-    latest evidence        │                                                              │                           
-                           │                                                              │                           
-    ACME-1/cold-start.png  │                                                              │               attached ●  
-                           │                                                              │                           
-    code graph             │                                                              │                           
-                           │                                                              │                           
-    ▲ code_changed         │                                                              │                           
-    1284 nodes  3901 edges │                                                              │                           
-    built 2026-01-14 08:00:│                                                              │                           
-                           │                                                              │                           
-    benchmarks             │                                                              │                           
-                           │                                                              │                           
-    p95                    │                                                              │                           
-    rps                    │                                                              │                           
-                           │                                                              │                           
-                           │                                                              │                           
-                           │   j/k preview • enter use • / filter • R reload • esc cancel │                           
-                           ╰──────────────────────────────────────────────────────────────╯                           
-                                                                                                                      
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+  ┌────────────────────────────────────────────────────────────┐                                                        
+  │                         ╭──────────────────────────────────────────────────────────────╮                            
+  │  · Acme Corp            │   Theme                                                      │                            
+  │  42 observations   1 ope│                                                              │                            
+  │                         │                                                              │                            
+  └─────────────────────────│ ›  koi-pond  dark                                            │                            
+                            │     koi-day  light                                           │                            
+                            │   half-written  palette has no color roles                   │                            
+  › recent tasks            │                                                              │                            
+                            │                                                              │                            
+    ACME-1         ◕ review │                                                              │                            
+                            │                                                              │                            
+    latest evidence         │                                                              │                            
+                            │                                                              │                            
+    ACME-1/cold-start.png   │                                                              │              attached ●    
+                            │                                                              │                            
+    code graph              │                                                              │                            
+                            │                                                              │                            
+    ▲ code_changed          │                                                              │                            
+    1284 nodes  3901 edges  │                                                              │                            
+    built 2026-01-14 08:00:0│                                                              │                            
+                            │                                                              │                            
+    benchmarks              │                                                              │                            
+                            │                                                              │                            
+    p95                    8│                                                              │                            
+    rps                    4│                                                              │                            
+                            │                                                              │                            
+                            │                                                              │                            
+                            │                                                              │                            
+                            │                                                              │                            
+                            │                                                              │                            
+                            │   j/k preview • enter use • / filter • R reload • esc cancel │                            
+                            ╰──────────────────────────────────────────────────────────────╯                            
+                                                                                                                        
+                                                                                                                        
+  ├ acme  ✓ ACME-1  j/k preview • enter use • / filter • R reload • esc cancel                                koi-pond  
+                                                                                                                        
 ═══ theme-picker-invalid ═══
-                                                                                                                      
-  [⌂0 Home]  ≣1 Memory  ✓2 ╭──────────────────────────────────────────────────────────────╮tings                      
-                           │   Theme                                                      │                           
-  ┌────────────────────────│                                                              │                           
-  │                        │                                                              │                           
-  │  · Acme Corp           │ ›  koi-pond  dark                                            │                           
-  │  42 observations   1 op│     koi-day  light                                           │                           
-  │                        │   half-written  palette has no color roles                   │                           
-  └────────────────────────│                                                              │                           
-                           │                                                              │                           
-                           │                                                              │                           
-  › recent tasks           │                                                              │                           
-                           │                                                              │                           
-    ACME-1         ◕ review│                                                              │                           
-                           │                                                              │                           
-    latest evidence        │                                                              │                           
-                           │                                                              │                           
-    ACME-1/cold-start.png  │                                                              │               attached ●  
-                           │                                                              │                           
-    code graph             │                                                              │                           
-                           │                                                              │                           
-    ▲ code_changed         │                                                              │                           
-    1284 nodes  3901 edges │                                                              │                           
-    built 2026-01-14 08:00:│                                                              │                           
-                           │                                                              │                           
-    benchmarks             │                                                              │                           
-                           │                                                              │                           
-    p95                    │                                                              │                           
-    rps                    │                                                              │                           
-                           │                                                              │                           
-                           │                                                              │                           
-                           │   j/k preview • enter use • / filter • R reload • esc cancel │                           
-                           ╰──────────────────────────────────────────────────────────────╯                           
-                                                                                                                      
+                                                                                                                        
+  [⌂0 Home]  ≣1 Memory  ✓2 Tasks  ▪3 Evidence  ∿4 Benchmarks  ▤5 Runbooks  ⋈6 Graph  ⌘7 Settings                        
+                                                                                                                        
+  ┌────────────────────────────────────────────────────────────┐                                                        
+  │                         ╭──────────────────────────────────────────────────────────────╮                            
+  │  · Acme Corp            │   Theme                                                      │                            
+  │  42 observations   1 ope│                                                              │                            
+  │                         │                                                              │                            
+  └─────────────────────────│ ›  koi-pond  dark                                            │                            
+                            │     koi-day  light                                           │                            
+                            │   half-written  palette has no color roles                   │                            
+  › recent tasks            │                                                              │                            
+                            │                                                              │                            
+    ACME-1         ◕ review │                                                              │                            
+                            │                                                              │                            
+    latest evidence         │                                                              │                            
+                            │                                                              │                            
+    ACME-1/cold-start.png   │                                                              │              attached ●    
+                            │                                                              │                            
+    code graph              │                                                              │                            
+                            │                                                              │                            
+    ▲ code_changed          │                                                              │                            
+    1284 nodes  3901 edges  │                                                              │                            
+    built 2026-01-14 08:00:0│                                                              │                            
+                            │                                                              │                            
+    benchmarks              │                                                              │                            
+                            │                                                              │                            
+    p95                    8│                                                              │                            
+    rps                    4│                                                              │                            
+                            │                                                              │                            
+                            │                                                              │                            
+                            │                                                              │                            
+                            │                                                              │                            
+                            │                                                              │                            
+                            │   j/k preview • enter use • / filter • R reload • esc cancel │                            
+                            ╰──────────────────────────────────────────────────────────────╯                            
+                                                                                                                        
+                                                                                                                        
+  ├ acme  ✓ ACME-1  j/k preview • enter use • / filter • R reload • esc cancel                                koi-pond  
+                                                                                                                        

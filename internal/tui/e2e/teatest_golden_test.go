@@ -241,11 +241,14 @@ func teatestScreens() []teatestScreen {
 			initialProject: "acme",
 			steps: []teatestStep{
 				{key: tea.KeyMsg{Type: tea.KeyCtrlK}, waitFor: "Type at least"},
-				// The store answers with one hit of every kind, so the last
-				// group's heading only appears once the search has resolved —
-				// which is what makes it a safe wait target across the
-				// hundred-millisecond debounce.
-				{key: keyRune("preview"), waitFor: "runbooks"},
+				// The store answers with one hit of every kind, and this one
+				// is drawn by nothing else in the workspace, so it appears
+				// exactly when the search resolves — which is what makes it a
+				// safe wait target across the hundred-millisecond debounce.
+				// The panel windows its rows to the terminal, so the marker
+				// has to be one of the first groups: on a 24-row screen the
+				// last of the six is below the fold.
+				{key: keyRune("preview"), waitFor: "Root cause"},
 			},
 		},
 		{

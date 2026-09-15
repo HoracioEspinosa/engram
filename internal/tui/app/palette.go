@@ -607,6 +607,8 @@ func (m Model) viewPalette() string {
 		b.WriteString("\n")
 	}
 
+	hints := shared.HintsFrom(m.styles, paletteHelp(), m.treeWidth())
+
 	switch {
 	case len([]rune(query)) < paletteMinQuery:
 		b.WriteString(m.styles.NoResults.Render(fmt.Sprintf("Type at least %d characters.", paletteMinQuery)))
@@ -619,16 +621,70 @@ func (m Model) viewPalette() string {
 		b.WriteString(m.styles.NoResults.Render("Nothing matches " + query + "."))
 		b.WriteString("\n")
 	default:
-		for i, row := range m.palette.rows {
-			b.WriteString(m.viewPaletteRow(row, i == m.palette.cursor))
-		}
+		b.WriteString(m.viewPaletteRows(lines(b.String()) + lines(hints)))
 	}
 
-	if hints := shared.HintsFrom(m.styles, paletteHelp(), m.treeWidth()); hints != "" {
+	if hints != "" {
 		b.WriteString(hints)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
+
+// viewPaletteRows draws the hits, windowed to the rows the panel has left.
+//
+// The palette is composed over the workspace rather than replacing it, so a
+// list that drew every hit would grow the panel past the bottom of the
+// terminal and push the status bar off the screen with it. spent is what the
+// rest of the panel already costs.
+//
+// The window always contains the cursor: a selection the reader cannot see is
+// a selection they cannot act on.
+func (m Model) viewPaletteRows(spent int) string {
+	rows := make([]string, len(m.palette.rows))
+	for i, row := range m.palette.rows {
+		rows[i] = m.viewPaletteRow(row, i == m.palette.cursor)
+	}
+
+	budget := m.overlayRowBudget() - spent
+	cost := func(window []string) int {
+		total := 0
+		for _, row := range window {
+			total += lines(row)
+		}
+		return total
+	}
+
+	start, end := 0, len(rows)
+	// Give ground below the cursor first, then above it, and only then past
+	// the cursor itself — a budget too small for even one row still draws one.
+	for cost(rows[start:end]) > budget && end-1 > m.palette.cursor {
+		end--
+	}
+	for cost(rows[start:end]) > budget && start < m.palette.cursor {
+		start++
+	}
+	for cost(rows[start:end]) > budget && end > start+1 {
+		end--
+	}
+
+	return strings.Join(rows[start:end], "")
+}
+
+// overlayRowBudget is how many rows an overlay's own content may spend: the
+// terminal, less what framing it costs.
+//
+// A root with no size yet has no terminal to divide up, so it reports the rows
+// the wireframes were drawn at rather than nothing at all.
+func (m Model) overlayRowBudget() int {
+	if m.height <= 0 {
+		return defaultOverlayRows
+	}
+	return max(m.height-overlayFrameRows, 1)
+}
+
+// lines is how many rows a rendered fragment contributes to the panel it is
+// concatenated into.
+func lines(fragment string) int { return strings.Count(fragment, "\n") }
 
 // viewPaletteHistory lists what was searched for before, so reopening the
 // palette is a way back to the last query rather than a blank page.

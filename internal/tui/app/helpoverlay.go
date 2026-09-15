@@ -22,11 +22,18 @@ func (k rootHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{k.global, k.screen}
 }
 
-// activeScreenHelp returns whichever screen is on display's own bindings: the
-// project tree's while its overlay has the keyboard, and the active tab's
-// Help() otherwise (rfc-tui.md §7.1: "lista los atajos que esa pantalla
-// declara, no una lista fija").
+// activeScreenHelp returns the bindings of whatever currently answers the
+// keyboard: the overlay holding it, in the order the overlays take it, and the
+// active tab's Help() when none is open (rfc-tui.md §7.1: "lista los atajos
+// que esa pantalla declara, no una lista fija").
+//
+// An overlay is modal, so the hints under it name its keys and not the
+// screen's: the body stays visible behind the panel, and hints naming keys
+// that currently do nothing would be the one part of it that lies.
 func (m Model) activeScreenHelp() []key.Binding {
+	if m.themePicker.open {
+		return themePickerHelp()
+	}
 	if m.palette.open {
 		return paletteHelp()
 	}
