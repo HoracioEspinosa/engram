@@ -676,6 +676,83 @@ func TestWriteChunkMaterializesProjectEntitiesIntoCloudMutations(t *testing.T) {
 	}
 }
 
+// TestWriteChunkMaterializesMutationsTheTypedCollectionsDoNotCover pins what a
+// chunk actually guarantees about its two halves.
+//
+// The typed collections are the rows a timestamp window over the local tables
+// selected; the mutation array is what the journal owes the server. They are
+// not the same set. Deduplicating the array by entity treated the collection
+// as a superset of it, so a session, observation or prompt whose row fell
+// outside the window was dropped on ingestion: it reached cloud_chunks, the
+// client acked the push, and cloud_mutations — the only table
+// ListMutationsSince reads — never received it.
+func TestWriteChunkMaterializesMutationsTheTypedCollectionsDoNotCover(t *testing.T) {
+	cs := openTestCloudStore(t)
+	ctx := context.Background()
+	project := uniqueCloudstoreTestProject("chunk-typed-gap")
+	cleanupCloudstoreProject(t, cs, project)
+
+	sessionMutationPayload := func(id string) string {
+		return `{\"id\":\"` + id + `\",\"directory\":\"/work/x\",\"started_at\":\"2026-04-29T10:00:00Z\"}`
+	}
+	payload, err := chunkcodec.CanonicalizeForProject([]byte(`{
+		"sessions":[
+			{"id":"sess-in-window","project":"`+project+`","directory":"/work/x","started_at":"2026-04-29T10:00:00Z"}
+		],
+		"mutations":[
+			{"entity":"session","entity_key":"sess-in-window","op":"upsert","payload":"`+sessionMutationPayload("sess-in-window")+`"},
+			{"entity":"session","entity_key":"sess-before-window","op":"upsert","payload":"`+sessionMutationPayload("sess-before-window")+`"},
+			{"entity":"session","entity_key":"sess-older-still","op":"upsert","payload":"`+sessionMutationPayload("sess-older-still")+`"}
+		]
+	}`), project)
+	if err != nil {
+		t.Fatalf("canonicalize chunk: %v", err)
+	}
+	chunkID := chunkIDFromPayload(payload)
+
+	if err := cs.WriteChunk(ctx, project, chunkID, "tester", "2026-04-29T10:03:00Z", payload); err != nil {
+		t.Fatalf("WriteChunk: %v", err)
+	}
+
+	countSessions := func(t *testing.T, stage string) map[string]int {
+		t.Helper()
+		mutations, _, _, err := cs.ListMutationsSince(ctx, 0, 100, []string{project})
+		if err != nil {
+			t.Fatalf("ListMutationsSince %s: %v", stage, err)
+		}
+		seen := make(map[string]int, 3)
+		for _, mutation := range mutations {
+			if mutation.Entity != store.SyncEntitySession {
+				continue
+			}
+			if mutation.Project != project || mutation.Op != store.SyncOpUpsert {
+				t.Fatalf("unexpected session mutation %s: %+v", stage, mutation)
+			}
+			seen[mutation.EntityKey]++
+		}
+		return seen
+	}
+
+	seen := countSessions(t, "after push")
+	for _, sessionID := range []string{"sess-in-window", "sess-before-window", "sess-older-still"} {
+		if seen[sessionID] != 1 {
+			t.Fatalf("expected the chunk's three session mutations in the stream exactly once each, got %+v", seen)
+		}
+	}
+
+	// Replay stays idempotent: the row the typed collection carries is still
+	// materialized once, not once per half of the chunk.
+	if err := cs.WriteChunk(ctx, project, chunkID, "tester", "2026-04-29T10:03:00Z", payload); err != nil {
+		t.Fatalf("replay WriteChunk: %v", err)
+	}
+	replayed := countSessions(t, "after replay")
+	for _, sessionID := range []string{"sess-in-window", "sess-before-window", "sess-older-still"} {
+		if replayed[sessionID] != 1 {
+			t.Fatalf("expected exactly one row per session after replay, got %+v", replayed)
+		}
+	}
+}
+
 // TestMaterializedChunkMutationsCoversEveryProjectsEntity keeps the rule
 // honest as entities are added: the store's own list of engram-projects
 // entities is the source of truth, not a second list copied into this package.
