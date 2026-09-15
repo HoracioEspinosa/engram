@@ -227,6 +227,27 @@ rt "$DIR_A" koi-garden project koi-garden tasks upsert \
   --kind spike --state open \
   --json >"$CLOUD_OUT/rt-a-task-split-pond-filesharing.json"
 
+log "rt-a: slug-only tasks from the vault"
+# The third identity the tasks table accepts, and the only one the CLI cannot
+# write: a task known by its own slug. The vault holds two folders with no
+# ticket in their name — mantenimiento-del-estanque and split-pond-filesharing
+# — and the importer is the shipped writer that turns those into tasks. One
+# such task is enough to make an unfixed codec refuse the chunk, which aborts
+# the push of the card, the observations and the evidence along with it.
+rt "$DIR_A" koi-garden project koi-garden import-vault /vault \
+  --project koi-garden --apply \
+  --json >"$CLOUD_OUT/rt-a-import-vault.json"
+
+log "rt-a: a session with no directory"
+# A session saved against an explicit project was never opened in a checkout,
+# so it has no directory to record. Written straight to SQLite because no CLI
+# flag produces one: the point of the rehearsal is that the push carries such a
+# row, not how it came to exist. The next store open backfills its sync
+# mutation, which is the path the real database took.
+in_container sqlite3 "$DIR_A/engram.db" \
+  "INSERT INTO sessions (id, project, directory, started_at)
+   VALUES ('manual-save-koi-garden-nodir', 'koi-garden', '', datetime('now'));"
+
 log "rt-a: evidence"
 # Hashed inside the container, against the file the container actually sees, so
 # a regenerated fixture is never registered under a digest that no longer
@@ -274,7 +295,10 @@ done
 
 for project in "${PROJECTS[@]}"; do
   log "rt-b: enrolling $project"
-  rt "$DIR_B" "$project" cloud enroll "$project" >/dev/null
+  # rt-b is the machine that has never seen any of this, which is exactly what
+  # --allow-empty declares: enrolling a project in order to pull it, rather
+  # than a name that matches nothing because it was mistyped.
+  rt "$DIR_B" "$project" cloud enroll "$project" --allow-empty >/dev/null
 done
 
 for project in "${PROJECTS[@]}"; do
@@ -347,11 +371,48 @@ expect_value "rt-b project_aliases rows" "1" "$alias_rows"
 alias_row="$(sql "$DIR_B" "SELECT alias || ' -> ' || slug FROM project_aliases WHERE deleted_at IS NULL;")"
 expect_value "rt-b alias" "koi_garden -> koi-garden" "$alias_row"
 
-bench_rows="$(sql "$DIR_B" "SELECT count(*) FROM benchmarks WHERE deleted_at IS NULL;")"
-expect_value "rt-b benchmarks rows" "1" "$bench_rows"
+# Scoped to the benchmark this script wrote by hand: the vault import brings
+# its own, and counting all of them would measure the fixture rather than the
+# round trip.
+bench_rows="$(sql "$DIR_B" "SELECT count(*) FROM benchmarks
+  WHERE deleted_at IS NULL AND name = 'lookup' AND metric = 'lookup.p95';")"
+expect_value "rt-b benchmarks rows for lookup.p95" "1" "$bench_rows"
 bench_row="$(sql "$DIR_B" "SELECT metric || '|' || unit || '|' || direction || '|' || baseline
-  FROM benchmarks WHERE deleted_at IS NULL;")"
+  FROM benchmarks WHERE deleted_at IS NULL AND name = 'lookup' AND metric = 'lookup.p95';")"
 expect_value "rt-b benchmark" 'lookup.p95|ms|lower|1' "$bench_row"
+
+# A task whose only identity is a slug has to arrive with that slug intact and
+# without a key invented for it on the way.
+slug_only_count="$(sql "$DIR_B" "SELECT count(*) FROM tasks
+  WHERE deleted_at IS NULL AND jira_key IS NULL AND sdd_change IS NULL AND slug IS NOT NULL;")"
+if [ "${slug_only_count:-0}" -ge 1 ]; then
+  pass "rt-b holds $slug_only_count slug-only task(s)"
+else
+  report_fail "rt-b holds no slug-only task; the vault import did not survive the round trip"
+fi
+
+nodir_session="$(sql "$DIR_B" "SELECT id || '|' || ifnull(directory, '<NULL>')
+  FROM sessions WHERE id = 'manual-save-koi-garden-nodir';")"
+expect_value "rt-b session with no directory" "manual-save-koi-garden-nodir|" "$nodir_session"
+
+# The chunk is not the only way a replica reads the server: autosync pulls from
+# cloud_mutations through /sync/mutations/pull. An entity that reaches
+# cloud_chunks and not cloud_mutations is invisible on that path, and the client
+# acks the push with nothing to report.
+curl -fsS --max-time 10 -H "Authorization: Bearer $CLOUD_TOKEN" \
+  "http://127.0.0.1:28081/sync/mutations/pull?since_seq=0&limit=100" \
+  >"$CLOUD_OUT/mutations-pull.json" \
+  || report_fail "could not read /sync/mutations/pull"
+if [ -s "$CLOUD_OUT/mutations-pull.json" ]; then
+  for entity in project_card task evidence project_alias benchmark; do
+    count="$(jq --arg e "$entity" '[.mutations[]? | select(.entity == $e)] | length' "$CLOUD_OUT/mutations-pull.json")"
+    if [ "${count:-0}" -ge 1 ]; then
+      pass "/sync/mutations/pull serves $count $entity mutation(s)"
+    else
+      report_fail "/sync/mutations/pull serves no $entity mutation; a pulling replica would never see one"
+    fi
+  done
+fi
 
 # The three staleness columns are a local verdict about a local checkout, so a
 # replica that has never seen the repository must hold none of them.
