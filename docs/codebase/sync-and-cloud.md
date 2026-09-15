@@ -80,6 +80,12 @@ The cloud validates each observation and prompt upsert against the sessions the 
 
 New manual saves get a per-project session id (`manual-save-<slug>`) for the same reason: one shared `manual-save` row cited from many projects is a reference the server's model cannot express.
 
+### A deleted row travels as a mutation, never in the typed collections
+
+The typed arrays of a chunk are upserts, and the cloud requires every field an upsert needs on the row itself. A soft delete keeps the row (`deleted_at`) so the deletion can replicate, but it promises nothing about the rest of the row — an observation deleted for having no title still has none. In a cloud chunk the deletion already travels as its own `delete` mutation, so `filterByPendingMutations` leaves tombstones out of `observations`; carrying one as well asks the server to upsert a row it must reject, and a push rejection is chunk-wide, so one tombstone strands every other row of the project.
+
+The rule is cloud-only, and `internal/sync/pushcontract.go` says why: a local filesystem chunk carries no delete mutations, so there the tombstone in the typed array *is* the delete signal and `synthesizeMutationsFromChunk` turns it back into one on import.
+
 ### A row with no journal entry is not replicated
 
 `pending mutations = 0` means the journal is drained, not that every row reached the cloud. A row with no `sync_mutations` entry at all never enters a push. `Store.ProjectJournalGaps` counts those per enrolled project, folded, split in two:

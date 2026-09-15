@@ -1934,11 +1934,20 @@ func TestCloudExportUsesMutationJournalForUpdatesAndDeletes(t *testing.T) {
 	if err := json.Unmarshal(payload, &chunk); err != nil {
 		t.Fatalf("decode chunk payload: %v", err)
 	}
-	if len(chunk.Observations) != 1 {
-		t.Fatalf("expected one mutated observation in chunk, got %d", len(chunk.Observations))
+	// The row is a tombstone by now and the cloud learns of the deletion from
+	// the mutation array, so the typed collection stays empty: offering the
+	// tombstone as an upsert on top of the delete is what the server rejects.
+	if len(chunk.Observations) != 0 {
+		t.Fatalf("expected no tombstone in the typed collections, got %+v", chunk.Observations)
 	}
-	if chunk.Observations[0].DeletedAt == nil {
-		t.Fatalf("expected deleted_at tombstone in exported observation, got %+v", chunk.Observations[0])
+	sawDelete := false
+	for _, mutation := range chunk.Mutations {
+		if mutation.Entity == store.SyncEntityObservation && mutation.Op == store.SyncOpDelete {
+			sawDelete = true
+		}
+	}
+	if !sawDelete {
+		t.Fatalf("expected the deletion to travel as a delete mutation, got %+v", chunk.Mutations)
 	}
 
 	pending, err := s.ListPendingSyncMutations(store.DefaultSyncTargetKey, 100)
