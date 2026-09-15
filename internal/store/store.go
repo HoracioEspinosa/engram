@@ -1628,7 +1628,7 @@ func (s *Store) applyCloudUpgradeLegacyMutationRepairs(project string) error {
 				continue
 			}
 			if _, err := s.execHook(tx,
-				`UPDATE sync_mutations SET payload = ? WHERE target_key = ? AND project = ? AND seq = ? AND acked_at IS NULL`,
+				`UPDATE sync_mutations SET payload = ? WHERE target_key = ? AND lower(project) = ? AND seq = ? AND acked_at IS NULL`,
 				eval.repairedPayload,
 				DefaultSyncTargetKey,
 				project,
@@ -1672,7 +1672,7 @@ func (s *Store) listPendingProjectMutationsTx(tx *sql.Tx, project string) ([]Syn
 	rows, err := s.queryItHook(tx, `
 		SELECT seq, target_key, entity, entity_key, op, payload, source, project, occurred_at, acked_at
 		FROM sync_mutations
-		WHERE target_key = ? AND project = ? AND acked_at IS NULL
+		WHERE target_key = ? AND lower(project) = ? AND acked_at IS NULL
 		ORDER BY seq ASC
 	`, DefaultSyncTargetKey, project)
 	if err != nil {
@@ -3740,19 +3740,25 @@ func (s *Store) exportWithProjectScope(project string) (*ExportData, error) {
 		ExportedAt: Now(),
 	}
 
+	// Every project comparison below is folded, and the caller passes an
+	// already-normalized (lower-case) name. Enrollment normalizes a project to
+	// lower case while the rows keep whatever case they were written with, so
+	// exact equality returns nothing at all for a project named with capitals:
+	// the typed collections of the push chunk come out empty and the server
+	// rejects the chunk for referencing sessions it was never sent.
 	sessionQuery := "SELECT id, project, directory, started_at, ended_at, summary FROM sessions"
 	sessionArgs := []any{}
 	if project != "" {
 		sessionQuery += `
-			WHERE project = ?
+			WHERE lower(project) = ?
 			   OR id IN (
 				SELECT session_id FROM observations
-				 WHERE ifnull(project, '') = ?
-				    OR (ifnull(project, '') = '' AND session_id IN (SELECT id FROM sessions WHERE project = ?))
+				 WHERE lower(ifnull(project, '')) = ?
+				    OR (ifnull(project, '') = '' AND session_id IN (SELECT id FROM sessions WHERE lower(project) = ?))
 				UNION
 				SELECT session_id FROM user_prompts
-				 WHERE ifnull(project, '') = ?
-				    OR (ifnull(project, '') = '' AND session_id IN (SELECT id FROM sessions WHERE project = ?))
+				 WHERE lower(ifnull(project, '')) = ?
+				    OR (ifnull(project, '') = '' AND session_id IN (SELECT id FROM sessions WHERE lower(project) = ?))
 			)`
 		sessionArgs = append(sessionArgs, project, project, project, project, project)
 	}
@@ -3784,8 +3790,8 @@ func (s *Store) exportWithProjectScope(project string) (*ExportData, error) {
 	obsArgs := []any{}
 	if project != "" {
 		obsQuery += `
-			WHERE ifnull(project, '') = ?
-			   OR (ifnull(project, '') = '' AND session_id IN (SELECT id FROM sessions WHERE project = ?))`
+			WHERE lower(ifnull(project, '')) = ?
+			   OR (ifnull(project, '') = '' AND session_id IN (SELECT id FROM sessions WHERE lower(project) = ?))`
 		obsArgs = append(obsArgs, project, project)
 	}
 	obsQuery += " ORDER BY id"
@@ -3810,8 +3816,8 @@ func (s *Store) exportWithProjectScope(project string) (*ExportData, error) {
 	promptArgs := []any{}
 	if project != "" {
 		promptQuery += `
-			WHERE ifnull(project, '') = ?
-			   OR (ifnull(project, '') = '' AND session_id IN (SELECT id FROM sessions WHERE project = ?))`
+			WHERE lower(ifnull(project, '')) = ?
+			   OR (ifnull(project, '') = '' AND session_id IN (SELECT id FROM sessions WHERE lower(project) = ?))`
 		promptArgs = append(promptArgs, project, project)
 	}
 	promptQuery += " ORDER BY id"
@@ -4261,7 +4267,7 @@ func (s *Store) HasPendingSyncMutationsForProject(project string) (bool, error) 
 
 	var count int
 	err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM sync_mutations WHERE target_key = ? AND project = ? AND acked_at IS NULL`,
+		`SELECT COUNT(*) FROM sync_mutations WHERE target_key = ? AND lower(project) = ? AND acked_at IS NULL`,
 		DefaultSyncTargetKey,
 		project,
 	).Scan(&count)
@@ -4287,7 +4293,7 @@ func (s *Store) refreshProjectSyncStateTx(tx *sql.Tx, project string) error {
 	if err := tx.QueryRow(
 		`SELECT ifnull(MAX(seq), 0)
 		 FROM sync_mutations
-		 WHERE target_key = ? AND project = ? AND acked_at IS NOT NULL`,
+		 WHERE target_key = ? AND lower(project) = ? AND acked_at IS NOT NULL`,
 		DefaultSyncTargetKey,
 		project,
 	).Scan(&maxAckedSeq); err != nil {
@@ -4301,7 +4307,7 @@ func (s *Store) refreshProjectSyncStateTx(tx *sql.Tx, project string) error {
 	if err := tx.QueryRow(
 		`SELECT ifnull(MAX(seq), 0)
 		 FROM sync_mutations
-		 WHERE target_key = ? AND project = ?`,
+		 WHERE target_key = ? AND lower(project) = ?`,
 		DefaultSyncTargetKey,
 		project,
 	).Scan(&maxEnqueuedSeq); err != nil {
@@ -4315,7 +4321,7 @@ func (s *Store) refreshProjectSyncStateTx(tx *sql.Tx, project string) error {
 	if err := tx.QueryRow(
 		`SELECT COUNT(*)
 		 FROM sync_mutations
-		 WHERE target_key = ? AND project = ? AND acked_at IS NULL`,
+		 WHERE target_key = ? AND lower(project) = ? AND acked_at IS NULL`,
 		DefaultSyncTargetKey,
 		project,
 	).Scan(&pendingCount); err != nil {
