@@ -274,8 +274,8 @@ func TestEscFromTheIndexGoesHome(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("esc should navigate home")
 	}
-	if _, ok := run(t, cmd).(tabs.HomeMsg); !ok {
-		t.Fatalf("esc produced %T, want tabs.HomeMsg", run(t, cmd))
+	if _, ok := run(t, cmd).(tabs.NavigateMsg); !ok {
+		t.Fatalf("esc produced %T, want tabs.NavigateMsg{Target: tabs.Home}", run(t, cmd))
 	}
 }
 

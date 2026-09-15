@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/HoracioEspinosa/engram/internal/tui/tabs"
+	"github.com/HoracioEspinosa/engram/internal/tui/tabs/settings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,9 +13,9 @@ import (
 // Update routes a message.
 //
 // Keys reach only the active tab, after the root has taken its global
-// bindings. Everything else — window size, data loads, timers — is broadcast
-// to every tab, so a command that finishes while the user is elsewhere still
-// reaches the tab that issued it.
+// bindings and whichever overlay has the keyboard. Everything else — window
+// size, data loads, timers — goes to the tab that owns it, or to every tab
+// when it genuinely concerns them all.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -22,6 +23,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if handled, next, cmd := m.updateThemePicker(msg); handled {
+			return next, cmd
+		}
+		if handled, next, cmd := m.updateProjectTree(msg); handled {
+			return next, cmd
+		}
+		if handled, next, cmd := m.updatePalette(msg); handled {
 			return next, cmd
 		}
 		if m.showHelp {
@@ -38,52 +45,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateActive(msg)
 
 	case tabs.NavigateMsg:
-		if msg.Target == tabs.Memory && msg.ObservationID != 0 {
-			// A deep-link into one observation (rfc-tui.md §3.1 S4's "Enter
-			// opens the observation in Memory"), not a plain tab switch: skip
-			// activate()'s generic tab.Refresh() and load that observation's
-			// detail directly instead.
-			m.active = tabs.Memory
-			m.screen = screenTab
-			return m, m.memory.OpenObservation(msg.ObservationID)
+		if msg.Slug != "" && msg.Slug != m.project {
+			// A hit in another project: the whole workspace moves, not only
+			// the tab, so the row the reader opened can be found again.
+			scoped, cmd := m.openProject(msg.Slug)
+			next := scoped.(Model)
+			if msg.Target == tabs.Home {
+				return next, cmd
+			}
+			model, activateCmd := next.routeNavigate(msg)
+			return model, tea.Batch(cmd, activateCmd)
 		}
-		if msg.Target == tabs.Memory && msg.Query != "" {
-			// Runbooks' "t" (rfc-tui.md §3.1 S8/S9): open Memory pre-searched
-			// for this runbook's executions instead of landing on whatever
-			// screen Memory last showed.
-			m.active = tabs.Memory
-			m.screen = screenTab
-			return m, m.memory.SearchFor(msg.Query)
-		}
-		if msg.Target == tabs.Tasks && msg.TaskID != 0 {
-			// The mirror image, for S7's "Enter" on an evidence file: open
-			// that file's task directly instead of landing on the list.
-			m.active = tabs.Tasks
-			m.screen = screenTab
-			return m, m.tasks.OpenTask(msg.TaskID)
-		}
-		if msg.Target == tabs.Evidence && msg.TaskID != 0 {
-			// S4's "e" key: filter Evidence to the task under view (S6's
-			// task_id filter) instead of showing every file in the project.
-			m.active = tabs.Evidence
-			m.screen = screenTab
-			return m, m.evidence.OpenForTask(msg.TaskID)
-		}
-		return m.activate(msg.Target)
+		return m.routeNavigate(msg)
 
-	case tabs.HomeMsg:
-		if m.project != "" {
-			// A project is active: go to the dashboard.
-			m.screen = screenDashboard
-			return m, loadDashboard(m.projects, m.project)
-		}
-		// No project active: go to the Memory tab.
-		m.screen = screenTab
-		return m.activate(tabs.Memory)
-
-	case dashboardLoadedMsg:
-		m.dashboard = m.dashboard.applyLoaded(msg)
-		return m, nil
+	case searchTickMsg, searchDoneMsg, searchHistorySavedMsg:
+		return m.updatePaletteMessage(msg)
 
 	case ancestorsLoadedMsg:
 		if msg.slug != m.project || msg.err != nil {
@@ -93,11 +69,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.ancestors = msg.nodes
+		// Home draws the same chain in its project card. It is handed down
+		// rather than looked up again: one ancestor query per project is
+		// enough, and two would be two answers that could disagree.
+		m.home = m.home.WithBreadcrumb(msg.nodes)
 		return m, nil
 
-	case selectorLoadedMsg:
-		m.selector = m.selector.applyLoaded(msg)
+	case treeLoadedMsg:
+		m.tree = m.tree.applyLoaded(msg)
 		return m, nil
+
+	case settings.OpenThemePickerMsg:
+		// The Settings tab's own "theme" row: the picker is root state, so
+		// the tab asks for it rather than owning a second copy.
+		m.themePicker.open = true
+		m.themePicker.original = m.styles.Palette
+		m.themePicker.notice = ""
+		return m, loadThemes(m.themePicker.themes)
 
 	case themesLoadedMsg, themePreviewMsg, themeAppliedMsg:
 		return m.updateThemeMessage(msg)
@@ -121,6 +109,54 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.broadcast(msg)
 }
 
+// routeNavigate opens whatever one NavigateMsg points at: a deep link into a
+// row, or a plain tab switch.
+func (m Model) routeNavigate(msg tabs.NavigateMsg) (tea.Model, tea.Cmd) {
+	{
+		if msg.Target == tabs.Memory && msg.ObservationID != 0 {
+			// A deep-link into one observation (rfc-tui.md §3.1 S4's "Enter
+			// opens the observation in Memory"), not a plain tab switch: skip
+			// activate()'s generic tab.Refresh() and load that observation's
+			// detail directly instead.
+			m.active = tabs.Memory
+			return m, m.memory.OpenObservation(msg.ObservationID)
+		}
+		if msg.Target == tabs.Memory && msg.Query != "" {
+			// Runbooks' "t" (rfc-tui.md §3.1 S8/S9): open Memory pre-searched
+			// for this runbook's executions instead of landing on whatever
+			// screen Memory last showed.
+			m.active = tabs.Memory
+			return m, m.memory.SearchFor(msg.Query)
+		}
+		if msg.Target == tabs.Tasks && msg.TaskID != 0 {
+			// The mirror image, for S7's "Enter" on an evidence file: open
+			// that file's task directly instead of landing on the list.
+			m.active = tabs.Tasks
+			return m, m.tasks.OpenTask(msg.TaskID)
+		}
+		if msg.Target == tabs.Evidence && msg.TaskID != 0 {
+			// S4's "e" key: filter Evidence to the task under view (S6's
+			// task_id filter) instead of showing every file in the project.
+			m.active = tabs.Evidence
+			return m, m.evidence.OpenForTask(msg.TaskID)
+		}
+		if msg.Target == tabs.Benchmarks && msg.BenchmarkID != 0 {
+			// The palette's deep link into one measurement: the tab's own
+			// table is what shows it, filtered to nothing so the row is
+			// where the search said it was.
+			return m.activate(tabs.Benchmarks)
+		}
+		if msg.Target == tabs.Evidence && msg.EvidenceID != 0 {
+			// The palette's own deep link: one file, opened by its id.
+			m.active = tabs.Evidence
+			opened, cmd := m.evidence.OpenEvidence(msg.EvidenceID)
+			m.evidence = opened
+			return m, cmd
+		}
+		return m.activate(msg.Target)
+	}
+}
+
 // deliver hands msg to one tab and stores the result back. A message for a
 // tab this build does not implement is dropped, the same way activate leaves
 // an unimplemented target alone.
@@ -135,36 +171,30 @@ func (m Model) deliver(id tabs.ID, msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// digitTabs maps rfc-tui.md §7.1's "1"…"5" to the tab each activates, in tab
+// digitTabs maps rfc-tui.md §7.1's "0"…"7" to the tab each activates, in tab
 // bar order.
 var digitTabs = map[string]tabs.ID{
+	"0": tabs.Home,
 	"1": tabs.Memory,
 	"2": tabs.Tasks,
 	"3": tabs.Evidence,
-	"4": tabs.Runbooks,
-	"5": tabs.Cloud,
+	"4": tabs.Benchmarks,
+	"5": tabs.Runbooks,
+	"6": tabs.Graph,
+	"7": tabs.Settings,
 }
 
-// updateActive forwards a message to the active tab only, or to the dashboard/
-// selector if one of those screens is active.
+// updateActive forwards a message to the active tab only.
 func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
-	keyMsg, isKey := msg.(tea.KeyMsg)
-	if isKey {
-		switch m.screen {
-		case screenDashboard:
-			return m.updateDashboard(keyMsg)
-		case screenSelector:
-			return m.updateSelector(keyMsg)
-		default:
-			// Every global key below is suspended while the active tab is
-			// capturing text (rfc-tui.md §7.1: "cuando un textinput tiene el
-			// foco, las teclas globales se suspenden salvo Ctrl+C y Esc" —
-			// Ctrl+C is handled in Update, before updateActive is ever
-			// called, and Esc is not one of these keys at all).
-			if tab := m.tab(m.active); tab == nil || !tab.CapturingText() {
-				if handled, model, cmd := m.matchGlobal(keyMsg); handled {
-					return model, cmd
-				}
+	if keyMsg, isKey := msg.(tea.KeyMsg); isKey {
+		// Every global key below is suspended while the active tab is
+		// capturing text (rfc-tui.md §7.1: "cuando un textinput tiene el
+		// foco, las teclas globales se suspenden salvo Ctrl+C y Esc" —
+		// Ctrl+C is handled in Update, before updateActive is ever called,
+		// and Esc is not one of these keys at all).
+		if tab := m.tab(m.active); tab == nil || !tab.CapturingText() {
+			if handled, model, cmd := m.matchGlobal(keyMsg); handled {
+				return model, cmd
 			}
 		}
 	}
@@ -177,32 +207,18 @@ func (m Model) updateActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.withTab(m.active, updated), cmd
 }
 
-// matchGlobal answers the key bindings the root owns, for every screen.
+// matchGlobal answers the key bindings the root owns, on every tab.
 //
 // Every one of them goes through key.Matches against globalKeys: the keymap
 // is the declaration of what the root answers to, so a binding changed there
-// changes the behaviour, the "?" overlay and the footer at once. A literal
+// changes the behaviour, the "?" overlay and the hints at once. A literal
 // comparison here would let the three drift apart, which is what the keymap
 // existed to prevent.
 //
-// handled is false when the key belongs to the screen below, which is then
-// left to decide what it means.
+// handled is false when the key belongs to the tab below, which is then left
+// to decide what it means.
 func (m Model) matchGlobal(msg tea.KeyMsg) (handled bool, model tea.Model, cmd tea.Cmd) {
 	switch {
-	case key.Matches(msg, globalKeys.ProjectSelector):
-		m.screen = screenSelector
-		return true, m, loadSelector(m.projects)
-
-	case key.Matches(msg, globalKeys.Dashboard):
-		if m.project == "" {
-			// Nothing to show a dashboard for. Swallow it anyway: the
-			// digit is the root's, and handing it to a tab would make it
-			// mean something else on one screen.
-			return true, m, nil
-		}
-		m.screen = screenDashboard
-		return true, m, loadDashboard(m.projects, m.project)
-
 	case key.Matches(msg, globalKeys.SwitchTab):
 		if target, ok := digitTabs[msg.String()]; ok {
 			model, cmd = m.activate(target)
@@ -236,11 +252,8 @@ func (m Model) matchGlobal(msg tea.KeyMsg) (handled bool, model tea.Model, cmd t
 // runs, so "r" means the same thing everywhere instead of being reimplemented
 // once per screen.
 func (m Model) refreshActiveScreen() tea.Cmd {
-	switch m.screen {
-	case screenDashboard:
-		return loadDashboard(m.projects, m.project)
-	case screenSelector:
-		return loadSelector(m.projects)
+	if m.tree.open {
+		return loadTree(m.tree.reader)
 	}
 	if tab := m.tab(m.active); tab != nil {
 		return tab.Refresh()
@@ -261,8 +274,8 @@ func (m Model) activateRelative(delta int) (tea.Model, tea.Cmd) {
 			break
 		}
 	}
-	// Not on a registered tab at all (e.g. the Dashboard): Tab starts the
-	// cycle at the first tab, Shift+Tab at the last one.
+	// Not on a registered tab at all: Tab starts the cycle at the first tab,
+	// Shift+Tab at the last one.
 	if current == -1 {
 		if delta > 0 {
 			return m.activate(registered[0])
@@ -271,132 +284,6 @@ func (m Model) activateRelative(delta int) (tea.Model, tea.Cmd) {
 	}
 	next := (current + delta + len(registered)) % len(registered)
 	return m.activate(registered[next])
-}
-
-// updateDashboard handles key presses while the dashboard is active. The
-// Dashboard has no text input of its own, so unlike updateActive's tab
-// branch none of these need a CapturingText guard.
-func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if handled, model, cmd := m.matchGlobal(msg); handled {
-		return model, cmd
-	}
-
-	switch msg.String() {
-	case "j":
-		// The blocks are stacked, so the vertical pair moves between them.
-		// h/l are reserved for horizontal focus and mean nothing here.
-		m.dashboard = m.dashboard.moveCursor(1)
-		return m, nil
-	case "k":
-		m.dashboard = m.dashboard.moveCursor(-1)
-		return m, nil
-	case "g":
-		m.dashboard = m.dashboard.moveCursorTo(dashBlockTasks)
-		return m, nil
-	case "G":
-		m.dashboard = m.dashboard.moveCursorTo(dashBlockCount - 1)
-		return m, nil
-	case "enter":
-		// activate() already knows which tabs this build registers, so route
-		// through it instead of guessing here: a block whose tab does not
-		// exist yet leaves the dashboard exactly as it was.
-		return m.activate(m.dashboard.cursor.target())
-	case "q":
-		return m, tea.Quit
-	}
-	return m, nil
-}
-
-// updateSelector handles key presses while the selector is active.
-func (m Model) updateSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// If the filter input is focused, only handle enter, esc, and pass everything else to the input
-	if m.selector.filterInput.Focused() {
-		switch msg.Type {
-		case tea.KeyEnter:
-			m.selector.filterInput.Blur()
-			return m, nil
-		case tea.KeyEsc:
-			m.selector.filterInput.Blur()
-			m.selector.filterInput.SetValue("")
-			m.selector = m.selector.applyFilter()
-			return m, nil
-		default:
-			// Pass all other keys to the filter input
-			updated, cmd := m.selector.filterInput.Update(msg)
-			m.selector.filterInput = updated
-			m.selector = m.selector.applyFilter()
-			return m, cmd
-		}
-	}
-
-	// The Selector answers two of the root's bindings and no more: there is
-	// no project yet to number tabs for. Both go through the keymap so the
-	// footer and the "?" overlay keep naming the keys that actually work.
-	switch {
-	case key.Matches(msg, globalKeys.Refresh):
-		return m, loadSelector(m.projects)
-	case key.Matches(msg, globalKeys.Help):
-		m.showHelp = true
-		return m, nil
-	}
-
-	switch msg.String() {
-	case "j":
-		m.selector = m.selector.moveCursor(1)
-		return m, nil
-	case "k":
-		m.selector = m.selector.moveCursor(-1)
-		return m, nil
-	case "g":
-		m.selector = m.selector.moveCursorToStart()
-		return m, nil
-	case "G":
-		m.selector = m.selector.moveCursorToEnd()
-		return m, nil
-	case "i":
-		m.selector = m.selector.toggleHealthSort()
-		return m, nil
-	case "enter":
-		selected := m.selector.selected()
-		if selected != nil {
-			m.project = selected.Slug
-			m.screen = screenDashboard
-			m.dashboard = newDashboardModel(m.projects, selected.Slug)
-			// Every project-scoped tab is rebuilt here, the same way the
-			// dashboard is: neither Tasks', Evidence's nor Runbooks'
-			// Refresh() takes a project parameter of its own (tabs.Tab is a
-			// project-agnostic contract), so each has to already know the
-			// new slug before it is ever activated.
-			m.tasks = m.tasks.WithProject(selected.Slug)
-			m.evidence = m.evidence.WithProject(selected.Slug)
-			m.runbooks = m.runbooks.WithProject(selected.Slug)
-			m.memory = m.memory.WithProject(selected.Slug)
-			m.ancestors = nil
-			// Nothing any tab is holding belongs to the project now active.
-			m.freshness = m.freshness.invalidateAll()
-			return m, tea.Batch(loadDashboard(m.projects, selected.Slug), loadAncestors(m.tree, selected.Slug))
-		}
-		return m, nil
-	case "/":
-		m.selector.filterInput.Focus()
-		// Don't return here; fall through to pass "/" to the input
-	case "esc":
-		if m.selector.filterInput.Focused() {
-			m.selector.filterInput.Blur()
-			m.selector.filterInput.SetValue("")
-			m.selector = m.selector.applyFilter()
-			return m, nil
-		}
-		if m.project != "" {
-			m.screen = screenDashboard
-			return m, nil
-		}
-		return m, nil
-	case "q":
-		return m, tea.Quit
-	}
-
-	return m, nil
 }
 
 // broadcast forwards a message to every registered tab.
@@ -433,7 +320,6 @@ func (m Model) activate(target tabs.ID) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.active = target
-	m.screen = screenTab
 
 	if !m.freshness.stale(target, time.Now()) {
 		return m, nil

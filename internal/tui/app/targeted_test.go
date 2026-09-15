@@ -45,7 +45,7 @@ func TestTargetedMessageReachesOnlyItsOwner(t *testing.T) {
 	if next.freshness.stale(tabs.Tasks, now) {
 		t.Fatal("the owning tab was not recorded as loaded")
 	}
-	for _, other := range []tabs.ID{tabs.Memory, tabs.Evidence, tabs.Runbooks, tabs.Cloud} {
+	for _, other := range []tabs.ID{tabs.Memory, tabs.Evidence, tabs.Runbooks, tabs.Settings} {
 		if !next.freshness.stale(other, now) {
 			t.Fatalf("%v was touched by a message it does not own", other)
 		}

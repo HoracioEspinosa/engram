@@ -37,6 +37,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HoracioEspinosa/engram/internal/project"
 	"github.com/HoracioEspinosa/engram/internal/store"
 	"github.com/HoracioEspinosa/engram/internal/tui/app"
 	"github.com/HoracioEspinosa/engram/internal/tui/data"
@@ -115,15 +116,29 @@ var teatestEnterKey = tea.KeyMsg{Type: tea.KeyEnter}
 func teatestScreens() []teatestScreen {
 	return []teatestScreen{
 		{
-			name: "s1-project-selector",
-			// No project: app.New now opens straight on the selector
+			name: "project-tree",
+			// No project: app.New opens straight on the project tree
 			// (rfc-tui.md §9.1: "sin proyecto resoluble se abre S1"), and
-			// Init loads its card list without any key needed — no "p"
-			// step to reach it, unlike every other screen here.
+			// Init loads the forest without any key needed — no ctrl+p step
+			// to reach it, unlike every other screen here.
 			initialWaitFor: "Acme Corp",
 		},
 		{
-			name:           "s2-project-dashboard",
+			name:           "project-tree-filtered",
+			initialWaitFor: "Acme Corp",
+			steps: []teatestStep{
+				{key: keyRune("/"), waitFor: "Filter by slug"},
+				// "thunder" is one of acme-api's aliases and appears nowhere
+				// else on screen: it proves the filter reaches past the two
+				// visible labels, and it is the one string that can only be
+				// there once the term has been typed — so the wait can never
+				// be satisfied by the unfiltered frame before it. The hit is a
+				// child, so its parent is dragged along de-emphasised.
+				{key: keyRune("thunder"), waitFor: "thunder"},
+			},
+		},
+		{
+			name:           "home",
 			initialProject: "acme",
 			initialWaitFor: "Fix the preview timeout",
 		},
@@ -175,17 +190,35 @@ func teatestScreens() []teatestScreen {
 			},
 		},
 		{
+			name:           "benchmarks-table",
+			initialProject: "acme",
+			steps: []teatestStep{
+				// The metric column is the one thing both the wide and the narrow
+				// layouts draw.
+				{key: keyRune("4"), waitFor: "p95"},
+			},
+		},
+		{
+			name:           "graph-stale",
+			initialProject: "acme",
+			steps: []teatestStep{
+				// The staleness reason is the store's own string, and it
+				// appears nowhere else in the workspace.
+				{key: keyRune("6"), waitFor: "code_changed"},
+			},
+		},
+		{
 			name:           "s8-runbooks-index",
 			initialProject: "acme",
 			steps: []teatestStep{
-				{key: keyRune("4"), waitFor: "RB-900"},
+				{key: keyRune("5"), waitFor: "RB-900"},
 			},
 		},
 		{
 			name:           "s9-runbooks-markdown",
 			initialProject: "acme",
 			steps: []teatestStep{
-				{key: keyRune("4"), waitFor: "RB-900"},
+				{key: keyRune("5"), waitFor: "RB-900"},
 				{key: teatestEnterKey, waitFor: "Restart the preview worker pool"},
 			},
 		},
@@ -197,10 +230,56 @@ func teatestScreens() []teatestScreen {
 			},
 		},
 		{
-			name:           "s11-cloud",
+			name:           "palette-empty",
 			initialProject: "acme",
 			steps: []teatestStep{
-				{key: keyRune("5"), waitFor: "Configure server"},
+				{key: tea.KeyMsg{Type: tea.KeyCtrlK}, waitFor: "Type at least"},
+			},
+		},
+		{
+			name:           "palette-results",
+			initialProject: "acme",
+			steps: []teatestStep{
+				{key: tea.KeyMsg{Type: tea.KeyCtrlK}, waitFor: "Type at least"},
+				// The store answers with one hit of every kind, so the last
+				// group's heading only appears once the search has resolved —
+				// which is what makes it a safe wait target across the
+				// hundred-millisecond debounce.
+				{key: keyRune("preview"), waitFor: "runbooks"},
+			},
+		},
+		{
+			name:           "palette-prefix",
+			initialProject: "acme",
+			steps: []teatestStep{
+				{key: tea.KeyMsg{Type: tea.KeyCtrlK}, waitFor: "Type at least"},
+				{key: keyRune("t:preview"), waitFor: "[tasks]"},
+			},
+		},
+		{
+			name:           "settings",
+			initialProject: "acme",
+			steps: []teatestStep{
+				// The vault root's own presence marker: it appears only once
+				// the settings list is drawn.
+				{key: keyRune("7"), waitFor: "evidence dir"},
+			},
+		},
+		{
+			name:           "theme-picker",
+			initialProject: "acme",
+			steps: []teatestStep{
+				{key: tea.KeyMsg{Type: tea.KeyCtrlT}, waitFor: "koi-day"},
+			},
+		},
+		{
+			name:           "theme-picker-invalid",
+			initialProject: "acme",
+			steps: []teatestStep{
+				// A palette the store could not make sense of is listed, not
+				// hidden: the reason it cannot be used is the wait target,
+				// and it appears nowhere else.
+				{key: tea.KeyMsg{Type: tea.KeyCtrlT}, waitFor: "palette has no color roles"},
 			},
 		},
 	}
@@ -210,7 +289,7 @@ func teatestScreens() []teatestScreen {
 // reader the workspace consumes — the same data.Fake* seam every tabs/*
 // Update test already uses, just wired through the real root instead of a
 // leaf tab.
-func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook) {
+func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakeProject, task *data.FakeTask, ev *data.FakeEvidence, rb *data.FakeRunbook, tree *data.FakeProjectTree, graph *data.FakeGraph, bench *data.FakeBenchmark, search *data.FakeSearch, themes *data.FakeTheme) {
 	t.Helper()
 	seedVaultFixture(t)
 	// Evidence's detail screen (S7) renders an absolute filesystem path
@@ -284,8 +363,103 @@ func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakePro
 
 	rb = &data.FakeRunbook{ItemsByProject: map[string][]store.RunbookIndexRow{"acme": {runbookRow}}}
 
-	return mem, projects, task, ev, rb
+	// One umbrella with two children: enough for the tree to show nesting, a
+	// fold marker and — once filtered to a child — a parent kept on screen
+	// only because of what is under it.
+	acmeAPI := data.ProjectNode{
+		Slug: "acme-api", ParentSlug: "acme", DisplayName: "Acme API", Kind: "service",
+		Aliases: []string{"thunderbird"}, Depth: 1,
+		Counts: store.ProjectCardCounts{Observations: 18, TasksActive: 1, Evidence: 4},
+	}
+	acmeWeb := data.ProjectNode{
+		Slug: "acme-web", ParentSlug: "acme", DisplayName: "Acme Web", Kind: "repo", Depth: 1,
+		Counts: store.ProjectCardCounts{Observations: 7, TasksActive: 0, Evidence: 2},
+	}
+	acmeRoot := data.ProjectNode{
+		Slug: "acme", DisplayName: "Acme Corp", Kind: "umbrella",
+		Tags: []string{"platform"}, Children: []data.ProjectNode{acmeAPI, acmeWeb},
+		Counts: store.ProjectCardCounts{Observations: 42, TasksActive: 1, Evidence: 1},
+	}
+	tree = &data.FakeProjectTree{
+		Tree:            []data.ProjectNode{acmeRoot},
+		NodeBySlug:      map[string]data.ProjectNode{"acme": acmeRoot, "acme-api": acmeAPI, "acme-web": acmeWeb},
+		AncestorsBySlug: map[string][]data.ProjectNode{"acme-api": {acmeRoot}, "acme-web": {acmeRoot}},
+	}
+
+	// A graph the store has already judged stale, with the reason it gave:
+	// Home prints that string literally rather than forming a verdict of its
+	// own, and the scene is where that is visible.
+	graph = &data.FakeGraph{
+		StateByProject: map[string]data.GraphState{"acme": {
+			Project: "acme", Commit: strings.Repeat("c", 40), BuiltAt: "2026-01-14 08:00:00",
+			CheckedAt: "2026-01-15 09:00:00",
+			Nodes:     1284, Edges: 3901, Communities: 17,
+			Stale: true, StaleReason: "code_changed", ChangedFiles: 6,
+			GodNodes: []project.GodNode{
+				{Label: "Store", Edges: 412, File: "internal/store/store.go"},
+				{Label: "Model", Edges: 208, File: "internal/tui/app/model.go"},
+			},
+		}},
+		RefsByProject: map[string][]data.ObservationRef{"acme": {
+			{ObservationID: 501, RefKind: "graph", Ref: "internal/preview/pool.go:Pool", GraphCommit: strings.Repeat("c", 40)},
+		}},
+	}
+
+	bench = &data.FakeBenchmark{ByProject: map[string][]data.Benchmark{"acme": {
+		{BenchmarkDelta: store.BenchmarkDelta{
+			Benchmark:     store.Benchmark{Name: "cold start", Metric: "p95", Unit: "ms", Value: 812, Direction: store.BenchmarkDirectionLower},
+			BaselineValue: float64Ptr(940), DeltaPct: float64Ptr(-13.6),
+		}},
+		{BenchmarkDelta: store.BenchmarkDelta{
+			Benchmark:     store.Benchmark{Name: "throughput", Metric: "rps", Unit: "ops", Value: 412, Direction: store.BenchmarkDirectionHigher},
+			BaselineValue: float64Ptr(500), DeltaPct: float64Ptr(-17.6),
+		}},
+	}}}
+
+	// One hit of every kind, so the palette's scene shows all six groups in
+	// the order it declares them.
+	search = &data.FakeSearch{Hits: []data.SearchHit{
+		{Kind: data.SearchKindCard, Slug: "acme", Project: "acme", Title: "Acme Corp", Subtitle: "umbrella"},
+		{Kind: data.SearchKindTask, ID: 1, Project: "acme", Title: "Fix the preview timeout", Subtitle: "ACME-1 · review"},
+		{Kind: data.SearchKindObservation, ID: 501, Project: "acme", Title: "Root cause: preview worker pool exhausted"},
+		{Kind: data.SearchKindEvidence, ID: 1, Project: "acme", Title: "ACME-1/cold-start.png"},
+		{Kind: data.SearchKindBenchmark, ID: 7, Project: "acme", Title: "preview p95", Subtitle: "812 ms"},
+		{Kind: data.SearchKindRunbook, Slug: "RB-900", Project: "acme", Title: "Preview endpoint returns 503 under load"},
+	}}
+
+	// Two builtin palettes and one the store could not make sense of: the
+	// picker lists all three, because hiding the broken one would leave
+	// somebody hunting for a theme that simply never appears.
+	themes = &data.FakeTheme{Themes: []data.ThemeRecord{
+		{ThemeRecord: store.ThemeRecord{
+			Name: "koi-pond", Variant: "dark", Source: "builtin",
+			Palette: mustMarshalTheme(t, "koi-pond", "dark", theme.KoiPond()),
+		}},
+		{ThemeRecord: store.ThemeRecord{
+			Name: "koi-day", Variant: "light", Source: "builtin",
+			Palette: mustMarshalTheme(t, "koi-day", "light", theme.KoiDay()),
+		}},
+		{
+			ThemeRecord: store.ThemeRecord{Name: "half-written", Variant: "dark", Source: "sql", Palette: []byte("{}")},
+			Invalid:     "palette has no color roles",
+		},
+	}}
+
+	return mem, projects, task, ev, rb, tree, graph, bench, search, themes
 }
+
+// mustMarshalTheme encodes a palette the way `engram theme export` does, so
+// the picker decodes exactly what the store would have handed it.
+func mustMarshalTheme(t *testing.T, name, variant string, p theme.Palette) []byte {
+	t.Helper()
+	encoded, err := theme.MarshalTheme(name, variant, p)
+	if err != nil {
+		t.Fatalf("marshal %s: %v", name, err)
+	}
+	return encoded
+}
+
+func float64Ptr(v float64) *float64 { return &v }
 
 // seedVaultFixture points ENGRAM_VAULT_ROOT at a temp directory holding
 // RB-900's body, the same fixture pattern
@@ -294,7 +468,18 @@ func teatestFixtures(t *testing.T) (mem *data.FakeMemory, projects *data.FakePro
 // cloned locally" instruction.
 func seedVaultFixture(t *testing.T) {
 	t.Helper()
-	dir := t.TempDir()
+	// A fixed directory, not t.TempDir(): the Settings scene prints the
+	// configured vault root, and lipgloss pads its block to the widest line
+	// in it — so a path whose length changes from run to run changes the
+	// trailing whitespace of every line around it. t.TempDir() names carry
+	// the test's own name and a counter, which differ between the update run
+	// and the comparison run. Found by rendering the scene twice and getting
+	// two frames that differed only in padding.
+	dir := filepath.Join(os.TempDir(), "engram-tui-e2e-vault")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("create vault fixture dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	t.Setenv(shared.VaultRootEnv, dir)
 
 	rel := filepath.Join("Runbooks", "RB-900.md")
@@ -363,9 +548,16 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 	t.Helper()
 	t.Setenv("ENGRAM_TIMEZONE", "UTC")
 
-	mem, projects, task, ev, rb := teatestFixtures(t)
+	mem, projects, task, ev, rb, tree, graph, bench, search, themes := teatestFixtures(t)
 	m := app.New(mem, projects, task, ev, rb, e2eVersion, theme.Default(), screen.initialProject).
-		WithUpdateChecker(quietUpdateCheck)
+		WithUpdateChecker(quietUpdateCheck).
+		WithProjectTree(tree).
+		WithGraph(graph, graph).
+		WithBenchmarks(bench).
+		WithSearch(search, &data.FakeSettings{}).
+		WithSearchHistory([]string{"cold start", "preview 503"}).
+		WithThemePicker(themes, &data.FakeSettings{}).
+		WithSettingsStore(&data.FakeSettings{}, &data.FakeSettings{})
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(size.width, size.height))
 	var buf strings.Builder
@@ -391,7 +583,7 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 	if strings.ContainsRune(out, 0x1b) {
 		t.Fatalf("scene %q rendered ANSI escapes: the color profile is not Ascii, so the golden would not be portable", screen.name)
 	}
-	return normalizeContextPackBuiltAt(out)
+	return normalizeVaultRoot(normalizeContextPackBuiltAt(out))
 }
 
 // quietUpdateCheck stands in for version.CheckLatest, which reaches GitHub
@@ -402,6 +594,19 @@ func renderTeatestScene(t *testing.T, screen teatestScreen, size goldenSize) str
 // message, so no banner is drawn and every run renders the same frame.
 func quietUpdateCheck(string) version.CheckResult {
 	return version.CheckResult{Status: version.StatusUpToDate}
+}
+
+// normalizeVaultRoot masks the per-run temporary directory the vault fixture
+// is seeded into. The Settings tab prints the configured vault root, and
+// t.TempDir() hands out a different path on every run — a second real
+// non-determinism of exactly the kind the context-pack clock was, found the
+// same way: the scene rendered twice and differed by one line.
+func normalizeVaultRoot(s string) string {
+	root := os.Getenv(shared.VaultRootEnv)
+	if root == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, root, "/fixtures/vault")
 }
 
 // contextPackBuiltAtPattern matches S5's "built HH:MM:SS" stamp

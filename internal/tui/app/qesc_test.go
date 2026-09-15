@@ -12,7 +12,7 @@ import (
 // TestQAndEscGoHomeFromEveryTabsRootScreen pins rfc-tui.md §7.1's
 // generalization of "q"/"Esc": "en la raíz de una pestaña vuelve al
 // Dashboard". This is a regression pin, not new behaviour this task adds —
-// Tasks, Evidence, Runbooks and Cloud already route their root screen's
+// Tasks, Evidence, Runbooks and Settings already route their root screen's
 // "esc"/"q" through tabs.Home() (measured by reading each tab's update.go
 // before writing this test; see this task's report), so none of these cases
 // had a red phase against unmodified code. What is being pinned is that
@@ -29,8 +29,8 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 		{"evidence-list-esc", tabs.Evidence, "esc"},
 		{"runbooks-index-q", tabs.Runbooks, "q"},
 		{"runbooks-index-esc", tabs.Runbooks, "esc"},
-		{"cloud-menu-q", tabs.Cloud, "q"},
-		{"cloud-menu-esc", tabs.Cloud, "esc"},
+		{"settings-list-q", tabs.Settings, "q"},
+		{"settings-list-esc", tabs.Settings, "esc"},
 	}
 
 	for _, tc := range cases {
@@ -38,11 +38,11 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 			m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 			m.project = "nextcloud"
 			m.active = tc.active
-			// New now opens the selector without a resolvable project
+			// New now opens the project tree without a resolvable project
 			// (T-10.02); this case's premise is being on tc.active's root
 			// screen already, so that is set explicitly rather than relied
 			// on as New's default.
-			m.screen = screenTab
+			m.tree.open = false
 
 			var msg tea.KeyMsg
 			if tc.key == "esc" {
@@ -56,29 +56,23 @@ func TestQAndEscGoHomeFromEveryTabsRootScreen(t *testing.T) {
 				t.Fatalf("%v's root screen should emit tabs.Home() on %q", tc.active, tc.key)
 			}
 			m, _ = step(t, m, cmd())
-			if m.screen != screenDashboard {
-				t.Fatalf("screen = %v, want screenDashboard: a project is active, so home is the Project Dashboard", m.screen)
+			if m.active != tabs.Home {
+				t.Fatalf("active = %v, want Home: a project is active, so home is its own tab", m.active)
 			}
 		})
 	}
 }
 
-// TestQQuitsFromTheDashboardAndSelector pins rfc-tui.md §7.1's other half:
-// "en el Dashboard sale" — and S1's own footer, "q quit", the same one
-// place a project workspace has nowhere further "back" to go. Regression,
-// not new: both already returned tea.Quit before this task.
-func TestQQuitsFromTheDashboardAndSelector(t *testing.T) {
-	dash := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	dash.project = "nextcloud"
-	dash.screen = screenDashboard
-	if _, cmd := step(t, dash, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd == nil {
-		t.Fatal("q on the dashboard should quit")
-	}
-
-	sel := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	sel.screen = screenSelector
-	if _, cmd := step(t, sel, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd == nil {
-		t.Fatal("q on the selector should quit")
+// TestQDoesNotQuitFromAnOverlay pins that "q" belongs to the screen, not to
+// the chrome. Home answers neither "q" nor "esc": it is where the other
+// tabs send the reader back to, so there is nothing further back to go.
+func TestQDoesNotQuitFromAnOverlay(t *testing.T) {
+	// The project tree overlay does not answer "q": with it open the letter is
+	// a filter candidate, and quitting from the one screen that can give the
+	// workspace a project would strand the reader.
+	tree := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
+	if _, cmd := step(t, tree, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd != nil {
+		t.Fatal("q on the project tree should not quit: esc closes the overlay and ctrl+c leaves")
 	}
 }
 
@@ -94,10 +88,11 @@ func TestMemorysOwnDashboardQuitsDirectlyNotHome(t *testing.T) {
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
 	m.project = "nextcloud"
 	m.active = tabs.Memory
-	// New now opens the selector without a resolvable project (T-10.02);
-	// this case's premise is being on Memory's own dashboard already, so
-	// that is set explicitly rather than relied on as New's default.
-	m.screen = screenTab
+	// New opens the project tree without a resolvable project; this case's
+	// premise is being on Memory's own dashboard already, so that is set
+	// explicitly rather than relied on as New's default.
+	m.tree.open = false
+	m.tree.open = false
 
 	if _, cmd := step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd == nil {
 		t.Fatal("q on Memory's own dashboard should still quit directly, unchanged by this task")

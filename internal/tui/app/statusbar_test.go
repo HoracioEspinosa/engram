@@ -38,20 +38,26 @@ func statusBarModel(t *testing.T) Model {
 		"previews": {{Task: store.Task{ID: 1, JiraKey: strp("CDBS-1010"), Title: "Preview 503s"}}},
 	}}
 
-	m := New(nil, nil, tasks, nil, nil, "", theme.New(theme.KoiPond()), "previews").WithProjectTree(tree)
+	projects := &data.FakeProject{
+		CardBySlug: map[string]store.ProjectCard{"previews": {Slug: "previews"}},
+		HealthBySlug: map[string]data.ProjectHealth{"previews": {
+			Sync: store.ProjectSyncSummary{Enrolled: true, Lifecycle: "healthy"},
+		}},
+	}
+
+	m := New(nil, projects, tasks, nil, nil, "", theme.New(theme.KoiPond()), "previews").WithProjectTree(tree)
 	m.width, m.height = 120, 40
-	m.screen = screenTab
+	m.tree.open = false
 	m.active = tabs.Tasks
 
 	msg := loadAncestors(tree, "previews")()
 	updated, _ := m.Update(msg)
 	m = updated.(Model)
 
-	m.dashboard = m.dashboard.applyLoaded(dashboardLoadedMsg{
-		slug:   "previews",
-		card:   store.ProjectCard{Slug: "previews"},
-		health: data.ProjectHealth{Sync: store.ProjectSyncSummary{Enrolled: true, Lifecycle: "healthy"}},
-	})
+	// The sync state on the bar is whatever Home last read, so it is driven
+	// through Home's own reader rather than written onto the root.
+	home, _ := m.home.Update(runCmd(t, m.home.Refresh()))
+	m = m.withTab(tabs.Home, home)
 	// Drive the tab's own load so the list has a row under the cursor: the
 	// status bar reads the selection, not the fixture.
 	loaded, _ := m.tasks.Update(runCmd(t, m.tasks.Init()))
@@ -109,7 +115,7 @@ func TestStatusBarFallsBackToTheProjectWithoutATree(t *testing.T) {
 	if seg.Text != "previews" {
 		t.Fatalf("breadcrumb = %q, want the project on its own", seg.Text)
 	}
-	if cmd := loadAncestors(m.tree, "previews"); cmd != nil {
+	if cmd := loadAncestors(m.treeReader, "previews"); cmd != nil {
 		t.Fatal("a workspace with no tree reader still issued an ancestors query")
 	}
 }

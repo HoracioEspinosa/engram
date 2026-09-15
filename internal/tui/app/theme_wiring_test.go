@@ -29,7 +29,7 @@ func TestNewAppliesTheResolvedPaletteToEveryTab(t *testing.T) {
 		{"tasks", m.tasks.Styles().Palette.Name},
 		{"evidence", m.evidence.Styles().Palette.Name},
 		{"runbooks", m.runbooks.Styles().Palette.Name},
-		{"cloud", m.cloud.Styles().Palette.Name},
+		{"settings", m.settings.Styles().Palette.Name},
 	}
 	for _, tc := range cases {
 		if tc.name != "kanagawa" {

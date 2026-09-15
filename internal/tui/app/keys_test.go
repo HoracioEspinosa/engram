@@ -33,11 +33,13 @@ func keyMsg(k string) tea.KeyMsg {
 
 // onTab returns a model sitting on a tab with a project already selected, the
 // state every global binding is meant to work from.
-func onTab(active tabs.ID) Model {
+func onTab(t *testing.T, active tabs.ID) Model {
+	t.Helper()
 	m := New(nil, nil, nil, nil, nil, "", theme.New(theme.CatppuccinMocha()), "")
-	m.screen = screenTab
+	next, _ := m.openProject("nextcloud")
+	m = next.(Model)
+	m.tree.open = false
 	m.active = active
-	m.project = "nextcloud"
 	return m
 }
 
@@ -61,27 +63,34 @@ func TestEveryGlobalKeyIsRoutedThroughTheKeymap(t *testing.T) {
 			},
 		},
 		{
-			name:    "project selector",
+			name:    "project tree",
 			binding: globalKeys.ProjectSelector,
 			assert: func(t *testing.T, _, after Model, cmd tea.Cmd) {
-				if after.screen != screenSelector {
-					t.Fatalf("screen = %v, want screenSelector", after.screen)
+				if !after.tree.open {
+					t.Fatal("ctrl+p should open the project tree overlay")
 				}
 				if cmd == nil {
-					t.Fatal("opening the selector should load the project cards")
+					t.Fatal("opening the project tree should load the forest")
 				}
 			},
 		},
 		{
-			name:    "dashboard",
-			binding: globalKeys.Dashboard,
-			assert: func(t *testing.T, _, after Model, cmd tea.Cmd) {
-				if after.screen != screenDashboard {
-					t.Fatalf("screen = %v, want screenDashboard", after.screen)
+			name:    "switch tab",
+			binding: globalKeys.SwitchTab,
+			assert: func(t *testing.T, before, after Model, _ tea.Cmd) {
+				// Every digit is one slot of the bar. It either activates the
+				// tab behind that slot or, for a slot this build implements
+				// no tab for, is swallowed; what it must never do is reach
+				// the tab on screen.
+				if after.active == before.active {
+					return
 				}
-				if cmd == nil {
-					t.Fatal("opening the dashboard should load it")
+				for _, id := range digitTabs {
+					if after.active == id {
+						return
+					}
 				}
+				t.Fatalf("a digit moved the workspace to %v, which no bar slot names", after.active)
 			},
 		},
 		{
@@ -129,7 +138,7 @@ func TestEveryGlobalKeyIsRoutedThroughTheKeymap(t *testing.T) {
 				t.Fatalf("%s declares no key at all", tc.name)
 			}
 			for _, k := range keys {
-				before := onTab(tabs.Tasks)
+				before := onTab(t, tabs.Tasks)
 				after, cmd := step(t, before, keyMsg(k))
 				tc.assert(t, before, after, cmd)
 			}
@@ -143,7 +152,7 @@ func TestEveryGlobalKeyIsRoutedThroughTheKeymap(t *testing.T) {
 func TestRefreshReachesTheActiveTab(t *testing.T) {
 	for _, id := range []tabs.ID{tabs.Memory, tabs.Tasks, tabs.Evidence, tabs.Runbooks} {
 		t.Run(id.String(), func(t *testing.T) {
-			m := onTab(id)
+			m := onTab(t, id)
 			_, cmd := step(t, m, keyMsg(globalKeys.Refresh.Keys()[0]))
 			if cmd == nil {
 				t.Fatalf("refresh on the %s tab issued no reload", id)
@@ -152,21 +161,21 @@ func TestRefreshReachesTheActiveTab(t *testing.T) {
 	}
 }
 
-// TestRefreshReloadsTheDashboardAndTheSelector covers the two screens the
+// TestRefreshReloadsTheDashboardAndTheProjectTree covers the two surfaces the
 // root draws itself: they answer the same binding, not a literal of their own.
-func TestRefreshReloadsTheDashboardAndTheSelector(t *testing.T) {
+func TestRefreshReloadsTheDashboardAndTheProjectTree(t *testing.T) {
 	refresh := keyMsg(globalKeys.Refresh.Keys()[0])
 
-	m := onTab(tabs.Tasks)
-	m.screen = screenDashboard
+	m := onTab(t, tabs.Tasks)
+	m.tree.open, m.active = false, tabs.Home
 	if _, cmd := step(t, m, refresh); cmd == nil {
-		t.Fatal("refresh on the dashboard issued no reload")
+		t.Fatal("refresh on Home issued no reload")
 	}
 
-	m = onTab(tabs.Tasks)
-	m.screen = screenSelector
+	m = onTab(t, tabs.Tasks)
+	m.tree.open = true
 	if _, cmd := step(t, m, refresh); cmd == nil {
-		t.Fatal("refresh on the selector issued no reload")
+		t.Fatal("refresh on the project tree issued no reload")
 	}
 }
 
@@ -177,9 +186,9 @@ func TestRefreshReloadsTheDashboardAndTheSelector(t *testing.T) {
 func TestLowercasePNoLongerOpensTheSelector(t *testing.T) {
 	for _, k := range []string{"p", "P"} {
 		t.Run(k, func(t *testing.T) {
-			m, _ := step(t, onTab(tabs.Tasks), keyMsg(k))
-			if m.screen == screenSelector {
-				t.Fatalf("%q still opens the project selector", k)
+			m, _ := step(t, onTab(t, tabs.Tasks), keyMsg(k))
+			if m.tree.open {
+				t.Fatalf("%q still opens the project tree", k)
 			}
 		})
 	}
@@ -188,29 +197,12 @@ func TestLowercasePNoLongerOpensTheSelector(t *testing.T) {
 // TestLowercasePReachesEvidenceDetail is the other half: with the global out
 // of the way, the screen's own "p" works without the swap.
 func TestLowercasePReachesEvidenceDetail(t *testing.T) {
-	m := onTab(tabs.Evidence)
+	m := onTab(t, tabs.Evidence)
 	m.evidence.Screen = evidence.ScreenDetail
 
 	after, _ := step(t, m, keyMsg("p"))
-	if after.screen == screenSelector {
-		t.Fatal("p on the evidence detail opened the project selector")
-	}
-}
-
-// TestDashboardHAndLNoLongerMoveTheCursor pins the reservation: the blocks
-// are stacked, so h/l are free for horizontal focus and mean nothing here.
-func TestDashboardHAndLNoLongerMoveTheCursor(t *testing.T) {
-	for _, k := range []string{"h", "l"} {
-		t.Run(k, func(t *testing.T) {
-			m := onTab(tabs.Tasks)
-			m.screen = screenDashboard
-			m.dashboard.cursor = dashBlockRunbooks
-
-			after, _ := step(t, m, keyMsg(k))
-			if after.dashboard.cursor != dashBlockRunbooks {
-				t.Fatalf("cursor moved to %v, want it left on %v", after.dashboard.cursor, dashBlockRunbooks)
-			}
-		})
+	if after.tree.open {
+		t.Fatal("p on the evidence detail opened the project tree")
 	}
 }
 
@@ -223,13 +215,13 @@ func TestFooterMatchesHelp(t *testing.T) {
 		name  string
 		build func() Model
 	}{
-		{"selector", func() Model { m := onTab(tabs.Memory); m.screen = screenSelector; return m }},
-		{"dashboard", func() Model { m := onTab(tabs.Memory); m.screen = screenDashboard; return m }},
-		{"memory", func() Model { return onTab(tabs.Memory) }},
-		{"tasks", func() Model { return onTab(tabs.Tasks) }},
-		{"evidence", func() Model { return onTab(tabs.Evidence) }},
-		{"runbooks", func() Model { return onTab(tabs.Runbooks) }},
-		{"cloud", func() Model { return onTab(tabs.Cloud) }},
+		{"project tree", func() Model { m := onTab(t, tabs.Memory); m.tree.open = true; return m }},
+		{"home", func() Model { m := onTab(t, tabs.Memory); m.tree.open, m.active = false, tabs.Home; return m }},
+		{"memory", func() Model { return onTab(t, tabs.Memory) }},
+		{"tasks", func() Model { return onTab(t, tabs.Tasks) }},
+		{"evidence", func() Model { return onTab(t, tabs.Evidence) }},
+		{"runbooks", func() Model { return onTab(t, tabs.Runbooks) }},
+		{"settings", func() Model { return onTab(t, tabs.Settings) }},
 	}
 
 	for _, sc := range screens {
@@ -270,7 +262,7 @@ func TestFooterMatchesHelp(t *testing.T) {
 func TestEveryScreenRendersItsFooter(t *testing.T) {
 	for _, id := range []tabs.ID{tabs.Memory, tabs.Tasks, tabs.Evidence, tabs.Runbooks} {
 		t.Run(id.String(), func(t *testing.T) {
-			m := onTab(id)
+			m := onTab(t, id)
 			m.width = 120
 
 			view := ansi.Strip(m.View())

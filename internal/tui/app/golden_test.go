@@ -316,9 +316,9 @@ func goldenScenes() []goldenScene {
 			m.memory.SetupError = "network unreachable"
 			return m
 		}},
-		{name: "cloud-settings", build: func(m Model) Model {
-			m.active = tabs.Cloud
-			m.cloud.Cursor = 2
+		{name: "settings", build: func(m Model) Model {
+			m.active = tabs.Settings
+			m.settings.Cursor = 2
 			return m
 		}},
 		{name: "unknown-screen", build: func(m Model) Model {
@@ -333,10 +333,10 @@ func renderScene(t *testing.T, scene goldenScene, size goldenSize) string {
 	t.Helper()
 
 	m := New(nil, nil, nil, nil, nil, goldenVersion, theme.Default(), "")
-	// New now opens the selector without a resolvable project (T-10.02);
-	// every scene here is a tab screen (Memory's own sub-screens, or Cloud),
+	// New now opens the project tree without a resolvable project (T-10.02);
+	// every scene here is a tab screen (Memory's own sub-screens, or Settings),
 	// so that is set explicitly rather than relied on as New's default.
-	m.screen = screenTab
+	m.tree.open = false
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: size.width, Height: size.height})
 	m = sized.(Model)
 	m = scene.build(m)

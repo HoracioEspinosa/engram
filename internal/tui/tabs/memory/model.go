@@ -131,13 +131,17 @@ type Model struct {
 	project     string
 	styles      theme.Styles
 	updateCheck UpdateChecker
-	Version     string
-	Screen      Screen
-	PrevScreen  Screen
-	Width       int
-	Height      int
-	Cursor      int
-	Scroll      int
+	// Scope is how wide the tab reads: this project, its subtree, or the
+	// whole workspace. "a" cycles it and settings remembers it.
+	Scope      Scope
+	settings   data.SettingsWriter
+	Version    string
+	Screen     Screen
+	PrevScreen Screen
+	Width      int
+	Height     int
+	Cursor     int
+	Scroll     int
 
 	// Update notification
 	UpdateStatus version.CheckStatus
@@ -237,6 +241,10 @@ func New(r data.MemorySource, version string) Model {
 		SearchInput:  ti,
 		LinkQuery:    lq,
 		SetupSpinner: sp,
+		// Memory is the workspace-wide recall tool until somebody narrows
+		// it: opening on "this project only" would hide observations the
+		// reader wrote elsewhere without ever saying it had.
+		Scope: ScopeAll,
 	}
 }
 
@@ -272,9 +280,8 @@ func (m Model) WithTasks(r data.TaskReader) Model {
 	return m
 }
 
-// WithProject sets the project the "L" picker scopes its task search to.
-// Memory's own data — search, recent observations, sessions — spans every
-// project, so nothing else about the tab reads this field.
+// WithProject sets the project the "L" picker scopes its task search to, and
+// the one Scope narrows the tab's own reads to.
 func (m Model) WithProject(project string) Model {
 	m.project = project
 	return m
@@ -300,7 +307,15 @@ func (m Model) HasNextRecentPage() bool {
 }
 
 // Title is the label the tab bar shows for this tab.
-func (Model) Title() string { return "Memory" }
+// Title is the label the tab bar shows. It carries the scope, because a
+// narrowed Memory tab that looked exactly like a workspace-wide one would
+// have the reader concluding their observations had been lost.
+func (m Model) Title() string {
+	if m.project == "" || m.Scope == ScopeAll {
+		return "Memory"
+	}
+	return "Memory (" + m.Scope.label() + ")"
+}
 
 // Init loads the dashboard: the counters and the update check behind its
 // banner.
@@ -337,7 +352,7 @@ func (m Model) OpenObservation(id int64) tea.Cmd {
 // Screen to ScreenSearchResults regardless of who asked, the same way
 // OpenObservation relies on observationDetailMsg's handler to switch screens.
 func (m Model) SearchFor(query string) tea.Cmd {
-	return searchMemories(m.reader, query, 0)
+	return searchMemories(m.reader, query, m.projectScope(), 0)
 }
 
 // ─── Commands (data loading) ─────────────────────────────────────────────────
@@ -362,19 +377,17 @@ func loadStats(r data.MemorySource) tea.Cmd {
 // page carries the count the query found, which is what the range indicator
 // reports and what the page keys stop at.
 //
-// The scope is empty — every project — because scoping Memory to the active
-// project is a separate change; what this call fixes is the count, not which
-// rows are counted.
-func searchMemories(r data.MemorySource, query string, offset int) tea.Cmd {
+// scope is how wide the tab is reading — see Scope and the "a" key.
+func searchMemories(r data.MemorySource, query string, scope data.ProjectScope, offset int) tea.Cmd {
 	return func() tea.Msg {
-		page, err := r.SearchScoped(query, data.ProjectScope{}, memoryPageSize, offset)
+		page, err := r.SearchScoped(query, scope, memoryPageSize, offset)
 		return searchResultsMsg{page: page, query: query, err: err}
 	}
 }
 
-func loadRecentObservations(r data.MemorySource, offset int) tea.Cmd {
+func loadRecentObservations(r data.MemorySource, scope data.ProjectScope, offset int) tea.Cmd {
 	return func() tea.Msg {
-		page, err := r.RecentObservationsScoped(data.ProjectScope{}, memoryPageSize, offset)
+		page, err := r.RecentObservationsScoped(scope, memoryPageSize, offset)
 		return recentObservationsMsg{page: page, err: err}
 	}
 }
@@ -393,10 +406,10 @@ func loadTimeline(r data.MemorySource, obsID int64) tea.Cmd {
 	}
 }
 
-func loadRecentSessions(r data.MemorySource) tea.Cmd {
+func loadRecentSessions(r data.MemorySource, scope data.ProjectScope) tea.Cmd {
 	return func() tea.Msg {
-		sessions, err := r.RecentSessions(50)
-		return recentSessionsMsg{sessions: sessions, err: err}
+		page, err := r.RecentSessionsScoped(scope, sessionPageSize, 0)
+		return recentSessionsMsg{sessions: page.Items, err: err}
 	}
 }
 

@@ -239,7 +239,7 @@ func TestCloudSettingsNavigation(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("enter on Cloud sync settings should ask the root to switch tabs")
 	}
-	if nav, ok := cmd().(tabs.NavigateMsg); !ok || nav.Target != tabs.Cloud {
+	if nav, ok := cmd().(tabs.NavigateMsg); !ok || nav.Target != tabs.Settings {
 		t.Fatalf("enter on Cloud sync settings should emit NavigateMsg{Cloud}, got %#v", cmd())
 	}
 	if updated.Screen != ScreenDashboard {
@@ -1314,7 +1314,7 @@ func TestRangeIndicatorShowsStoreTotal(t *testing.T) {
 	m := New(fake, "")
 	m.Height = 40
 	m.Screen = ScreenRecent
-	m = apply(t, m, run(t, loadRecentObservations(fake, 0)))
+	m = apply(t, m, run(t, loadRecentObservations(fake, data.ProjectScope{}, 0)))
 	if m.RecentTotal != total {
 		t.Fatalf("RecentTotal = %d, want the store's own %d", m.RecentTotal, total)
 	}
@@ -1323,7 +1323,7 @@ func TestRangeIndicatorShowsStoreTotal(t *testing.T) {
 	}
 
 	m.Screen = ScreenSearchResults
-	m = apply(t, m, run(t, searchMemories(fake, "row", 0)))
+	m = apply(t, m, run(t, searchMemories(fake, "row", data.ProjectScope{}, 0)))
 	if m.SearchTotal != total {
 		t.Fatalf("SearchTotal = %d, want the store's own %d", m.SearchTotal, total)
 	}
@@ -1339,7 +1339,7 @@ func TestPrevPageIsDisabledOnTheFirstPage(t *testing.T) {
 	}
 	m := New(fake, "")
 	m.Screen = ScreenRecent
-	m = apply(t, m, run(t, loadRecentObservations(fake, 0)))
+	m = apply(t, m, run(t, loadRecentObservations(fake, data.ProjectScope{}, 0)))
 
 	updated, cmd := m.handleRecentKeys("p")
 	m = updated.(Model)
@@ -1358,7 +1358,7 @@ func TestNextPageStopsAtTheLastPage(t *testing.T) {
 	}
 	m := New(fake, "")
 	m.Screen = ScreenRecent
-	m = apply(t, m, run(t, loadRecentObservations(fake, 0)))
+	m = apply(t, m, run(t, loadRecentObservations(fake, data.ProjectScope{}, 0)))
 
 	updated, cmd := m.handleRecentKeys("n")
 	m = updated.(Model)

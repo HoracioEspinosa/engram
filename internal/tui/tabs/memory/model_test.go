@@ -148,7 +148,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("searchMemories", func(t *testing.T) {
-		msg := searchMemories(fx.reader(), "needle", 0)()
+		msg := searchMemories(fx.reader(), "needle", data.ProjectScope{}, 0)()
 		loaded, ok := msg.(searchResultsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -165,7 +165,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("loadRecentObservations", func(t *testing.T) {
-		msg := loadRecentObservations(fx.reader(), 0)()
+		msg := loadRecentObservations(fx.reader(), data.ProjectScope{}, 0)()
 		loaded, ok := msg.(recentObservationsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)
@@ -207,7 +207,7 @@ func TestDataLoadingCommands(t *testing.T) {
 	})
 
 	t.Run("loadRecentSessions", func(t *testing.T) {
-		msg := loadRecentSessions(fx.reader())()
+		msg := loadRecentSessions(fx.reader(), data.ProjectScope{})()
 		loaded, ok := msg.(recentSessionsMsg)
 		if !ok {
 			t.Fatalf("message type = %T", msg)

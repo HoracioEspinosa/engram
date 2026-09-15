@@ -27,14 +27,14 @@ func TestNewSatisfiesTheBubbleteaModelContract(t *testing.T) {
 
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	out := sized.View()
-	if !strings.Contains(out, "Select a project") {
-		t.Fatalf("without a resolvable project the TUI should open on the selector (rfc-tui.md §9.1), got:\n%s", out)
+	if !strings.Contains(out, "space fold") {
+		t.Fatalf("without a resolvable project the TUI should open on the project tree (rfc-tui.md §9.1), got:\n%s", out)
 	}
 
-	// The selector carries no version banner of its own (rfc-tui.md §5's S1
-	// wireframe), so reach a tab screen — via the same NavigateMsg every
-	// cross-tab jump in the app uses — to confirm the version and the store
-	// New was given still reach the workspace underneath it.
+	// The tree is composited over the workspace rather than replacing it, so
+	// reach a tab screen — via the same NavigateMsg every cross-tab jump in
+	// the app uses — to confirm the version and the store New was given still
+	// reach what is underneath.
 	tabbed, _ := sized.Update(tabs.NavigateMsg{Target: tabs.Memory})
 	out = tabbed.View()
 	if !strings.Contains(out, "engram 1.0.0-test") {
@@ -93,11 +93,14 @@ func TestNewWiresTheStoreIntoTheMemoryTab(t *testing.T) {
 
 	var m tea.Model = tui.New(s, "1.0.0-test", "", theme.CatppuccinMocha())
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	// No project resolves from an empty store, so the workspace opens behind
+	// the project tree; esc puts it away and leaves the tab underneath.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 
 	// Leaving and re-entering the Memory tab reloads the dashboard counters
 	// through whichever reader the tab was built with. A tab bound to a nil
 	// store panics inside the command exactly as it would at startup.
-	m, _ = m.Update(tabs.NavigateMsg{Target: tabs.Cloud})
+	m, _ = m.Update(tabs.NavigateMsg{Target: tabs.Settings})
 	m, cmd := m.Update(tabs.NavigateMsg{Target: tabs.Memory})
 	if cmd == nil {
 		t.Fatal("returning to the memory dashboard should reload its counters")

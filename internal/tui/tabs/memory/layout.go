@@ -38,6 +38,9 @@ const (
 	// observations holds — the same 50 both screens already asked for before
 	// either of them could page.
 	memoryPageSize = 50
+	// sessionPageSize is how many sessions the list reads. Sessions are
+	// coarser than observations, so fifty of them already spans weeks.
+	sessionPageSize = 50
 )
 
 // Widths of the tab's fixed columns, in terminal cells.

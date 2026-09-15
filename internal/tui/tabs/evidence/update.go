@@ -54,6 +54,9 @@ func (m Model) Update(msg tea.Msg) (tabs.Tab, tea.Cmd) {
 			m.Cursor = 0
 			m.Scroll = 0
 		}
+		if m.FocusID != 0 {
+			m = m.focusRow(m.FocusID)
+		}
 		return m, nil
 
 	case manifestLoadedMsg:
@@ -158,7 +161,7 @@ func (m Model) handleListKeys(key string) (tabs.Tab, tea.Cmd) {
 		m.Filter.Limit = limit
 		return m, loadEvidence(m.reader, m.project, m.Filter)
 	case "esc", "q":
-		return m, tabs.Home()
+		return m, tabs.Navigate(tabs.Home)
 	}
 	return m, nil
 }

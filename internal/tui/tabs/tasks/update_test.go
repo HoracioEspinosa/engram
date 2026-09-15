@@ -341,10 +341,10 @@ func TestListEscGoesHome(t *testing.T) {
 	m := New(&data.FakeTask{}).WithProject("acme")
 	_, cmd := m.handleListKeys("esc")
 	if cmd == nil {
-		t.Fatal("esc from the list root should emit HomeMsg")
+		t.Fatal("esc from the list root should navigate to Home")
 	}
-	if _, ok := run(t, cmd).(tabs.HomeMsg); !ok {
-		t.Fatalf("esc produced %T, want tabs.HomeMsg", run(t, cmd))
+	if _, ok := run(t, cmd).(tabs.NavigateMsg); !ok {
+		t.Fatalf("esc produced %T, want tabs.NavigateMsg{Target: tabs.Home}", run(t, cmd))
 	}
 }
 

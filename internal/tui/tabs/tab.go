@@ -16,31 +16,43 @@ import (
 type ID int
 
 const (
+	// Home is the active project seen whole: its card, its graph, and the
+	// three lists that say what has been happening to it.
+	Home ID = iota
 	// Memory is the observation, session and timeline workspace.
-	Memory ID = iota
-	// Tasks, Evidence and Runbooks are declared so navigation targets and the
-	// tab-bar order are fixed once; the root reports an unimplemented target
-	// rather than switching to it.
+	Memory
+	// Tasks, Evidence, Benchmarks, Runbooks, Graph and Settings are declared
+	// so navigation targets and the tab-bar order are fixed once; the root
+	// reports an unimplemented target rather than switching to it.
 	Tasks
 	Evidence
+	Benchmarks
 	Runbooks
-	// Cloud is the sync configuration workspace.
-	Cloud
+	Graph
+	// Settings holds everything the workspace remembers about itself,
+	// including the sync configuration that used to be a tab of its own.
+	Settings
 )
 
 // String names the tab for logs and test failures.
 func (id ID) String() string {
 	switch id {
+	case Home:
+		return "home"
 	case Memory:
 		return "memory"
 	case Tasks:
 		return "tasks"
 	case Evidence:
 		return "evidence"
+	case Benchmarks:
+		return "benchmarks"
 	case Runbooks:
 		return "runbooks"
-	case Cloud:
-		return "cloud"
+	case Graph:
+		return "graph"
+	case Settings:
+		return "settings"
 	}
 	return "unknown"
 }
@@ -111,10 +123,19 @@ type Targeted interface {
 //   - Query: §3.1 S8/S9's "t" opens Memory pre-searched for
 //     "runbook/RB-NNN", the executions recorded against that runbook
 //     (D-09's `runbook/RB-NNN/exec/<task-key>` topic_key convention).
+//   - EvidenceID and BenchmarkID are the same idea for the two kinds the
+//     workspace search can land on directly: one file, one measurement.
+//   - Slug rescopes the workspace before the target opens. A search that
+//     crosses projects has to move the whole workspace, not only the tab:
+//     a task from another project opened inside this one's Tasks list would
+//     be a row nobody can find again.
 type NavigateMsg struct {
 	Target        ID
 	ObservationID int64
 	TaskID        int64
+	EvidenceID    int64
+	BenchmarkID   int64
+	Slug          string
 	Query         string
 }
 
@@ -154,16 +175,5 @@ func NavigateToTask(taskID int64) tea.Cmd {
 func NavigateToMemorySearch(query string) tea.Cmd {
 	return func() tea.Msg {
 		return NavigateMsg{Target: Memory, Query: query}
-	}
-}
-
-// HomeMsg asks the root to go home: to the dashboard if a project is active,
-// or to the Memory tab otherwise.
-type HomeMsg struct{}
-
-// Home returns the command that emits a HomeMsg.
-func Home() tea.Cmd {
-	return func() tea.Msg {
-		return HomeMsg{}
 	}
 }

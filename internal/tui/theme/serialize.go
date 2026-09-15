@@ -101,6 +101,29 @@ func (p Palette) Role(name string) (lipgloss.Color, bool) {
 	return *colour, true
 }
 
+// ResolveColor turns a colour somebody chose for one of their own entities —
+// a project card's `color`, today — into a colour to draw with.
+//
+// It accepts either a role token, which follows whichever palette is active
+// so a project keeps its place in the theme, or an #rrggbb triple, which is
+// the user pinning an exact shade and is honoured as given. Anything else
+// reports false, and the caller falls back to a role of its own rather than
+// rendering an unpainted string.
+//
+// It lives here because this package is the only one allowed to know what a
+// colour literal looks like: a caller elsewhere matching "#rrggbb" itself
+// would be a second, drifting definition of the same rule.
+func ResolveColor(p Palette, value string) (lipgloss.Color, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "", false
+	}
+	if hexPattern.MatchString(value) {
+		return lipgloss.Color(value), true
+	}
+	return p.Role(value)
+}
+
 // BuiltinTheme is a palette the binary ships, with the variant it was built
 // for. It is what a caller seeds the themes table from.
 type BuiltinTheme struct {

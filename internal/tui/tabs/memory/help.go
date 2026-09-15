@@ -22,6 +22,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
 			key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "link to task")),
 			key.NewBinding(key.WithKeys("p", "n"), key.WithHelp("p/n", "page")),
+			m.scopeBinding(),
 			key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search again")),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
@@ -34,6 +35,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "timeline")),
 			key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "link to task")),
 			key.NewBinding(key.WithKeys("p", "n"), key.WithHelp("p/n", "page")),
+			m.scopeBinding(),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
 	case ScreenObservationDetail:
@@ -61,6 +63,7 @@ func (m Model) Help() []key.Binding {
 			key.NewBinding(key.WithKeys("g", "G"), key.WithHelp("g/G", "top/bottom")),
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "view session")),
 			key.NewBinding(key.WithKeys("d", "D"), key.WithHelp("d", "delete")),
+			m.scopeBinding(),
 			key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "back")),
 		}
 	case ScreenSessionDetail:
@@ -107,4 +110,17 @@ func (m Model) Help() []key.Binding {
 // the cursor either.
 func (m Model) CapturingText() bool {
 	return (m.Screen == ScreenSearch && m.SearchInput.Focused()) || m.Linking
+}
+
+// scopeBinding names the "a" key with the width it would move to, so the hint
+// says what pressing it does rather than only that it does something.
+//
+// Without a project there is nothing to narrow to, and the binding is
+// returned disabled: shared.HintsFrom skips a disabled binding, so the hint
+// disappears rather than advertising a key that answers nothing.
+func (m Model) scopeBinding() key.Binding {
+	if m.project == "" {
+		return key.NewBinding(key.WithKeys("a"), key.WithDisabled())
+	}
+	return key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "scope: "+m.Scope.label()))
 }

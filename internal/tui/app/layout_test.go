@@ -35,15 +35,21 @@ func TestNoScreenExceedsItsWidth(t *testing.T) {
 			})
 		}
 
-		t.Run(size.name+"/selector", func(t *testing.T) {
+		t.Run(size.name+"/project-tree", func(t *testing.T) {
 			m := populatedWorkspace(t, size)
-			m.screen = screenSelector
-			m.selector = m.selector.applyLoaded(selectorLoadedMsg{cards: []store.ProjectCardListItem{
-				{
-					ProjectCard: store.ProjectCard{Slug: "a-very-long-project-slug-nobody-would-type", DisplayName: "A display name long enough to need cutting"},
-					Counts:      &store.ProjectCardCounts{Observations: 1204, TasksActive: 17, RunbooksStale: 3},
-				},
-			}})
+			m.tree.open = true
+			m.tree = m.tree.applyLoaded(treeLoadedMsg{roots: []data.ProjectNode{{
+				Slug:        "a-very-long-project-slug-nobody-would-type",
+				DisplayName: "A display name long enough to need cutting",
+				Kind:        "umbrella",
+				Counts:      store.ProjectCardCounts{Observations: 1204, TasksActive: 17, Evidence: 312},
+				Children: []data.ProjectNode{{
+					Slug:        "a-very-long-project-slug-nobody-would-type-child",
+					DisplayName: "A nested display name long enough to need cutting too",
+					Kind:        "instance",
+					Counts:      store.ProjectCardCounts{Observations: 98, TasksActive: 2, Evidence: 41},
+				}},
+			}}})
 			assertFitsWidth(t, m.View(), size.width)
 		})
 	}
@@ -99,7 +105,7 @@ func renderTab(t *testing.T, id tabs.ID, size goldenSize) string {
 	t.Helper()
 
 	m := populatedWorkspace(t, size)
-	m.screen = screenTab
+	m.tree.open = false
 	m.active = id
 
 	if tab := m.tab(id); tab != nil {
@@ -125,7 +131,7 @@ func TestDetailPaneFollowsTheCursor(t *testing.T) {
 	m := New(nil, nil, nil, fake, nil, "test", theme.New(theme.KoiPond()), "acme")
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: wide.width, Height: wide.height})
 	m = sized.(Model)
-	m.screen, m.active = screenTab, tabs.Evidence
+	m.tree.open, m.active = false, tabs.Evidence
 
 	loaded, _ := m.evidence.Update(m.evidence.Refresh()())
 	m = m.withTab(tabs.Evidence, loaded)

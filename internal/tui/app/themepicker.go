@@ -136,20 +136,39 @@ func newThemePickerModel(styles theme.Styles) themePickerModel {
 // WithThemePicker binds the overlay to the store it reads themes from and
 // writes the chosen one to. A root built without it still opens; ctrl+t then
 // reports that there is nothing to read rather than doing nothing at all.
-func (m Model) WithThemePicker(themes data.ThemeReader, settings data.SettingsWriter) Model {
+//
+// The Settings tab writes through the same store: its own rows remember an
+// icon vocabulary next to the theme the picker remembers, and one store
+// keeps the two from drifting into separate notions of what was chosen.
+func (m Model) WithThemePicker(themes data.ThemeReader, writer data.SettingsWriter) Model {
 	m.themePicker.themes = themes
-	m.themePicker.settings = settings
+	m.themePicker.settings = writer
+	return m
+}
+
+// WithSettingsStore binds the Settings tab to what it reads and writes.
+func (m Model) WithSettingsStore(writer data.SettingsWriter, reader data.SettingsReader) Model {
+	m.settings = m.settings.WithSettings(writer, reader)
 	return m
 }
 
 // CapturingText reports whether an overlay the root owns has the keyboard.
 //
-// The picker filters with a text input, so while it is open a keystroke is a
-// character and not a command. Reporting it here is what lets whatever
-// composes this model — today the program, later an overlay compositor — apply
-// the same rule to the root that the root already applies to its tabs.
+// Both the theme picker and the project tree filter with a text input, so
+// while one of those is focused a keystroke is a character and not a command.
+// Reporting it here is what lets whatever composes this model — today the
+// program, later an overlay compositor — apply the same rule to the root that
+// the root already applies to its tabs.
 func (m Model) CapturingText() bool {
-	return m.themePicker.open && m.themePicker.list.FilterState() == list.Filtering
+	if m.themePicker.open && m.themePicker.list.FilterState() == list.Filtering {
+		return true
+	}
+	if m.palette.open {
+		// The palette is a text box with a list under it: every key that is
+		// not one of its own four is a character.
+		return true
+	}
+	return m.tree.open && m.tree.filterInput.Focused()
 }
 
 // withStyles repaints the overlay itself. The picker draws in the palette
@@ -173,7 +192,7 @@ func (m Model) updateThemePicker(msg tea.KeyMsg) (bool, Model, tea.Cmd) {
 		}
 		// A focused text input owns the keyboard, the same rule the tabs
 		// play by (rfc-tui.md §7.1).
-		if tab := m.tab(m.active); tab != nil && tab.CapturingText() && m.screen == screenTab {
+		if tab := m.tab(m.active); tab != nil && tab.CapturingText() {
 			return false, m, nil
 		}
 		m.themePicker.open = true
